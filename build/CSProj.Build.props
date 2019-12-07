@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <PropertyGroup>
+    <GenerateAssemblyVersionAttribute>false</GenerateAssemblyVersionAttribute>
+    <GenerateAssemblyFileVersionAttribute>false</GenerateAssemblyFileVersionAttribute>
+    <GenerateAssemblyInformationalVersionAttribute>false</GenerateAssemblyInformationalVersionAttribute>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)..\.version\PipelineAssemblyInfo.cs">
+      <Link>Properties\PipelineAssemblyInfo.cs</Link>
+    </Compile>
+  </ItemGroup>
+
+</Project>

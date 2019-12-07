@@ -3,10 +3,13 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <CopyBuildOutputToOutputDirectory>false</CopyBuildOutputToOutputDirectory>
   </PropertyGroup>
 
   <ItemGroup>
-    <FilesToCopy Include="**" Exclude="*.copyproj;*.sln;obj\**;.vs\**" />
+    <Content Include="**" Exclude="*.copyproj;*.sln;obj\**;.vs\**" >
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>
