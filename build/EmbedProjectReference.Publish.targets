@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <Target Name="RemoveChildCopyToOutputDirectoryItems"
+          BeforeTargets="GetCopyToOutputDirectoryItems">
+
+    <ItemGroup>
+      <PackageReferenceProjectReference Include="@(_MSBuildProjectReferenceExistent)" >
+        <UndefineProperties Condition=" '$(ReferenceRuntimeIdentifier)' != '' ">TargetFramework</UndefineProperties>
+        <CodePackageFolder Condition=" '%(_MSBuildProjectReferenceExistent.CodePackageFolder)' == '' ">%(_MSBuildProjectReferenceExistent.Filename)</CodePackageFolder>
+      </PackageReferenceProjectReference>
+
+      <_MSBuildProjectReferenceExistent Remove="@(_MSBuildProjectReferenceExistent)" Condition=" '%(_MSBuildProjectReferenceExistent.Extension)' == '.csproj' "/>
+    </ItemGroup>
+
+  </Target>
+
+  <Target Name="PublishDockerProjectReferences"
+          AfterTargets="Build">
+
+    <PropertyGroup>
+        <PublishReferenceSetTargetFramework Condition=" '$(ReferenceRuntimeIdentifier)' != '' ">RuntimeIdentifier=$(ReferenceRuntimeIdentifier)</PublishReferenceSetTargetFramework>
+    </PropertyGroup>
+
+    <MSBuild
+        Projects="@(PackageReferenceProjectReference)"
+        Targets="Publish"
+        BuildInParallel="$(BuildInParallel)"
+        Properties="%(PackageReferenceProjectReference.SetConfiguration); %(PackageReferenceProjectReference.SetPlatform); %(PackageReferenceProjectReference.SetTargetFramework); $(PackageReferenceProjectReference); $(PublishReferenceSetTargetFramework); PublishDir=$(OutputPath)%(PackageReferenceProjectReference.CodePackageFolder)\"
+        Condition="'@(PackageReferenceProjectReference)' != '' and '$(_GetChildProjectCopyToOutputDirectoryItems)' == 'true' and '%(PackageReferenceProjectReference.Private)' != 'false' and '$(UseCommonOutputDirectory)' != 'true' and '%(PackageReferenceProjectReference.Extension)'=='.csproj'"
+        ContinueOnError="$(ContinueOnError)"
+        SkipNonexistentTargets="true">
+      <Output TaskParameter="TargetOutputs" ItemName="ChildPublishItemsWithTargetPath"/>
+    </MSBuild>
+
+  </Target>
+
+  <Target Name="PkgProjRemoveCopyLocal"
+          BeforeTargets="_CopyFilesMarkedCopyLocal" >
+
+    <ItemGroup>
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" />
+    </ItemGroup>
+
+  </Target>
+
+</Project>
