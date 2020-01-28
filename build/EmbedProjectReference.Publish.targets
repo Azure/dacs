@@ -7,10 +7,9 @@
     <ItemGroup>
       <PackageReferenceProjectReference Include="@(_MSBuildProjectReferenceExistent)" >
         <UndefineProperties Condition=" '$(ReferenceRuntimeIdentifier)' != '' ">TargetFramework</UndefineProperties>
-        <CodePackageFolder Condition=" '%(_MSBuildProjectReferenceExistent.CodePackageFolder)' == '' ">%(_MSBuildProjectReferenceExistent.Filename)</CodePackageFolder>
       </PackageReferenceProjectReference>
 
-      <_MSBuildProjectReferenceExistent Remove="@(_MSBuildProjectReferenceExistent)" Condition=" '%(_MSBuildProjectReferenceExistent.Extension)' == '.csproj' "/>
+      <_MSBuildProjectReferenceExistent Remove="@(_MSBuildProjectReferenceExistent)" Condition=" '%(_MSBuildProjectReferenceExistent.IncludeSourceItems)' != 'true'  "/>
     </ItemGroup>
 
   </Target>
@@ -27,7 +26,7 @@
         Targets="Publish"
         BuildInParallel="$(BuildInParallel)"
         Properties="%(PackageReferenceProjectReference.SetConfiguration); %(PackageReferenceProjectReference.SetPlatform); %(PackageReferenceProjectReference.SetTargetFramework); $(PackageReferenceProjectReference); $(PublishReferenceSetTargetFramework); PublishDir=$(OutputPath)%(PackageReferenceProjectReference.CodePackageFolder)\"
-        Condition="'@(PackageReferenceProjectReference)' != '' and '$(_GetChildProjectCopyToOutputDirectoryItems)' == 'true' and '%(PackageReferenceProjectReference.Private)' != 'false' and '$(UseCommonOutputDirectory)' != 'true' and '%(PackageReferenceProjectReference.Extension)'=='.csproj'"
+        Condition="'@(PackageReferenceProjectReference)' != '' and '$(_GetChildProjectCopyToOutputDirectoryItems)' == 'true' and '%(PackageReferenceProjectReference.Private)' != 'false' and '$(UseCommonOutputDirectory)' != 'true' and '%(PackageReferenceProjectReference.Extension)'=='.csproj' and '%(PackageReferenceProjectReference.CodePackageFolder)' != ''"
         ContinueOnError="$(ContinueOnError)"
         SkipNonexistentTargets="true">
       <Output TaskParameter="TargetOutputs" ItemName="ChildPublishItemsWithTargetPath"/>
