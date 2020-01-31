@@ -10,7 +10,6 @@
     <Content Include="**" Exclude="*.copyproj;*.sln;obj\**;.vs\**" >
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <VersionUpdateContent Include="**\*.xml;**\*.json" />    
   </ItemGroup>
   
 </Project>
