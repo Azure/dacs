@@ -14,18 +14,18 @@
 
   </Target>
 
-  <Target Name="PublishDockerProjectReferences"
+  <Target Name="EmbedProjectReferences"
           AfterTargets="Build">
 
     <PropertyGroup>
-        <PublishReferenceSetTargetFramework Condition=" '$(ReferenceRuntimeIdentifier)' != '' ">RuntimeIdentifier=$(ReferenceRuntimeIdentifier)</PublishReferenceSetTargetFramework>
+        <PublishRuntimeIdentifier Condition=" '$(ReferenceRuntimeIdentifier)' != '' ">RuntimeIdentifier=$(ReferenceRuntimeIdentifier)</PublishRuntimeIdentifier>
     </PropertyGroup>
 
     <MSBuild
         Projects="@(PackageReferenceProjectReference)"
         Targets="Publish"
         BuildInParallel="$(BuildInParallel)"
-        Properties="%(PackageReferenceProjectReference.SetConfiguration); %(PackageReferenceProjectReference.SetPlatform); %(PackageReferenceProjectReference.SetTargetFramework); $(PackageReferenceProjectReference); $(PublishReferenceSetTargetFramework); PublishDir=$(OutputPath)%(PackageReferenceProjectReference.CodePackageFolder)\"
+        Properties="%(PackageReferenceProjectReference.SetConfiguration); %(PackageReferenceProjectReference.SetPlatform); %(PackageReferenceProjectReference.SetTargetFramework); $(PackageReferenceProjectReference); $(PublishRuntimeIdentifier); PublishDir=$(OutputPath)%(PackageReferenceProjectReference.CodePackageFolder)\"
         Condition="'@(PackageReferenceProjectReference)' != '' and '$(_GetChildProjectCopyToOutputDirectoryItems)' == 'true' and '%(PackageReferenceProjectReference.Private)' != 'false' and '$(UseCommonOutputDirectory)' != 'true' and '%(PackageReferenceProjectReference.Extension)'=='.csproj' and '%(PackageReferenceProjectReference.CodePackageFolder)' != ''"
         ContinueOnError="$(ContinueOnError)"
         SkipNonexistentTargets="true">

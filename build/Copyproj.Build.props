@@ -4,6 +4,7 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <CopyBuildOutputToOutputDirectory>false</CopyBuildOutputToOutputDirectory>
+    <DebugType>none</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
