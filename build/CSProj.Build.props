@@ -7,11 +7,21 @@
     <GenerateAssemblyInformationalVersionAttribute>false</GenerateAssemblyInformationalVersionAttribute>
     <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
+
+  <PropertyGroup>
+    <CodeAnalysisRuleSet>$(MSBuildThisFileDirectory)CodeAnalysis.v14.v4.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
   
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)..\.version\PipelineAssemblyInfo.cs">
       <Link>Properties\PipelineAssemblyInfo.cs</Link>
     </Compile>
+    <Compile Include="$(MSBuildThisFileDirectory)StylecopGlobalSuppressions.cs">
+      <Link>Properties\StylecopGlobalSuppressions.cs</Link>
+    </Compile>
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)stylecop.json">
+        <Link>Properties\stylecop.json</Link>
+    </AdditionalFiles>
   </ItemGroup>
 
 </Project>
