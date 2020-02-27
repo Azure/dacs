@@ -14,19 +14,18 @@
 
   </Target>
 
-  <Target Name="EmbedProjectReferences"
-          AfterTargets="Build">
+  <Target Name="EmbedProjectReferences">
 
     <PropertyGroup>
         <PublishRuntimeIdentifier Condition=" '$(ReferenceRuntimeIdentifier)' != '' ">RuntimeIdentifier=$(ReferenceRuntimeIdentifier)</PublishRuntimeIdentifier>
     </PropertyGroup>
 
     <MSBuild
-        Projects="@(PackageReferenceProjectReference)"
+        Projects="@(ProjectReference)"
         Targets="Publish"
         BuildInParallel="$(BuildInParallel)"
-        Properties="%(PackageReferenceProjectReference.SetConfiguration); %(PackageReferenceProjectReference.SetPlatform); %(PackageReferenceProjectReference.SetTargetFramework); $(PackageReferenceProjectReference); $(PublishRuntimeIdentifier); PublishDir=$(OutputPath)%(PackageReferenceProjectReference.CodePackageFolder)\"
-        Condition="'@(PackageReferenceProjectReference)' != '' and '$(_GetChildProjectCopyToOutputDirectoryItems)' == 'true' and '%(PackageReferenceProjectReference.Private)' != 'false' and '$(UseCommonOutputDirectory)' != 'true' and '%(PackageReferenceProjectReference.Extension)'=='.csproj' and '%(PackageReferenceProjectReference.CodePackageFolder)' != ''"
+        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); %(ProjectReference.SetTargetFramework); $(ProjectReference); $(PublishRuntimeIdentifier); PublishDir=$(OutDir)%(ProjectReference.CodePackageFolder)\"
+        Condition="'@(ProjectReference)' != '' and '%(ProjectReference.CodePackageFolder)' != ''"
         ContinueOnError="$(ContinueOnError)"
         SkipNonexistentTargets="true">
       <Output TaskParameter="TargetOutputs" ItemName="ChildPublishItemsWithTargetPath"/>
