@@ -31,6 +31,26 @@
       <Output TaskParameter="TargetOutputs" ItemName="ChildPublishItemsWithTargetPath"/>
     </MSBuild>
 
+    <ItemGroup>
+       <PackageRootFolderFiles Include="%(ProjectReference.RelativeDir)PackageRoot\**\*" Condition="'%(ProjectReference.PackageRootFolder)' != ''">
+         <PackageRootFolder>%(ProjectReference.PackageRootFolder)</PackageRootFolder>
+       </PackageRootFolderFiles>
+    </ItemGroup>
+
+  </Target>
+
+  <Target Name="EmbedPackageRootReferences"
+          Condition=" '@(PackageRootFolderFiles)' != '' "
+          Inputs="@(PackageRootFolderFiles)"
+          Outputs="@(PackageRootFolderFiles -> '$(OutDir)%(PackageRootFolder)\%(RecursiveDir)%(Filename)%(Extension)')" >
+
+    <Copy SourceFiles="@(PackageRootFolderFiles)" DestinationFiles="@(PackageRootFolderFiles -> '$(OutDir)%(PackageRootFolder)\%(RecursiveDir)%(Filename)%(Extension)')" />
+    
+    <ItemGroup>
+      <MetadataUpdateContent Include="$(OutDir)%(ProjectReference.MetadataUpdateContent)"
+                      Condition = " '%(ProjectReference.MetadataUpdateContent)' != ''" />
+    </ItemGroup>
+
   </Target>
 
   <Target Name="PkgProjRemoveCopyLocal"
