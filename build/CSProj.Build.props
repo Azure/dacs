@@ -6,6 +6,7 @@
     <GenerateAssemblyFileVersionAttribute>false</GenerateAssemblyFileVersionAttribute>
     <GenerateAssemblyInformationalVersionAttribute>false</GenerateAssemblyInformationalVersionAttribute>
     <PlatformTarget>x64</PlatformTarget>
+    <IntermediateOutputPath>$(IntermediateOutputPath)$(RuntimeIdentifier)\</IntermediateOutputPath>
   </PropertyGroup>
 
   <PropertyGroup>
