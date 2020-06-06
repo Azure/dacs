@@ -350,3 +350,9 @@ healthchecksdb
 
 # LFS local cache
 lfs/
+
+# SDK Gen CLI
+*.whl
+src/src2/sdk/cli
+## Issue with Powershell generation creates this.
+src/src2/sdk/swagger/Microsoft.Azure.Management.AISupercomputer/generated
