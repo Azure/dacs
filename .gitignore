@@ -353,6 +353,6 @@ lfs/
 
 # SDK Gen CLI
 *.whl
-src/src2/sdk/cli
+*.tar.gz
 ## Issue with Powershell generation creates this.
 src/src2/sdk/swagger/Microsoft.Azure.Management.AISupercomputer/generated
