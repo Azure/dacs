@@ -19,13 +19,14 @@
     <PropertyGroup>
         <PublishRuntimeIdentifier Condition=" '$(ReferenceRuntimeIdentifier)' != '' ">RuntimeIdentifier=$(ReferenceRuntimeIdentifier)</PublishRuntimeIdentifier>
         <AlwaysBuildProjectReferences>BuildingInsideVisualStudio=false</AlwaysBuildProjectReferences>
+        <DoNotUpdateProjectAssetsJson>RestoreLockedMode=true</DoNotUpdateProjectAssetsJson>
     </PropertyGroup>
 
     <MSBuild
         Projects="@(ProjectReference)"
         Targets="Publish"
         BuildInParallel="$(BuildInParallel)"
-        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); $(AlwaysBuildProjectReferences); %(ProjectReference.SetTargetFramework); $(ProjectReference); $(PublishRuntimeIdentifier); PublishDir=$(OutDir)%(ProjectReference.CodePackageFolder)\"
+        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); $(PublishRuntimeIdentifier); PublishDir=$(OutDir)%(ProjectReference.CodePackageFolder)\"
         Condition="'@(ProjectReference)' != '' and '%(ProjectReference.CodePackageFolder)' != ''"
         ContinueOnError="$(ContinueOnError)"
         SkipNonexistentTargets="true">
