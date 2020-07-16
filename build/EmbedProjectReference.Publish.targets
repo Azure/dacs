@@ -20,13 +20,15 @@
         <PublishRuntimeIdentifier Condition=" '$(ReferenceRuntimeIdentifier)' != '' ">RuntimeIdentifier=$(ReferenceRuntimeIdentifier)</PublishRuntimeIdentifier>
         <AlwaysBuildProjectReferences>BuildingInsideVisualStudio=false</AlwaysBuildProjectReferences>
         <DoNotUpdateProjectAssetsJson>RestoreLockedMode=true</DoNotUpdateProjectAssetsJson>
+        <!-- We want to build framework-dependent packages, which are much smaller than self-contained -->
+        <SelfContained>false</SelfContained>
     </PropertyGroup>
 
     <MSBuild
         Projects="@(ProjectReference)"
         Targets="Publish"
         BuildInParallel="$(BuildInParallel)"
-        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); $(PublishRuntimeIdentifier); PublishDir=$(OutDir)%(ProjectReference.CodePackageFolder)\"
+        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); SelfContained=$(SelfContained); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); $(PublishRuntimeIdentifier); PublishDir=$(OutDir)%(ProjectReference.CodePackageFolder)\"
         Condition="'@(ProjectReference)' != '' and '%(ProjectReference.CodePackageFolder)' != ''"
         ContinueOnError="$(ContinueOnError)"
         SkipNonexistentTargets="true">
