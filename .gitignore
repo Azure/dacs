@@ -359,3 +359,4 @@ lfs/
 *.tar.gz
 ## Issue with Powershell generation creates this.
 src/src2/sdk/swagger/Microsoft.Azure.Management.AISupercomputer/generated
+/src/src2/sdk/scripts/package-lock.json
