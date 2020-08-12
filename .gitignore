@@ -354,9 +354,12 @@ healthchecksdb
 # LFS local cache
 lfs/
 
-# SDK Gen CLI
+# SDK Gen CLI and Python
 *.whl
 *.tar.gz
-## Issue with Powershell generation creates this.
-src/src2/sdk/swagger/Microsoft.Azure.Management.AISupercomputer/generated
-/src/src2/sdk/scripts/package-lock.json
+
+# Sdk gen model with local info
+code-model-v1
+
+# Local dependencies install used for autorest SDK gen.
+.pipelines/deps/*
