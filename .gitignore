@@ -34,6 +34,10 @@ bld/
 
 # Visual Studio 2019 cache/options directory
 .vs/
+*.projhash
+*.projhash.*
+*.slnhash
+*.slnhash.*
 
 # Visual Studio Code options directory
 .vscode/
