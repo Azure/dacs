@@ -7,6 +7,6 @@
     </PackageDependsOnTargets>
   </PropertyGroup>
 
-  <Import Project="$(MSBuildThisFileDirectory)UpdateMetadataContent.targets" />
+  <Import Project="$(MSBuildThisFileDirectory)UpdateMetadata\UpdateMetadataContent.targets" />
 
 </Project>

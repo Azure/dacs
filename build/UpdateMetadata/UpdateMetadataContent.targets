@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <UsingTask TaskName="Microsoft.Azure.DACS.Toolsets.UpdateMetadata"
+             TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <TemplateFiles  ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <GeneratedFiles ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <MetadataDirectory ParameterType="System.String" Required="true" />
+      <MetadataProperties ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Class" Source="$(MSBuildThisFileDirectory)/UpdateMetadata.cs" />
+    </Task>
+  </UsingTask>
+
+  <PropertyGroup>
+    <UpdateVersionContentDependsOnTargets>
+      GetBuildMetadata
+    </UpdateVersionContentDependsOnTargets>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <MetadataPath>$([MSBuild]::NormalizePath($(MSBuildThisFileDirectory)..\.metadata\))</MetadataPath>
+    <ContainerMetadataFilePath>$(MetadataPath)$(ContainerMetadataFileName)</ContainerMetadataFilePath>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <ExeExtension Condition=" '$(ExeExtension)' == '' And $(ReferenceRuntimeIdentifier.StartsWith('win')) ">.exe</ExeExtension>
+    <ScriptExtension Condition=" '$(ScriptExtension)' == '' And $(ReferenceRuntimeIdentifier.StartsWith('win')) ">.bat</ScriptExtension>
+    <ScriptExtension Condition=" '$(ScriptExtension)' == '' And (!$(ReferenceRuntimeIdentifier.StartsWith('win'))) ">.sh</ScriptExtension>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <MetadataFiles Include="$(MetadataPath)**" />
+  </ItemGroup>
+
+  <Target Name="GetBuildMetadata" Condition=" '$(MetadataUpdateContent)' != '' or '$(MSBuildProjectExtension)'=='.dockerproj' ">
+
+    <ReadLinesFromFile File="%(MetadataFiles.Identity)" >
+      <Output TaskParameter="Lines" ItemName="ItemsFromFile"/>
+    </ReadLinesFromFile>
+
+    <ItemGroup>
+      <BuildMetadata Include="$([System.String]::Copy('%(ItemsFromFile.Identity)').Split('=')[0])" >
+        <Value>$([System.String]::Copy('%(ItemsFromFile.Identity)').Split('=')[1])</Value>
+      </BuildMetadata>
+    </ItemGroup>
+
+  </Target>
+
+  <Target Name="UpdateVersionContent"
+          DependsOnTargets="$(UpdateVersionContentDependsOnTargets)"
+          AfterTargets="AfterBuild"
+          Inputs="@(MetadataUpdateContent);@(MetadataFiles)"
+          Outputs="@(MetadataUpdateContent -> '$(IntermediateOutputPath)%(RecursiveDir)%(Filename)%(Extension).metadataupd')"
+          Condition=" '@(MetadataUpdateContent)' != '' " >
+
+    <UpdateMetadata
+      MetadataDirectory="$(MetadataPath)"
+      TemplateFiles="@(MetadataUpdateContent)"
+      GeneratedFiles="@(MetadataUpdateContent -> '$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
+      MetadataProperties="FileVersionNumeric=$(FileVersionNumeric),ContainerImageRepository=$(ContainerImageRepository),ExeExtension=$(ExeExtension),ScriptExtension=$(ScriptExtension)">
+    </UpdateMetadata>
+
+    <MakeDir Directories="@(MetadataUpdateContent -> '$(IntermediateOutputPath)%(RecursiveDir)')" />
+    <Touch Files="@(MetadataUpdateContent -> '$(IntermediateOutputPath)%(RecursiveDir)%(Filename)%(Extension).metadataupd')" AlwaysCreate="true" />
+
+  </Target>
+
+  <Target Name="ErrorOutOfDateMetadata"
+          Condition=" '$(Configuration)' == 'Release' And '$(ContainerGitHash)' != '$(ProjectGitHash)' ">
+
+    <Error Text="MetadataFile: $(ContainerMetadataFilePath) is not current and must be regenerated. Update this file with 'msbuild dirs.proj' from enlistment root. MetadataHash:$(ContainerGitHash) ProjectHash:$(ProjectGitHash)" />
+
+  </Target>
+
+  <Target Name="WarningGenerateContainerMetadata"
+        Condition=" '$(Configuration)' != 'Release' And '$(ContainerGitHash)' != '$(ProjectGitHash)' And '$([MSBuild]::NormalizeDirectory($(MSBuildStartupDirectory)))' != '$(RepositoryRootPath)' ">
+
+    <Warning Text="Container Metadata file $(ContainerMetadataFilePath) updated. Be sure to build from the repo root '$(RepositoryRootPath)' to apply these changes." />
+
+  </Target>
+
+  <Target Name="GenerateContainerMetadata"
+          Condition=" '$(Configuration)' != 'Release' And '$(ContainerGitHash)' != '$(ProjectGitHash)' ">
+
+    <PropertyGroup>
+      <ProjectImageLabel>$([System.DateTime]::Now.ToString('yyyyMMddTHHmmssfff'))</ProjectImageLabel>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <BuildMetadata Update="$(MSBuildProjectName)-imagelabel">
+        <Value>$(ProjectImageLabel)</Value>
+      </BuildMetadata>
+    </ItemGroup>
+
+    <WriteLinesToFile File="$(ContainerMetadataFilePath)" Overwrite="true" Lines="$(MSBuildProjectName)-imagename=$(ContainerMetadataName)" />
+    <WriteLinesToFile File="$(ContainerMetadataFilePath)" Lines="$(MSBuildProjectName)-imagelabel=$(ProjectImageLabel)" />
+    <WriteLinesToFile File="$(ContainerMetadataFilePath)" Lines="$(MSBuildProjectName)-githash=$(ProjectGitHash)" />
+
+  </Target>
+
+</Project>
