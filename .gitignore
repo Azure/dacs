@@ -13,7 +13,7 @@
 dirs.sln
 
 # VI swap file
-*.swp 
+*.swp
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -41,6 +41,9 @@ bld/
 
 # Visual Studio Code options directory
 .vscode/
+
+# Visual Studio Code cotainer config
+.devcontainer/
 
 # Clion local build/cache dir
 cmake-build-debug
