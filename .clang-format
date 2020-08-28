@@ -1,0 +1,24 @@
+﻿---
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AlignConsecutiveDeclarations: 'true'
+AlignConsecutiveAssignments: 'true'
+BinPackArguments : 'false'
+BinPackParameters : 'false'
+BreakBeforeBraces: Allman
+ColumnLimit: '120'
+CompactNamespaces: 'false'
+IndentWidth: '4'
+IncludeBlocks: Regroup
+IncludeIsMainRegex: "$"
+NamespaceIndentation: All
+PointerAlignment: "Left"
+ReflowComments: 'false'
+SpaceBeforeParens: Never
+IncludeCategories:
+  - Regex:           '<[[:alnum:_].]+>'
+    Priority:        0
+  - Regex:           '^(<|"(gtest|gmock|isl|json)/)'
+    Priority:        1
+  - Regex:           '.*'
+    Priority:        2
+...
