@@ -36,7 +36,7 @@
     <MetadataFiles Include="$(MetadataPath)**" />
   </ItemGroup>
 
-  <Target Name="GetBuildMetadata" Condition=" '$(MetadataUpdateContent)' != '' or '$(MSBuildProjectExtension)'=='.dockerproj' ">
+  <Target Name="GetBuildMetadata" Condition=" '$(MetadataUpdateContent)' != '' or '$(MSBuildProjectExtension)'=='.dockerproj' or '$(MSBuildProjectExtension)'=='.linuxcmakeproj' ">
 
     <ReadLinesFromFile File="%(MetadataFiles.Identity)" >
       <Output TaskParameter="Lines" ItemName="ItemsFromFile"/>

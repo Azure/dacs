@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <PropertyGroup>
+    <LinuxCMakeProjBuildDependsOnTargets Condition=" '$(OS)' != 'Windows_NT' ">
+      CreateCMakeOutputFolders;
+      GetNativeBuildParameters;
+      LinuxCMakeBuild;
+    </LinuxCMakeProjBuildDependsOnTargets>
+    <LinuxCMakeProjBuildDependsOnTargets Condition=" '$(OS)' == 'Windows_NT' and '$(CDP_BUILD_TYPE)' == '' ">
+      CreateCMakeOutputFolders;
+      GetBuildMetadata;
+      GetNativeBuildContainerImageParameters;
+      WindowsCMakeBuild;
+    </LinuxCMakeProjBuildDependsOnTargets>
+  </PropertyGroup>
+
+  <ItemGroup Condition=" '$(OS)' == 'Windows_NT' ">
+    <ProjectReference Include="$(RepositorySrcRootPath)service\dataplane\compute\container\native-build\1.0\native-build.dockerproj" />
+  </ItemGroup>
+
+  <Import Project="$(MSBuildThisFileDirectory)UpdateMetadata\UpdateMetadataContent.targets" />
+
+  <Target Name="GetNativeBuildParameters">
+
+      <PropertyGroup>
+       <NativeBuildWorkingDirectory>$(IntermediateOutputPath)</NativeBuildWorkingDirectory>
+       <NativeBuildCommand>$(RepositoryRootPath)build/LinuxCMakeProj.Build.sh</NativeBuildCommand>
+       <NativeBuildCommandArguments>$(CMakePathToSource)</NativeBuildCommandArguments>
+    </PropertyGroup>
+
+  </Target>
+
+  <Target Name="GetNativeBuildContainerImageParameters">
+
+    <FindInList CaseSensitive="false" List="@(BuildMetadata)" ItemSpecToFind="native-build-imagelabel" >
+      <Output TaskParameter="ItemFound" ItemName="NativeBuildImageLabel"/>
+    </FindInList>
+
+    <FindInList CaseSensitive="false" List="@(BuildMetadata)" ItemSpecToFind="native-build-imagename" >
+      <Output TaskParameter="ItemFound" ItemName="NativeBuildImageName"/>
+    </FindInList>
+
+    <Error Text="Build Metadata Parameter 'native-build-imagelabel' not defined" Condition=" '@(NativeBuildImageLabel)' == '' "/>
+    <Error Text="Build Metadata Parameter 'native-build-imagename' not defined" Condition=" '@(NativeBuildImageName)' == '' "/>
+
+    <PropertyGroup>
+       <NativeBuildContainerImageName>%(NativeBuildImageName.Value)</NativeBuildContainerImageName>
+       <NativeBuildContainerImageLabel>%(NativeBuildImageLabel.Value)</NativeBuildContainerImageLabel>
+       <NativeBuildContainerImage>$(ContainerImageRepository).azurecr.io/$(NativeBuildContainerImageName):$(NativeBuildContainerImageLabel)</NativeBuildContainerImage>
+       <RepositoryRootPathInContainer>/repo/</RepositoryRootPathInContainer>
+       <BuildObjectRootPathInContainer>$([System.String]::Copy('$(BuildObjectRoot)').Replace('$(RepositoryRootPath)','$(RepositoryRootPathInContainer)'))</BuildObjectRootPathInContainer>
+       <ContainerEnvFile>$(IntermediateOutputPath)envlist.txt</ContainerEnvFile>
+       <RepositoryRootVolumeMount>-v $(RepositoryRootPath):$(RepositoryRootPathInContainer)</RepositoryRootVolumeMount>
+       <LinuxMSBuildProjectRelativePath>$([System.String]::Copy('$(MSBuildProjectRelativePath)').Replace('\','/'))</LinuxMSBuildProjectRelativePath>
+       <NativeBuildContainerWorkingDirectory>$(BuildObjectRootPathInContainer)/$(CMAKE_BUILD_CONFIGURATION)/$(LinuxMSBuildProjectRelativePath)</NativeBuildContainerWorkingDirectory>
+       <NativeBuildContainerCommand>$(RepositoryRootPathInContainer)build/LinuxCMakeProj.Build.sh</NativeBuildContainerCommand>
+       <NativeBuildContainerCommandArguments>$([System.String]::Copy('$(CMakePathToSource)').Replace('$(RepositoryRootPath)','$(RepositoryRootPathInContainer)'))</NativeBuildContainerCommandArguments>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <LinuxCMakeContainerEnvironmentProperties Include="@(LinuxCMakeEnvironmentProperties->Replace('$(RepositoryRootPath)', '$(RepositoryRootPathInContainer)')->Replace('\','/'))"/>
+    </ItemGroup>
+
+    <Delete Files="$(ContainerEnvFile)" />
+    <WriteLinesToFile File="$(ContainerEnvFile)" Lines="@(LinuxCMakeContainerEnvironmentProperties)" Encoding="Ascii" />
+  </Target>
+
+  <Target Name="LinuxCMakeBuild">
+    <Exec WorkingDirectory="$(NativeBuildWorkingDirectory)" Command="$(NativeBuildCommand) $(NativeBuildCommandArguments)" IgnoreExitCode="false" ConsoleToMsBuild="true" EnvironmentVariables="@(LinuxCMakeEnvironmentProperties)"/>
+  </Target>
+
+  <Target Name="CreateCMakeOutputFolders">
+    <MakeDir Directories="$(OutputPath);$(IntermediateOutputPath)" />
+  </Target>
+
+  <Target Name="WindowsCMakeBuild">
+    <Exec Command="az acr login -n $(ContainerImageRepository)" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" />
+    <Exec Command="docker run -i --rm --env-file $(ContainerEnvFile) $(RepositoryRootVolumeMount) -w $(NativeBuildContainerWorkingDirectory) $(NativeBuildContainerImage) $(NativeBuildContainerCommand) $(NativeBuildContainerCommandArguments)" IgnoreExitCode="false" ConsoleToMsBuild="true" />
+  </Target>
+
+  <Target Name="Build" DependsOnTargets="$(LinuxCMakeProjBuildDependsOnTargets)" />
+
+</Project>
