@@ -12,6 +12,19 @@
 *.sln.docstates
 dirs.sln
 
+# Binary files - block adding binaries to the repo.
+# We already have .zip files in the repo, but they are stored in GIT-LFS,
+# and do not have much impact on the repo size.
+*.exe
+*.msi
+*.iso
+*.dll
+*.so
+*.tar
+*.rar
+*.7z
+*.sfpkg
+
 # VI swap file
 *.swp
 
