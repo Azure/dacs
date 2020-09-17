@@ -61,6 +61,9 @@ bld/
 # Clion local build/cache dir
 cmake-build-debug
 
+# Dummy target file for building lib with no source (linking only)
+null.cpp
+
 # Uncomment if you have tasks that create the project's static files in wwwroot
 #wwwroot/
 
