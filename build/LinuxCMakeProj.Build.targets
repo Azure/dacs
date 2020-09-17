@@ -7,12 +7,12 @@
       GetNativeBuildParameters;
       LinuxCMakeBuild;
     </LinuxCMakeProjBuildDependsOnTargets>
-    <LinuxCMakeProjBuildDependsOnTargets Condition=" '$(OS)' == 'Windows_NT' and '$(CDP_BUILD_TYPE)' == '' ">
+    <LinuxCMakeProjNativeBuildDependsOnTargets Condition=" '$(OS)' == 'Windows_NT' ">
       CreateCMakeOutputFolders;
       GetBuildMetadata;
       GetNativeBuildContainerImageParameters;
       WindowsCMakeBuild;
-    </LinuxCMakeProjBuildDependsOnTargets>
+    </LinuxCMakeProjNativeBuildDependsOnTargets>
   </PropertyGroup>
 
   <ItemGroup Condition=" '$(OS)' == 'Windows_NT' ">
@@ -80,5 +80,6 @@
   </Target>
 
   <Target Name="Build" DependsOnTargets="$(LinuxCMakeProjBuildDependsOnTargets)" />
+  <Target Name="NativeBuild" DependsOnTargets="$(LinuxCMakeProjNativeBuildDependsOnTargets)" />
 
 </Project>
