@@ -60,6 +60,7 @@ bld/
 
 # Clion local build/cache dir
 cmake-build-debug
+cmake-build-release
 
 # Dummy target file for building lib with no source (linking only)
 null.cpp
