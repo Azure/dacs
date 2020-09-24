@@ -1,18 +1,18 @@
 ﻿---
 AllowShortIfStatementsOnASingleLine: WithoutElse
-AlignConsecutiveDeclarations: 'true'
-AlignConsecutiveAssignments: 'true'
-BinPackArguments : 'false'
-BinPackParameters : 'false'
+AlignConsecutiveDeclarations: true
+AlignConsecutiveAssignments: true
+BinPackArguments : false
+BinPackParameters : false
 BreakBeforeBraces: Allman
-ColumnLimit: '120'
-CompactNamespaces: 'false'
-IndentWidth: '4'
+ColumnLimit: 120
+CompactNamespaces: false
+IndentWidth: 4
 IncludeBlocks: Regroup
 IncludeIsMainRegex: "$"
 NamespaceIndentation: All
 PointerAlignment: "Left"
-ReflowComments: 'false'
+ReflowComments: false
 SpaceBeforeParens: Never
 IncludeCategories:
   - Regex:           '<[[:alnum:_].]+>'
