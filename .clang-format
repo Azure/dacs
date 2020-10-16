@@ -1,7 +1,8 @@
 ﻿---
 AllowShortIfStatementsOnASingleLine: WithoutElse
 AlignConsecutiveDeclarations: true
-AlignConsecutiveAssignments: true
+AllowShortFunctionsOnASingleLine: None
+AlwaysBreakTemplateDeclarations: 'Yes'
 BinPackArguments : false
 BinPackParameters : false
 BreakBeforeBraces: Allman
