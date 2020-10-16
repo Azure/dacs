@@ -382,6 +382,9 @@ lfs/
 *.whl
 *.tar.gz
 
+# Pytorch reinstall wheel files should be excluded from above .whl exclusion
+!torch*.whl
+
 # Sdk gen model with local info
 code-model-v1
 
