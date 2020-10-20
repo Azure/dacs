@@ -14,11 +14,7 @@
       WindowsCMakeBuild;
     </LinuxCMakeProjNativeBuildDependsOnTargets>
   </PropertyGroup>
-
-  <ItemGroup Condition=" '$(OS)' == 'Windows_NT' ">
-    <ProjectReference Include="$(RepositorySrcRootPath)service\dataplane\compute\container\native-build\1.0\native-build.dockerproj" />
-  </ItemGroup>
-
+  
   <Import Project="$(MSBuildThisFileDirectory)UpdateMetadata\UpdateMetadataContent.targets" />
 
   <Target Name="GetNativeBuildParameters">
