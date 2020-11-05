@@ -6,7 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 [assembly: SuppressMessage(
     "StyleCop.CSharp.MaintainabilityRules",
     "SA1119:StatementMustNotUseUnnecessaryParenthesis",
-    Justification = "The code is more redable, especially when using parenthesis for the return statements.")]
+    Justification = "The code is more readable, especially when using parenthesis for the return statements.")]
 
 [assembly: SuppressMessage(
     "StyleCop.CSharp.ReadabilityRules",
@@ -16,7 +16,7 @@ using System.Diagnostics.CodeAnalysis;
 [assembly: SuppressMessage(
     "StyleCop.CSharp.DocumentationRules",
     "SA1629:DocumentationTextMustEndWithAPeriod",
-    Justification = "Supressing as its not much of a vlue add given the amount of files it would touch.")]
+    Justification = "Supressing as its not much of a value add given the amount of files it would touch.")]
 
 [assembly: SuppressMessage(
     "Style",
