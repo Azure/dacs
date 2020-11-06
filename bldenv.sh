@@ -10,4 +10,4 @@ nativeBuildRepository="dacs.azurecr.io/native-build"
 nativeBuildLabel=$(grep native-build-imagelabel build/.metadata/native-build.container.metadata | awk -F= '{print $2}')
 
 echo Running Native Build Container $nativeBuildRepository:$nativeBuildLabel
-docker run -it --rm -v ~:/root -v $DIR:/repo -v /var/run/docker.sock:/var/run/docker.sock -w /repo $nativeBuildRepository:$nativeBuildLabel bash
+docker run -it --rm -v ~:/root -v $DIR:/repo -v /var/run/docker.sock:/var/run/docker.sock -v /usr/share/dotnet/sdk/NuGetFallbackFolder:/usr/share/dotnet/sdk/NuGetFallbackFolder -w /repo $nativeBuildRepository:$nativeBuildLabel bash
