@@ -13,6 +13,10 @@
       GetNativeBuildContainerImageParameters;
       WindowsCMakeBuild;
     </LinuxCMakeProjNativeBuildDependsOnTargets>
+    <LinuxCTestProjBuildDependsOnTargets Condition=" '$(OS)' != 'Windows_NT' ">
+      LinuxCMakeBuild;
+      LinuxCTestBuild;
+    </LinuxCTestProjBuildDependsOnTargets>
   </PropertyGroup>
   
   <Import Project="$(MSBuildThisFileDirectory)UpdateMetadata\UpdateMetadataContent.targets" />
@@ -51,6 +55,7 @@
        <LinuxMSBuildProjectRelativePath>$([System.String]::Copy('$(MSBuildProjectRelativePath)').Replace('\','/'))</LinuxMSBuildProjectRelativePath>
        <NativeBuildContainerWorkingDirectory>$(BuildObjectRootPathInContainer)/$(CMAKE_BUILD_CONFIGURATION)/$(LinuxMSBuildProjectRelativePath)</NativeBuildContainerWorkingDirectory>
        <NativeBuildContainerCommand>$(RepositoryRootPathInContainer)build/LinuxCMakeProj.Build.sh</NativeBuildContainerCommand>
+       <NativeUnitTestContainerCommand>$(RepositoryRootPathInContainer)build/LinuxCMakeProj.Test.sh</NativeUnitTestContainerCommand>
        <NativeBuildContainerCommandArguments>$([System.String]::Copy('$(CMakePathToSource)').Replace('$(RepositoryRootPath)','$(RepositoryRootPathInContainer)'))</NativeBuildContainerCommandArguments>
     </PropertyGroup>
 
@@ -66,6 +71,10 @@
     <Exec WorkingDirectory="$(NativeBuildWorkingDirectory)" Command="$(NativeBuildCommand) $(NativeBuildCommandArguments)" IgnoreExitCode="false" ConsoleToMsBuild="true" EnvironmentVariables="@(LinuxCMakeEnvironmentProperties)"/>
   </Target>
 
+  <Target Name="LinuxCTestBuild">
+    <Exec WorkingDirectory="$(NativeBuildWorkingDirectory)" Command="$(NativeUnitTestContainerCommand) $(NativeBuildCommandArguments)" IgnoreExitCode="false" ConsoleToMsBuild="true" EnvironmentVariables="@(LinuxCMakeEnvironmentProperties)"/>
+  </Target>
+
   <Target Name="CreateCMakeOutputFolders">
     <MakeDir Directories="$(OutputPath);$(IntermediateOutputPath)" />
   </Target>
@@ -75,7 +84,13 @@
     <Exec Command="docker run -i --rm --env-file $(ContainerEnvFile) $(RepositoryRootVolumeMount) -w $(NativeBuildContainerWorkingDirectory) $(NativeBuildContainerImage) $(NativeBuildContainerCommand) $(NativeBuildContainerCommandArguments)" IgnoreExitCode="false" ConsoleToMsBuild="true" />
   </Target>
 
+  <Target Name="WindowsCTestBuild">
+    <Exec Command="az acr login -n $(ContainerImageRepository)" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" />
+    <Exec Command="docker run -i --rm --env-file $(ContainerEnvFile) $(RepositoryRootVolumeMount) -w $(NativeBuildContainerWorkingDirectory) $(NativeBuildContainerImage) $(NativeUnitTestContainerCommand) $(NativeBuildContainerCommandArguments)" IgnoreExitCode="false" ConsoleToMsBuild="true" />
+  </Target>
+
   <Target Name="Build" DependsOnTargets="$(LinuxCMakeProjBuildDependsOnTargets)" />
   <Target Name="NativeBuild" DependsOnTargets="$(LinuxCMakeProjNativeBuildDependsOnTargets)" />
+  <Target Name="NativeUnitTest" DependsOnTargets="$(LinuxCMakeProjNativeUnitTestDependsOnTargets)" />
 
 </Project>
