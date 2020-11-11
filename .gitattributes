@@ -47,6 +47,12 @@
 Dockerfile*   text eol=lf
 
 ###############################################################################
+# Set line ending behavior for SDK setup.py files.
+#
+# Set line endings to always use CRLF
+setup.py text eol=crlf
+
+###############################################################################
 # Set default behavior for command prompt diff.
 #
 # This is need for earlier builds of msysgit that does not have it on by
