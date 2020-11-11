@@ -13,20 +13,20 @@
       GetNativeBuildContainerImageParameters;
       WindowsCMakeBuild;
     </LinuxCMakeProjNativeBuildDependsOnTargets>
-    <LinuxCTestProjBuildDependsOnTargets Condition=" '$(OS)' != 'Windows_NT' ">
-      LinuxCMakeBuild;
-      LinuxCTestBuild;
-    </LinuxCTestProjBuildDependsOnTargets>
+    <LinuxCMakeProjNativeUnitTestDependsOnTargets Condition=" '$(OS)' == 'Windows_NT' ">
+      NativeBuild;
+      WindowsCTestBuild;
+    </LinuxCMakeProjNativeUnitTestDependsOnTargets>
   </PropertyGroup>
-  
+
   <Import Project="$(MSBuildThisFileDirectory)UpdateMetadata\UpdateMetadataContent.targets" />
 
   <Target Name="GetNativeBuildParameters">
 
-      <PropertyGroup>
-       <NativeBuildWorkingDirectory>$(IntermediateOutputPath)</NativeBuildWorkingDirectory>
-       <NativeBuildCommand>$(RepositoryRootPath)build/LinuxCMakeProj.Build.sh</NativeBuildCommand>
-       <NativeBuildCommandArguments>$(CMakePathToSource)</NativeBuildCommandArguments>
+    <PropertyGroup>
+      <NativeBuildWorkingDirectory>$(IntermediateOutputPath)</NativeBuildWorkingDirectory>
+      <NativeBuildCommand>$(RepositoryRootPath)build/LinuxCMakeProj.Build.sh</NativeBuildCommand>
+      <NativeBuildCommandArguments>$(CMakePathToSource)</NativeBuildCommandArguments>
     </PropertyGroup>
 
   </Target>
@@ -45,18 +45,18 @@
     <Error Text="Build Metadata Parameter 'native-build-imagename' not defined" Condition=" '@(NativeBuildImageName)' == '' "/>
 
     <PropertyGroup>
-       <NativeBuildContainerImageName>%(NativeBuildImageName.Value)</NativeBuildContainerImageName>
-       <NativeBuildContainerImageLabel>%(NativeBuildImageLabel.Value)</NativeBuildContainerImageLabel>
-       <NativeBuildContainerImage>$(ContainerImageRepository).azurecr.io/$(NativeBuildContainerImageName):$(NativeBuildContainerImageLabel)</NativeBuildContainerImage>
-       <RepositoryRootPathInContainer>/repo/</RepositoryRootPathInContainer>
-       <BuildObjectRootPathInContainer>$([System.String]::Copy('$(BuildObjectRoot)').Replace('$(RepositoryRootPath)','$(RepositoryRootPathInContainer)'))</BuildObjectRootPathInContainer>
-       <ContainerEnvFile>$(IntermediateOutputPath)envlist.txt</ContainerEnvFile>
-       <RepositoryRootVolumeMount>-v $(RepositoryRootPath):$(RepositoryRootPathInContainer)</RepositoryRootVolumeMount>
-       <LinuxMSBuildProjectRelativePath>$([System.String]::Copy('$(MSBuildProjectRelativePath)').Replace('\','/'))</LinuxMSBuildProjectRelativePath>
-       <NativeBuildContainerWorkingDirectory>$(BuildObjectRootPathInContainer)/$(CMAKE_BUILD_CONFIGURATION)/$(LinuxMSBuildProjectRelativePath)</NativeBuildContainerWorkingDirectory>
-       <NativeBuildContainerCommand>$(RepositoryRootPathInContainer)build/LinuxCMakeProj.Build.sh</NativeBuildContainerCommand>
-       <NativeUnitTestContainerCommand>$(RepositoryRootPathInContainer)build/LinuxCMakeProj.Test.sh</NativeUnitTestContainerCommand>
-       <NativeBuildContainerCommandArguments>$([System.String]::Copy('$(CMakePathToSource)').Replace('$(RepositoryRootPath)','$(RepositoryRootPathInContainer)'))</NativeBuildContainerCommandArguments>
+      <NativeBuildContainerImageName>%(NativeBuildImageName.Value)</NativeBuildContainerImageName>
+      <NativeBuildContainerImageLabel>%(NativeBuildImageLabel.Value)</NativeBuildContainerImageLabel>
+      <NativeBuildContainerImage>$(ContainerImageRepository).azurecr.io/$(NativeBuildContainerImageName):$(NativeBuildContainerImageLabel)</NativeBuildContainerImage>
+      <RepositoryRootPathInContainer>/repo/</RepositoryRootPathInContainer>
+      <BuildObjectRootPathInContainer>$([System.String]::Copy('$(BuildObjectRoot)').Replace('$(RepositoryRootPath)','$(RepositoryRootPathInContainer)'))</BuildObjectRootPathInContainer>
+      <ContainerEnvFile>$(IntermediateOutputPath)envlist.txt</ContainerEnvFile>
+      <RepositoryRootVolumeMount>-v $(RepositoryRootPath):$(RepositoryRootPathInContainer)</RepositoryRootVolumeMount>
+      <LinuxMSBuildProjectRelativePath>$([System.String]::Copy('$(MSBuildProjectRelativePath)').Replace('\','/'))</LinuxMSBuildProjectRelativePath>
+      <NativeBuildContainerWorkingDirectory>$(BuildObjectRootPathInContainer)/$(CMAKE_BUILD_CONFIGURATION)/$(LinuxMSBuildProjectRelativePath)</NativeBuildContainerWorkingDirectory>
+      <NativeBuildContainerCommand>$(RepositoryRootPathInContainer)build/LinuxCMakeProj.Build.sh</NativeBuildContainerCommand>
+      <NativeUnitTestContainerCommand>$(RepositoryRootPathInContainer)build/LinuxCMakeProj.Test.sh</NativeUnitTestContainerCommand>
+      <NativeBuildContainerCommandArguments>$([System.String]::Copy('$(CMakePathToSource)').Replace('$(RepositoryRootPath)','$(RepositoryRootPathInContainer)'))</NativeBuildContainerCommandArguments>
     </PropertyGroup>
 
     <ItemGroup>
