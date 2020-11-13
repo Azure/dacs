@@ -23,6 +23,8 @@
 
   <PropertyGroup>
     <MetadataPath>$([MSBuild]::NormalizePath($(MSBuildThisFileDirectory)..\.metadata\))</MetadataPath>
+    <ContainerMetadataName>$(ContainerImageName)</ContainerMetadataName>
+    <ContainerMetadataFileName>$(ContainerMetadataName).container.metadata</ContainerMetadataFileName>
     <ContainerMetadataFilePath>$(MetadataPath)$(ContainerMetadataFileName)</ContainerMetadataFilePath>
   </PropertyGroup>
 
@@ -96,9 +98,9 @@
       </BuildMetadata>
     </ItemGroup>
 
-    <WriteLinesToFile File="$(ContainerMetadataFilePath)" Overwrite="true" Lines="$(MSBuildProjectName)-imagename=$(ContainerMetadataName)" />
-    <WriteLinesToFile File="$(ContainerMetadataFilePath)" Lines="$(MSBuildProjectName)-imagelabel=$(ProjectImageLabel)" />
-    <WriteLinesToFile File="$(ContainerMetadataFilePath)" Lines="$(MSBuildProjectName)-githash=$(ProjectGitHash)" />
+    <WriteLinesToFile File="$(ContainerMetadataFilePath)" Overwrite="true" Lines="$(ContainerMetadataName)-imagename=$(ContainerImageName)" />
+    <WriteLinesToFile File="$(ContainerMetadataFilePath)" Lines="$(ContainerMetadataName)-imagelabel=$(ProjectImageLabel)" />
+    <WriteLinesToFile File="$(ContainerMetadataFilePath)" Lines="$(ContainerMetadataName)-githash=$(ProjectGitHash)" />
 
   </Target>
 
