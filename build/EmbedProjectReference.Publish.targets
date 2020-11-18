@@ -14,6 +14,19 @@
 
   </Target>
 
+  <Target Name="GetContentItemsWithSubFolder"
+          DependsOnTargets="GetCopyToOutputDirectoryItems"
+          Condition=" '$(ContentSubFolder)' != '' "
+          Returns="@(ProjectReferenceContentFiles)">
+
+    <ItemGroup>
+       <ProjectReferenceContentFiles Include="@(AllItemsFullPathWithTargetPath)" >
+          <TargetPath>$(ContentSubFolder)\%(TargetPath)</TargetPath>
+       </ProjectReferenceContentFiles>
+    </ItemGroup>
+
+  </Target>
+
   <Target Name="EmbedProjectReferences">
 
     <PropertyGroup>
@@ -55,6 +68,17 @@
       <Output TaskParameter="TargetOutputs" ItemName="ChildPackageRootOnTargetPath"/>
     </MSBuild>
 
+    <MSBuild
+        Projects="@(ProjectReference)"
+        Targets="GetContentItemsWithSubFolder"
+        BuildInParallel="$(BuildInParallel)"
+        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); ContentSubFolder=%(ProjectReference.ContentSubFolder); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); $(PublishRuntimeIdentifier)"
+        Condition="'@(ProjectReference)' != '' and '%(ProjectReference.ContentSubFolder)' != '' "
+        ContinueOnError="$(ContinueOnError)"
+        SkipNonexistentTargets="true">
+      <Output TaskParameter="TargetOutputs" ItemName="ProjectReferenceContentFiles"/>
+    </MSBuild>
+
     <ItemGroup>
        <PackageRootFolderFiles Include="%(ProjectReference.RelativeDir)PackageRoot\**\*" Condition=" '%(ProjectReference.PackageRootFolder)' != '' ">
          <PackageRootFolder>%(ProjectReference.PackageRootFolder)</PackageRootFolder>
@@ -68,6 +92,7 @@
     </ItemGroup>
 
     <Copy SourceFiles="@(CodePackageFiles)" DestinationFiles="@(CodePackageFiles -> '$(OutDir)%(CodePackageFolder)\%(RecursiveDir)%(Filename)%(Extension)')" Condition=" '@(CodePackageFiles)' != '' " SkipUnchangedFiles="true"/>
+    <Copy SourceFiles="@(ProjectReferenceContentFiles)" DestinationFiles="@(ProjectReferenceContentFiles -> '$(OutDir)\%(TargetPath)')" Condition=" '@(ProjectReferenceContentFiles)' != '' " SkipUnchangedFiles="true"/>
 
   </Target>
 
