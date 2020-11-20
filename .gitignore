@@ -390,3 +390,5 @@ code-model-v1
 
 # Local dependencies install used for autorest SDK gen.
 .pipelines/deps/*
+src/src2/subsystems/reliability/criu_deduper/out/
+src/src2/subsystems/reliability/device_proxy/out/
