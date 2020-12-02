@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+<!-- ResolveFrameworkReferences Target copied from 
+     'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\Microsoft.Common.CurrentVersion.targets'
+     Needed for NoTarget SDK projects that take references to standard SDK projects upstream.  The NoTarget project needs to use the same
+     Framework references as it's references. -->
+  <Target Name="DACSResolveFrameworkReferences" BeforeTargets="ResolveTargetingPackAssets"
+          Condition="'@(FrameworkReference)' != '' and '$(OS)' == 'Windows_NT' "
+          Returns="@(ResolvedFrameworkReference)">
+
+    <GetPackageDirectory
+      Items="@(TargetingPack)"
+      PackageFolders="@(AssetsFilePackageFolder)">
+
+      <Output TaskParameter="Output" ItemName="ResolvedTargetingPack" />
+
+    </GetPackageDirectory>
+
+    <ItemGroup>
+      <ResolvedTargetingPack Condition="'%(ResolvedTargetingPack.Path)' == '' and '%(ResolvedTargetingPack.PackageDirectory)' != ''">
+        <Path>%(ResolvedTargetingPack.PackageDirectory)</Path>
+      </ResolvedTargetingPack>
+    </ItemGroup>
+
+    <GetPackageDirectory
+      Items="@(AppHostPack)"
+      PackageFolders="@(AssetsFilePackageFolder)">
+
+      <Output TaskParameter="Output" ItemName="ResolvedAppHostPack" />
+
+    </GetPackageDirectory>
+
+    <GetPackageDirectory
+      Items="@(PackAsToolShimAppHostPack)"
+      PackageFolders="@(AssetsFilePackageFolder)">
+
+      <Output TaskParameter="Output" ItemName="_ApphostsForShimRuntimeIdentifiersGetPackageDirectory" />
+
+    </GetPackageDirectory>
+
+    <GetPackageDirectory
+      Items="@(ComHostPack)"
+      PackageFolders="@(AssetsFilePackageFolder)">
+
+      <Output TaskParameter="Output" ItemName="ResolvedComHostPack" />
+
+    </GetPackageDirectory>
+
+    <GetPackageDirectory
+      Items="@(IjwHostPack)"
+      PackageFolders="@(AssetsFilePackageFolder)">
+
+        <Output TaskParameter="Output" ItemName="ResolvedIjwHostPack" />
+      </GetPackageDirectory>
+
+      <ItemGroup>
+        <_ApphostsForShimRuntimeIdentifiers Include="%(_ApphostsForShimRuntimeIdentifiersGetPackageDirectory.PackageDirectory)\%(_ApphostsForShimRuntimeIdentifiersGetPackageDirectory.PathInPackage)" >
+          <RuntimeIdentifier>%(_ApphostsForShimRuntimeIdentifiersGetPackageDirectory.RuntimeIdentifier)</RuntimeIdentifier>
+        </_ApphostsForShimRuntimeIdentifiers>
+      </ItemGroup>
+
+      <ItemGroup>
+        <ResolvedAppHostPack Condition="'%(ResolvedAppHostPack.Path)' == '' and '%(ResolvedAppHostPack.PackageDirectory)' != ''">
+          <Path>%(ResolvedAppHostPack.PackageDirectory)\%(ResolvedAppHostPack.PathInPackage)</Path>
+        </ResolvedAppHostPack>
+      </ItemGroup>
+
+      <PropertyGroup Condition="'@(ResolvedAppHostPack)' != '' And '$(AppHostSourcePath)' == ''">
+        <AppHostSourcePath>@(ResolvedAppHostPack->'%(Path)')</AppHostSourcePath>
+      </PropertyGroup>
+
+      <ItemGroup>
+        <ResolvedComHostPack Condition="'%(ResolvedComHostPack.Path)' == '' and '%(ResolvedComHostPack.PackageDirectory)' != ''">
+          <Path>%(ResolvedComHostPack.PackageDirectory)\%(ResolvedComHostPack.PathInPackage)</Path>
+        </ResolvedComHostPack>
+      </ItemGroup>
+
+      <PropertyGroup Condition="'@(ResolvedComHostPack)' != '' And '$(ComHostSourcePath)' == ''">
+        <ComHostSourcePath>@(ResolvedComHostPack->'%(Path)')</ComHostSourcePath>
+      </PropertyGroup>
+
+      <ItemGroup>
+        <ResolvedIjwHostPack Condition="'%(ResolvedIjwHostPack.Path)' == '' and '%(ResolvedIjwHostPack.PackageDirectory)' != ''">
+          <Path>%(ResolvedIjwHostPack.PackageDirectory)\%(ResolvedIjwHostPack.PathInPackage)</Path>
+        </ResolvedIjwHostPack>
+      </ItemGroup>
+
+      <PropertyGroup Condition="'@(ResolvedIjwHostPack)' != '' And '$(IjwHostSourcePath)' == ''">
+        <IjwHostSourcePath>@(ResolvedIjwHostPack->'%(Path)')</IjwHostSourcePath>
+      </PropertyGroup>
+
+      <GetPackageDirectory
+        Items="@(RuntimePack)"
+        PackageFolders="@(AssetsFilePackageFolder)">
+
+        <Output TaskParameter="Output" ItemName="ResolvedRuntimePack" />
+
+      </GetPackageDirectory>
+
+      <ResolveFrameworkReferences
+        FrameworkReferences="@(FrameworkReference)"
+        ResolvedTargetingPacks="@(ResolvedTargetingPack)"
+        ResolvedRuntimePacks="@(ResolvedRuntimePack)">
+
+        <Output TaskParameter="ResolvedFrameworkReferences" ItemName="ResolvedFrameworkReference" />
+        
+      </ResolveFrameworkReferences>
+
+  </Target>
+
+</Project>

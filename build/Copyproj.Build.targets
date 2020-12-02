@@ -1,7 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 
+  <PropertyGroup>
+    <AfterBuildDependsOnTargets>
+      EmbedProjectReferences;
+    </AfterBuildDependsOnTargets>
+  </PropertyGroup>
+
   <Import Project="$(MSBuildThisFileDirectory)EmbedProjectReference.Publish.targets" />
+  <Import Project="$(MSBuildThisFileDirectory)ResolveFrameworkReferences.targets" />
   <Import Project="$(MSBuildThisFileDirectory)UpdateMetadata\UpdateMetadataContent.targets" />
+
+  <Target Name="CreateManifestResourceNames" />
+  <Target Name="CoreCompile" />
+  <Target Name="AfterBuild" DependsOnTargets="$(AfterBuildDependsOnTargets)" />
 
 </Project>
