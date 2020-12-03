@@ -15,9 +15,19 @@
   </Target>
 
   <Target Name="GetContentItemsWithSubFolder"
-          DependsOnTargets="GetCopyToOutputDirectoryItems"
+          DependsOnTargets="Build"
           Condition=" '$(ContentSubFolder)' != '' "
           Returns="@(ProjectReferenceContentFiles)">
+
+    <ItemGroup>
+      <OutputDirectoryItems Include="$(OutDir)\**\*">
+        <TargetPath></TargetPath>
+      </OutputDirectoryItems>
+    </ItemGroup>
+
+    <AssignTargetPath Files="@(OutputDirectoryItems)" RootFolder="$(OutDir)">
+      <Output TaskParameter="AssignedFiles" ItemName="AllItemsFullPathWithTargetPath" />
+    </AssignTargetPath>
 
     <ItemGroup>
        <ProjectReferenceContentFiles Include="@(AllItemsFullPathWithTargetPath)" >
