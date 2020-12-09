@@ -79,9 +79,10 @@
     <MakeDir Directories="$(OutputPath);$(IntermediateOutputPath)" />
   </Target>
 
-  <Target Name="WindowsCMakeBuild">
+  <Target Name="WindowsCMakeBuild" Inputs="@(NativeInputFiles)" Outputs="$(IntermediateOutputPath)Nativebuild.done" >
     <Exec Command="az acr login -n $(ContainerImageRepository)" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" />
     <Exec Command="docker run -i --rm --env-file $(ContainerEnvFile) $(RepositoryRootVolumeMount) -w $(NativeBuildContainerWorkingDirectory) $(NativeBuildContainerImage) $(NativeBuildContainerCommand) $(NativeBuildContainerCommandArguments)" IgnoreExitCode="false" ConsoleToMsBuild="true" />
+    <Touch Files="$(IntermediateOutputPath)Nativebuild.done" AlwaysCreate="true" />
   </Target>
 
   <Target Name="WindowsCTestBuild">
