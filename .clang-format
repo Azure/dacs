@@ -1,6 +1,6 @@
 ﻿---
 AllowShortIfStatementsOnASingleLine: WithoutElse
-AlignConsecutiveDeclarations: true
+AlignConsecutiveDeclarations: false
 AllowShortFunctionsOnASingleLine: None
 AlwaysBreakTemplateDeclarations: 'Yes'
 BinPackArguments : false
