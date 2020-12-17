@@ -47,11 +47,20 @@
         <SelfContained>false</SelfContained>
     </PropertyGroup>
 
+    <ItemGroup>
+      <ProjectReference Condition=" '%(ProjectReference.ReferenceRuntimeIdentifier)' != '' ">
+        <PublishRuntimeIdentifier>RuntimeIdentifier=%(ProjectReference.ReferenceRuntimeIdentifier)</PublishRuntimeIdentifier>
+      </ProjectReference>
+      <ProjectReference Condition=" '%(ProjectReference.PublishRuntimeIdentifier)' == '' and '$(PublishRuntimeIdentier)' != '' ">
+        <PublishRuntimeIdentifier>$(PublishRuntimeIdentifier)</PublishRuntimeIdentifier>
+      </ProjectReference>
+    </ItemGroup>
+
     <MSBuild
         Projects="@(ProjectReference)"
         Targets="Publish"
         BuildInParallel="$(BuildInParallel)"
-        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); SelfContained=$(SelfContained); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); $(PublishRuntimeIdentifier)"
+        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); SelfContained=$(SelfContained); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); %(ProjectReference.PublishRuntimeIdentifier)"
         Condition="'@(ProjectReference)' != '' and '%(ProjectReference.CodePackageFolder)' != ''"
         ContinueOnError="$(ContinueOnError)"
         SkipNonexistentTargets="true"/>
@@ -60,7 +69,7 @@
         Projects="@(ProjectReference)"
         Targets="GetPublishPath"
         BuildInParallel="$(BuildInParallel)"
-        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); SelfContained=$(SelfContained); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); $(PublishRuntimeIdentifier)"
+        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); SelfContained=$(SelfContained); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); %(ProjectReference.PublishRuntimeIdentifier)"
         Condition="'@(ProjectReference)' != '' and '%(ProjectReference.CodePackageFolder)' != ''"
         ContinueOnError="$(ContinueOnError)"
         SkipNonexistentTargets="true">
@@ -71,7 +80,7 @@
         Projects="@(ProjectReference)"
         Targets="GetTargetPath"
         BuildInParallel="$(BuildInParallel)"
-        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); SelfContained=$(SelfContained); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); $(PublishRuntimeIdentifier)"
+        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); SelfContained=$(SelfContained); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); %(ProjectReference.PublishRuntimeIdentifier)"
         Condition="'@(ProjectReference)' != '' and '%(ProjectReference.CodePackageFolder)' != ''"
         ContinueOnError="$(ContinueOnError)"
         SkipNonexistentTargets="true">
@@ -82,7 +91,7 @@
         Projects="@(ProjectReference)"
         Targets="GetContentItemsWithSubFolder"
         BuildInParallel="$(BuildInParallel)"
-        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); ContentSubFolder=%(ProjectReference.ContentSubFolder); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); $(PublishRuntimeIdentifier)"
+        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); ContentSubFolder=%(ProjectReference.ContentSubFolder); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); %(ProjectReference.PublishRuntimeIdentifier)"
         Condition="'@(ProjectReference)' != '' and '%(ProjectReference.ContentSubFolder)' != '' "
         ContinueOnError="$(ContinueOnError)"
         SkipNonexistentTargets="true">
