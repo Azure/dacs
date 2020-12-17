@@ -29,9 +29,9 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <ExeExtension Condition=" '$(ExeExtension)' == '' And $(ReferenceRuntimeIdentifier.StartsWith('win')) ">.exe</ExeExtension>
-    <ScriptExtension Condition=" '$(ScriptExtension)' == '' And $(ReferenceRuntimeIdentifier.StartsWith('win')) ">.bat</ScriptExtension>
-    <ScriptExtension Condition=" '$(ScriptExtension)' == '' And (!$(ReferenceRuntimeIdentifier.StartsWith('win'))) ">.sh</ScriptExtension>
+    <ExeExtension Condition=" '$(ExeExtension)' == '' And ($(ReferenceRuntimeIdentifier.StartsWith('win')) Or $(MetadataUpdateContentRuntimeIdentifier.StartsWith('win'))) ">.exe</ExeExtension>
+    <ScriptExtension Condition=" '$(ScriptExtension)' == '' And ($(ReferenceRuntimeIdentifier.StartsWith('win')) Or $(MetadataUpdateContentRuntimeIdentifier.StartsWith('win'))) ">.bat</ScriptExtension>
+    <ScriptExtension Condition=" '$(ScriptExtension)' == '' And ((!$(ReferenceRuntimeIdentifier.StartsWith('win'))) Or (!$(MetadataUpdateContentRuntimeIdentifier.StartsWith('win')))) ">.sh</ScriptExtension>
   </PropertyGroup>
 
   <ItemGroup>
