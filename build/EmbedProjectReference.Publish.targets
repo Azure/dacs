@@ -43,8 +43,6 @@
         <PublishRuntimeIdentifier Condition=" '$(ReferenceRuntimeIdentifier)' != '' ">RuntimeIdentifier=$(ReferenceRuntimeIdentifier)</PublishRuntimeIdentifier>
         <AlwaysBuildProjectReferences>BuildingInsideVisualStudio=false</AlwaysBuildProjectReferences>
         <DoNotUpdateProjectAssetsJson>RestoreLockedMode=true</DoNotUpdateProjectAssetsJson>
-        <!-- We want to build framework-dependent packages, which are much smaller than self-contained -->
-        <SelfContained>false</SelfContained>
     </PropertyGroup>
 
     <ItemGroup>
@@ -54,13 +52,19 @@
       <ProjectReference Condition=" '%(ProjectReference.PublishRuntimeIdentifier)' == '' and '$(PublishRuntimeIdentier)' != '' ">
         <PublishRuntimeIdentifier>$(PublishRuntimeIdentifier)</PublishRuntimeIdentifier>
       </ProjectReference>
+      <ProjectReference Condition=" '%(ProjectReference.ReferenceSelfContained)' != '' ">
+        <SelfContained>%(ProjectReference.ReferenceSelfContained)</SelfContained>
+      </ProjectReference>
+      <ProjectReference Condition=" '%(ProjectReference.ReferenceSelfContained)' == '' ">
+        <SelfContained>false</SelfContained>
+      </ProjectReference>
     </ItemGroup>
 
     <MSBuild
         Projects="@(ProjectReference)"
         Targets="Publish"
         BuildInParallel="$(BuildInParallel)"
-        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); SelfContained=$(SelfContained); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); %(ProjectReference.PublishRuntimeIdentifier)"
+        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); SelfContained=%(ProjectReference.SelfContained); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); %(ProjectReference.PublishRuntimeIdentifier)"
         Condition="'@(ProjectReference)' != '' and '%(ProjectReference.CodePackageFolder)' != ''"
         ContinueOnError="$(ContinueOnError)"
         SkipNonexistentTargets="true"/>
@@ -69,7 +73,7 @@
         Projects="@(ProjectReference)"
         Targets="GetPublishPath"
         BuildInParallel="$(BuildInParallel)"
-        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); SelfContained=$(SelfContained); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); %(ProjectReference.PublishRuntimeIdentifier)"
+        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); SelfContained=%(ProjectReference.SelfContained); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); %(ProjectReference.PublishRuntimeIdentifier)"
         Condition="'@(ProjectReference)' != '' and '%(ProjectReference.CodePackageFolder)' != ''"
         ContinueOnError="$(ContinueOnError)"
         SkipNonexistentTargets="true">
@@ -80,7 +84,7 @@
         Projects="@(ProjectReference)"
         Targets="GetTargetPath"
         BuildInParallel="$(BuildInParallel)"
-        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); SelfContained=$(SelfContained); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); %(ProjectReference.PublishRuntimeIdentifier)"
+        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); SelfContained=%(ProjectReference.SelfContained); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); %(ProjectReference.PublishRuntimeIdentifier)"
         Condition="'@(ProjectReference)' != '' and '%(ProjectReference.CodePackageFolder)' != ''"
         ContinueOnError="$(ContinueOnError)"
         SkipNonexistentTargets="true">
