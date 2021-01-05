@@ -17,6 +17,13 @@ do
    sleep 5s
 done
 
+# mitigation for the time sync issues
+ntpdate time.windows.com
+if [ $? -ne 0 ]
+  then
+    echo "WARNING: failed to synchronize time in the container."
+fi
+
 cmake -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_CONFIGURATION $PATH_TO_SOURCE
 make -j
 
