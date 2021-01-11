@@ -15,12 +15,6 @@ TEST(LoggingApiTest, LoggingMacroCompilationTest)
     LOG_WARN("Testing {}", "LOG_WARN");
     LOG_ERROR("Testing {}", "LOG_ERROR");
     LOG_CRITICAL("Testing {}", "LOG_CRITICAL");
-    CTR_LOG_TRACE("Testing {}", "CTR_LOG_TRACE");
-    CTR_LOG_DEBUG("Testing {}", "CTR_LOG_DEBUG");
-    CTR_LOG_INFO("Testing {}", "CTR_LOG_INFO");
-    CTR_LOG_WARN("Testing {}", "CTR_LOG_WARN");
-    CTR_LOG_ERROR("Testing {}", "CTR_LOG_ERROR");
-    CTR_LOG_CRITICAL("Testing {}", "CTR_LOG_CRITICAL");
     CX_LOG_TRACE("Testing {}", "CX_LOG_TRACE");
     CX_LOG_DEBUG("Testing {}", "CX_LOG_DEBUG");
     CX_LOG_INFO("Testing {}", "CX_LOG_INFO");
