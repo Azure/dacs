@@ -17,8 +17,8 @@ docker run -it --rm \
     -v /etc/shadow:/etc/shadow:ro \
     -v /root/.dotnet:/root/.dotnet \
     -v ~:/root \
-    -v $DIR:/repo \
+    -v $DIR:$DIR\
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /usr/share/dotnet/sdk/NuGetFallbackFolder:/usr/share/dotnet/sdk/NuGetFallbackFolder \
-    -w /repo \
+    -w $DIR \
     $nativeBuildRepository:$nativeBuildLabel /bin/bash
