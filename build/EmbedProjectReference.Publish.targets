@@ -75,6 +75,7 @@
         Targets="GetPublishPath"
         BuildInParallel="$(BuildInParallel)"
         Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); SelfContained=%(ProjectReference.SelfContained); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); %(ProjectReference.PublishRuntimeIdentifier)"
+        RemoveProperties="ContentSubFolder"
         Condition="'@(ProjectReference)' != '' and '%(ProjectReference.CodePackageFolder)' != ''"
         ContinueOnError="$(ContinueOnError)"
         SkipNonexistentTargets="true">
@@ -86,6 +87,7 @@
         Targets="GetTargetPath"
         BuildInParallel="$(BuildInParallel)"
         Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform); SelfContained=%(ProjectReference.SelfContained); $(AlwaysBuildProjectReferences); $(DoNotUpdateProjectAssetsJson); %(ProjectReference.SetTargetFramework); $(ProjectReference); %(ProjectReference.PublishRuntimeIdentifier)"
+        RemoveProperties="ContentSubFolder"
         Condition="'@(ProjectReference)' != '' and '%(ProjectReference.CodePackageFolder)' != ''"
         ContinueOnError="$(ContinueOnError)"
         SkipNonexistentTargets="true">
