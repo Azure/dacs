@@ -90,6 +90,8 @@
 
     <PropertyGroup>
       <ProjectImageLabel>$([System.DateTime]::Now.ToString('yyyyMMddTHHmmssfff'))</ProjectImageLabel>
+      <MetadataPublicPublish>false</MetadataPublicPublish>
+      <MetadataPublicPublish Condition=" '$(PublicPublish)'=='true' ">true</MetadataPublicPublish>
     </PropertyGroup>
 
     <ItemGroup>
@@ -101,7 +103,7 @@
     <WriteLinesToFile File="$(ContainerMetadataFilePath)" Overwrite="true" Lines="$(ContainerMetadataName)-imagename=$(ContainerImageName)" />
     <WriteLinesToFile File="$(ContainerMetadataFilePath)" Lines="$(ContainerMetadataName)-imagelabel=$(ProjectImageLabel)" />
     <WriteLinesToFile File="$(ContainerMetadataFilePath)" Lines="$(ContainerMetadataName)-githash=$(ProjectGitHash)" />
-
+    <WriteLinesToFile File="$(ContainerMetadataFilePath)" Lines="$(ContainerMetadataName)-publicpublish=$(MetadataPublicPublish)" />
   </Target>
 
 </Project>
