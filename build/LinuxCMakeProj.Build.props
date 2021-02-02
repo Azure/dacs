@@ -6,7 +6,7 @@
     <CopyBuildOutputToOutputDirectory>false</CopyBuildOutputToOutputDirectory>
     <DebugType>none</DebugType>
   </PropertyGroup>
-  
+
   <PropertyGroup>
     <CMAKE_BINARY_DIR>$(OutputPath)</CMAKE_BINARY_DIR>
     <CMAKE_LIBRARY_OUTPUT_DIRECTORY>$(IntermediateOutputPath)/linux-x64/publish</CMAKE_LIBRARY_OUTPUT_DIRECTORY>
@@ -38,6 +38,7 @@
     <LinuxCMakeEnvironmentProperties Include="CMAKE_DEVICE_PROXY_CUDA_VERSION=$(CMAKE_DEVICE_PROXY_CUDA_VERSION)"/>
     <LinuxCMakeEnvironmentProperties Include="CMAKE_DEVICE_PROXY_NCCL_VERSION=$(CMAKE_DEVICE_PROXY_NCCL_VERSION)"/>
     <LinuxCMakeEnvironmentProperties Include="CMAKE_REMOTE_PUBLISH_DIRECTORY=$(CMAKE_REMOTE_PUBLISH_DIRECTORY)"/>
+    <LinuxCMakeEnvironmentProperties Include="OBJ_DIR=$(IntermediateOutputPath)"/>
   </ItemGroup>
 
 </Project>
