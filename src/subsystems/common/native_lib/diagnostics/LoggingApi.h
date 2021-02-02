@@ -36,23 +36,19 @@
 #include "spdlog/fmt/bundled/format.h"
 #include "spdlog/fmt/bundled/core.h"
 #include "spdlog/fmt/bundled/ostream.h"
+#include "glog/logging.h"
 //-------------------------------------------------------------------------------------------------------------------------------------------
-#define LOGGER_NAME "dacs_logger"
-#define BACKTRACE_LOG_DEPTH 64
-//-------------------------------------------------------------------------------------------------------------------------------------------
-namespace LoggingApi
+enum class LogLevel
 {
-    void init(/*[in]*/ bool bSyncMode = false);
+    Critical = 0,
+    Error = 1,
+    Warn = 2,
+    Info = 3,
+    Debug = 4,
+    Trace = 5
 };
-//-------------------------------------------------------------------------------------------------------------------------------------------
-#define CRITICAL_LOG 0x00
-#define ERROR_LEVEL 0x01
-#define WARN_LEVEL 0x02
-#define INFO_LEVEL 0x03
-#define DEBUG_LEVEL 0x04
-#define TRACE_LEVEL 0x05
 #ifndef LOG_LEVEL
-#define LOG_LEVEL DEBUG_LEVEL
+#define LOG_LEVEL static_cast<int>(LogLevel::Debug)
 #endif
 //-------------------------------------------------------------------------------------------------------------------------------------------
 struct AutoOperationIdTLS
@@ -66,68 +62,110 @@ private:
     static thread_local std::string OperationIdTLS;
 };
 //-------------------------------------------------------------------------------------------------------------------------------------------
-#define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
+class LoggingApi
+{
+public:
+    static void Init();
+    static void Shutdown();
+    static void Flush();
+
+    template<LogLevel LEVEL, typename... _TArgs>
+    static void LogMessage(_TArgs&&... Fargs)
+    {
+        static_assert(LEVEL >= LogLevel::Critical && LEVEL <= LogLevel::Trace);
+
+        if(LOG_LEVEL < static_cast<int>(LEVEL)) return;
+
+        if(bInitAsync)
+        {
+            // The below code does NOT use switch-case intentionally because of perf reasons
+            if(LogLevel::Info == LEVEL)
+            {
+                LOG(INFO) << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
+            }
+            else if(LogLevel::Debug == LEVEL)
+            {
+                DLOG(INFO) << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
+            }
+            else if(LogLevel::Warn == LEVEL)
+            {
+                LOG(WARNING) << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
+            }
+            else if(LogLevel::Error == LEVEL || LogLevel::Critical == LEVEL)
+            {
+                LOG(ERROR) << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
+            }
+            else if(LogLevel::Trace == LEVEL)
+            {
+                VLOG(1) << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
+            }
+        }
+        else
+        {
+            if(LEVEL >= LogLevel::Warn)
+            {
+                std::cout << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
+            }
+            else
+            {
+                std::cerr << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
+            }
+        }
+    }
+
+    LoggingApi() { Init(); }
+    ~LoggingApi() { Shutdown(); }
+
+private:
+    // This assumes we init/shutdown LoggingApi in a thread-safe manner,
+    // therefore we intentionally do not deal with race conditions.
+    static bool bInitAsync;
+
+    template<size_t M, typename... _TArgs>
+    static decltype(auto) FormatMsg(const char(&message)[M], _TArgs&&... Fargs)
+    {
+        return fmt::format(message, AutoOperationIdTLS::OperationId(), std::forward<_TArgs>(Fargs)...);
+    }
+};
 //-------------------------------------------------------------------------------------------------------------------------------------------
-#if LOG_LEVEL >= TRACE_LEVEL
+template<size_t N>
+auto parseFileName(const char(&file)[N])
+{
+    auto pos = strrchr(file, '/');
+    return pos ? pos + 1 : file;
+}
+#define __FILENAME__ parseFileName(__FILE__)
+#define FORMAT_STR "|DeviceProxy|operation_Id:{}|{}:{}({}): "
+//-------------------------------------------------------------------------------------------------------------------------------------------
 #define LOG_TRACE(message, args...) \
-    std::cout << fmt::format("DACS_CTR:TRACE|DeviceProxy|operation_Id:{}|{}:{}({}): " message, AutoOperationIdTLS::OperationId(), __FILENAME__, __FUNCTION__, __LINE__, ##args) <<  std::endl;
+    LoggingApi::LogMessage<LogLevel::Trace>("DACS_CTR:TRACE" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 #define CX_LOG_TRACE(message, args...) \
-    std::cout << fmt::format("CX_RAW:TRACE|DeviceProxy|operation_Id:{}|{}:{}({}): " message, AutoOperationIdTLS::OperationId(), __FILENAME__, __FUNCTION__, __LINE__, ##args) <<  std::endl;
-#else
-#define LOG_TRACE(msg, args...)
-#define CX_LOG_TRACE(msg, args...)
-#endif
+    LoggingApi::LogMessage<LogLevel::Trace>("CX_RAW:TRACE" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 //-------------------------------------------------------------------------------------------------------------------------------------------
-#if LOG_LEVEL >= DEBUG_LEVEL
 #define LOG_DEBUG(message, args...) \
-    std::cout << fmt::format("DACS_CTR:DEBUG|DeviceProxy|operation_Id:{}|{}:{}({}): " message, AutoOperationIdTLS::OperationId(), __FILENAME__, __FUNCTION__, __LINE__, ##args) <<  std::endl;
+    LoggingApi::LogMessage<LogLevel::Debug>("DACS_CTR:DEBUG" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 #define CX_LOG_DEBUG(message, args...) \
-    std::cout << fmt::format("CX_RAW:DEBUG|DeviceProxy|operation_Id:{}|{}:{}({}): " message, AutoOperationIdTLS::OperationId(), __FILENAME__, __FUNCTION__, __LINE__, ##args) <<  std::endl;
-#else
-#define LOG_DEBUG(message, args...)
-#define CX_LOG_DEBUG(message, args...)
-#endif
+    LoggingApi::LogMessage<LogLevel::Debug>("CX_RAW:DEBUG" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 //-------------------------------------------------------------------------------------------------------------------------------------------
-#if LOG_LEVEL >= INFO_LEVEL
 #define LOG_INFO(message, args...) \
-    std::cout << fmt::format("DACS_CTR:INFO|DeviceProxy|operation_Id:{}|{}:{}({}): " message, AutoOperationIdTLS::OperationId(), __FILENAME__, __FUNCTION__, __LINE__, ##args) <<  std::endl;
+    LoggingApi::LogMessage<LogLevel::Info>("DACS_CTR:INFO" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 #define CX_LOG_INFO(message, args...) \
-    std::cout << fmt::format("CX_RAW:INFO|DeviceProxy|operation_Id:{}|{}:{}({}): " message, AutoOperationIdTLS::OperationId(), __FILENAME__, __FUNCTION__, __LINE__, ##args) <<  std::endl;
-#else
-#define LOG_INFO(message, args...)
-#define CX_LOG_INFO(message, args...)
-#endif
+    LoggingApi::LogMessage<LogLevel::Info>("CX_RAW:INFO" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 //-------------------------------------------------------------------------------------------------------------------------------------------
-#if LOG_LEVEL >= WARN_LEVEL
 #define LOG_WARN(message, args...) \
-    std::cout << fmt::format("DACS_CTR:WARN|DeviceProxy|operation_Id:{}|{}:{}({}): " message, AutoOperationIdTLS::OperationId(), __FILENAME__, __FUNCTION__, __LINE__, ##args) <<  std::endl;
+    LoggingApi::LogMessage<LogLevel::Warn>("DACS_CTR:WARN" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 #define CX_LOG_WARN(message, args...) \
-    std::cout << fmt::format("CX_RAW:WARN|DeviceProxy|operation_Id:{}|{}:{}({}): " message, AutoOperationIdTLS::OperationId(), __FILENAME__, __FUNCTION__, __LINE__, ##args) <<  std::endl;
-#else
-#define LOG_WARN(message, args...)
-#define CX_LOG_WARN(message, args...)
-#endif
+    LoggingApi::LogMessage<LogLevel::Warn>("CX_RAW:WARN" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 //-------------------------------------------------------------------------------------------------------------------------------------------
-#if LOG_LEVEL >= ERROR_LEVEL
 #define LOG_ERROR(message, args...) \
-    std::cerr << fmt::format("DACS_CTR:ERROR|DeviceProxy|operation_Id:{}|{}:{}({}): " message, AutoOperationIdTLS::OperationId(), __FILENAME__, __FUNCTION__, __LINE__, ##args) <<  std::endl;
+    LoggingApi::LogMessage<LogLevel::Error>("DACS_CTR:ERROR" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 #define CX_LOG_ERROR(message, args...) \
-    std::cerr << fmt::format("CX_RAW:ERROR|DeviceProxy|operation_Id:{}|{}:{}({}): " message, AutoOperationIdTLS::OperationId(), __FILENAME__, __FUNCTION__, __LINE__, ##args) <<  std::endl;
+    LoggingApi::LogMessage<LogLevel::Error>("CX_RAW:ERROR" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 #define LOG_STACK(message, args...) \
     std::cerr << fmt::format("DACS_CTR:ERROR|" message, ##args) <<  std::endl;
-#else
-#define LOG_ERROR(message, args...)
-#define CX_LOG_ERROR(message, args...)
-#define LOG_STACK(message, args...)
-#endif
 //-------------------------------------------------------------------------------------------------------------------------------------------
-#if LOG_LEVEL >= CRITICAL_LOG
 #define LOG_CRITICAL(message, args...) \
-    std::cerr << fmt::format("DACS_CTR:CRITICAL|DeviceProxy|operation_Id:{}|{}:{}({}): " message, AutoOperationIdTLS::OperationId(), __FILENAME__, __FUNCTION__, __LINE__, ##args) <<  std::endl;
+    LoggingApi::LogMessage<LogLevel::Critical>("DACS_CTR:CRITICAL" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 #define CX_LOG_CRITICAL(message, args...) \
-    std::cerr << fmt::format("CX_RAW:CRITICAL|DeviceProxy|operation_Id:{}|{}:{}({}): " message, AutoOperationIdTLS::OperationId(), __FILENAME__, __FUNCTION__, __LINE__, ##args) <<  std::endl;
-#else
-#define LOG_CRITICAL(message, args...)
-#define CX_LOG_CRITICAL(message, args...)
-#endif
+    LoggingApi::LogMessage<LogLevel::Critical>("CX_RAW:CRITICAL" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 //-------------------------------------------------------------------------------------------------------------------------------------------
