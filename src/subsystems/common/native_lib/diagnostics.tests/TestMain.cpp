@@ -8,7 +8,7 @@
 //--------------------------------------------------------------------------------------------------------------------------------------------
 int main(int argc, char **argv)
 {
-    LoggingApi::init();
+    LoggingApi _;
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
