@@ -17,6 +17,11 @@
       Build;
       WindowsCTestBuild;
     </LinuxCMakeProjNativeUnitTestDependsOnTargets>
+    <!-- For each DACS repo on the machine, we will create a docker volume.
+         If repo root is d:\repos\DACS.2, volume name will be dacs_d_repos_dacs.2
+    -->
+    <NativeBuildDockerVolume Condition=" '$(OS)' == 'Windows_NT' ">dacs_$(RepositoryRootPath.Replace(':', '').Replace('\', '_').Replace(' ', '_').ToLowerInvariant())</NativeBuildDockerVolume>
+    <NativeBuildDockerVolume Condition=" '$(OS)' == 'Windows_NT' ">$(NativeBuildDockerVolume.TrimEnd('_'))</NativeBuildDockerVolume>
   </PropertyGroup>
 
   <Import Project="$(MSBuildThisFileDirectory)UpdateMetadata\UpdateMetadataContent.targets" />
@@ -28,7 +33,6 @@
       <NativeBuildCommand>$(RepositoryRootPath)build/LinuxCMakeProj.Build.sh</NativeBuildCommand>
       <NativeBuildCommandArguments>$(CMakePathToSource)</NativeBuildCommandArguments>
     </PropertyGroup>
-
   </Target>
 
   <Target Name="GetNativeBuildContainerImageParameters">
@@ -80,8 +84,20 @@
   </Target>
 
   <Target Name="WindowsCMakeBuild" Inputs="@(NativeInputFiles)" Outputs="$(IntermediateOutputPath)Nativebuild.done" >
+    <PropertyGroup>
+      <DockerBuildCommand>docker run -i --rm --env-file $(ContainerEnvFile) --env NATIVE_BUILD_JOBS $(RepositoryRootVolumeMount) -w $(NativeBuildContainerWorkingDirectory) --cap-add=SYS_TIME</DockerBuildCommand>
+    </PropertyGroup>
+    <PropertyGroup  Condition=" '$(FAST_NATIVE_BUILD)' == 'true' ">
+      <DockerBuildCommand>$(DockerBuildCommand) -v $(NativeBuildDockerVolume):/tmp/repo --env FAST_NATIVE_BUILD=true</DockerBuildCommand>
+    </PropertyGroup>
+    <PropertyGroup>
+      <DockerBuildCommand>$(DockerBuildCommand) $(NativeBuildContainerImage) $(NativeBuildContainerCommand) $(NativeBuildContainerCommandArguments)</DockerBuildCommand>
+    </PropertyGroup>
+    <Exec Command="docker volume create $(NativeBuildDockerVolume)" StandardOutputImportance="low" />
+    <Message Importance="high" text="Executing az acr login -n $(ContainerImageRepository)" />
     <Exec Command="az acr login -n $(ContainerImageRepository)" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" />
-    <Exec Command="docker run -i --rm --env-file $(ContainerEnvFile) $(RepositoryRootVolumeMount) -w $(NativeBuildContainerWorkingDirectory) --cap-add=SYS_TIME $(NativeBuildContainerImage) $(NativeBuildContainerCommand) $(NativeBuildContainerCommandArguments)" IgnoreExitCode="false" ConsoleToMsBuild="true" />
+    <Message Importance="high" text="Executing $(DockerBuildCommand)" />
+    <Exec Command="$(DockerBuildCommand)" IgnoreExitCode="false" />
     <Touch Files="$(IntermediateOutputPath)Nativebuild.done" AlwaysCreate="true" />
   </Target>
 
@@ -93,4 +109,11 @@
   <Target Name="Build" DependsOnTargets="$(LinuxCMakeProjBuildDependsOnTargets)" />
   <Target Name="NativeUnitTest" DependsOnTargets="$(LinuxCMakeProjNativeUnitTestDependsOnTargets)" />
 
+  <Target Name="Clean" >
+    <ItemGroup>
+      <_FilesToDelete Include="$(IntermediateOutputPath)**/*.*"/>
+      <_FilesToDelete Include="$(OutputPath)**/*.*"/>
+    </ItemGroup>
+    <Delete Files="@(_FilesToDelete)"/>
+  </Target>
 </Project>
