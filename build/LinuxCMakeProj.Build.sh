@@ -86,12 +86,15 @@ if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
   cd $CMAKE_RUNTIME_OUTPUT_DIRECTORY
 fi
 
+if [ -z $NATIVE_BUILD_JOBS ]; then
+  NATIVE_BUILD_JOBS=8
+fi
+
 cmake -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_CONFIGURATION $PATH_TO_SOURCE
 make -j $NATIVE_BUILD_JOBS
 
-if [ $? -ne 0 ]
-  then
-    exit 1
+if [ $? -ne 0 ]; then
+  exit 1
 fi
 
 if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then

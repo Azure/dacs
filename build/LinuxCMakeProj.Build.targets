@@ -103,7 +103,7 @@
 
   <Target Name="WindowsCTestBuild">
     <Exec Command="az acr login -n $(ContainerImageRepository)" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" />
-    <Exec Command="docker run -i --rm --env-file $(ContainerEnvFile) $(RepositoryRootVolumeMount) -w $(NativeBuildContainerWorkingDirectory) $(NativeBuildContainerImage) $(NativeUnitTestContainerCommand) $(NativeBuildContainerCommandArguments)" IgnoreExitCode="false" ConsoleToMsBuild="true" />
+    <Exec Command="docker run -i --rm --env-file $(ContainerEnvFile) --env NATIVE_BUILD_JOBS $(RepositoryRootVolumeMount) -w $(NativeBuildContainerWorkingDirectory) $(NativeBuildContainerImage) $(NativeUnitTestContainerCommand) $(NativeBuildContainerCommandArguments)" IgnoreExitCode="false" ConsoleToMsBuild="true" />
   </Target>
 
   <Target Name="Build" DependsOnTargets="$(LinuxCMakeProjBuildDependsOnTargets)" />
@@ -111,7 +111,9 @@
 
   <Target Name="Clean" >
     <ItemGroup>
-      <_FilesToDelete Include="$(IntermediateOutputPath)**/*.*"/>
+      <_FilesToDelete Include="$(IntermediateOutputPath)**/*.*" />
+      <!-- We need to preserve project.assets.json, otherwise dotnet build /t:rebuild from the root fails -->
+      <_FilesToDelete Remove="$(IntermediateOutputPath)project.assets.json" />
       <_FilesToDelete Include="$(OutputPath)**/*.*"/>
     </ItemGroup>
     <Delete Files="@(_FilesToDelete)"/>
