@@ -17,8 +17,8 @@ void LoggingApi::Init()
     {
         // Enable logging to console. GLOG only allows to stderr.
         FLAGS_logtostderr = true;
-        google::InitGoogleLogging("DACS");
-        bInitAsync = true;
+        // google::InitGoogleLogging("DACS");
+        bInitAsync = false; // Bug 9277677: glog hangs during flush leading to timeouts - Boards (azure.com)
         LOG_INFO("Initialized GLOG.");
     }
 };
@@ -37,7 +37,7 @@ void LoggingApi::Shutdown()
 //-------------------------------------------------------------------------------------------------------------------------------------------
 void LoggingApi::Flush()
 {
-    if (bInitAsync)
+    if(bInitAsync)
     {
         LOG_INFO("Flushing GLOG logs.");
         // From GLOG header documentation:
