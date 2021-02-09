@@ -16,11 +16,12 @@ void LoggingApi::Init()
     if(!bInitAsync)
     {
         bInitAsync = false;
-        // Enable logging to console. GLOG only allows to stderr.
-        FLAGS_logtostderr = true;
 
         if(bInitAsync)
         {
+            // Enable logging to console. GLOG only allows to stderr.
+            // FLAGS_logtostderr = true; //  TODO: Resolve demangle error when enabling glog back.
+
             google::InitGoogleLogging("DACS");
             LOG_INFO("Initialized GLOG.");
         }
