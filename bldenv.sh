@@ -1,4 +1,14 @@
-#!/bin/bash
+#!/bin/bash -e
+
+
+# Parse arguments
+usage="Usage : $0 [--no-tty]"
+
+TTY_OPTION="-t"
+if [ "$1" == "--no-tty" ]; then
+    TTY_OPTION=""
+    shift
+fi
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
@@ -10,7 +20,10 @@ nativeBuildRepository="dacs.azurecr.io/native-build"
 nativeBuildLabel=$(grep native-build-imagelabel build/.metadata/native-build.container.metadata | awk -F= '{print $2}')
 
 echo Running Native Build Container $nativeBuildRepository:$nativeBuildLabel
-docker run -it --rm \
+docker run \
+    --rm \
+    -i \
+    $TTY_OPTION \
     --privileged \
     -v /etc/group:/etc/group:ro \
     -v /etc/passwd:/etc/passwd:ro \
