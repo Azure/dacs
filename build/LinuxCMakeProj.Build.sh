@@ -74,11 +74,11 @@ if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
   IFS=':'
   read -ra dirs <<< "$SRC_SYNC_DIRS"
   for dir in "${dirs[@]}"; do
-    execute_rsync $dir /tmp$dir -avu --delete 
+    execute_rsync $dir /tmp$dir -avu --delete
   done
   IFS=' '
 
-  execute_rsync $CMAKE_BINARY_DIR/ /tmp$CMAKE_BINARY_DIR -avu --delete --exclude=src --exclude=CMakeFiles 
+  execute_rsync $CMAKE_BINARY_DIR/ /tmp$CMAKE_BINARY_DIR -avu --delete --exclude=src --exclude=CMakeFiles
 
   execute_rsync $OBJ_DIR /tmp$OBJ_DIR -avu --delete
 
@@ -98,6 +98,6 @@ if [ $? -ne 0 ]; then
 fi
 
 if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
-  execute_rsync $CMAKE_BINARY_DIR/ $CMAKE_BINARY_DIR_ORIG -avu --delete --exclude=src --exclude=CMakeFiles 
+  execute_rsync $CMAKE_BINARY_DIR/ $CMAKE_BINARY_DIR_ORIG -avu --delete --exclude=src --exclude=CMakeFiles
   execute_rsync /tmp$OBJ_DIR $OBJ_DIR -avu --delete
 fi

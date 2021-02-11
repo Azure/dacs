@@ -85,12 +85,10 @@
 
   <Target Name="WindowsCMakeBuild" Inputs="@(NativeInputFiles)" Outputs="$(IntermediateOutputPath)Nativebuild.done" >
     <PropertyGroup>
+      <FAST_NATIVE_BUILD Condition=" '$(FAST_NATIVE_BUILD)' != 'false' ">true</FAST_NATIVE_BUILD>
       <DockerBuildCommand>docker run -i --rm --env-file $(ContainerEnvFile) --env NATIVE_BUILD_JOBS $(RepositoryRootVolumeMount) -w $(NativeBuildContainerWorkingDirectory) --cap-add=SYS_TIME</DockerBuildCommand>
-    </PropertyGroup>
-    <PropertyGroup  Condition=" '$(FAST_NATIVE_BUILD)' == 'true' ">
-      <DockerBuildCommand>$(DockerBuildCommand) -v $(NativeBuildDockerVolume):/tmp/repo --env FAST_NATIVE_BUILD=true</DockerBuildCommand>
-    </PropertyGroup>
-    <PropertyGroup>
+      <DockerBuildCommand>$(DockerBuildCommand) -v $(NativeBuildDockerVolume):/tmp/repo </DockerBuildCommand>
+      <DockerBuildCommand>$(DockerBuildCommand) --env FAST_NATIVE_BUILD=$(FAST_NATIVE_BUILD) </DockerBuildCommand>
       <DockerBuildCommand>$(DockerBuildCommand) $(NativeBuildContainerImage) $(NativeBuildContainerCommand) $(NativeBuildContainerCommandArguments)</DockerBuildCommand>
     </PropertyGroup>
     <Exec Command="docker volume create $(NativeBuildDockerVolume)" StandardOutputImportance="low" />
