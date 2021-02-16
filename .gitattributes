@@ -33,6 +33,7 @@
 *.wixproj    text eol=crlf
 *.wmaproj    text eol=crlf
 *.xproj      text eol=crlf
+*.md         text eol=crlf
 
 ###############################################################################
 # Set line ending behavior for explicit Linux files.
