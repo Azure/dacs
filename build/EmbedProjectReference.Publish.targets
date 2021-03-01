@@ -15,7 +15,7 @@
   </Target>
 
   <Target Name="GetContentItemsWithSubFolder"
-          DependsOnTargets="Build"
+          DependsOnTargets="GetCopyToOutputDirectoryItems"
           Condition=" '$(ContentSubFolder)' != '' "
           Returns="@(ProjectReferenceContentFiles)">
 
