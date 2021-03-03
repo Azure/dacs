@@ -104,8 +104,8 @@
     <Exec Command="docker run -i --rm --env-file $(ContainerEnvFile) --env NATIVE_BUILD_JOBS $(RepositoryRootVolumeMount) -w $(NativeBuildContainerWorkingDirectory) $(NativeBuildContainerImage) $(NativeUnitTestContainerCommand) $(NativeBuildContainerCommandArguments)" IgnoreExitCode="false" ConsoleToMsBuild="true" />
   </Target>
 
-  <Target Name="Build" DependsOnTargets="$(LinuxCMakeProjBuildDependsOnTargets)" />
-  <Target Name="NativeUnitTest" DependsOnTargets="$(LinuxCMakeProjNativeUnitTestDependsOnTargets)" />
+  <Target Name="Build" DependsOnTargets="$(LinuxCMakeProjBuildDependsOnTargets)" Condition=" '$(NativeOfficialBuild)' == 'true' " />
+  <Target Name="NativeUnitTest" DependsOnTargets="$(LinuxCMakeProjNativeUnitTestDependsOnTargets)" Condition=" '$(NativeOfficialBuild)' == 'true' " />
 
   <Target Name="Clean" >
     <ItemGroup>
