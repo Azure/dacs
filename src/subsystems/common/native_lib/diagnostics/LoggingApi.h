@@ -68,6 +68,9 @@ public:
     static void Init();
     static void Shutdown();
     static void Flush();
+    
+    // Set the owner information so log messages for a given owner can be correlated. 
+    static void SetOwnerId(/*[in]*/ int nOwnerId);
 
     template<LogLevel LEVEL, typename... _TArgs>
     static void LogMessage(_TArgs&&... Fargs)
@@ -76,7 +79,7 @@ public:
 
         if(LOG_LEVEL < static_cast<int>(LEVEL)) return;
 
-        if(bInitAsync)
+        if(m_bInitAsync)
         {
             // The below code does NOT use switch-case intentionally because of perf reasons
             if(LogLevel::Info == LEVEL)
@@ -119,12 +122,17 @@ public:
 private:
     // This assumes we init/shutdown LoggingApi in a thread-safe manner,
     // therefore we intentionally do not deal with race conditions.
-    static bool bInitAsync;
+    static bool m_bInitAsync;
+
+    // 1. Proxy client can read its owner from configuration
+    // 2. Proxy server will use the owner of proxy client it's attached to.
+    // 3. For external processes like CriuDumpHandler etc. it will remain unset.
+    static int m_nOwnerId;
 
     template<size_t M, typename... _TArgs>
     static decltype(auto) FormatMsg(const char(&message)[M], _TArgs&&... Fargs)
     {
-        return fmt::format(message, AutoOperationIdTLS::OperationId(), std::forward<_TArgs>(Fargs)...);
+        return fmt::format(message, AutoOperationIdTLS::OperationId(), m_nOwnerId, std::forward<_TArgs>(Fargs)...);
     }
 };
 //-------------------------------------------------------------------------------------------------------------------------------------------
@@ -135,7 +143,7 @@ auto parseFileName(const char(&file)[N])
     return pos ? pos + 1 : file;
 }
 #define __FILENAME__ parseFileName(__FILE__)
-#define FORMAT_STR "|DeviceProxy|operation_Id:{}|{}:{}({}): "
+#define FORMAT_STR "|DeviceProxy|operation_Id:{}|owner_Id:{}:{}:{}({}): "
 //-------------------------------------------------------------------------------------------------------------------------------------------
 #define LOG_TRACE(message, args...) \
     LoggingApi::LogMessage<LogLevel::Trace>("DACS_CTR:TRACE" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
