@@ -7,17 +7,18 @@
 //--------------------------------------------------------------------------------------------------------------------------------------------
 thread_local std::string AutoOperationIdTLS::OperationIdTLS{};
 //--------------------------------------------------------------------------------------------------------------------------------------------
-bool LoggingApi::bInitAsync{false};
+bool LoggingApi::m_bInitAsync{false};
+int LoggingApi::m_nOwnerId{-1};
 //-------------------------------------------------------------------------------------------------------------------------------------------
 void LoggingApi::Init()
 {
     Shutdown();
 
-    if(!bInitAsync)
+    if(!m_bInitAsync)
     {
-        bInitAsync = false;
+        m_bInitAsync = false;
 
-        if(bInitAsync)
+        if(m_bInitAsync)
         {
             // Enable logging to console. GLOG only allows to stderr.
             // FLAGS_logtostderr = true; //  TODO: Resolve demangle error when enabling glog back.
@@ -36,17 +37,17 @@ void LoggingApi::Shutdown()
 {
     Flush();
 
-    if(bInitAsync)
+    if(m_bInitAsync)
     {
         LOG_INFO("Shutting down GLOG.");
-        bInitAsync = false;
+        m_bInitAsync = false;
         google::ShutdownGoogleLogging();
     }
 }
 //-------------------------------------------------------------------------------------------------------------------------------------------
 void LoggingApi::Flush()
 {
-    if(bInitAsync)
+    if(m_bInitAsync)
     {
         LOG_INFO("Flushing GLOG logs.");
         // From GLOG header documentation:
@@ -56,5 +57,11 @@ void LoggingApi::Flush()
         // In this case we will flush INFO, WARNING, ERROR and FATAL (if any)
         google::FlushLogFiles(google::GLOG_INFO);
     }
+}
+//-------------------------------------------------------------------------------------------------------------------------------------------
+void LoggingApi::SetOwnerId(/*[in]*/ int nOwnerId)
+{
+    // Intentionally left non thread safe. The caller is expected to guarantee this if needed.
+    m_nOwnerId = nOwnerId;
 }
 //-------------------------------------------------------------------------------------------------------------------------------------------
