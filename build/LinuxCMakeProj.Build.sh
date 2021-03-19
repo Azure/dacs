@@ -1,5 +1,5 @@
 #!/bin/bash
-# When calling execute_rsync, first 2 args must be souce and destination,
+# When calling execute_rsync, first 2 args must be source and destination,
 # followed by options
 function execute_rsync() {
   local src=$1
