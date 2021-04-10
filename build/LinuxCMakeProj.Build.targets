@@ -11,6 +11,7 @@
       CreateCMakeOutputFolders;
       GetBuildMetadata;
       GetNativeBuildContainerImageParameters;
+      EnsureNativeBuildContainerImageAvailable;
       WindowsCMakeBuild;
     </LinuxCMakeProjBuildDependsOnTargets>
     <LinuxCMakeProjNativeUnitTestDependsOnTargets Condition=" '$(OS)' == 'Windows_NT' ">
@@ -31,7 +32,6 @@
     <PropertyGroup>
       <NativeBuildWorkingDirectory>$(IntermediateOutputPath)</NativeBuildWorkingDirectory>
       <NativeBuildCommand>$(RepositoryRootPath)build/LinuxCMakeProj.Build.sh</NativeBuildCommand>
-      <NativeBuildCommandArguments>$(CMakePathToSource)</NativeBuildCommandArguments>
     </PropertyGroup>
   </Target>
 
@@ -54,13 +54,14 @@
       <NativeBuildContainerImage>$(ContainerImageRepository).azurecr.io/$(NativeBuildContainerImageName):$(NativeBuildContainerImageLabel)</NativeBuildContainerImage>
       <RepositoryRootPathInContainer>/repo/</RepositoryRootPathInContainer>
       <BuildObjectRootPathInContainer>$([System.String]::Copy('$(BuildObjectRoot)').Replace('$(RepositoryRootPath)','$(RepositoryRootPathInContainer)'))</BuildObjectRootPathInContainer>
+      <BuildBinaryRootPathInContainer>$([System.String]::Copy('$(BuildBinaryRoot)').Replace('$(RepositoryRootPath)','$(RepositoryRootPathInContainer)'))</BuildBinaryRootPathInContainer>
       <ContainerEnvFile>$(IntermediateOutputPath)envlist.txt</ContainerEnvFile>
       <RepositoryRootVolumeMount>-v $(RepositoryRootPath):$(RepositoryRootPathInContainer)</RepositoryRootVolumeMount>
       <LinuxMSBuildProjectRelativePath>$([System.String]::Copy('$(MSBuildProjectRelativePath)').Replace('\','/'))</LinuxMSBuildProjectRelativePath>
       <NativeBuildContainerWorkingDirectory>$(BuildObjectRootPathInContainer)/$(CMAKE_BUILD_CONFIGURATION)/$(LinuxMSBuildProjectRelativePath)</NativeBuildContainerWorkingDirectory>
+      <NativeBuildContainerBinaryDirectory>$(BuildBinaryRootPathInContainer)/$(CMAKE_BUILD_CONFIGURATION)/$(LinuxMSBuildProjectRelativePath)</NativeBuildContainerBinaryDirectory>
       <NativeBuildContainerCommand>$(RepositoryRootPathInContainer)build/LinuxCMakeProj.Build.sh</NativeBuildContainerCommand>
       <NativeUnitTestContainerCommand>$(RepositoryRootPathInContainer)build/LinuxCMakeProj.Test.sh</NativeUnitTestContainerCommand>
-      <NativeBuildContainerCommandArguments>$([System.String]::Copy('$(CMakePathToSource)').Replace('$(RepositoryRootPath)','$(RepositoryRootPathInContainer)'))</NativeBuildContainerCommandArguments>
     </PropertyGroup>
 
     <ItemGroup>
@@ -72,36 +73,47 @@
   </Target>
 
   <Target Name="LinuxCMakeBuild">
-    <Exec WorkingDirectory="$(NativeBuildWorkingDirectory)" Command="$(NativeBuildCommand) $(NativeBuildCommandArguments)" IgnoreExitCode="false" ConsoleToMsBuild="true" EnvironmentVariables="@(LinuxCMakeEnvironmentProperties)"/>
+    <!-- Perform FAST_NATIVE_BUILD on Linux build VMs to make sure that FAST_NATIVE_BUILD is not broken -->
+    <PropertyGroup>
+      <FAST_NATIVE_BUILD Condition=" '$(FAST_NATIVE_BUILD)' != 'false' and '$(CDP_BUILD_TYPE)' != '' ">true</FAST_NATIVE_BUILD>
+    </PropertyGroup>
+    <Exec WorkingDirectory="$(NativeBuildWorkingDirectory)" Command="$(NativeBuildCommand)" IgnoreExitCode="false" ConsoleToMsBuild="true" EnvironmentVariables="@(LinuxCMakeEnvironmentProperties);FAST_NATIVE_BUILD=$(FAST_NATIVE_BUILD)"/>
   </Target>
 
   <Target Name="LinuxCTestBuild">
-    <Exec WorkingDirectory="$(NativeBuildWorkingDirectory)" Command="$(NativeUnitTestContainerCommand) $(NativeBuildCommandArguments)" IgnoreExitCode="false" ConsoleToMsBuild="true" EnvironmentVariables="@(LinuxCMakeEnvironmentProperties)"/>
+    <Exec WorkingDirectory="$(NativeBuildWorkingDirectory)" Command="$(NativeUnitTestContainerCommand)" IgnoreExitCode="false" ConsoleToMsBuild="true" EnvironmentVariables="@(LinuxCMakeEnvironmentProperties)"/>
   </Target>
 
   <Target Name="CreateCMakeOutputFolders">
     <MakeDir Directories="$(OutputPath);$(IntermediateOutputPath)" />
+  </Target>
+  <Target Name="EnsureNativeBuildContainerImageAvailable" >
+    <Exec Command="$(PowershellCommand) -noprofile $(MSBuildThisFileDirectory)/Ensure-DockerImageAvailable.ps1 $(NativeBuildContainerImage)" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" />
   </Target>
 
   <Target Name="WindowsCMakeBuild" Inputs="@(NativeInputFiles)" Outputs="$(IntermediateOutputPath)Nativebuild.done" >
     <PropertyGroup>
       <FAST_NATIVE_BUILD Condition=" '$(FAST_NATIVE_BUILD)' != 'false' ">true</FAST_NATIVE_BUILD>
       <DockerBuildCommand>docker run -i --rm --env-file $(ContainerEnvFile) --env NATIVE_BUILD_JOBS $(RepositoryRootVolumeMount) -w $(NativeBuildContainerWorkingDirectory) --cap-add=SYS_TIME</DockerBuildCommand>
-      <DockerBuildCommand>$(DockerBuildCommand) -v $(NativeBuildDockerVolume):/tmp/repo </DockerBuildCommand>
-      <DockerBuildCommand>$(DockerBuildCommand) --env FAST_NATIVE_BUILD=$(FAST_NATIVE_BUILD) </DockerBuildCommand>
-      <DockerBuildCommand>$(DockerBuildCommand) $(NativeBuildContainerImage) $(NativeBuildContainerCommand) $(NativeBuildContainerCommandArguments)</DockerBuildCommand>
+      <DockerBuildCommand>$(DockerBuildCommand) -v $(NativeBuildDockerVolume):/tmp/repo</DockerBuildCommand>
+      <DockerBuildCommand>$(DockerBuildCommand) --env FAST_NATIVE_BUILD=$(FAST_NATIVE_BUILD)</DockerBuildCommand>
+      <DockerBuildCommand>$(DockerBuildCommand) $(NativeBuildContainerImage) $(NativeBuildContainerCommand)</DockerBuildCommand>
     </PropertyGroup>
     <Exec Command="docker volume create $(NativeBuildDockerVolume)" StandardOutputImportance="low" />
-    <Message Importance="high" text="Executing az acr login -n $(ContainerImageRepository)" />
-    <Exec Command="az acr login -n $(ContainerImageRepository)" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" />
     <Message Importance="high" text="Executing $(DockerBuildCommand)" />
     <Exec Command="$(DockerBuildCommand)" IgnoreExitCode="false" />
     <Touch Files="$(IntermediateOutputPath)Nativebuild.done" AlwaysCreate="true" />
   </Target>
 
   <Target Name="WindowsCTestBuild">
-    <Exec Command="az acr login -n $(ContainerImageRepository)" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" />
-    <Exec Command="docker run -i --rm --env-file $(ContainerEnvFile) --env NATIVE_BUILD_JOBS $(RepositoryRootVolumeMount) -w $(NativeBuildContainerWorkingDirectory) $(NativeBuildContainerImage) $(NativeUnitTestContainerCommand) $(NativeBuildContainerCommandArguments)" IgnoreExitCode="false" ConsoleToMsBuild="true" />
+    <PropertyGroup>
+      <DockerBuildCommand>docker run -i --rm --env-file $(ContainerEnvFile) --env NATIVE_BUILD_JOBS $(RepositoryRootVolumeMount) -w $(NativeBuildContainerWorkingDirectory) --cap-add=SYS_TIME</DockerBuildCommand>
+      <DockerBuildCommand>$(DockerBuildCommand) -v $(NativeBuildDockerVolume):/tmp/repo</DockerBuildCommand>
+      <DockerBuildCommand>$(DockerBuildCommand) -w $(NativeBuildContainerBinaryDirectory)</DockerBuildCommand>
+      <DockerBuildCommand>$(DockerBuildCommand) $(NativeBuildContainerImage) $(NativeUnitTestContainerCommand)</DockerBuildCommand>
+  </PropertyGroup>
+    <Message Importance="high" text="Executing $(DockerBuildCommand)" />
+    <Exec Command="$(DockerBuildCommand)" IgnoreExitCode="false" />
   </Target>
 
   <Target Name="Build" DependsOnTargets="$(LinuxCMakeProjBuildDependsOnTargets)" Condition=" '$(NativeOfficialBuild)' == 'true' " />
