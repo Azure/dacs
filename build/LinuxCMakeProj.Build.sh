@@ -16,13 +16,7 @@ function execute_rsync() {
   fi
 }
 
-if [ -z "$1" ]
-then
-  echo Missing Required Command Line Parameter: PATH_TO_SOURCE
-  exit 1
-else
-  PATH_TO_SOURCE=$1
-fi
+PATH_TO_SOURCE="$(cd "$(dirname "$0")/.." && pwd )"
 
 # mitigation for container timing issue where current folder may not yet have write permissions
 n=0
@@ -69,7 +63,8 @@ if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
   CMAKE_BINARY_DIR=/tmp$CMAKE_BINARY_DIR
 
   # Sync source
-  cp /repo/CMakeLists.txt /tmp/repo/CMakeLists.txt
+  mkdir -p /tmp$PATH_TO_SOURCE
+  cp $PATH_TO_SOURCE/CMakeLists.txt /tmp$PATH_TO_SOURCE/CMakeLists.txt
 
   IFS=':'
   read -ra dirs <<< "$SRC_SYNC_DIRS"
