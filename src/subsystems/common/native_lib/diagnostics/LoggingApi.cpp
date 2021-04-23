@@ -4,6 +4,8 @@
 // This file implements the LoggingApi
 //--------------------------------------------------------------------------------------------------------------------------------------------
 #include "LoggingApi.h"
+#include <unistd.h>
+#include <fcntl.h>
 //--------------------------------------------------------------------------------------------------------------------------------------------
 thread_local std::string AutoOperationIdTLS::OperationIdTLS{};
 //--------------------------------------------------------------------------------------------------------------------------------------------
@@ -28,7 +30,12 @@ void LoggingApi::Init()
         }
         else
         {
-            LOG_INFO("Initialized logging without GLOG.");
+            LOG_INFO("Initialized logging.");
+        }
+
+        if(::fcntl(1, F_SETPIPE_SZ, 10000000) == -1)
+        {
+            LOG_WARN("unable to set stdout pipe size");
         }
     }
 };
