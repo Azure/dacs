@@ -32,11 +32,6 @@ void LoggingApi::Init()
         {
             LOG_INFO("Initialized logging.");
         }
-
-        if(::fcntl(1, F_SETPIPE_SZ, 10000000) == -1)
-        {
-            LOG_WARN("unable to set stdout pipe size");
-        }
     }
 };
 //-------------------------------------------------------------------------------------------------------------------------------------------
@@ -54,6 +49,7 @@ void LoggingApi::Shutdown()
 //-------------------------------------------------------------------------------------------------------------------------------------------
 void LoggingApi::Flush()
 {
+    ::fflush(stdout);
     if(m_bInitAsync)
     {
         LOG_INFO("Flushing GLOG logs.");
