@@ -23,12 +23,14 @@
     -->
     <NativeBuildDockerVolume Condition=" '$(OS)' == 'Windows_NT' ">dacs_$(RepositoryRootPath.Replace(':', '').Replace('\', '_').Replace(' ', '_').ToLowerInvariant())</NativeBuildDockerVolume>
     <NativeBuildDockerVolume Condition=" '$(OS)' == 'Windows_NT' ">$(NativeBuildDockerVolume.TrimEnd('_'))</NativeBuildDockerVolume>
+    <LinuxCMakeProjPublishDependsOnTargets>
+      Build;
+    </LinuxCMakeProjPublishDependsOnTargets>
   </PropertyGroup>
 
   <Import Project="$(MSBuildThisFileDirectory)UpdateMetadata\UpdateMetadataContent.targets" />
 
   <Target Name="GetNativeBuildParameters">
-
     <PropertyGroup>
       <NativeBuildWorkingDirectory>$(IntermediateOutputPath)</NativeBuildWorkingDirectory>
       <NativeBuildCommand>$(RepositoryRootPath)build/LinuxCMakeProj.Build.sh</NativeBuildCommand>
@@ -117,6 +119,7 @@
   </Target>
 
   <Target Name="Build" DependsOnTargets="$(LinuxCMakeProjBuildDependsOnTargets)" Condition=" '$(NativeOfficialBuild)' == 'true' " />
+  <Target Name="LinuxCMakeProjPublish" DependsOnTargets="$(LinuxCMakeProjPublishDependsOnTargets)" />
   <Target Name="NativeUnitTest" DependsOnTargets="$(LinuxCMakeProjNativeUnitTestDependsOnTargets)" Condition=" '$(NativeOfficialBuild)' == 'true' " />
 
   <Target Name="Clean" >
