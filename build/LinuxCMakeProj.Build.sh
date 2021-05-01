@@ -1,22 +1,21 @@
 #!/bin/bash
-# When calling execute_rsync, first 2 args must be source and destination,
-# followed by options
-function execute_rsync() {
-  local src=$1
-  local dst=$2
-  mkdir -p $src
-  mkdir -p $dst
+function execute_build() {
+    local cuda_deps=$1
+  echo "Build for ${cuda_deps} projects......"
 
-  echo Executing rsync $*
-  rsync $*
+  mkdir -p $CMAKE_RUNTIME_OUTPUT_DIRECTORY/${cuda_deps}
+  cd $CMAKE_RUNTIME_OUTPUT_DIRECTORY/${cuda_deps}
+
+  cmake -DCUDA_DEPENDENCY=${cuda_deps} -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_CONFIGURATION $PATH_TO_SOURCE
+  make -j $NATIVE_BUILD_JOBS
 
   if [ $? -ne 0 ]; then
-    echo Error: rsync $* failed.
     exit 1
   fi
 }
 
 PATH_TO_SOURCE="$(cd "$(dirname "$0")/.." && pwd )"
+. "${PATH_TO_SOURCE}/build/LinuxCMakeProj.CommonUtils.sh"
 
 # mitigation for container timing issue where current folder may not yet have write permissions
 n=0
@@ -73,7 +72,7 @@ if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
   done
   IFS=' '
 
-  execute_rsync $CMAKE_BINARY_DIR/ /tmp$CMAKE_BINARY_DIR -avu --delete --exclude=src --exclude=CMakeFiles
+  execute_rsync $CMAKE_BINARY_DIR_ORIG /tmp$CMAKE_BINARY_DIR -avu --delete --exclude=src --exclude=CMakeFiles
 
   execute_rsync $OBJ_DIR /tmp$OBJ_DIR -avu --delete
 
@@ -82,17 +81,17 @@ if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
 fi
 
 if [ -z $NATIVE_BUILD_JOBS ]; then
-  NATIVE_BUILD_JOBS=8
+  NATIVE_BUILD_JOBS=12
 fi
 
-cmake -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_CONFIGURATION $PATH_TO_SOURCE
-make -j $NATIVE_BUILD_JOBS
+execute_build "non_cuda"
 
-if [ $? -ne 0 ]; then
-  exit 1
-fi
+execute_build "cuda_10_1"
+
+execute_build "cuda_11_0"
 
 if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
   execute_rsync $CMAKE_BINARY_DIR/ $CMAKE_BINARY_DIR_ORIG -avu --delete --exclude=src --exclude=CMakeFiles
-  execute_rsync /tmp$OBJ_DIR $OBJ_DIR -avu --delete
+
+  execute_rsync $CMAKE_LIBRARY_OUTPUT_DIRECTORY/ $CMAKE_REMOTE_PUBLISH_DIRECTORY -avu --delete
 fi
