@@ -11,12 +11,17 @@ namespace Microsoft.Azure.DACS.Toolsets
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.IO;
-
+    using System.Text;
     using Microsoft.Build.Framework;
     using Microsoft.Build.Utilities;
 
     public class UpdateMetadata : Task
     {
+        private static readonly string[] MetadataPropertySeperator = new string[] { "," };
+        private static readonly string[] MetadataPropertyValueSeperator = new string[] { "=" };
+        private static readonly string[] AdditionalMetadataPropertySeperator = new string[] { ",," };
+        private static readonly string[] AdditionalMetadataPropertyValueSeperator = new string[] { "==" };
+
         [Required]
         public ITaskItem[] TemplateFiles
         {
@@ -45,6 +50,13 @@ namespace Microsoft.Azure.DACS.Toolsets
             set;
         }
 
+        // additional metadata properties from the project
+        public string AdditionalMetadataProperties
+        {
+            get;
+            set;
+        }
+
         public override bool Execute()
         {
             if (Environment.GetEnvironmentVariable("ATTACH_DEBUGGER_UpdateMetadata") != null)
@@ -68,6 +80,28 @@ namespace Microsoft.Azure.DACS.Toolsets
 
             // return true if no errors
             return !this.Log.HasLoggedErrors;
+        }
+
+        private static void ParseAndAddMetadataProperties(
+            IDictionary<string, string> propertyDictionary,
+            string metadataProperties,
+            string[] propertySeperator,
+            string[] propertyValueSeperator)
+        {
+            if (string.IsNullOrEmpty(metadataProperties))
+            {
+                return;
+            }
+
+            string[] metadataParams = metadataProperties.Split(propertySeperator, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string metadataParam in metadataParams)
+            {
+                string[] metadataKeyValue = metadataParam.Split(propertyValueSeperator, StringSplitOptions.None);
+                if (metadataKeyValue.Length > 1)
+                {
+                    propertyDictionary.Add(metadataKeyValue[0].Trim(), metadataKeyValue[1].Trim());
+                }
+            }
         }
 
         private void UpdateContentWithMetadata(string templateFilePath, string generatedFilePath, Dictionary<string, string> metadataPropertyDictionary)
@@ -117,17 +151,17 @@ namespace Microsoft.Azure.DACS.Toolsets
                 }
             }
 
-            string[] metadataParams = this.MetadataProperties.Split(',');
+            ParseAndAddMetadataProperties(
+                propertyDictionary,
+                this.MetadataProperties,
+                MetadataPropertySeperator,
+                MetadataPropertyValueSeperator);
 
-            foreach (string metadataParam in metadataParams)
-            {
-                string[] metadataKeyValue = metadataParam.Split('=');
-
-                if (metadataKeyValue.Length > 1)
-                {
-                    propertyDictionary.Add(metadataKeyValue[0], metadataKeyValue[1]);
-                }
-            }
+            ParseAndAddMetadataProperties(
+                propertyDictionary,
+                this.AdditionalMetadataProperties,
+                AdditionalMetadataPropertySeperator,
+                AdditionalMetadataPropertyValueSeperator);
 
             return propertyDictionary;
         }
