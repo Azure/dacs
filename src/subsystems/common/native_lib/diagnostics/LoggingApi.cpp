@@ -50,6 +50,7 @@ void LoggingApi::Shutdown()
 void LoggingApi::Flush()
 {
     ::fflush(stdout);
+    ::fflush(stderr);
     if(m_bInitAsync)
     {
         LOG_INFO("Flushing GLOG logs.");
