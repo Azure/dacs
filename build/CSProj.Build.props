@@ -7,6 +7,7 @@
     <GenerateAssemblyInformationalVersionAttribute>false</GenerateAssemblyInformationalVersionAttribute>
     <GeneratePackageOnBuild Condition=" '$(CDP_BUILD_TYPE)' == '' And '$(GenerateNugetPackage)' == 'true' ">true</GeneratePackageOnBuild>
     <IntermediateOutputPath Condition=" '$(SelfContained)' == 'true' " >$(IntermediateOutputPath)\sc</IntermediateOutputPath>
+    <OutputPath Condition=" '$(SelfContained)' == 'true' " >$(OutputPath)\sc</OutputPath>
   </PropertyGroup>
 
   <PropertyGroup>
