@@ -1,6 +1,6 @@
 #!/bin/bash
 function execute_build() {
-    local cuda_deps=$1
+  local cuda_deps=$1
   echo "Build for ${cuda_deps} projects......"
 
   mkdir -p $CMAKE_RUNTIME_OUTPUT_DIRECTORY/${cuda_deps}
@@ -11,6 +11,27 @@ function execute_build() {
 
   if [ $? -ne 0 ]; then
     exit 1
+  fi
+}
+
+function cleanup_build() {
+  local cuda_deps=$1
+  echo "Clean build output for ${cuda_deps} projects......"
+  CLEAN_BIN_PATH="$CMAKE_BINARY_DIR/${cuda_deps}"
+  CLEAN_OBJ_PATH="$OBJ_DIR/${cuda_deps}"
+  if [[ ! -f $CLEAN_BIN_PATH/Makefile ]]; then
+    echo Cleaning up /tmp$CLEAN_BIN_PATH
+    rm -rf /tmp$CLEAN_BIN_PATH/*
+    if [ $? -ne 0 ]; then
+      echo Error: Cleanup of /tmp$CLEAN_BIN_PATH failed.
+      exit 1
+    fi
+    echo Cleaning up /tmp$CLEAN_OBJ_PATH
+    rm -rf /tmp$CLEAN_OBJ_PATH/*
+    if [ $? -ne 0 ]; then
+      echo Error: Cleanup of /tmp$CLEAN_OBJ_PATH failed.
+      exit 1
+    fi
   fi
 }
 
@@ -44,20 +65,12 @@ if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
 
   # if developer deleted Makefile in the bin/(Debug|Release)/native folder to do a clean build for example,
   # we should cleanup the tmp repo
-  if [[ ! -f $CMAKE_BINARY_DIR/Makefile ]]; then
-    echo Cleaning up /tmp$CMAKE_BINARY_DIR
-    rm -rf /tmp$CMAKE_BINARY_DIR/*
-    if [ $? -ne 0 ]; then
-      echo Error: Cleanup of /tmp$CMAKE_BINARY_DIR failed.
-      exit 1
-    fi
-    echo Cleaning up /tmp$OBJ_DIR
-    rm -rf /tmp$OBJ_DIR/*
-    if [ $? -ne 0 ]; then
-      echo Error: Cleanup of /tmp$OBJ_DIR failed.
-      exit 1
-    fi
-  fi
+  cleanup_build "non_cuda"
+
+  cleanup_build "cuda_10_1"
+
+  cleanup_build "cuda_11_0"
+
   CMAKE_BINARY_DIR_ORIG=$CMAKE_BINARY_DIR
   CMAKE_BINARY_DIR=/tmp$CMAKE_BINARY_DIR
 
