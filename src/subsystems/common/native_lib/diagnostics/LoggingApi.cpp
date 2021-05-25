@@ -10,11 +10,14 @@
 thread_local std::string AutoOperationIdTLS::OperationIdTLS{};
 //--------------------------------------------------------------------------------------------------------------------------------------------
 bool LoggingApi::m_bInitAsync{false};
+bool LoggingApi::m_bShutdownLogging{false};
 int LoggingApi::m_nOwnerId{-1};
 //-------------------------------------------------------------------------------------------------------------------------------------------
 void LoggingApi::Init()
 {
     Shutdown();
+
+    m_bShutdownLogging = false;
 
     if(!m_bInitAsync)
     {
@@ -45,6 +48,9 @@ void LoggingApi::Shutdown()
         m_bInitAsync = false;
         google::ShutdownGoogleLogging();
     }
+
+    LOG_INFO("LoggingApi::Shutdown()");
+    m_bShutdownLogging = true;
 }
 //-------------------------------------------------------------------------------------------------------------------------------------------
 void LoggingApi::Flush()
