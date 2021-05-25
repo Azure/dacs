@@ -79,6 +79,8 @@ public:
 
         if(LOG_LEVEL < static_cast<int>(LEVEL)) return;
 
+        if(m_bShutdownLogging) return;
+
         if(m_bInitAsync)
         {
             // The below code does NOT use switch-case intentionally because of perf reasons
@@ -120,9 +122,12 @@ public:
     ~LoggingApi() { Shutdown(); }
 
 private:
-    // This assumes we init/shutdown LoggingApi in a thread-safe manner,
+    // This assumes we init/shutdown async LoggingApi in a thread-safe manner,
     // therefore we intentionally do not deal with race conditions.
     static bool m_bInitAsync;
+
+    // Disable async/sync logging when set
+    static bool m_bShutdownLogging;
 
     // 1. Proxy client can read its owner from configuration
     // 2. Proxy server will use the owner of proxy client it's attached to.
