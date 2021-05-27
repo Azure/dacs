@@ -5,15 +5,25 @@
 usage="Usage : $0 [--no-tty]"
 
 TTY_OPTION="-t"
+RESTORE="true"
+
 if [ "$1" == "--no-tty" ]; then
     TTY_OPTION=""
     shift
 fi
 
+if [ "$1" == "--no-restore" ]; then
+    RESTORE="false"
+    shift
+fi
+
+
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-echo Syncing build environment ...
-dotnet msbuild dirs.proj -t:Restore -noConsoleLogger
+if [[ "$RESTORE" == "true" ]]; then
+    echo Syncing build environment ...
+    dotnet msbuild dirs.proj -t:Restore -noConsoleLogger
+fi
 
 # get Native container for Linux build
 nativeBuildRepository="dacs.azurecr.io/native-build"
