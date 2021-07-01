@@ -101,7 +101,9 @@ execute_build "non_cuda"
 
 execute_build "cuda_10_1"
 
-execute_build "cuda_11_0"
+if [[ "$SKIP_CUDA_11_BUILD" != "true" ]]; then
+  execute_build "cuda_11_0"
+fi
 
 if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
   execute_rsync $CMAKE_BINARY_DIR/ $CMAKE_BINARY_DIR_ORIG -avu --delete --exclude=src --exclude=CMakeFiles
