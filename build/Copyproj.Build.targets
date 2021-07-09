@@ -14,6 +14,11 @@
 
   <Target Name="CreateManifestResourceNames" />
   <Target Name="CoreCompile" />
-  <Target Name="AfterBuild" DependsOnTargets="$(AfterBuildDependsOnTargets)" />
-
+  <Target Name="AfterBuild" DependsOnTargets="$(AfterBuildDependsOnTargets)" >
+     <ItemGroup>
+        <ShellFiles Include="**/*.sh" />
+     </ItemGroup>
+     <Message Importance="high"  text="WorkingDirectory= $(OutDir)" />
+     <Exec WorkingDirectory="$(OutDir)" Command="chmod +x @(ShellFiles, ' ')" Condition=" '$(OS)' != 'Windows_NT' and @(ShellFiles) != '' " />
+  </Target>
 </Project>
