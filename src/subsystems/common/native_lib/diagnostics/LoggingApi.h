@@ -137,7 +137,10 @@ private:
     template<size_t M, typename... _TArgs>
     static decltype(auto) FormatMsg(const char(&message)[M], _TArgs&&... Fargs)
     {
-        return fmt::format(message, AutoOperationIdTLS::OperationId(), m_nOwnerId, std::forward<_TArgs>(Fargs)...);
+        // the operation id is always causing log corruption. There is a work item to fix it.
+        // meanwhile removing operation id so that we can debug other issues.
+        // internal-reference-removed
+        return fmt::format(message, "", m_nOwnerId, std::forward<_TArgs>(Fargs)...);
     }
 };
 //-------------------------------------------------------------------------------------------------------------------------------------------
