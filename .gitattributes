@@ -118,4 +118,3 @@ setup.py text eol=crlf
 #*.PDF   diff=astextplain
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
-*.pt filter=lfs diff=lfs merge=lfs -text
