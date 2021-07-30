@@ -31,6 +31,9 @@
 #include <iostream>
 #include <assert.h>
 #include <string>
+#include <chrono>
+#include <sys/syscall.h>
+#define gettid() syscall(SYS_gettid)
 //--------------------------------------------------------------------------------------------------------------------------------------------
 #define FMT_HEADER_ONLY
 #include "spdlog/fmt/bundled/format.h"
@@ -137,10 +140,18 @@ private:
     template<size_t M, typename... _TArgs>
     static decltype(auto) FormatMsg(const char(&message)[M], _TArgs&&... Fargs)
     {
+        std::chrono::nanoseconds currentTime = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
+
         // the operation id is always causing log corruption. There is a work item to fix it.
         // meanwhile removing operation id so that we can debug other issues.
         // internal-reference-removed
-        return fmt::format(message, "", m_nOwnerId, std::forward<_TArgs>(Fargs)...);
+        return fmt::format(message, 
+            currentTime.count(),
+            ::getpid(),
+            gettid(),
+            "",
+            m_nOwnerId,
+            std::forward<_TArgs>(Fargs)...);
     }
 };
 //-------------------------------------------------------------------------------------------------------------------------------------------
@@ -151,7 +162,7 @@ auto parseFileName(const char(&file)[N])
     return pos ? pos + 1 : file;
 }
 #define __FILENAME__ parseFileName(__FILE__)
-#define FORMAT_STR "|DeviceProxy|operation_Id:{}|owner_Id:{}:{}:{}({}): "
+#define FORMAT_STR "|DeviceProxy|time_int:{}|pid:{}|tid:{}|operation_Id:{}|rank:{}|{}:{}({}): "
 //-------------------------------------------------------------------------------------------------------------------------------------------
 #define LOG_TRACE(message, args...) \
     LoggingApi::LogMessage<LogLevel::Trace>("DACS_CTR:TRACE" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
