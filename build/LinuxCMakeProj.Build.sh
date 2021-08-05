@@ -1,12 +1,18 @@
 #!/bin/bash
 function execute_build() {
   local cuda_deps=$1
-  echo "Build for ${cuda_deps} projects......"
+  local python_deps=$2
+
+  echo "Build for ${cuda_deps} and python ${python_deps} projects......"
 
   mkdir -p $CMAKE_RUNTIME_OUTPUT_DIRECTORY/${cuda_deps}
   cd $CMAKE_RUNTIME_OUTPUT_DIRECTORY/${cuda_deps}
 
-  cmake -DCUDA_DEPENDENCY=${cuda_deps} -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_CONFIGURATION $PATH_TO_SOURCE
+  cmake \
+    -DPYTHON_DEPENDENCY=${python_deps} \
+    -DCUDA_DEPENDENCY=${cuda_deps} \
+    -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_CONFIGURATION \
+    $PATH_TO_SOURCE
   make -j $NATIVE_BUILD_JOBS
 
   if [ $? -ne 0 ]; then
@@ -97,13 +103,19 @@ if [ -z $NATIVE_BUILD_JOBS ]; then
   NATIVE_BUILD_JOBS=12
 fi
 
-execute_build "non_cuda"
+# Though we are looping over different python versions
+# Device proxy should not be rebuilt and hence the build time
+# would not be significantly higher
+for pythonVersion in "3.6" "3.7" "3.8"; do
 
-execute_build "cuda_10_1"
+  execute_build "non_cuda" "$pythonVersion"
 
-if [[ "$SKIP_CUDA_11_BUILD" != "true" ]]; then
-  execute_build "cuda_11_0"
-fi
+  execute_build "cuda_10_1" "$pythonVersion"
+
+  if [[ "$SKIP_CUDA_11_BUILD" != "true" ]]; then
+    execute_build "cuda_11_0" "$pythonVersion"
+  fi
+done
 
 if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
   execute_rsync $CMAKE_BINARY_DIR/ $CMAKE_BINARY_DIR_ORIG -avu --delete --exclude=src --exclude=CMakeFiles
