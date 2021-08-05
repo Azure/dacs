@@ -398,6 +398,7 @@ code-model-v1
 .pipelines/deps/*
 src/subsystems/reliability/criu_deduper/out/
 src/subsystems/reliability/device_proxy/out/
+src/subsystems/reliability/callstack_utils/out/
 
 bin/**
 data/**
