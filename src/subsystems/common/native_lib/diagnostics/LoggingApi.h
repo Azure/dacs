@@ -34,6 +34,8 @@
 #include <chrono>
 #include <sys/syscall.h>
 #define gettid() syscall(SYS_gettid)
+#define GET_TIME std::chrono::duration_cast<std::chrono::nanoseconds>\
+(std::chrono::high_resolution_clock::now().time_since_epoch()).count()
 //--------------------------------------------------------------------------------------------------------------------------------------------
 #define FMT_HEADER_ONLY
 #include "spdlog/fmt/bundled/format.h"
@@ -140,13 +142,11 @@ private:
     template<size_t M, typename... _TArgs>
     static decltype(auto) FormatMsg(const char(&message)[M], _TArgs&&... Fargs)
     {
-        std::chrono::nanoseconds currentTime = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
-
         // the operation id is always causing log corruption. There is a work item to fix it.
         // meanwhile removing operation id so that we can debug other issues.
         // internal-reference-removed
         return fmt::format(message, 
-            currentTime.count(),
+            GET_TIME,
             ::getpid(),
             gettid(),
             "",
@@ -162,7 +162,8 @@ auto parseFileName(const char(&file)[N])
     return pos ? pos + 1 : file;
 }
 #define __FILENAME__ parseFileName(__FILE__)
-#define FORMAT_STR "|DeviceProxy|time_int:{}|pid:{}|tid:{}|operation_Id:{}|rank:{}|{}:{}({}): "
+#define FORMAT_BASE "|DeviceProxy|time_int:{}|pid:{}|tid:{}|"
+#define FORMAT_STR FORMAT_BASE "operation_Id:{}|rank:{}|{}:{}({}): "
 //-------------------------------------------------------------------------------------------------------------------------------------------
 #define LOG_TRACE(message, args...) \
     LoggingApi::LogMessage<LogLevel::Trace>("DACS_CTR:TRACE" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
@@ -189,7 +190,7 @@ auto parseFileName(const char(&file)[N])
 #define CX_LOG_ERROR(message, args...) \
     LoggingApi::LogMessage<LogLevel::Error>("CX_RAW:ERROR" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 #define LOG_STACK(message, args...) \
-    std::cerr << fmt::format("DACS_CTR:ERROR|" message, ##args) <<  std::endl;
+    std::cerr << fmt::format("DACS_CTR:ERROR" FORMAT_BASE message, GET_TIME, ::getpid(), gettid(), ##args) <<  std::endl;
 //-------------------------------------------------------------------------------------------------------------------------------------------
 #define LOG_CRITICAL(message, args...) \
     LoggingApi::LogMessage<LogLevel::Critical>("DACS_CTR:CRITICAL" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
