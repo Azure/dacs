@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <RepositoryRootPath>$([MSBuild]::NormalizeDirectory($(MSBuildThisFileDirectory)..))</RepositoryRootPath>
+    <RepositorySrcRootPath>$([MSBuild]::NormalizeDirectory($(RepositoryRootPath)src))</RepositorySrcRootPath>
+    <SubsystemsPath>$([MSBuild]::NormalizeDirectory($(RepositorySrcRootPath)subsystems))</SubsystemsPath>
+    <NativeBuildPath>$([MSBuild]::NormalizeDirectory($(SubsystemsPath)reliability\device_proxy))</NativeBuildPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <Configuration Condition=" '$(Configuration)'=='' ">Debug</Configuration>
+    <SkipCuda11Build Condition=" '$(SkipCuda11Build)'=='' ">false</SkipCuda11Build>
+    <MSBuildProjectRelativePath>$(MSBuildProjectDirectory.Replace($(RepositorySrcRootPath), ''))</MSBuildProjectRelativePath>
+    <MSBuildProjectRelativePath Condition="$([System.IO.Path]::IsPathRooted($(MSBuildProjectRelativePath)))"></MSBuildProjectRelativePath>
+    <BuildBinaryRoot Condition=" '$(BuildBinaryRoot)'=='' ">$(RepositoryRootPath)bin</BuildBinaryRoot>
+    <BuildObjectRoot Condition=" '$(BuildObjectRoot)'=='' ">$(RepositoryRootPath)obj</BuildObjectRoot>
+    <OutputPath>$(BuildBinaryRoot)\$(Configuration)\$(MSBuildProjectRelativePath)</OutputPath>
+    <BaseIntermediateOutputPath>$(BuildObjectRoot)\$(Configuration)\$(MSBuildProjectRelativePath)</BaseIntermediateOutputPath>
+    <IntermediateOutputPath>$(BuildObjectRoot)\$(Configuration)\$(MSBuildProjectRelativePath)</IntermediateOutputPath>
+    <PublishDir>$(IntermediateOutputPath)\$(RuntimeIdentifier)\publish\</PublishDir>
+    <PowershellCoreCommand>pwsh</PowershellCoreCommand>
+    <PowershellCommand Condition=" '$(OS)' != 'Windows_NT' ">pwsh</PowershellCommand>
+    <PowershellCommand Condition=" '$(PowershellCommand)' == ''">powershell</PowershellCommand>
+    <TargetFramework Condition=" '$(TargetFramework)' == '' ">netcoreapp3.1</TargetFramework>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <HighEntropyVA>true</HighEntropyVA>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(SlnGenSolutionFileFullPath)' == '' ">
+    <SlnGenSolutionFileFullPath Condition=" '$(MSBuildProjectRelativePath)' != '' ">$(RepositoryRootPath)sln\$(MSBuildProjectRelativePath)\$(MSBuildProjectName).sln</SlnGenSolutionFileFullPath>
+    <SlnGenSolutionFileFullPath Condition=" '$(MSBuildProjectRelativePath)' == '' ">$(RepositoryRootPath)sln\$(MSBuildProjectName).sln</SlnGenSolutionFileFullPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SlnGen">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>
