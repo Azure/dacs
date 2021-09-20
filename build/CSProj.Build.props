@@ -5,7 +5,7 @@
     <GenerateAssemblyVersionAttribute>false</GenerateAssemblyVersionAttribute>
     <GenerateAssemblyFileVersionAttribute>false</GenerateAssemblyFileVersionAttribute>
     <GenerateAssemblyInformationalVersionAttribute>false</GenerateAssemblyInformationalVersionAttribute>
-    <GeneratePackageOnBuild Condition=" '$(CDP_BUILD_TYPE)' == '' And '$(GenerateNugetPackage)' == 'true' ">true</GeneratePackageOnBuild>
+    <GeneratePackageOnBuild Condition=" '$(GenerateNugetPackage)' == 'true' ">true</GeneratePackageOnBuild>
     <IntermediateOutputPath Condition=" '$(SelfContained)' == 'true' " >$(IntermediateOutputPath)\sc</IntermediateOutputPath>
     <OutputPath Condition=" '$(SelfContained)' == 'true' " >$(OutputPath)\sc</OutputPath>
   </PropertyGroup>
@@ -15,9 +15,6 @@
   </PropertyGroup>
   
   <ItemGroup>
-    <Compile Include="$(MSBuildThisFileDirectory)..\.version\PipelineAssemblyInfo.cs">
-      <Link>Properties\PipelineAssemblyInfo.cs</Link>
-    </Compile>
     <Compile Include="$(MSBuildThisFileDirectory)StylecopGlobalSuppressions.cs">
       <Link>Properties\StylecopGlobalSuppressions.cs</Link>
     </Compile>

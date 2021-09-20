@@ -118,9 +118,9 @@
     <Exec Command="$(DockerBuildCommand)" IgnoreExitCode="false" />
   </Target>
 
-  <Target Name="Build" DependsOnTargets="$(LinuxCMakeProjBuildDependsOnTargets)" Condition=" '$(NativeOfficialBuild)' == 'true' " />
+  <Target Name="Build" DependsOnTargets="$(LinuxCMakeProjBuildDependsOnTargets)" />
   <Target Name="LinuxCMakeProjPublish" DependsOnTargets="$(LinuxCMakeProjPublishDependsOnTargets)" />
-  <Target Name="NativeUnitTest" DependsOnTargets="$(LinuxCMakeProjNativeUnitTestDependsOnTargets)" Condition=" '$(NativeOfficialBuild)' == 'true' " />
+  <Target Name="NativeUnitTest" DependsOnTargets="$(LinuxCMakeProjNativeUnitTestDependsOnTargets)" />
 
   <Target Name="Clean" >
     <ItemGroup>

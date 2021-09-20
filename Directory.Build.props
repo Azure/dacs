@@ -1,0 +1,7 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildThisFileDirectory)build\Build.props" />
+  <Import Project="$(MSBuildThisFileDirectory)build\Proj.Build.props" Condition="'$(MSBuildProjectExtension)'=='.proj'" />
+  <Import Project="$(MSBuildThisFileDirectory)build\CSProj.Build.props" Condition="'$(MSBuildProjectExtension)'=='.csproj'" />
+  <Import Project="$(MSBuildThisFileDirectory)build\Copyproj.Build.props" Condition="'$(MSBuildProjectExtension)'=='.copyproj'" />
+  <Import Project="$(MSBuildThisFileDirectory)build\LinuxCMakeProj.Build.props" Condition="'$(MSBuildProjectExtension)'=='.linuxcmakeproj'" />
+</Project>
