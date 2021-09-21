@@ -15,6 +15,9 @@
   </PropertyGroup>
   
   <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)..\.version\PipelineAssemblyInfo.cs">
+      <Link>Properties\PipelineAssemblyInfo.cs</Link>
+    </Compile>
     <Compile Include="$(MSBuildThisFileDirectory)StylecopGlobalSuppressions.cs">
       <Link>Properties\StylecopGlobalSuppressions.cs</Link>
     </Compile>
