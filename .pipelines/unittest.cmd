@@ -39,6 +39,11 @@ set UNIT_TEST_DLLS=
     call set "UNIT_TEST_DLLS=%%UNIT_TEST_DLLS%% !testDLL!,"
 )
 
+@IF "%UNIT_TEST_DLLS%" == "" (
+    @ECHO "No tests found. Exiting." 1>&2
+    @exit /b 0
+)
+
 set UNIT_TEST_DLLS=%UNIT_TEST_DLLS:~0,-1%
 
 FOR /F %%i in ('dir /s /b bin\Test-With-Retry.ps1') do ( SET TEST_SCRIPT=%%i)

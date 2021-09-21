@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Project Sdk="Microsoft.Build.NoTargets" >
   <ItemGroup>
-    <ProjectReference Include="$(RepositorySrcRootPath)native/native.linuxcmakeproj" >
+    <ProjectReference Include="$(RepositorySrcRootPath)native/native_build.linuxcmakeproj" >
       <ReferenceRuntimeIdentifier>linux-x64</ReferenceRuntimeIdentifier>
       <CodePackageFolder>job/native/lib</CodePackageFolder>
     </ProjectReference>
