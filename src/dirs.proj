@@ -2,5 +2,6 @@
   <ItemGroup>
     <ProjectReference Include="native\native.copyproj" />
     <ProjectReference Include="subsystems\dirs.proj" />
+    <ProjectReference Include="scripts\scripts.copyproj" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,12 @@
+﻿<Project Sdk="Microsoft.Build.NoTargets" >
+  <!-- Leave this blank to copy entire folder and subfolder contents to output. 
+
+     To override the behavior set FilesToCopy and provide the Include/Exclude values.
+     Here is an example:
+
+  <ItemGroup>
+    <FilesToCopy Include="**" Exclude="*.copyproj;*.sln;obj\**;.vs\**" />
+  </ItemGroup>
+
+-->
+</Project>
