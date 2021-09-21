@@ -1,0 +1,877 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<RuleSet Name="Global Code Analysis Rules" Description=" " ToolsVersion="14.0">
+  <Rules AnalyzerId="AsyncAnalyzers" RuleNamespace="AsyncAnalyzers">
+    <Rule Id="AzDevAsync1" Action="Error" />
+    <Rule Id="AzDevAsync10" Action="Error" />
+    <Rule Id="AzDevAsync11" Action="Error" />
+    <Rule Id="AzDevAsync12" Action="Error" />
+    <Rule Id="AzDevAsync13" Action="Error" />
+    <Rule Id="AzDevAsync14" Action="Error" />
+    <Rule Id="AzDevAsync15" Action="Error" />
+    <Rule Id="AzDevAsync16" Action="Error" />
+    <Rule Id="AzDevAsync2" Action="Error" />
+    <Rule Id="AzDevAsync3" Action="Error" />
+    <Rule Id="AzDevAsync4" Action="Error" />
+    <Rule Id="AzDevAsync5" Action="Error" />
+    <Rule Id="AzDevAsync6" Action="Error" />
+    <Rule Id="AzDevAsync7" Action="Info" />  <!--  TODO: Enable and fix -->
+    <Rule Id="AzDevAsync8" Action="Error" />
+    <Rule Id="AzDevAsync9" Action="Error" />
+  </Rules>
+  <Rules AnalyzerId="Microsoft.Analyzers.ManagedCodeAnalysis" RuleNamespace="Microsoft.Rules.Managed">
+    <Rule Id="CA1000" Action="Error" /> <!-- CA1000: Do not declare static members on generic types -->
+    <Rule Id="CA1001" Action="Info" /> <!-- CA1001: Types that own disposable fields should be disposable TODO: Enable and fix -->
+    <Rule Id="CA1002" Action="Info" /> <!-- CA1002: Do not expose generic lists -->
+    <Rule Id="CA1003" Action="Error" /> <!-- CA1003: Use generic event handler instances -->
+    <Rule Id="CA1004" Action="Error" /> <!-- CA1004: Generic methods should provide type parameter -->
+    <Rule Id="CA1005" Action="Error" /> <!-- CA1005: Avoid excessive parameters on generic types -->
+    <Rule Id="CA1006" Action="Error" /> <!-- CA1006: Do not nest generic types in member signatures -->
+    <Rule Id="CA1007" Action="Error" /> <!-- CA1007: Use generics where appropriate -->
+    <Rule Id="CA1008" Action="Info" /> <!-- CA1008: Enums should have zero value -->
+    <!-- Deprecated rule <Rule Id="CA1009" Action="None" />  CA1009: Declare event handlers correctly -->
+    <Rule Id="CA1010" Action="Error" /> <!-- CA1010: Collections should implement generic interface -->
+    <Rule Id="CA1011" Action="Error" /> <!-- CA1011: Consider passing base types as parameters -->
+    <Rule Id="CA1012" Action="Error" /> <!-- CA1012: Abstract types should not have constructors -->
+    <Rule Id="CA1013" Action="Error" /> <!-- CA1013: Overload operator equals on overloading add and subtract -->
+    <Rule Id="CA1014" Action="Info" /> <!-- CA1014: Mark assemblies with CLSCompliantAttribute TODO: Enable and fix -->
+    <Rule Id="CA1016" Action="Error" /> <!-- CA1016: Mark assemblies with AssemblyVersionAttribute -->
+    <Rule Id="CA1017" Action="Error" /> <!-- CA1017: Mark assemblies with ComVisibleAttribute -->
+    <Rule Id="CA1018" Action="Error" /> <!-- CA1018: Mark attributes with AttributeUsageAttribute -->
+    <Rule Id="CA1019" Action="Error" /> <!-- CA1019: Define accessors for attribute arguments -->
+    <!-- Deprecated rule <Rule Id="CA1020" Action="None" /> CA1020: Avoid namespaces with few types -->
+    <Rule Id="CA1021" Action="Error" /> <!-- CA1021: Avoid out parameters -->
+    <Rule Id="CA1023" Action="Error" /> <!-- CA1023: Indexers should not be multidimensional -->
+    <Rule Id="CA1024" Action="Error" /> <!-- CA1024: Use properties where appropriate -->
+    <!-- Deprecated rule <Rule Id="CA1025" Action="None" /> CA1025: Replace repetitive arguments with params array -->
+    <!-- Deprecated rule <Rule Id="CA1026" Action="None" /> CA1026: Default parameters should not be used -->
+    <Rule Id="CA1027" Action="Error" /> <!-- CA1027: Mark enums with FlagsAttribute -->
+    <Rule Id="CA1028" Action="Error" /> <!-- CA1028: Enum storage should be Int32 -->
+    <Rule Id="CA1030" Action="Error" /> <!-- CA1030: Use events where appropriate -->
+    <Rule Id="CA1031" Action="Info" /> <!-- CA1031: Do not catch general exception types TODO: Enable and fix -->
+    <Rule Id="CA1032" Action="Info" /> <!-- CA1032: Implement standard exception constructors TODO: Enable and fix -->
+    <Rule Id="CA1033" Action="Error" /> <!-- CA1033: Interface methods should be callable by child types -->
+    <Rule Id="CA1034" Action="Info" /> <!-- CA1034: Nested types should not be visible  TODO: Enable and fix -->
+    <!-- Deprecated rule <Rule Id="CA1035" Action="None" /> CA1035: ICollection implementations have strongly typed members -->
+    <Rule Id="CA1036" Action="Error" /> <!-- CA1036: Override methods on comparable types -->
+    <!-- Deprecated rule <Rule Id="CA1038" Action="None" /> CA1038: Enumerators should be strongly typed -->
+    <!-- Deprecated rule <Rule Id="CA1039" Action="None" /> CA1039: Lists are strongly typed -->
+    <Rule Id="CA1040" Action="Error" /> <!-- CA1040: Avoid empty interfaces -->
+    <Rule Id="CA1041" Action="Error" /> <!-- CA1041: Provide ObsoleteAttribute message -->
+    <Rule Id="CA1043" Action="Error" /> <!-- CA1043: Use integral or string argument for indexers -->
+    <Rule Id="CA1044" Action="Error" /> <!-- CA1044: Properties should not be write only -->
+    <Rule Id="CA1045" Action="Error" /> <!-- CA1045: Do not pass types by reference -->
+    <Rule Id="CA1046" Action="Error" /> <!-- CA1046: Do not overload operator equals on reference types -->
+    <Rule Id="CA1047" Action="Error" /> <!-- CA1047: Do not declare protected members in sealed types -->
+    <Rule Id="CA1048" Action="Error" /> <!-- CA1048: Do not declare virtual members in sealed types -->
+    <Rule Id="CA1049" Action="Error" /> <!-- CA1049: Types that own native resources should be disposable -->
+    <Rule Id="CA1050" Action="Error" /> <!-- CA1050: Declare types in namespaces -->
+    <Rule Id="CA1051" Action="Info" /> <!-- CA1051: Do not declare visible instance fields TODO: Enable and fix -->
+    <Rule Id="CA1052" Action="Info" /> <!-- CA1052: Static holder types should be Static or NotInheritable TODO: Enable and fix -->
+    <Rule Id="CA1053" Action="Error" /> <!-- CA1053: Static holder types should not have default constructors -->
+    <Rule Id="CA1054" Action="Error" /> <!-- CA1054: URI parameters should not be strings -->
+    <Rule Id="CA1055" Action="Error" /> <!-- CA1055: URI return values should not be strings -->
+    <Rule Id="CA1056" Action="Error" /> <!-- CA1056: URI properties should not be strings -->
+    <Rule Id="CA1057" Action="Error" /> <!-- CA1057: String URI overloads call System.Uri overloads -->
+    <Rule Id="CA1058" Action="Error" /> <!-- CA1058: Types should not extend certain base types -->
+    <!-- Deprecated rule <Rule Id="CA1059" Action="None" /> CA1059: Members should not expose certain concrete types-->
+    <Rule Id="CA1060" Action="Error" /> <!-- CA1060: Move P/Invokes to NativeMethods class -->
+    <Rule Id="CA1061" Action="Error" /> <!-- CA1061: Do not hide base class methods -->
+    <Rule Id="CA1062" Action="Info" /> <!-- CA1062: Validate arguments of public methods TODO: Enable and fix -->
+    <Rule Id="CA1063" Action="Info" /> <!-- CA1063: Implement IDisposable correctly TODO: Enable and fix -->
+    <Rule Id="CA1064" Action="Info" /> <!-- CA1064: Exceptions should be public TODO: Enable and fix -->
+    <Rule Id="CA1065" Action="Error" /> <!-- CA1065: Do not raise exceptions in unexpected locations -->
+    <Rule Id="CA1068" Action="Info" /> <!-- CA1068: CancellationToken parameters must come last -->
+    <Rule Id="CA1300" Action="Error" /> <!-- CA1300: Specify MessageBoxOptions -->
+    <Rule Id="CA1301" Action="Error" /> <!-- CA1301: Avoid duplicate accelerators -->
+    <!-- Deprecated rule <Rule Id="CA1302" Action="None" />  CA1302: Do not hardcode locale specific strings -->
+    <Rule Id="CA1303" Action="Info" /> <!-- CA1303: Do not pass literals as localized parameters TODO: Enable and fix -->
+    <Rule Id="CA1304" Action="Error" /> <!-- CA1304: Specify CultureInfo -->
+    <Rule Id="CA1305" Action="Info" /> <!-- CA1305: Specify IFormatProvider TODO: Enable and fix -->
+    <Rule Id="CA1306" Action="Error" /> <!-- CA1306: Set locale for data types -->
+    <Rule Id="CA1307" Action="Info" /> <!-- CA1307: Specify StringComparison TODO: Enable and fix -->
+    <Rule Id="CA1308" Action="Info" /> <!-- CA1308: Normalize strings to uppercase TODO: Enable and fix -->
+    <Rule Id="CA1309" Action="Info" /> <!-- CA1309: Use ordinal StringComparison TODO: Enable and fix -->
+    <!-- Deprecated rule <Rule Id="CA1400" Action="None" />  CA1400: P/Invoke entry points should exist -->
+    <Rule Id="CA1401" Action="Error" /> <!-- CA1401: P/Invokes should not be visible -->
+    <Rule Id="CA1402" Action="Error" /> <!-- CA1402: Avoid overloads in COM visible interfaces -->
+    <Rule Id="CA1403" Action="Error" /> <!-- CA1403: Auto layout types should not be COM visible -->
+    <Rule Id="CA1404" Action="Error" /> <!-- CA1404: Call GetLastError immediately after P/Invoke -->
+    <Rule Id="CA1405" Action="Error" /> <!-- CA1405: COM visible type base types should be COM visible -->
+    <!-- Deprecated rule <Rule Id="CA1406" Action="None" />  CA1406: Avoid Int64 arguments for Visual Basic 6 clients -->
+    <Rule Id="CA1407" Action="Error" /> <!-- CA1407: Avoid static members in COM visible types -->
+    <Rule Id="CA1408" Action="Error" /> <!-- CA1408: Do not use AutoDual ClassInterfaceType -->
+    <Rule Id="CA1409" Action="Error" /> <!-- CA1409: Com visible types should be creatable -->
+    <Rule Id="CA1410" Action="Error" /> <!-- CA1410: COM registration methods should be matched -->
+    <Rule Id="CA1411" Action="Error" /> <!-- CA1411: COM registration methods should not be visible -->
+    <Rule Id="CA1412" Action="Error" /> <!-- CA1412: Mark ComSource Interfaces as IDispatch -->
+    <Rule Id="CA1413" Action="Error" /> <!-- CA1413: Avoid non-public fields in COM visible value types -->
+    <Rule Id="CA1414" Action="Error" /> <!-- CA1414: Mark boolean P/Invoke arguments with MarshalAs -->
+    <Rule Id="CA1415" Action="Error" /> <!-- CA1415: Declare P/Invokes correctly -->
+    <Rule Id="CA1500" Action="Error" /> <!-- CA1500: Variable names should not match field names -->
+    <Rule Id="CA1501" Action="Info" /> <!-- CA1501: Avoid excessive inheritance TODO: Enable and fix -->
+    <Rule Id="CA1502" Action="Info" /> <!-- CA1502: Avoid excessive complexity TODO: Enable and fix  -->
+    <!-- Deprecated rule <Rule Id="CA1504" Action="None" />  CA1504: Review misleading field names -->
+    <Rule Id="CA1505" Action="Error" /> <!-- CA1505: Avoid unmaintainable code -->
+    <Rule Id="CA1506" Action="Info" /> <!-- CA1506: Avoid excessive class coupling TODO: Enable and fix -->
+    <Rule Id="CA1507" Action="Info" /> <!-- CA1507: Use nameof in place of string -->    
+    <Rule Id="CA1600" Action="Error" /> <!-- CA1600: Do not use idle process priority -->
+    <Rule Id="CA1601" Action="Error" /> <!-- CA1601: Do not use timers that prevent power state changes -->
+    <Rule Id="CA1700" Action="Error" /> <!-- CA1700: Do not name enum values 'Reserved' -->
+    <!-- Deprecated rule <Rule Id="CA1701" Action="None" /> CA1701: Resource string compound words should be cased correctly -->
+    <!-- Deprecated rule <Rule Id="CA1702" Action="None" /> CA1702: Compound words should be cased correctly-->
+    <!-- Deprecated rule <Rule Id="CA1703" Action="None" /> CA1703: Resource strings should be spelled correctly -->
+    <Rule Id="CA1704" Action="Error" /> <!-- CA1704: Identifiers should be spelled correctly -->
+    <Rule Id="CA1707" Action="Error" /> <!-- CA1707: Identifiers should not contain underscores -->
+    <Rule Id="CA1708" Action="Error" /> <!-- CA1708: Identifiers should differ by more than case -->
+    <Rule Id="CA1709" Action="Error" /> <!-- CA1709: Identifiers should be cased correctly -->
+    <Rule Id="CA1710" Action="Info" /> <!-- CA1710: Identifiers should have correct suffix TODO: Enable and fix -->
+    <Rule Id="CA1711" Action="Error" /> <!-- CA1711: Identifiers should not have incorrect suffix -->
+    <Rule Id="CA1712" Action="Error" /> <!-- CA1712: Do not prefix enum values with type name -->
+    <Rule Id="CA1713" Action="Error" /> <!-- CA1713: Events should not have before or after prefix -->
+    <Rule Id="CA1714" Action="Error" /> <!-- CA1714: Flags enums should have plural names -->
+    <Rule Id="CA1715" Action="Error" /> <!-- CA1715: Identifiers should have correct prefix -->
+    <Rule Id="CA1716" Action="Info" /> <!-- CA1716: Identifiers should not match keywords  TODO: Enable and fix -->
+    <Rule Id="CA1717" Action="Error" /> <!-- CA1717: Only FlagsAttribute enums should have plural names -->
+    <Rule Id="CA1719" Action="Error" /> <!-- CA1719: Parameter names should not match member names -->
+    <Rule Id="CA1720" Action="Error" /> <!-- CA1720: Identifiers should not contain type names -->
+    <Rule Id="CA1721" Action="Error" /> <!-- CA1721: Property names should not match get methods -->
+    <Rule Id="CA1722" Action="Error" /> <!-- CA1722: Identifiers should not have incorrect prefix -->
+    <Rule Id="CA1724" Action="Info" /> <!-- CA1724: Type names should not match namespaces  TODO: Enable and fix -->
+    <Rule Id="CA1725" Action="Info" /> <!-- CA1725: Parameter names should match base declaration TODO: Enable and fix -->
+    <Rule Id="CA1726" Action="Error" /> <!-- CA1726: Use preferred terms -->
+    <!-- Deprecated rule <Rule Id="CA1800" Action="None" /> CA1800: Do not cast unnecessarily -->
+    <Rule Id="CA1801" Action="Info" /> <!-- CA1801: Review unused parameters TODO: Enable and fix -->
+    <Rule Id="CA1802" Action="Info" /> <!-- CA1802: Use Literals Where Appropriate TODO: Enable and fix -->
+    <Rule Id="CA1804" Action="Error" /> <!-- CA1804: Remove unused locals -->
+    <Rule Id="CA1806" Action="Error" /> <!-- CA1806: Do not ignore method results -->
+    <!-- Deprecated rule <Rule Id="CA1809" Action="None" /> CA1809: Avoid excessive locals -->
+    <Rule Id="CA1810" Action="Info" /> <!-- CA1810: Initialize reference type static fields inline TODO: Enable and fix -->
+    <Rule Id="CA1811" Action="Error" /> <!-- CA1811: Avoid uncalled private code -->
+    <Rule Id="CA1812" Action="Info" /> <!-- CA1812: Avoid uninstantiated internal classes TODO: Enable and fix -->
+    <Rule Id="CA1813" Action="Info" /> <!-- CA1813: Avoid unsealed attributes TODO: Enable and fix -->
+    <Rule Id="CA1814" Action="Error" /> <!-- CA1814: Prefer jagged arrays over multidimensional -->
+    <Rule Id="CA1815" Action="Error" /> <!-- CA1815: Override equals and operator equals on value types -->
+    <Rule Id="CA1816" Action="Info" /> <!-- CA1816: Call GC.SuppressFinalize correctly TODO: Enable and fix -->
+    <Rule Id="CA1819" Action="Error" /> <!-- CA1819: Properties should not return arrays -->
+    <Rule Id="CA1820" Action="Info" /> <!-- CA1820: Test for empty strings using string length TODO: Enable and fix -->
+    <Rule Id="CA1821" Action="Error" /> <!-- CA1821: Remove empty finalizers -->
+    <Rule Id="CA1822" Action="Info" /> <!-- CA1822: Mark members as static TODO: Enable and fix -->
+    <Rule Id="CA1823" Action="Info" /> <!-- CA1823: Avoid unused private fields TODO: Enable and fix -->
+    <Rule Id="CA1824" Action="Info" /> <!-- CA1824: Mark assemblies with NeutralResourcesLanguageAttribute TODO: Enable and fix -->
+    <Rule Id="CA1825" Action="Info" /> <!-- CA1825: Avoid zero-length array allocations TODO: Enable and fix -->
+    <Rule Id="CA1827" Action="Info" /> <!-- CA1827: Do not use count when any can be used TODO: Enable and fix -->
+    <Rule Id="CA1829" Action="Info" /> <!-- CA1829: Use Property Instead Of Count Method When Available TODO: Enable and fix -->
+    <Rule Id="CA1900" Action="Error" /> <!-- CA1900: Value type fields should be portable -->
+    <!-- Deprecated rule <Rule Id="CA1901" Action="None" /> CA1901: P/Invoke declarations should be portable -->
+    <!-- Deprecated rule <Rule Id="CA1903" Action="None" /> CA1903: Use only API from targeted framework -->
+    <Rule Id="CA2000" Action="Info" /> <!-- CA2000: Dispose objects before losing scope TODO: Enable and fix -->
+    <Rule Id="CA2001" Action="Error" /> <!-- CA2001: Avoid calling problematic methods-->
+    <Rule Id="CA2002" Action="Error" /> <!-- CA2002: Do not lock on objects with weak identity -->  
+    <!-- Deprecated rule <Rule Id="CA2003" Action="None" /> CA2003: Do not treat fibers as threads -->      
+    <Rule Id="CA2004" Action="Error" /> <!-- CA2004: Remove calls to GC.KeepAlive -->
+    <Rule Id="CA2006" Action="Error" /> <!-- CA2006: Use SafeHandle to encapsulate native resources -->
+    <Rule Id="CA2007" Action="Info" /> <!-- CA2007: Do not directly await a Task TODO: Enable and fix -->
+    <Rule Id="CA2008" Action="Info" /> <!-- CA2008: Do not create tasks without passing a TaskScheduler TODO: Enable and fix -->    
+    <Rule Id="CA2100" Action="Error" /> <!-- CA2100: Review SQL queries for security vulnerabilities -->
+    <Rule Id="CA2101" Action="Error" /> <!-- CA2101: Specify marshaling for P/Invoke string arguments -->
+    <!-- Deprecated rule <Rule Id="CA2102" Action="None" /> CA2102: Catch non-CLSCompliant exceptions in general handlers -->
+    <!-- Deprecated rule <Rule Id="CA2103" Action="None" />  CA2103: Review imperative security -->
+    <!-- Deprecated rule <Rule Id="CA2104" Action="None" />  CA2104: Do not declare read only mutable reference types -->
+    <!-- Deprecated rule <Rule Id="CA2105" Action="None" />  CA2105: Array fields should not be read only -->
+    <!-- Deprecated rule <Rule Id="CA2106" Action="None" />  CA2106: Secure asserts -->
+    <!-- Deprecated rule <Rule Id="CA2107" Action="None" /> CA2107: Review deny and permit only usage -->
+    <!-- Deprecated rule <Rule Id="CA2108" Action="None" /> CA2108: Review declarative security on value types -->
+    <Rule Id="CA2109" Action="Error" /> <!-- CA2109: Review visible event handlers -->
+    <!-- Deprecated rule <Rule Id="CA2111" Action="None" /> CA2111: Pointers should not be visible -->
+    <!-- Deprecated rule <Rule Id="CA2112" Action="None" /> CA2112: Secured types should not expose fields -->
+    <!-- Deprecated rule <Rule Id="CA2114" Action="None" /> CA2114: Method security should be a superset of type -->
+    <!-- Deprecated rule <Rule Id="CA2115" Action="None" /> CA2115: Call GC.KeepAlive when using native resources -->
+    <!-- Deprecated rule <Rule Id="CA2116" Action="None" />  CA2116: APTCA methods should only call APTCA methods -->
+    <!-- Deprecated rule <Rule Id="CA2117" Action="None" /> CA2117: APTCA types should only extend APTCA base types -->
+    <!-- Deprecated rule <Rule Id="CA2118" Action="None" />  CA2118: Review SuppressUnmanagedCodeSecurityAttribute usage -->
+    <Rule Id="CA2119" Action="Error" /> <!-- CA2119: Seal methods that satisfy private interfaces -->
+    <!-- Deprecated rule <Rule Id="CA2120" Action="None" /> CA2120: Secure serialization constructors -->
+    <!-- Deprecated rule <Rule Id="CA2121" Action="None" /> CA2121: Static constructors should be private -->
+    <!-- Deprecated rule <Rule Id="CA2122" Action="None" /> CA2122: Do not indirectly expose methods with link demands -->
+    <!-- Deprecated rule <Rule Id="CA2123" Action="None" /> CA2123: Override link demands should be identical to base -->
+    <!-- Deprecated rule <Rule Id="CA2124" Action="None" /> CA2124: Wrap vulnerable finally clauses in outer try -->
+    <!-- Deprecated rule <Rule Id="CA2126" Action="None" /> CA2126: Type link demands require inheritance demands -->
+    <!-- Deprecated rule <Rule Id="CA2130" Action="None" /> CA2130: Security critical constants should be transparent -->
+    <!-- Deprecated rule <Rule Id="CA2131" Action="None" /> CA2131: Security critical types may not participate in type equivalence -->
+    <!-- Deprecated rule <Rule Id="CA2132" Action="None" /> CA2132: Default constructors must be at least as critical as base type default constructors -->
+    <!-- Deprecated rule <Rule Id="CA2133" Action="None" /> CA2133: Delegates must bind to methods with consistent transparency -->
+    <!-- Deprecated rule <Rule Id="CA2134" Action="None" /> CA2134: Methods must keep consistent transparency when overriding base methods -->
+    <!-- Deprecated rule <Rule Id="CA2135" Action="None" /> CA2135: Level 2 assemblies should not contain LinkDemands -->
+    <!-- Deprecated rule <Rule Id="CA2136" Action="None" /> CA2136: Members should not have conflicting transparency annotations -->
+    <!-- Deprecated rule <Rule Id="CA2137" Action="None" /> CA2137: Transparent methods must contain only verifiable IL -->
+    <!-- Deprecated rule <Rule Id="CA2138" Action="None" /> CA2138: Transparent methods must not call methods with the SuppressUnmanagedCodeSecurity attribute -->
+    <!-- Deprecated rule <Rule Id="CA2139" Action="None" /> CA2139: Transparent methods may not use the HandleProcessCorruptingExceptions attribute -->
+    <!-- Deprecated rule <Rule Id="CA2140" Action="None" /> CA2140: Transparent code must not reference security critical items -->
+    <!-- Deprecated rule <Rule Id="CA2141" Action="None" /> CA2141:Transparent methods must not satisfy LinkDemands -->
+    <!-- Deprecated rule <Rule Id="CA2142" Action="None" /> CA2142: Transparent code should not be protected with LinkDemands -->
+    <!-- Deprecated rule <Rule Id="CA2143" Action="None" /> CA2143: Transparent methods should not use security demands -->
+    <!-- Deprecated rule <Rule Id="CA2144" Action="None" /> CA2144: Transparent code should not load assemblies from byte arrays -->
+    <!-- Deprecated rule  <Rule Id="CA2145" Action="None" /> CA2145: Transparent methods should not be decorated with the SuppressUnmanagedCodeSecurityAttribute -->
+    <!-- Deprecated rule <Rule Id="CA2146" Action="None" />  CA2146: Types must be at least as critical as their base types and interfaces -->
+    <!-- Deprecated rule <Rule Id="CA2147" Action="None" /> CA2147: Transparent methods may not use security asserts -->
+    <!-- Deprecated rule <Rule Id="CA2149" Action="None" />  CA2149: Transparent methods must not call into native code -->
+    <!-- Deprecated rule <Rule Id="CA2151" Action="None" /> CA2151: Fields with critical types should be security critical -->
+    <Rule Id="CA2200" Action="Error" /> <!-- CA2200: Rethrow to preserve stack details TODO: Enable and fix -->
+    <Rule Id="CA2201" Action="Info" /> <!-- CA2201: Do not raise reserved exception types TODO: Enable and fix -->
+    <!-- Deprecated rule <Rule Id="CA2202" Action="None" />  CA2202: Do not dispose objects multiple times -->
+    <Rule Id="CA2204" Action="Error" /> <!-- CA2204: Literals should be spelled correctly -->
+    <Rule Id="CA2205" Action="Error" /> <!-- CA2205: Use managed equivalents of Win32 API -->
+    <Rule Id="CA2207" Action="Error" /> <!-- CA2207: Initialize value type static fields inline -->
+    <Rule Id="CA2208" Action="Info" /> <!-- CA2208: Instantiate argument exceptions correctly TODO: Enable and fix -->
+    <!-- Deprecated rule <Rule Id="CA2210" Action="None" /> CA2210: Assemblies should have valid strong names -->
+    <Rule Id="CA2211" Action="Info" /> <!-- CA2211: Non-constant fields should not be visible TODO: Enable and fix -->
+    <Rule Id="CA2212" Action="Error" /> <!-- CA2212: Do not mark serviced components with WebMethod -->
+    <Rule Id="CA2213" Action="Info" /> <!-- CA2213: Disposable fields should be disposed TODO: Enable and fix -->
+    <Rule Id="CA2214" Action="Error" /> <!-- CA2214: Do not call overridable methods in constructors -->
+    <Rule Id="CA2215" Action="Error" /> <!-- CA2215: Dispose methods should call base class dispose -->
+    <Rule Id="CA2216" Action="Error" /> <!-- CA2216: Disposable types should declare finalizer -->
+    <Rule Id="CA2217" Action="Error" /> <!-- CA2217: Do not mark enums with FlagsAttribute -->
+    <Rule Id="CA2218" Action="Error" /> <!-- CA2218: Override GetHashCode on overriding Equals -->
+    <Rule Id="CA2219" Action="Error" /> <!-- CA2219: Do not raise exceptions in exception clauses -->
+    <!-- Deprecated rule <Rule Id="CA2220" Action="None" /> CA2220: Finalizers should call base class finalizer -->
+    <!-- Deprecated rule <Rule Id="CA2221" Action="None" /> CA2221: Finalizers should be protected -->
+    <!-- Deprecated rule <Rule Id="CA2222" Action="None" /> CA2222: Do not decrease inherited member visibility -->
+    <!-- Deprecated rule <Rule Id="CA2223" Action="None" /> CA2223: Members should differ by more than return type -->
+    <Rule Id="CA2224" Action="Error" /> <!-- CA2224: Override equals on overloading operator equals -->
+    <Rule Id="CA2225" Action="Error" /> <!-- CA2225: Operator overloads have named alternates -->
+    <Rule Id="CA2226" Action="Error" /> <!-- CA2226: Operators should have symmetrical overloads -->
+    <Rule Id="CA2227" Action="Info" /> <!-- CA2227: Collection properties should be read only  TODO: Enable and fix -->
+    <!-- Deprecated rule <Rule Id="CA2228" Action="None" /> CA2228: Do not ship unreleased resource formats -->
+    <Rule Id="CA2229" Action="Info" /> <!-- CA2229: Implement serialization constructors TODO: Enable and fix -->
+    <!-- Deprecated rule <Rule Id="CA2230" Action="None" /> CA2230: Use params for variable arguments -->
+    <Rule Id="CA2231" Action="Error" /> <!-- CA2231: Overload operator equals on overriding ValueType.Equals -->
+    <Rule Id="CA2232" Action="Error" /> <!-- CA2232: Mark Windows Forms entry points with STAThread -->
+    <!-- Deprecated rule <Rule Id="CA2233" Action="None" /> CA2233: Operations should not overflow -->
+    <Rule Id="CA2234" Action="Info" /> <!-- CA2234: Pass System.Uri objects instead of strings TODO: Enable and fix -->
+    <Rule Id="CA2235" Action="Error" /> <!-- CA2235: Mark all non-serializable fields -->
+    <Rule Id="CA2236" Action="Error" /> <!-- CA2236: Call base class methods on ISerializable types -->
+    <Rule Id="CA2237" Action="Error" /> <!-- CA2237: Mark ISerializable types with SerializableAttribute -->
+    <Rule Id="CA2238" Action="Error" /> <!-- CA2238: Implement serialization methods correctly -->
+    <Rule Id="CA2239" Action="Error" /> <!-- CA2239: Provide deserialization methods for optional fields -->
+    <Rule Id="CA2240" Action="Error" /> <!-- CA2240: Implement ISerializable correctly -->
+    <Rule Id="CA2241" Action="Error" /> <!-- CA2241: Provide correct arguments to formatting methods TODO: Enable and fix -->
+    <Rule Id="CA2242" Action="Error" /> <!-- CA2242: Test for NaN correctly -->
+    <Rule Id="CA2243" Action="Error" /> <!-- CA2243: Attribute string literals should parse correctly -->
+    <!-- Deprecated rule <Rule Id="CA5122" Action="None" /> CA5122 P/Invoke declarations should not be safe critical -->
+    <Rule Id="CA5359" Action="Info" /> <!-- CA5359: Do Not Disable Certificate Validation TODO: Enable and fix -->
+    <Rule Id="CA5377" Action="Info" /> <!-- Use Container Level Access Policy TODO: Enable and fix --> 
+  </Rules>
+  <Rules AnalyzerId="Microsoft.Analyzers.NativeCodeAnalysis" RuleNamespace="Microsoft.Rules.Native">
+    <Rule Id="C26100" Action="Error" />
+    <Rule Id="C26101" Action="Error" />
+    <Rule Id="C26102" Action="Error" />
+    <Rule Id="C26105" Action="Error" />
+    <Rule Id="C26106" Action="Error" />
+    <Rule Id="C26110" Action="Error" />
+    <Rule Id="C26111" Action="Error" />
+    <Rule Id="C26112" Action="Error" />
+    <Rule Id="C26115" Action="Error" />
+    <Rule Id="C26116" Action="Error" />
+    <Rule Id="C26117" Action="Error" />
+    <Rule Id="C26130" Action="Error" />
+    <Rule Id="C26135" Action="Error" />
+    <Rule Id="C26136" Action="Error" />
+    <Rule Id="C26137" Action="Error" />
+    <Rule Id="C26138" Action="Error" />
+    <Rule Id="C26140" Action="Error" />
+    <Rule Id="C26160" Action="Error" />
+    <Rule Id="C26165" Action="Error" />
+    <Rule Id="C26166" Action="Error" />
+    <Rule Id="C26167" Action="Error" />
+    <Rule Id="C26400" Action="Error" />
+    <Rule Id="C26401" Action="Error" />
+    <Rule Id="C26402" Action="Error" />
+    <Rule Id="C26403" Action="Error" />
+    <Rule Id="C26404" Action="Error" />
+    <Rule Id="C26405" Action="Error" />
+    <Rule Id="C26406" Action="Error" />
+    <Rule Id="C26407" Action="Error" />
+    <Rule Id="C26408" Action="Error" />
+    <Rule Id="C26409" Action="Error" />
+    <Rule Id="C26410" Action="Error" />
+    <Rule Id="C26411" Action="Error" />
+    <Rule Id="C26414" Action="Error" />
+    <Rule Id="C26415" Action="Error" />
+    <Rule Id="C26416" Action="Error" />
+    <Rule Id="C26417" Action="Error" />
+    <Rule Id="C26418" Action="Error" />
+    <Rule Id="C26426" Action="Error" />
+    <Rule Id="C26427" Action="Error" />
+    <Rule Id="C26429" Action="Error" />
+    <Rule Id="C26430" Action="Error" />
+    <Rule Id="C26431" Action="Error" />
+    <Rule Id="C26432" Action="Error" />
+    <Rule Id="C26433" Action="Error" />
+    <Rule Id="C26434" Action="Error" />
+    <Rule Id="C26435" Action="Error" />
+    <Rule Id="C26436" Action="Error" />
+    <Rule Id="C26437" Action="Error" />
+    <Rule Id="C26438" Action="Error" />
+    <Rule Id="C26439" Action="Error" />
+    <Rule Id="C26440" Action="Error" />
+    <Rule Id="C26441" Action="Error" />
+    <Rule Id="C26443" Action="Error" />
+    <Rule Id="C26444" Action="Error" />
+    <Rule Id="C26445" Action="Error" />
+    <Rule Id="C26446" Action="Error" />
+    <Rule Id="C26447" Action="Error" />
+    <Rule Id="C26448" Action="Error" />
+    <Rule Id="C26449" Action="Error" />
+    <Rule Id="C26450" Action="Error" />
+    <Rule Id="C26451" Action="Error" />
+    <Rule Id="C26452" Action="Error" />
+    <Rule Id="C26453" Action="Error" />
+    <Rule Id="C26454" Action="Error" />
+    <Rule Id="C26455" Action="Error" />
+    <Rule Id="C26456" Action="Error" />
+    <Rule Id="C26459" Action="Error" />
+    <Rule Id="C26460" Action="Error" />
+    <Rule Id="C26461" Action="Error" />
+    <Rule Id="C26462" Action="Error" />
+    <Rule Id="C26463" Action="Error" />
+    <Rule Id="C26464" Action="Error" />
+    <Rule Id="C26465" Action="Error" />
+    <Rule Id="C26466" Action="Error" />
+    <Rule Id="C26471" Action="Error" />
+    <Rule Id="C26472" Action="Error" />
+    <Rule Id="C26473" Action="Error" />
+    <Rule Id="C26474" Action="Error" />
+    <Rule Id="C26475" Action="Error" />
+    <Rule Id="C26476" Action="Error" />
+    <Rule Id="C26477" Action="Error" />
+    <Rule Id="C26478" Action="Error" />
+    <Rule Id="C26481" Action="Error" />
+    <Rule Id="C26482" Action="Error" />
+    <Rule Id="C26483" Action="Error" />
+    <Rule Id="C26485" Action="Error" />
+    <Rule Id="C26486" Action="Error" />
+    <Rule Id="C26487" Action="Error" />
+    <Rule Id="C26488" Action="Error" />
+    <Rule Id="C26489" Action="Error" />
+    <Rule Id="C26490" Action="Error" />
+    <Rule Id="C26491" Action="Error" />
+    <Rule Id="C26492" Action="Error" />
+    <Rule Id="C26493" Action="Error" />
+    <Rule Id="C26494" Action="Error" />
+    <Rule Id="C26495" Action="Error" />
+    <Rule Id="C26496" Action="Error" />
+    <Rule Id="C26497" Action="Error" />
+    <Rule Id="C26498" Action="Error" />
+    <Rule Id="C26800" Action="Error" />
+    <Rule Id="C26810" Action="Error" />
+    <Rule Id="C26811" Action="Error" />
+    <Rule Id="C26812" Action="Error" />
+    <Rule Id="C26814" Action="Error" />
+    <Rule Id="C28020" Action="Error" />
+    <Rule Id="C28021" Action="Error" />
+    <Rule Id="C28022" Action="Error" />
+    <Rule Id="C28023" Action="Error" />
+    <Rule Id="C28024" Action="Error" />
+    <Rule Id="C28039" Action="Error" />
+    <Rule Id="C28101" Action="Error" />
+    <Rule Id="C28103" Action="Error" />
+    <Rule Id="C28104" Action="Error" />
+    <Rule Id="C28105" Action="Error" />
+    <Rule Id="C28106" Action="Error" />
+    <Rule Id="C28107" Action="Error" />
+    <Rule Id="C28108" Action="Error" />
+    <Rule Id="C28109" Action="Error" />
+    <Rule Id="C28110" Action="Error" />
+    <Rule Id="C28111" Action="Error" />
+    <Rule Id="C28112" Action="Error" />
+    <Rule Id="C28113" Action="Error" />
+    <Rule Id="C28114" Action="Error" />
+    <Rule Id="C28120" Action="Error" />
+    <Rule Id="C28121" Action="Error" />
+    <Rule Id="C28122" Action="Error" />
+    <Rule Id="C28123" Action="Error" />
+    <Rule Id="C28124" Action="Error" />
+    <Rule Id="C28125" Action="Error" />
+    <Rule Id="C28126" Action="Error" />
+    <Rule Id="C28127" Action="Error" />
+    <Rule Id="C28128" Action="Error" />
+    <Rule Id="C28129" Action="Error" />
+    <Rule Id="C28131" Action="Error" />
+    <Rule Id="C28132" Action="Error" />
+    <Rule Id="C28133" Action="Error" />
+    <Rule Id="C28134" Action="Error" />
+    <Rule Id="C28135" Action="Error" />
+    <Rule Id="C28137" Action="Error" />
+    <Rule Id="C28138" Action="Error" />
+    <Rule Id="C28141" Action="Error" />
+    <Rule Id="C28143" Action="Error" />
+    <Rule Id="C28144" Action="Error" />
+    <Rule Id="C28145" Action="Error" />
+    <Rule Id="C28146" Action="Error" />
+    <Rule Id="C28147" Action="Error" />
+    <Rule Id="C28150" Action="Error" />
+    <Rule Id="C28151" Action="Error" />
+    <Rule Id="C28152" Action="Error" />
+    <Rule Id="C28153" Action="Error" />
+    <Rule Id="C28156" Action="Error" />
+    <Rule Id="C28157" Action="Error" />
+    <Rule Id="C28158" Action="Error" />
+    <Rule Id="C28159" Action="Error" />
+    <Rule Id="C28160" Action="Error" />
+    <Rule Id="C28161" Action="Error" />
+    <Rule Id="C28162" Action="Error" />
+    <Rule Id="C28163" Action="Error" />
+    <Rule Id="C28164" Action="Error" />
+    <Rule Id="C28165" Action="Error" />
+    <Rule Id="C28166" Action="Error" />
+    <Rule Id="C28167" Action="Error" />
+    <Rule Id="C28168" Action="Error" />
+    <Rule Id="C28169" Action="Error" />
+    <Rule Id="C28170" Action="Error" />
+    <Rule Id="C28171" Action="Error" />
+    <Rule Id="C28172" Action="Error" />
+    <Rule Id="C28173" Action="Error" />
+    <Rule Id="C28175" Action="Error" />
+    <Rule Id="C28176" Action="Error" />
+    <Rule Id="C28182" Action="Error" />
+    <Rule Id="C28183" Action="Error" />
+    <Rule Id="C28193" Action="Error" />
+    <Rule Id="C28194" Action="Error" />
+    <Rule Id="C28195" Action="Error" />
+    <Rule Id="C28196" Action="Error" />
+    <Rule Id="C28197" Action="Error" />
+    <Rule Id="C28198" Action="Error" />
+    <Rule Id="C28199" Action="Error" />
+    <Rule Id="C28202" Action="Error" />
+    <Rule Id="C28203" Action="Error" />
+    <Rule Id="C28204" Action="Error" />
+    <Rule Id="C28205" Action="Error" />
+    <Rule Id="C28206" Action="Error" />
+    <Rule Id="C28207" Action="Error" />
+    <Rule Id="C28208" Action="Error" />
+    <Rule Id="C28209" Action="Error" />
+    <Rule Id="C28210" Action="Error" />
+    <Rule Id="C28211" Action="Error" />
+    <Rule Id="C28212" Action="Error" />
+    <Rule Id="C28213" Action="Error" />
+    <Rule Id="C28214" Action="Error" />
+    <Rule Id="C28215" Action="Error" />
+    <Rule Id="C28216" Action="Error" />
+    <Rule Id="C28217" Action="Error" />
+    <Rule Id="C28218" Action="Error" />
+    <Rule Id="C28219" Action="Error" />
+    <Rule Id="C28220" Action="Error" />
+    <Rule Id="C28221" Action="Error" />
+    <Rule Id="C28222" Action="Error" />
+    <Rule Id="C28223" Action="Error" />
+    <Rule Id="C28224" Action="Error" />
+    <Rule Id="C28225" Action="Error" />
+    <Rule Id="C28226" Action="Error" />
+    <Rule Id="C28227" Action="Error" />
+    <Rule Id="C28228" Action="Error" />
+    <Rule Id="C28229" Action="Error" />
+    <Rule Id="C28230" Action="Error" />
+    <Rule Id="C28231" Action="Error" />
+    <Rule Id="C28232" Action="Error" />
+    <Rule Id="C28233" Action="Error" />
+    <Rule Id="C28234" Action="Error" />
+    <Rule Id="C28235" Action="Error" />
+    <Rule Id="C28236" Action="Error" />
+    <Rule Id="C28237" Action="Error" />
+    <Rule Id="C28238" Action="Error" />
+    <Rule Id="C28239" Action="Error" />
+    <Rule Id="C28240" Action="Error" />
+    <Rule Id="C28241" Action="Error" />
+    <Rule Id="C28243" Action="Error" />
+    <Rule Id="C28244" Action="Error" />
+    <Rule Id="C28245" Action="Error" />
+    <Rule Id="C28246" Action="Error" />
+    <Rule Id="C28250" Action="Error" />
+    <Rule Id="C28251" Action="Error" />
+    <Rule Id="C28252" Action="Error" />
+    <Rule Id="C28253" Action="Error" />
+    <Rule Id="C28254" Action="Error" />
+    <Rule Id="C28260" Action="Error" />
+    <Rule Id="C28262" Action="Error" />
+    <Rule Id="C28263" Action="Error" />
+    <Rule Id="C28266" Action="Error" />
+    <Rule Id="C28267" Action="Error" />
+    <Rule Id="C28272" Action="Error" />
+    <Rule Id="C28273" Action="Error" />
+    <Rule Id="C28275" Action="Error" />
+    <Rule Id="C28278" Action="Error" />
+    <Rule Id="C28279" Action="Error" />
+    <Rule Id="C28280" Action="Error" />
+    <Rule Id="C28282" Action="Error" />
+    <Rule Id="C28283" Action="Error" />
+    <Rule Id="C28284" Action="Error" />
+    <Rule Id="C28285" Action="Error" />
+    <Rule Id="C28286" Action="Error" />
+    <Rule Id="C28287" Action="Error" />
+    <Rule Id="C28288" Action="Error" />
+    <Rule Id="C28289" Action="Error" />
+    <Rule Id="C28290" Action="Error" />
+    <Rule Id="C28291" Action="Error" />
+    <Rule Id="C28300" Action="Error" />
+    <Rule Id="C28301" Action="Error" />
+    <Rule Id="C28302" Action="Error" />
+    <Rule Id="C28303" Action="Error" />
+    <Rule Id="C28304" Action="Error" />
+    <Rule Id="C28305" Action="Error" />
+    <Rule Id="C28306" Action="Error" />
+    <Rule Id="C28307" Action="Error" />
+    <Rule Id="C28308" Action="Error" />
+    <Rule Id="C28309" Action="Error" />
+    <Rule Id="C28350" Action="Error" />
+    <Rule Id="C28351" Action="Error" />
+    <Rule Id="C28601" Action="Error" />
+    <Rule Id="C28602" Action="Error" />
+    <Rule Id="C28604" Action="Error" />
+    <Rule Id="C28615" Action="Error" />
+    <Rule Id="C28616" Action="Error" />
+    <Rule Id="C28617" Action="Error" />
+    <Rule Id="C28623" Action="Error" />
+    <Rule Id="C28624" Action="Error" />
+    <Rule Id="C28625" Action="Error" />
+    <Rule Id="C28636" Action="Error" />
+    <Rule Id="C28637" Action="Error" />
+    <Rule Id="C28638" Action="Error" />
+    <Rule Id="C28639" Action="Error" />
+    <Rule Id="C28640" Action="Error" />
+    <Rule Id="C28645" Action="Error" />
+    <Rule Id="C28648" Action="Error" />
+    <Rule Id="C28649" Action="Error" />
+    <Rule Id="C28650" Action="Error" />
+    <Rule Id="C28714" Action="Error" />
+    <Rule Id="C28715" Action="Error" />
+    <Rule Id="C28716" Action="Error" />
+    <Rule Id="C28717" Action="Error" />
+    <Rule Id="C28719" Action="Error" />
+    <Rule Id="C28720" Action="Error" />
+    <Rule Id="C28721" Action="Error" />
+    <Rule Id="C28726" Action="Error" />
+    <Rule Id="C28727" Action="Error" />
+    <Rule Id="C28730" Action="Error" />
+    <Rule Id="C28735" Action="Error" />
+    <Rule Id="C28736" Action="Error" />
+    <Rule Id="C28750" Action="Error" />
+    <Rule Id="C28751" Action="Error" />
+    <Rule Id="C6001" Action="Error" />
+    <Rule Id="C6011" Action="Error" />
+    <Rule Id="C6014" Action="Error" />
+    <Rule Id="C6029" Action="Error" />
+    <Rule Id="C6031" Action="Error" />
+    <Rule Id="C6053" Action="Error" />
+    <Rule Id="C6054" Action="Error" />
+    <Rule Id="C6059" Action="Error" />
+    <Rule Id="C6063" Action="Error" />
+    <Rule Id="C6064" Action="Error" />
+    <Rule Id="C6066" Action="Error" />
+    <Rule Id="C6067" Action="Error" />
+    <Rule Id="C6101" Action="Error" />
+    <Rule Id="C6200" Action="Error" />
+    <Rule Id="C6201" Action="Error" />
+    <Rule Id="C6211" Action="Error" />
+    <Rule Id="C6214" Action="Error" />
+    <Rule Id="C6215" Action="Error" />
+    <Rule Id="C6216" Action="Error" />
+    <Rule Id="C6217" Action="Error" />
+    <Rule Id="C6219" Action="Error" />
+    <Rule Id="C6220" Action="Error" />
+    <Rule Id="C6221" Action="Error" />
+    <Rule Id="C6225" Action="Error" />
+    <Rule Id="C6226" Action="Error" />
+    <Rule Id="C6230" Action="Error" />
+    <Rule Id="C6235" Action="Error" />
+    <Rule Id="C6236" Action="Error" />
+    <Rule Id="C6237" Action="Error" />
+    <Rule Id="C6239" Action="Error" />
+    <Rule Id="C6240" Action="Error" />
+    <Rule Id="C6242" Action="Error" />
+    <Rule Id="C6244" Action="Error" />
+    <Rule Id="C6246" Action="Error" />
+    <Rule Id="C6248" Action="Error" />
+    <Rule Id="C6250" Action="Error" />
+    <Rule Id="C6255" Action="Error" />
+    <Rule Id="C6258" Action="Error" />
+    <Rule Id="C6259" Action="Error" />
+    <Rule Id="C6260" Action="Error" />
+    <Rule Id="C6262" Action="Error" />
+    <Rule Id="C6263" Action="Error" />
+    <Rule Id="C6268" Action="Error" />
+    <Rule Id="C6269" Action="Error" />
+    <Rule Id="C6270" Action="Error" />
+    <Rule Id="C6271" Action="Error" />
+    <Rule Id="C6272" Action="Error" />
+    <Rule Id="C6273" Action="Error" />
+    <Rule Id="C6274" Action="Error" />
+    <Rule Id="C6276" Action="Error" />
+    <Rule Id="C6277" Action="Error" />
+    <Rule Id="C6278" Action="Error" />
+    <Rule Id="C6279" Action="Error" />
+    <Rule Id="C6280" Action="Error" />
+    <Rule Id="C6281" Action="Error" />
+    <Rule Id="C6282" Action="Error" />
+    <Rule Id="C6283" Action="Error" />
+    <Rule Id="C6284" Action="Error" />
+    <Rule Id="C6285" Action="Error" />
+    <Rule Id="C6286" Action="Error" />
+    <Rule Id="C6287" Action="Error" />
+    <Rule Id="C6288" Action="Error" />
+    <Rule Id="C6289" Action="Error" />
+    <Rule Id="C6290" Action="Error" />
+    <Rule Id="C6291" Action="Error" />
+    <Rule Id="C6292" Action="Error" />
+    <Rule Id="C6293" Action="Error" />
+    <Rule Id="C6294" Action="Error" />
+    <Rule Id="C6295" Action="Error" />
+    <Rule Id="C6296" Action="Error" />
+    <Rule Id="C6297" Action="Error" />
+    <Rule Id="C6298" Action="Error" />
+    <Rule Id="C6299" Action="Error" />
+    <Rule Id="C6302" Action="Error" />
+    <Rule Id="C6303" Action="Error" />
+    <Rule Id="C6305" Action="Error" />
+    <Rule Id="C6306" Action="Error" />
+    <Rule Id="C6308" Action="Error" />
+    <Rule Id="C6310" Action="Error" />
+    <Rule Id="C6312" Action="Error" />
+    <Rule Id="C6313" Action="Error" />
+    <Rule Id="C6314" Action="Error" />
+    <Rule Id="C6315" Action="Error" />
+    <Rule Id="C6316" Action="Error" />
+    <Rule Id="C6317" Action="Error" />
+    <Rule Id="C6318" Action="Error" />
+    <Rule Id="C6319" Action="Error" />
+    <Rule Id="C6320" Action="Error" />
+    <Rule Id="C6322" Action="Error" />
+    <Rule Id="C6323" Action="Error" />
+    <Rule Id="C6324" Action="Error" />
+    <Rule Id="C6326" Action="Error" />
+    <Rule Id="C6328" Action="Error" />
+    <Rule Id="C6329" Action="Error" />
+    <Rule Id="C6330" Action="Error" />
+    <Rule Id="C6331" Action="Error" />
+    <Rule Id="C6332" Action="Error" />
+    <Rule Id="C6333" Action="Error" />
+    <Rule Id="C6334" Action="Error" />
+    <Rule Id="C6335" Action="Error" />
+    <Rule Id="C6336" Action="Error" />
+    <Rule Id="C6340" Action="Error" />
+    <Rule Id="C6381" Action="Error" />
+    <Rule Id="C6383" Action="Error" />
+    <Rule Id="C6384" Action="Error" />
+    <Rule Id="C6385" Action="Error" />
+    <Rule Id="C6386" Action="Error" />
+    <Rule Id="C6387" Action="Error" />
+    <Rule Id="C6388" Action="Error" />
+    <Rule Id="C6400" Action="Error" />
+    <Rule Id="C6401" Action="Error" />
+    <Rule Id="C6411" Action="Error" />
+    <Rule Id="C6412" Action="Error" />
+    <Rule Id="C6500" Action="Error" />
+    <Rule Id="C6501" Action="Error" />
+    <Rule Id="C6503" Action="Error" />
+    <Rule Id="C6504" Action="Error" />
+    <Rule Id="C6505" Action="Error" />
+    <Rule Id="C6506" Action="Error" />
+    <Rule Id="C6508" Action="Error" />
+    <Rule Id="C6509" Action="Error" />
+    <Rule Id="C6510" Action="Error" />
+    <Rule Id="C6511" Action="Error" />
+    <Rule Id="C6513" Action="Error" />
+    <Rule Id="C6514" Action="Error" />
+    <Rule Id="C6515" Action="Error" />
+    <Rule Id="C6516" Action="Error" />
+    <Rule Id="C6517" Action="Error" />
+    <Rule Id="C6518" Action="Error" />
+    <Rule Id="C6522" Action="Error" />
+    <Rule Id="C6525" Action="Error" />
+    <Rule Id="C6527" Action="Error" />
+    <Rule Id="C6530" Action="Error" />
+    <Rule Id="C6540" Action="Error" />
+    <Rule Id="C6551" Action="Error" />
+    <Rule Id="C6552" Action="Error" />
+    <Rule Id="C6701" Action="Error" />
+    <Rule Id="C6702" Action="Error" />
+    <Rule Id="C6703" Action="Error" />
+    <Rule Id="C6704" Action="Error" />
+    <Rule Id="C6705" Action="Error" />
+    <Rule Id="C6706" Action="Error" />
+    <Rule Id="C6707" Action="Error" />
+    <Rule Id="C6993" Action="Error" />
+    <Rule Id="C6995" Action="Error" />
+    <Rule Id="C6997" Action="Error" />
+  </Rules>
+  <Rules AnalyzerId="StyleCop.Analyzers" RuleNamespace="StyleCop.Analyzers">
+    <Rule Id="SA0001" Action="None" />
+    <Rule Id="SA0002" Action="Error" />
+    <Rule Id="SA1000" Action="Error" />
+    <Rule Id="SA1001" Action="Error" />
+    <Rule Id="SA1002" Action="Error" />
+    <Rule Id="SA1003" Action="Error" />
+    <Rule Id="SA1004" Action="Error" />
+    <Rule Id="SA1005" Action="Info" /> <!--Single line comments should begin with single space-->
+    <Rule Id="SA1006" Action="Error" />
+    <Rule Id="SA1007" Action="Error" />
+    <Rule Id="SA1008" Action="Error" />
+    <Rule Id="SA1009" Action="Error" />
+    <Rule Id="SA1010" Action="Error" />
+    <Rule Id="SA1011" Action="Error" />
+    <Rule Id="SA1012" Action="Error" />
+    <Rule Id="SA1013" Action="Error" />
+    <Rule Id="SA1014" Action="Error" />
+    <Rule Id="SA1015" Action="Error" />
+    <Rule Id="SA1016" Action="Error" />
+    <Rule Id="SA1017" Action="Error" />
+    <Rule Id="SA1018" Action="Error" />
+    <Rule Id="SA1019" Action="Error" />
+    <Rule Id="SA1020" Action="Error" />
+    <Rule Id="SA1021" Action="Error" />
+    <Rule Id="SA1022" Action="Error" />
+    <Rule Id="SA1023" Action="Error" />
+    <Rule Id="SA1024" Action="Error" />
+    <Rule Id="SA1025" Action="Error" />
+    <Rule Id="SA1026" Action="Error" />
+    <Rule Id="SA1027" Action="Error" />
+    <Rule Id="SA1028" Action="Error" />
+    <Rule Id="SA1100" Action="Error" />
+    <Rule Id="SA1101" Action="Error" />
+    <Rule Id="SA1102" Action="Error" />
+    <Rule Id="SA1103" Action="Error" />
+    <Rule Id="SA1104" Action="Error" />
+    <Rule Id="SA1105" Action="Error" />
+    <Rule Id="SA1106" Action="Error" />
+    <Rule Id="SA1107" Action="Error" />
+    <Rule Id="SA1108" Action="Error" />
+    <Rule Id="SA1110" Action="Error" />
+    <Rule Id="SA1111" Action="Error" />
+    <Rule Id="SA1112" Action="Error" />
+    <Rule Id="SA1113" Action="Error" />
+    <Rule Id="SA1114" Action="Error" />
+    <Rule Id="SA1115" Action="Error" />
+    <Rule Id="SA1116" Action="Error" />
+    <Rule Id="SA1117" Action="Error" />
+    <Rule Id="SA1118" Action="Error" />
+    <Rule Id="SA1119" Action="Error" />
+    <Rule Id="SA1120" Action="Error" />
+    <Rule Id="SA1121" Action="Error" />
+    <Rule Id="SA1122" Action="Error" />
+    <Rule Id="SA1123" Action="Error" />
+    <Rule Id="SA1124" Action="Error" />
+    <Rule Id="SA1125" Action="Error" />
+    <Rule Id="SA1127" Action="Error" />
+    <Rule Id="SA1128" Action="Error" />
+    <Rule Id="SA1129" Action="Error" />
+    <Rule Id="SA1130" Action="Error" />
+    <Rule Id="SA1131" Action="Error" />
+    <Rule Id="SA1132" Action="Error" />
+    <Rule Id="SA1133" Action="Error" />
+    <Rule Id="SA1134" Action="Error" />
+    <Rule Id="SA1136" Action="Error" />
+    <Rule Id="SA1137" Action="Error" />
+    <Rule Id="SA1139" Action="Error" />
+    <Rule Id="SA1200" Action="Error" />
+    <Rule Id="SA1201" Action="Error" />
+    <Rule Id="SA1202" Action="Error" />
+    <Rule Id="SA1203" Action="Error" />
+    <Rule Id="SA1204" Action="Error" />
+    <Rule Id="SA1205" Action="Error" />
+    <Rule Id="SA1206" Action="Error" />
+    <Rule Id="SA1207" Action="Error" />
+    <Rule Id="SA1208" Action="Error" />
+    <Rule Id="SA1209" Action="Error" />
+    <Rule Id="SA1210" Action="Error" />
+    <Rule Id="SA1211" Action="Error" />
+    <Rule Id="SA1212" Action="Error" />
+    <Rule Id="SA1213" Action="Error" />
+    <Rule Id="SA1214" Action="Error" />
+    <Rule Id="SA1216" Action="Error" />
+    <Rule Id="SA1217" Action="Error" />
+    <Rule Id="SA1300" Action="Error" />
+    <Rule Id="SA1302" Action="Error" />
+    <Rule Id="SA1303" Action="Error" />
+    <Rule Id="SA1304" Action="Error" />
+    <Rule Id="SA1306" Action="Error" />
+    <Rule Id="SA1307" Action="Error" />
+    <Rule Id="SA1308" Action="Error" />
+    <Rule Id="SA1309" Action="Error" />
+    <Rule Id="SA1310" Action="Error" />
+    <Rule Id="SA1311" Action="Error" />
+    <Rule Id="SA1312" Action="Error" />
+    <Rule Id="SA1313" Action="Error" />
+    <Rule Id="SA1314" Action="Error" />
+    <Rule Id="SA1400" Action="Error" />
+    <Rule Id="SA1401" Action="Error" />
+    <Rule Id="SA1402" Action="Error" />
+    <Rule Id="SA1403" Action="Error" />
+    <Rule Id="SA1404" Action="Error" />
+    <Rule Id="SA1405" Action="Error" />
+    <Rule Id="SA1406" Action="Error" />
+    <Rule Id="SA1407" Action="Error" />
+    <Rule Id="SA1408" Action="Error" />
+    <Rule Id="SA1410" Action="Error" />
+    <Rule Id="SA1411" Action="Error" />
+    <Rule Id="SA1413" Action="Error" />
+    <Rule Id="SA1500" Action="Error" />
+    <Rule Id="SA1501" Action="Error" />
+    <Rule Id="SA1502" Action="Error" />
+    <Rule Id="SA1503" Action="Error" />
+    <Rule Id="SA1504" Action="Error" />
+    <Rule Id="SA1505" Action="Error" />
+    <Rule Id="SA1506" Action="Error" />
+    <Rule Id="SA1507" Action="Error" />
+    <Rule Id="SA1508" Action="Error" />
+    <Rule Id="SA1509" Action="Error" />
+    <Rule Id="SA1510" Action="Error" />
+    <Rule Id="SA1511" Action="Error" />
+    <Rule Id="SA1512" Action="Info" /> <!--Single-line comments should not be followed by blank line-->
+    <Rule Id="SA1513" Action="Error" />
+    <Rule Id="SA1514" Action="Error" />
+    <Rule Id="SA1515" Action="Info" /> <!--Single-line comment should be preceded by blank line-->
+    <Rule Id="SA1516" Action="Error" />
+    <Rule Id="SA1517" Action="Error" />
+    <Rule Id="SA1518" Action="Error" />
+    <Rule Id="SA1519" Action="Error" />
+    <Rule Id="SA1520" Action="Error" />
+    <Rule Id="SA1600" Action="None" />
+    <Rule Id="SA1601" Action="Error" />
+    <Rule Id="SA1602" Action="None" />
+    <Rule Id="SA1604" Action="Error" />
+    <Rule Id="SA1605" Action="Error" />
+    <Rule Id="SA1606" Action="Error" />
+    <Rule Id="SA1607" Action="Error" />
+    <Rule Id="SA1608" Action="Error" />
+    <Rule Id="SA1610" Action="Error" />
+    <Rule Id="SA1611" Action="None" />
+    <Rule Id="SA1612" Action="Error" />
+    <Rule Id="SA1613" Action="Error" />
+    <Rule Id="SA1614" Action="None" />
+    <Rule Id="SA1615" Action="None" />
+    <Rule Id="SA1616" Action="Error" />
+    <Rule Id="SA1617" Action="Error" />
+    <Rule Id="SA1618" Action="None" />
+    <Rule Id="SA1619" Action="Error" />
+    <Rule Id="SA1620" Action="Error" />
+    <Rule Id="SA1621" Action="Error" />
+    <Rule Id="SA1622" Action="Error" />
+    <Rule Id="SA1623" Action="None" />
+    <Rule Id="SA1624" Action="Error" />
+    <Rule Id="SA1625" Action="Error" />
+    <Rule Id="SA1626" Action="Error" />
+    <Rule Id="SA1627" Action="Error" />
+    <Rule Id="SA1633" Action="Error" />
+    <Rule Id="SA1634" Action="Error" />
+    <Rule Id="SA1635" Action="None" />
+    <Rule Id="SA1636" Action="None" />
+    <Rule Id="SA1637" Action="Error" />
+    <Rule Id="SA1638" Action="Error" />
+    <Rule Id="SA1640" Action="Error" />
+    <Rule Id="SA1641" Action="None" />
+    <Rule Id="SA1642" Action="Error" />
+    <Rule Id="SA1643" Action="Error" />
+    <Rule Id="SA1648" Action="Error" />
+    <Rule Id="SA1649" Action="Error" />
+    <Rule Id="SA1651" Action="Error" />
+  </Rules>
+</RuleSet>

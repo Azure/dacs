@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.Build.Traversal">
   <ItemGroup>
-    <ProjectReference Include="native\native.linuxcmakeproj" Condition=" '$(SKIP_NATIVE_BUILD)' != 'TRUE' "/>
-    <!-- <ProjectReference Include="subsystems\dirs.proj" /> -->
+    <ProjectReference Include="native\native.copyproj" />
+    <ProjectReference Include="subsystems\dirs.proj" />
   </ItemGroup>
 </Project>
