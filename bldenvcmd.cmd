@@ -31,6 +31,7 @@ powershell Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser
 
 SET BUILDDIR=%~dp0\src
 SET BINARIESDIR=%~dp0\bin
+SET PIPELINESDIR=%~dp0\.pipelines
 
 echo ******************************************************************************
 echo * Welcome to the DACS build environment. Some common commands:        *

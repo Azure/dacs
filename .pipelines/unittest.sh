@@ -19,4 +19,9 @@ TEST_RUNSETTINGS=.runsettings
 TEST_CASE_ASSEMBLIES=$(find $BASE_DIR/bin -iname *Tests*dll -print | tr '\n' ,)
 TEST_CASE_ASSEMBLIES=${TEST_CASE_ASSEMBLIES%?}
 
+if [[ -z "$TEST_CASE_ASSEMBLIES"]]; then
+  echo "No tests found. Exiting..."
+  exit 0
+fi
+
 pwsh -Command "& $TEST_SCRIPT -TestAssemblies $TEST_CASE_ASSEMBLIES -TestFilters \"TestCategory=Unit&TestCategory!=Windows\" -RunSettingsPath $TEST_RUNSETTINGS -TestResultsPath $TEST_RESULTS -Linux"
