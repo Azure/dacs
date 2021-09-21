@@ -23,6 +23,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <HighEntropyVA>true</HighEntropyVA>
     <PlatformTarget>x64</PlatformTarget>
+    <ContainerImageRepository Condition=" '$(ContainerImageRepository)'=='' ">dacs</ContainerImageRepository>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(SlnGenSolutionFileFullPath)' == '' ">
     <SlnGenSolutionFileFullPath Condition=" '$(MSBuildProjectRelativePath)' != '' ">$(RepositoryRootPath)sln\$(MSBuildProjectRelativePath)\$(MSBuildProjectName).sln</SlnGenSolutionFileFullPath>
