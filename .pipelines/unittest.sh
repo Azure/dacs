@@ -19,7 +19,7 @@ TEST_RUNSETTINGS=.runsettings
 TEST_CASE_ASSEMBLIES=$(find $BASE_DIR/bin -iname *Tests*dll -print | tr '\n' ,)
 TEST_CASE_ASSEMBLIES=${TEST_CASE_ASSEMBLIES%?}
 
-if [[ -z "$TEST_CASE_ASSEMBLIES"]]; then
+if [[ -z "$TEST_CASE_ASSEMBLIES" ]]; then
   echo "No tests found. Exiting..."
   exit 0
 fi
