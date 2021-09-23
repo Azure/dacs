@@ -18,35 +18,22 @@ call %~dp0init.cmd
     @goto exit
 )
 
+@SET SKIP_NATIVE_BUILD_PARAM=""
+@IF "%TF_BUILD%" == "True" (
+    @SET SKIP_NATIVE_BUILD_PARAM="-p:SKIP_NATIVE_BUILD=TRUE"
+)
+
 @REM Save working directory so that we can return after the build.
 @pushd "%~dp0.."
 
 @REM Build the code.
-msbuild "dirs.proj" -maxCpuCount -p:TreatWarningsAsErrors=true -p:Configuration=%BUILD_CONFIGURATION% -v:n -bl:%BUILD_RESULT_FOLDER%\msbuild.build.%BUILD_CONFIGURATION%.binlog
+msbuild "dirs.proj" -maxCpuCount -p:TreatWarningsAsErrors=true %SKIP_NATIVE_BUILD_PARAM% -p:Configuration=%BUILD_CONFIGURATION% -v:n -bl:%BUILD_RESULT_FOLDER%\msbuild.build.%BUILD_CONFIGURATION%.binlog
 
 @SET EX=%ERRORLEVEL%
 @IF "%EX%" neq "0" (
     @ECHO Build FAILED. 2>&1
     @goto exit
 )
-
-@REM Rebuild the code to verify incremental build still working
-@REM This is currently not working so disabling it
-@REM msbuild "dirs.proj" -maxCpuCount -p:TreatWarningsAsErrors=true -p:Configuration=%BUILD_CONFIGURATION% -v:m -fileLogger -fileLoggerParameters:"logfile=%BUILD_RESULT_FOLDER%\msbuild.incremental.%BUILD_CONFIGURATION%.log"
-
-@REM @SET EX=%ERRORLEVEL%
-@REM @IF "%EX%" neq "0" (
-@REM     @ECHO Incremental Build FAILED. 2>&1
-@REM     @goto exit
-@REM )
-
-@REM find /C " .cs" %BUILD_RESULT_FOLDER%\msbuild.incremental.%BUILD_CONFIGURATION%.log
-@REM @SET INCEX=%ERRORLEVEL%
-@REM @IF "%INCEX%" neq "1" (
-@REM     @SET EX=1
-@REM     @ECHO Incremental Build Check FAILED. 2>&1
-@REM         @goto exit
-@REM )
 
 @ECHO Validate no source files modified. Any files found sent to stderr
 git clean -x -d -n src 1>&2

@@ -17,6 +17,7 @@
 ;= * Build macros (No configuration specified so Debug is implied)
 ;= ********************************************************************************
 b=msbuild /m /v:minimal /clp:Summary /restore $*
+bs=msbuild /m /v:minimal /clp:Summary /restore /p:SKIP_NATIVE_BUILD=TRUE $*
 bo=msbuild /m:1 /v:minimal /p:BuildProjectReferences=false $*
 bc=msbuild /m /v:minimal /clp:Summary /restore /t:Rebuild $*
 bco=msbuild /m:1 /v:minimal /t:Rebuild /p:BuildProjectReferences=false $*
