@@ -63,7 +63,7 @@ These steps need to be only run the first-time you setup your machine. Upon comp
 
 2. Clone the DACS repository
     ```
-    $ git clone internal-reference-removed
+    $ git clone https://github.com/Azure/dacs.git
     ```
 
 4. Install Prerequisites
