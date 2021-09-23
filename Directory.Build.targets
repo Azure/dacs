@@ -4,4 +4,5 @@
   <Import Project="$(MSBuildThisFileDirectory)build\CSProj.Build.targets" Condition="'$(MSBuildProjectExtension)'=='.csproj'" />
   <Import Project="$(MSBuildThisFileDirectory)build\Copyproj.Build.targets" Condition="'$(MSBuildProjectExtension)'=='.copyproj'" />
   <Import Project="$(MSBuildThisFileDirectory)build\LinuxCMakeProj.Build.targets" Condition="'$(MSBuildProjectExtension)'=='.linuxcmakeproj'" />
+  <Import Project="$(MSBuildThisFileDirectory)build\UniversalPackagePublish.Build.targets" Condition="'$(MSBuildProjectExtension)'=='.upackpublishproj'" />
 </Project>

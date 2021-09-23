@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Project Sdk="Microsoft.Build.NoTargets" >
+  <PropertyGroup>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="$(RepositorySrcRootPath)native/native_build.linuxcmakeproj" >
       <ReferenceRuntimeIdentifier>linux-x64</ReferenceRuntimeIdentifier>
