@@ -23,6 +23,9 @@ docker run \
     -i \
     $TTY_OPTION \
     --privileged \
+    --env VSS_NUGET_URI_PREFIXES \
+    --env VSS_NUGET_ACCESSTOKEN \
+    --env VSS_NUGET_EXTERNAL_FEED_ENDPOINTS \
     -v /etc/group:/etc/group:ro \
     -v /etc/passwd:/etc/passwd:ro \
     -v /etc/shadow:/etc/shadow:ro \
