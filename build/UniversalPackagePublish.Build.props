@@ -4,6 +4,6 @@
   <PropertyGroup>
     <AzOrganization>internal-reference-removed</AzOrganization>
     <AzProject>DACS</AzProject>
-    <AzArtifactFeed>dacs-Deps</AzArtifactFeed>
+    <AzArtifactFeed>DACS-Deps</AzArtifactFeed>
   </PropertyGroup>
 </Project>
