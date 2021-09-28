@@ -1,0 +1,7 @@
+﻿<Project Sdk="Microsoft.Build.Traversal">
+  <ItemGroup>
+    <ProjectReference Include="native\native_publish.upackpublishproj" Condition=" '$(SKIP_NATIVE_BUILD)' != 'TRUE' " />
+    <ProjectReference Include="subsystems\dirs.proj" />
+    <ProjectReference Include="scripts\scripts.copyproj" />
+  </ItemGroup>
+</Project>
