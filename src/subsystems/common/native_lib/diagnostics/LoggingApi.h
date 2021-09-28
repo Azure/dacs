@@ -1,0 +1,199 @@
+//--------------------------------------------------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.  All rights reserved.
+//--------------------------------------------------------------------------------------------------------------------------------------------
+//
+// The default logging to dacs channel:
+// LOG_DEBUG("Testing {}","LOG_DEBUG");
+// LOG_INFO("Testing {}","LOG_INFO");
+// LOG_ERROR("Testing {}","LOG_ERROR");
+// LOG_CRITICAL("Testing {}","LOG_CRITICAL");
+// Logs look like :
+// DACS_CTR:DEBUG|DeviceProxy|operation_Id:00000000-0000-0000-0000-000000000000|main.cpp:main(9):Testing LOG_DEBUG
+// DACS_CTR:INFO|DeviceProxy|operation_Id:00000000-0000-0000-0000-000000000000|main.cpp:main(10):Testing LOG_INFO
+// DACS_CTR:ERROR|DeviceProxy|operation_Id:00000000-0000-0000-0000-000000000000|main.cpp:main(11):Testing LOG_ERROR
+// DACS_CTR:ERROR|DeviceProxy|operation_Id:00000000-0000-0000-0000-000000000000|main.cpp:main(12):Testing LOG_CRITICAL
+//
+// The logging to cx channel, these logs should be available to the customer:
+// CX_LOG_DEBUG("Testing {}","CX_LOG_DEBUG");
+// CX_LOG_INFO("Testing {}","CX_LOG_INFO");
+// CX_LOG_ERROR("Testing {}","CX_LOG_ERROR");
+// CX_LOG_CRITICAL("Testing {}","CX_LOG_CRITICAL");
+// Logs look like :
+// CX_RAW:DEBUG|DeviceProxy|operation_Id:00000000-0000-0000-0000-000000000000|main.cpp:main(17):Testing CX_LOG_DEBUG
+// CX_RAW:INFO|DeviceProxy|operation_Id:00000000-0000-0000-0000-000000000000|main.cpp:main(18):Testing CX_LOG_INFO
+// CX_RAW:ERROR|DeviceProxy|operation_Id:00000000-0000-0000-0000-000000000000|main.cpp:main(19):Testing CX_LOG_ERROR
+// CX_RAW:ERROR|DeviceProxy|operation_Id:00000000-0000-0000-0000-000000000000|main.cpp:main(20):Testing CX_LOG_CRITICAL
+//
+// Compile with -DLOG_LEVEL=0x01 etc to set the right compile time log level
+//--------------------------------------------------------------------------------------------------------------------------------------------
+#pragma once
+
+#include <iostream>
+#include <assert.h>
+#include <string>
+#include <chrono>
+#include <sys/syscall.h>
+#define gettid() syscall(SYS_gettid)
+#define GET_TIME std::chrono::duration_cast<std::chrono::nanoseconds>\
+(std::chrono::high_resolution_clock::now().time_since_epoch()).count()
+//--------------------------------------------------------------------------------------------------------------------------------------------
+#define FMT_HEADER_ONLY
+#include "spdlog/fmt/bundled/format.h"
+#include "spdlog/fmt/bundled/core.h"
+#include "spdlog/fmt/bundled/ostream.h"
+#include "glog/logging.h"
+//-------------------------------------------------------------------------------------------------------------------------------------------
+enum class LogLevel
+{
+    Critical = 0,
+    Error = 1,
+    Warn = 2,
+    Info = 3,
+    Debug = 4,
+    Trace = 5
+};
+#ifndef LOG_LEVEL
+#define LOG_LEVEL static_cast<int>(LogLevel::Debug)
+#endif
+//-------------------------------------------------------------------------------------------------------------------------------------------
+struct AutoOperationIdTLS
+{
+    AutoOperationIdTLS(std::string&& operationId)   { OperationIdTLS = std::move(operationId); }
+    ~AutoOperationIdTLS()                           { OperationIdTLS.clear(); }
+
+    static const std::string& OperationId()         { return OperationIdTLS; }
+
+private:
+    static thread_local std::string OperationIdTLS;
+};
+//-------------------------------------------------------------------------------------------------------------------------------------------
+class LoggingApi
+{
+public:
+    static void Init();
+    static void Shutdown();
+    static void Flush();
+    
+    // Set the owner information so log messages for a given owner can be correlated. 
+    static void SetOwnerId(/*[in]*/ int nOwnerId);
+
+    template<LogLevel LEVEL, typename... _TArgs>
+    static void LogMessage(_TArgs&&... Fargs)
+    {
+        static_assert(LEVEL >= LogLevel::Critical && LEVEL <= LogLevel::Trace);
+
+        if(LOG_LEVEL < static_cast<int>(LEVEL)) return;
+
+        if(m_bShutdownLogging) return;
+
+        if(m_bInitAsync)
+        {
+            // The below code does NOT use switch-case intentionally because of perf reasons
+            if(LogLevel::Info == LEVEL)
+            {
+                LOG(INFO) << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
+            }
+            else if(LogLevel::Debug == LEVEL)
+            {
+                DLOG(INFO) << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
+            }
+            else if(LogLevel::Warn == LEVEL)
+            {
+                LOG(WARNING) << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
+            }
+            else if(LogLevel::Error == LEVEL || LogLevel::Critical == LEVEL)
+            {
+                LOG(ERROR) << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
+            }
+            else if(LogLevel::Trace == LEVEL)
+            {
+                VLOG(1) << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
+            }
+        }
+        else
+        {
+            if(LEVEL >= LogLevel::Warn)
+            {
+                std::cout << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
+            }
+            else
+            {
+                std::cerr << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
+            }
+        }
+    }
+
+    LoggingApi() { Init(); }
+    ~LoggingApi() { Shutdown(); }
+
+private:
+    // This assumes we init/shutdown async LoggingApi in a thread-safe manner,
+    // therefore we intentionally do not deal with race conditions.
+    static bool m_bInitAsync;
+
+    // Disable async/sync logging when set
+    static bool m_bShutdownLogging;
+
+    // 1. Proxy client can read its owner from configuration
+    // 2. Proxy server will use the owner of proxy client it's attached to.
+    // 3. For external processes like CriuDumpHandler etc. it will remain unset.
+    static int m_nOwnerId;
+
+    template<size_t M, typename... _TArgs>
+    static decltype(auto) FormatMsg(const char(&message)[M], _TArgs&&... Fargs)
+    {
+        // the operation id is always causing log corruption. There is a work item to fix it.
+        // meanwhile removing operation id so that we can debug other issues.
+        // internal-reference-removed
+        return fmt::format(message, 
+            GET_TIME,
+            ::getpid(),
+            gettid(),
+            "",
+            m_nOwnerId,
+            std::forward<_TArgs>(Fargs)...);
+    }
+};
+//-------------------------------------------------------------------------------------------------------------------------------------------
+template<size_t N>
+auto parseFileName(const char(&file)[N])
+{
+    auto pos = strrchr(file, '/');
+    return pos ? pos + 1 : file;
+}
+#define __FILENAME__ parseFileName(__FILE__)
+#define FORMAT_BASE "|DeviceProxy|time_int:{}|pid:{}|tid:{}|"
+#define FORMAT_STR FORMAT_BASE "operation_Id:{}|rank:{}|{}:{}({}): "
+//-------------------------------------------------------------------------------------------------------------------------------------------
+#define LOG_TRACE(message, args...) \
+    LoggingApi::LogMessage<LogLevel::Trace>("DACS_CTR:TRACE" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
+#define CX_LOG_TRACE(message, args...) \
+    LoggingApi::LogMessage<LogLevel::Trace>("CX_RAW:TRACE" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
+//-------------------------------------------------------------------------------------------------------------------------------------------
+#define LOG_DEBUG(message, args...) \
+    LoggingApi::LogMessage<LogLevel::Debug>("DACS_CTR:DEBUG" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
+#define CX_LOG_DEBUG(message, args...) \
+    LoggingApi::LogMessage<LogLevel::Debug>("CX_RAW:DEBUG" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
+//-------------------------------------------------------------------------------------------------------------------------------------------
+#define LOG_INFO(message, args...) \
+    LoggingApi::LogMessage<LogLevel::Info>("DACS_CTR:INFO" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
+#define CX_LOG_INFO(message, args...) \
+    LoggingApi::LogMessage<LogLevel::Info>("CX_RAW:INFO" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
+//-------------------------------------------------------------------------------------------------------------------------------------------
+#define LOG_WARN(message, args...) \
+    LoggingApi::LogMessage<LogLevel::Warn>("DACS_CTR:WARN" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
+#define CX_LOG_WARN(message, args...) \
+    LoggingApi::LogMessage<LogLevel::Warn>("CX_RAW:WARN" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
+//-------------------------------------------------------------------------------------------------------------------------------------------
+#define LOG_ERROR(message, args...) \
+    LoggingApi::LogMessage<LogLevel::Error>("DACS_CTR:ERROR" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
+#define CX_LOG_ERROR(message, args...) \
+    LoggingApi::LogMessage<LogLevel::Error>("CX_RAW:ERROR" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
+#define LOG_STACK(message, args...) \
+    std::cerr << fmt::format("DACS_CTR:ERROR" FORMAT_BASE message, GET_TIME, ::getpid(), gettid(), ##args) <<  std::endl;
+//-------------------------------------------------------------------------------------------------------------------------------------------
+#define LOG_CRITICAL(message, args...) \
+    LoggingApi::LogMessage<LogLevel::Critical>("DACS_CTR:CRITICAL" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
+#define CX_LOG_CRITICAL(message, args...) \
+    LoggingApi::LogMessage<LogLevel::Critical>("CX_RAW:CRITICAL" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
+//-------------------------------------------------------------------------------------------------------------------------------------------

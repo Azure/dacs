@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <Import Project="$(MSBuildThisFileDirectory)ResolveFrameworkReferences.targets" />
+
+  <Target Name="PublishUniversalPackage">
+    <PropertyGroup>
+      <PackagePublishDir>$(IntermediateOutputPath)$(ReferenceRuntimeIdentifier)\publish</PackagePublishDir>
+    </PropertyGroup>
+
+    <Exec Command="az devops project list" IgnoreExitCode="true" ConsoleToMsBuild="true" IgnoreStandardErrorWarningFormat="true" >
+      <Output TaskParameter="ConsoleOutput" PropertyName="AzAccountListOutput" />
+    </Exec>
+    <Exec Condition="$(AZURE_DEVOPS_EXT_PAT)=='' And $(AzAccountListOutput.Contains('az login'))" Command="az login" />
+    <Message Importance="high"  text="Publishing universal package $(PackageName) in directory $(PackagePublishDir) with version $(PackageVersion)" />
+    <Exec Command="az artifacts universal publish --organization $(AzOrganization) --project=$(AzProject) --scope project --feed $(AzArtifactFeed) --name $(PackageName) --version $(PackageVersion) --path $(PackagePublishDir)"/>
+  </Target>
+
+  <Target Name="AfterPublish" DependsOnTargets="PublishUniversalPackage" AfterTargets="Publish" />
+
+</Project>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <PropertyGroup>
+    <GenerateAssemblyVersionAttribute>false</GenerateAssemblyVersionAttribute>
+    <GenerateAssemblyFileVersionAttribute>false</GenerateAssemblyFileVersionAttribute>
+    <GenerateAssemblyInformationalVersionAttribute>false</GenerateAssemblyInformationalVersionAttribute>
+    <GeneratePackageOnBuild Condition=" '$(GenerateNugetPackage)' == 'true' ">true</GeneratePackageOnBuild>
+    <IntermediateOutputPath Condition=" '$(SelfContained)' == 'true' " >$(IntermediateOutputPath)\sc</IntermediateOutputPath>
+    <OutputPath Condition=" '$(SelfContained)' == 'true' " >$(OutputPath)\sc</OutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <CodeAnalysisRuleSet>$(MSBuildThisFileDirectory)CodeAnalysis.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)..\.version\PipelineAssemblyInfo.cs">
+      <Link>Properties\PipelineAssemblyInfo.cs</Link>
+    </Compile>
+    <Compile Include="$(MSBuildThisFileDirectory)StylecopGlobalSuppressions.cs">
+      <Link>Properties\StylecopGlobalSuppressions.cs</Link>
+    </Compile>
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)stylecop.json">
+        <Link>Properties\stylecop.json</Link>
+    </AdditionalFiles>
+  </ItemGroup>
+
+</Project>
