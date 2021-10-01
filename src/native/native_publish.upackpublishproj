@@ -9,7 +9,7 @@
     <DevChannelName>dev</DevChannelName>
   </PropertyGroup>
 
-  <!-- <ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="$(RepositorySrcRootPath)native/native_copy.copyproj" />
-  </ItemGroup> -->
+  </ItemGroup>
 </Project>
