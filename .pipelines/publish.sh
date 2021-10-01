@@ -11,7 +11,7 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 cd $DIR/..
 
-dotnet msbuild dirs.proj -maxCpuCount -p:TreatWarningsAsErrors=true -p:Configuration=$BUILD_CONFIGURATION -t:Publish -v:n -filelogger -fileLoggerParameters:"logfile=$DIR/Log/msbuild.build.log"
+dotnet msbuild dirs.proj -t:Publish -maxCpuCount -p:TreatWarningsAsErrors=true -p:Configuration=$BUILD_CONFIGURATION -t:Publish -v:n -filelogger -fileLoggerParameters:"logfile=$DIR/Log/msbuild.build.log"
 
 if [ $? -ne 0 ]
   then
