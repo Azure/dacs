@@ -4,7 +4,24 @@
   <Import Project="$(MSBuildThisFileDirectory)ResolveFrameworkReferences.targets" />
 
   <Target Name="PublishUniversalPackage">
+    <Exec Command="git rev-parse --symbolic-full-name --abbrev-ref HEAD" ConsoleToMsBuild="true" >
+      <Output TaskParameter="ConsoleOutput" PropertyName="GitBranchName" />
+    </Exec>
+    <Error Condition="'$(GitBranchName)'=='main' And $(AZURE_DEVOPS_EXT_PAT)==''"
+      Text="Build on main branch can only be executed in official pipeline." />
     <PropertyGroup>
+      <PackageChannel Condition="'$(GitBranchName)'=='main'">$(OfficialChannelName)</PackageChannel>
+      <PackageChannel Condition="'$(PackageChannel)'==''">$(DevChannelName)</PackageChannel>
+      <PackageName>$(PackageBaseName)-$(PackageChannel)</PackageName>
+
+      <CurrentDate>$([System.DateTime]::Now.ToString(yyMMddhhmm))</CurrentDate>
+      <BranchHash Condition="'$(GitBranchName)'=='main'">0</BranchHash>
+      <BranchHash Condition="'$(BranchHash)'==''">$([System.Math]::Abs($(GitBranchName.GetHashCode())))</BranchHash>
+
+      <PackageRevision Condition="'$(GitBranchName)'=='main'">$(PACKAGE_REVISION)</PackageRevision>
+      <PackageRevision Condition="'$(PackageRevision)'==''">0</PackageRevision>
+      <PackageVersion>$(CurrentDate).$(BranchHash).$(PackageRevision)</PackageVersion>
+
       <PackagePublishDir>$(IntermediateOutputPath)$(ReferenceRuntimeIdentifier)\publish</PackagePublishDir>
     </PropertyGroup>
 
@@ -14,6 +31,7 @@
     <Exec Condition="$(AZURE_DEVOPS_EXT_PAT)=='' And $(AzAccountListOutput.Contains('az login'))" Command="az login" />
     <Message Importance="high"  text="Publishing universal package $(PackageName) in directory $(PackagePublishDir) with version $(PackageVersion)" />
     <Exec Command="az artifacts universal publish --organization $(AzOrganization) --project=$(AzProject) --scope project --feed $(AzArtifactFeed) --name $(PackageName) --version $(PackageVersion) --path $(PackagePublishDir)"/>
+    <Exec Command="git tag -a 'v$(PackageVersion)' -m 'Published universal pacakge for $(PackageName) with version $(PackageVersion)'"/>
   </Target>
 
   <Target Name="AfterPublish" DependsOnTargets="PublishUniversalPackage" AfterTargets="Publish" />

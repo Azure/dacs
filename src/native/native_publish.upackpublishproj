@@ -4,11 +4,12 @@
     <TargetFramework>netcoreapp3.1</TargetFramework>
     <ReferenceRuntimeIdentifier>linux-x64</ReferenceRuntimeIdentifier>
     <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
-    <PackageName>az-dacs</PackageName>
-    <PackageVersion>0.0.1</PackageVersion>
+    <PackageBaseName>az-dacs</PackageBaseName>
+    <OfficialChannelName>official</OfficialChannelName>
+    <DevChannelName>dev</DevChannelName>
   </PropertyGroup>
 
-  <ItemGroup>
+  <!-- <ItemGroup>
     <ProjectReference Include="$(RepositorySrcRootPath)native/native_copy.copyproj" />
-  </ItemGroup>
+  </ItemGroup> -->
 </Project>
