@@ -32,7 +32,9 @@
 #include <assert.h>
 #include <string>
 #include <chrono>
+#include <atomic>
 #include <sys/syscall.h>
+#define INVALID_PID -1
 #define gettid() syscall(SYS_gettid)
 #define GET_TIME std::chrono::duration_cast<std::chrono::nanoseconds>\
 (std::chrono::high_resolution_clock::now().time_since_epoch()).count()
@@ -73,7 +75,11 @@ public:
     static void Init();
     static void Shutdown();
     static void Flush();
-    
+
+    static void Prepare();
+    static void Parent();
+    static void Child();
+
     // Set the owner information so log messages for a given owner can be correlated. 
     static void SetOwnerId(/*[in]*/ int nOwnerId);
 
@@ -139,6 +145,9 @@ private:
     // 3. For external processes like CriuDumpHandler etc. it will remain unset.
     static int m_nOwnerId;
 
+    static pid_t m_nCachedPid;
+    static std::atomic<bool> m_bForkFlag;
+
     template<size_t M, typename... _TArgs>
     static decltype(auto) FormatMsg(const char(&message)[M], _TArgs&&... Fargs)
     {
@@ -147,12 +156,14 @@ private:
         // internal-reference-removed
         return fmt::format(message, 
             GET_TIME,
-            ::getpid(),
+            LoggingApi::Getpid(),
             gettid(),
             "",
             m_nOwnerId,
             std::forward<_TArgs>(Fargs)...);
     }
+
+    static pid_t Getpid();
 };
 //-------------------------------------------------------------------------------------------------------------------------------------------
 template<size_t N>
