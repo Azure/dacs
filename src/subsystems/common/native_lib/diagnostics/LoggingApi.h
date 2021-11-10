@@ -34,6 +34,7 @@
 #include <chrono>
 #include <atomic>
 #include <sys/syscall.h>
+#include <unistd.h>
 #define INVALID_PID -1
 #define gettid() syscall(SYS_gettid)
 #define GET_TIME std::chrono::duration_cast<std::chrono::nanoseconds>\
@@ -43,7 +44,6 @@
 #include "spdlog/fmt/bundled/format.h"
 #include "spdlog/fmt/bundled/core.h"
 #include "spdlog/fmt/bundled/ostream.h"
-#include "glog/logging.h"
 //-------------------------------------------------------------------------------------------------------------------------------------------
 enum class LogLevel
 {
@@ -92,40 +92,13 @@ public:
 
         if(m_bShutdownLogging) return;
 
-        if(m_bInitAsync)
+        if(LEVEL >= LogLevel::Warn)
         {
-            // The below code does NOT use switch-case intentionally because of perf reasons
-            if(LogLevel::Info == LEVEL)
-            {
-                LOG(INFO) << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
-            }
-            else if(LogLevel::Debug == LEVEL)
-            {
-                DLOG(INFO) << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
-            }
-            else if(LogLevel::Warn == LEVEL)
-            {
-                LOG(WARNING) << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
-            }
-            else if(LogLevel::Error == LEVEL || LogLevel::Critical == LEVEL)
-            {
-                LOG(ERROR) << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
-            }
-            else if(LogLevel::Trace == LEVEL)
-            {
-                VLOG(1) << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
-            }
+            std::cout << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
         }
         else
         {
-            if(LEVEL >= LogLevel::Warn)
-            {
-                std::cout << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
-            }
-            else
-            {
-                std::cerr << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
-            }
+            std::cerr << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
         }
     }
 
@@ -133,10 +106,6 @@ public:
     ~LoggingApi() { Shutdown(); }
 
 private:
-    // This assumes we init/shutdown async LoggingApi in a thread-safe manner,
-    // therefore we intentionally do not deal with race conditions.
-    static bool m_bInitAsync;
-
     // Disable async/sync logging when set
     static bool m_bShutdownLogging;
 

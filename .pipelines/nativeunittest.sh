@@ -3,8 +3,8 @@ function execute_test() {
   local cuda_deps=$1
   echo "Testing for ${cuda_deps} projects......"
 
-  if [[ -e "$DIR/../build/SetupBuildDependencies/SetupBuildDependencies_${cuda_deps}.sh" ]]; then
-      . "$DIR/../build/SetupBuildDependencies/SetupBuildDependencies_${cuda_deps}.sh"
+  if [[ -e "$DIR/../build/SetupNativeUnitTestDependencies/setup_${cuda_deps}.sh" ]]; then
+      . "$DIR/../build/SetupNativeUnitTestDependencies/setup_${cuda_deps}.sh"
   elif [[ ${cuda_deps} != "non_cuda" ]]; then
       echo "Failed to find setup script for cuda dependencies ${cuda_deps}"
       exit 1
@@ -50,6 +50,6 @@ execute_test "non_cuda"
 
 execute_test "cuda_10_1"
 
-execute_test "cuda_11_0"
+execute_test "cuda_11_3"
 
 echo "End running native unit tests"
