@@ -12,8 +12,10 @@ function execute_build() {
     -DPYTHON_DEPENDENCY=${python_deps} \
     -DCUDA_DEPENDENCY=${cuda_deps} \
     -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_CONFIGURATION \
+    -G Ninja \
     $PATH_TO_SOURCE
-  make -j $NATIVE_BUILD_JOBS
+
+  ninja
 
   if [ $? -ne 0 ]; then
     exit 1
@@ -75,7 +77,7 @@ if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
 
   cleanup_build "cuda_10_1"
 
-  cleanup_build "cuda_11_0"
+  cleanup_build "cuda_11_3"
 
   CMAKE_BINARY_DIR_ORIG=$CMAKE_BINARY_DIR
   CMAKE_BINARY_DIR=/tmp$CMAKE_BINARY_DIR
@@ -99,10 +101,6 @@ if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
   cd $CMAKE_RUNTIME_OUTPUT_DIRECTORY
 fi
 
-if [ -z $NATIVE_BUILD_JOBS ]; then
-  NATIVE_BUILD_JOBS=12
-fi
-
 # Though we are looping over different python versions
 # Device proxy should not be rebuilt and hence the build time
 # would not be significantly higher
@@ -113,7 +111,7 @@ for pythonVersion in "3.6" "3.7" "3.8"; do
   execute_build "cuda_10_1" "$pythonVersion"
 
   if [[ "$SKIP_CUDA_11_BUILD" != "true" ]]; then
-    execute_build "cuda_11_0" "$pythonVersion"
+    execute_build "cuda_11_3" "$pythonVersion"
   fi
 done
 

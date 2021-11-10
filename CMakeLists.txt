@@ -1,5 +1,5 @@
 # Project name, build system and c++ standards used
-cmake_minimum_required(VERSION 3.17)
+cmake_minimum_required(VERSION 3.19)
 project(DACS LANGUAGES CXX C)
 
 set(CMAKE_BINARY_DIR $ENV{CMAKE_BINARY_DIR})
@@ -19,6 +19,7 @@ set(C_STANDARD_REQUIRED $ENV{C_STANDARD_REQUIRED})
 set(CMAKE_DEP_INSTALL_DIR $ENV{CMAKE_DEP_INSTALL_DIR})
 set(CMAKE_DEP_CMAKE_DIR ${CMAKE_DEP_INSTALL_DIR}/cmake)
 set(CMAKE_EXTERNAL_PROJECT ${CMAKE_DEP_CMAKE_DIR}/external)
+set(CMAKE_MODULE_PATH ${CMAKE_DEP_CMAKE_DIR}/external)
 
 # Treat warnings as errors
 add_compile_options(-Werror)
@@ -45,14 +46,14 @@ include(${CMAKE_EXTERNAL_PROJECT}/gtest_include.cmake)
 # The spdlog git hub project for logging and related vars
 include(${CMAKE_EXTERNAL_PROJECT}/spdlog_include.cmake)
 
-# The glog git hub project for logging and related vars
-include(${CMAKE_EXTERNAL_PROJECT}/glog_include.cmake)
-
 # serialization support through json. It supports json, bson, cbor etc.
 include(${CMAKE_EXTERNAL_PROJECT}/json_include.cmake)
 
 #Fast Hashing with xxHash - required for criu deduping
 include(${CMAKE_EXTERNAL_PROJECT}/xxHash_include.cmake)
+
+# Include CUDA, NCCL and CuDNN libraries
+include(${CMAKE_EXTERNAL_PROJECT}/cuda_include.cmake)
 
 # ctest
 include(CTest)
