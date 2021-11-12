@@ -7,7 +7,6 @@ function execute_build() {
 
   mkdir -p $CMAKE_RUNTIME_OUTPUT_DIRECTORY/${cuda_deps}
   cd $CMAKE_RUNTIME_OUTPUT_DIRECTORY/${cuda_deps}
-
   cmake \
     -DPYTHON_DEPENDENCY=${python_deps} \
     -DCUDA_DEPENDENCY=${cuda_deps} \
@@ -77,6 +76,8 @@ if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
 
   cleanup_build "cuda_10_1"
 
+  cleanup_build "cuda_11_0"
+
   cleanup_build "cuda_11_3"
 
   CMAKE_BINARY_DIR_ORIG=$CMAKE_BINARY_DIR
@@ -111,6 +112,8 @@ for pythonVersion in "3.6" "3.7" "3.8"; do
   execute_build "cuda_10_1" "$pythonVersion"
 
   if [[ "$SKIP_CUDA_11_BUILD" != "true" ]]; then
+    execute_build "cuda_11_0" "$pythonVersion"
+
     execute_build "cuda_11_3" "$pythonVersion"
   fi
 done
