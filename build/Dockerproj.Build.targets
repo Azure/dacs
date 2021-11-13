@@ -1,0 +1,546 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <UsingTask TaskName="Microsoft.Azure.DACS.Toolsets.GenerateContainerImageDoc"
+           TaskFactory="RoslynCodeTaskFactory"
+           AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <ContainerImageDocumentationFolder ParameterType="System.String" Required="true" />
+      <ContainerImageDocumentationTemplateFolder ParameterType="System.String" Required="true" />
+      <ContainerImageName ParameterType="System.String" Required="true" />
+      <ContainerImageTag ParameterType="System.String" Required="true" />
+      <BuildBinaryContainerImagesPath ParameterType="System.String" Required="true" />
+      <SourceDockerfilePath ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Class" Source="$(MSBuildThisFileDirectory)ContainerImageDoc/GenerateContainerImageDoc.cs" />
+    </Task>
+  </UsingTask>
+
+  <UsingTask TaskName="Microsoft.Azure.DACS.Toolsets.GenerateContainerImageDocIndex"
+           TaskFactory="RoslynCodeTaskFactory"
+           AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <ContainerImageDocumentationRoot ParameterType="System.String" Required="true" />
+      <ContainerImageDocumentationTemplateFolder ParameterType="System.String" Required="true" />
+      <ImageManifestFilePath ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Class" Source="$(MSBuildThisFileDirectory)ContainerImageDoc/GenerateContainerImageDocIndex.cs" />
+    </Task>
+  </UsingTask>
+
+  <UsingTask TaskName="Microsoft.Azure.DACS.Toolsets.Dos2Unix"
+         TaskFactory="RoslynCodeTaskFactory"
+         AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <FilePath ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Class" Source="$(MSBuildThisFileDirectory)ContainerImageDoc/Dos2Unix.cs" />
+    </Task>
+  </UsingTask>
+
+  <UsingTask TaskName="Microsoft.Azure.DACS.Toolsets.Unix2Dos"
+         TaskFactory="RoslynCodeTaskFactory"
+         AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <FilePath ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Class" Source="$(MSBuildThisFileDirectory)ContainerImageDoc/Unix2Dos.cs" />
+    </Task>
+  </UsingTask>
+
+  <UsingTask TaskName="Microsoft.Azure.DACS.Toolsets.AssembleDockerfile"
+             TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <InputDockerTemplateFileName ParameterType="System.String" Required="true" />
+      <OutputDockerFileName ParameterType="System.String" Required="true" />
+      <ReplacementProperties ParameterType="System.String" Required="false" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Class" Source="$(MSBuildThisFileDirectory)AssembleDockerfile/AssembleDockerfile.cs" />
+    </Task>
+  </UsingTask>
+
+  <PropertyGroup>
+    <AfterBuildDependsOnTargets>
+      GetBuildMetadata;
+      RemoveChildCopyToOutputDirectoryItems;
+      AssembleDockerFile-1;
+      AssembleDockerFile-2;
+      GetProjectGitHash;
+      GetContainerGitHash;
+      ErrorOutOfDateMetadata;
+      WarningGenerateContainerMetadata;
+      GenerateContainerMetadata;
+    </AfterBuildDependsOnTargets>
+    <ContainerBuildDependsOnTargets Condition=" '$(CDP_BUILD_TYPE)' == '' " >
+      Build;
+      Package;
+    </ContainerBuildDependsOnTargets>
+    <ContainerBuildDependsOnTargets Condition=" '$(OS)' == 'Windows_NT' and '$(CDP_BUILD_TYPE)' == '' " >
+      $(ContainerBuildDependsOnTargets)
+      LoginContainerRegistry;
+    </ContainerBuildDependsOnTargets>
+    <ContainerBuildDependsOnTargets>
+      $(ContainerBuildDependsOnTargets)
+      ContainerBuildReferences;
+      GetBuildMetadata;
+      GetContainerImageLabel;
+      CheckRegistryImageExists;
+      PullImageForPublicRepository;
+      CheckLocalImageExists;
+      DockerBuild;
+      CheckImageDocumentationExists;
+      GenerateImageDocumentationIfRequiredWindows;
+      GenerateImageDocumentationIfRequiredLinux;
+      DockerTagForPublicRepository;
+    </ContainerBuildDependsOnTargets>
+    <ContainerPublishDependsOnTargets>
+      ContainerPublishReferences;
+      ContainerBuild;
+      DockerPush;
+      DockerPushPublic;
+      DockerImageRemove;
+      DockerPublicImageRemove;
+      GenerateImageDocumentationIndexIfRequired;
+    </ContainerPublishDependsOnTargets>
+
+    <AfterBuildPackageDependsOnTargets Condition=" '$(CDP_BUILD_TYPE)' == '' " >
+      EmbedProjectReferences;
+      EmbedPackageRootReferences;
+      UpdateVersionContent;
+    </AfterBuildPackageDependsOnTargets>
+    <PackageDependsOnTargets>
+      EmbedProjectReferences;
+      EmbedPackageRootReferences;
+      UpdateVersionContent;
+    </PackageDependsOnTargets>
+    <DebuggerFlavor>None</DebuggerFlavor>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <UpToDateCheckInput Include="@(MetadataFiles)" Set="Metadata" />
+    <UpToDateCheckOutput Include="$(OutDir)Dockerfile" Set="Metadata" />
+  </ItemGroup>
+
+  <Import Project="$(MSBuildThisFileDirectory)EmbedProjectReference.targets" />
+  <Import Project="$(MSBuildThisFileDirectory)EmbedProjectReference.Publish.targets" />
+  <Import Project="$(MSBuildThisFileDirectory)UpdateMetadata\UpdateMetadataContent.targets" />
+  <Import Project="$(MSBuildExtensionsPath)\Microsoft\VisualStudio\Managed\Microsoft.Managed.DesignTime.targets" Condition="Exists('$(MSBuildExtensionsPath)\Microsoft\VisualStudio\Managed\Microsoft.Managed.DesignTime.targets')" />
+
+  <Target Name="AssembleDockerFile-1"
+          Inputs="@(Content);@(MetadataFiles)"
+          Outputs="$(OutDir)Dockerfile"
+          Condition=" '$(UseDockerfileForMetadataVersion)' != 'true' ">
+    <Message Text="Assembling Dockerfile $(MSBuildProjectDirectory)\_generated\Dockerfile" Importance="High" />
+    <Makedir Directories="$(OutDir)" />
+
+    <AssembleDockerFile
+      InputDockerTemplateFileName="%(DockerTemplateFiles.Identity)"
+      OutputDockerFileName="@(DockerTemplateFiles->'$(OutDir)%(RecursiveDir)Dockerfile')"
+      ReplacementProperties="$(DockerfileReplacementProperties)">
+    </AssembleDockerFile>
+
+    <Copy SourceFiles="$(OutDir)Dockerfile" DestinationFolder="$(MSBuildProjectDirectory)\_generated" SkipUnchangedFiles="true" />
+
+    <UpdateMetadata
+      MetadataDirectory="$(MetadataPath)"
+      TemplateFiles="@(DockerTemplateFiles->'$(OutDir)%(RecursiveDir)Dockerfile')"
+      GeneratedFiles="@(DockerTemplateFiles->'$(OutDir)%(RecursiveDir)Dockerfile')"
+      MetadataProperties="ContainerImageRepository=$(ContainerImageRepository)">
+    </UpdateMetadata>
+  </Target>
+
+  <Target Name="AssembleDockerFile-2"
+          Condition=" '$(UseDockerfileForMetadataVersion)' == 'true' ">
+    <Message Text="Assembling Dockerfile $(MSBuildProjectDirectory)\_generated\Dockerfile" Importance="High" />
+    <Makedir Directories="$(OutDir)" />
+
+    <AssembleDockerFile
+      InputDockerTemplateFileName="%(DockerTemplateFiles.Identity)"
+      OutputDockerFileName="@(DockerTemplateFiles->'$(OutDir)%(RecursiveDir)Dockerfile')"
+      ReplacementProperties="$(DockerfileReplacementProperties)">
+    </AssembleDockerFile>
+
+    <Copy SourceFiles="$(OutDir)Dockerfile" DestinationFolder="$(MSBuildProjectDirectory)\_generated" SkipUnchangedFiles="true" />
+
+    <UpdateMetadata
+      MetadataDirectory="$(MetadataPath)"
+      TemplateFiles="@(DockerTemplateFiles->'$(OutDir)%(RecursiveDir)Dockerfile')"
+      GeneratedFiles="@(DockerTemplateFiles->'$(OutDir)%(RecursiveDir)Dockerfile')"
+      MetadataProperties="ContainerImageRepository=$(ContainerImageRepository)">
+    </UpdateMetadata>
+  </Target>
+
+  <Target Name="GetProjectGitHash" >
+
+    <PropertyGroup>
+      <ProjectDependentFileHash>$(IntermediateOutputPath)projectdependentlsfiles.txt</ProjectDependentFileHash>
+      <ProjectDependentDeleted>$(IntermediateOutputPath)projectdependentdelfiles.txt</ProjectDependentDeleted>
+      <ProjectGenHashFileList>$(IntermediateOutputPath)projecthashfilelist.txt</ProjectGenHashFileList>
+      <ProjectGenHashFile>$(IntermediateOutputPath)projecthashfile.txt</ProjectGenHashFile>
+      <GitLsFilesCommandArgs>-c -o --exclude-standard --full-name</GitLsFilesCommandArgs>
+      <GitLsDeletedFilesCommandArgs>-d --exclude-standard --full-name</GitLsDeletedFilesCommandArgs>
+      <GitLsFilesCommandArgs Condition=" '$(CDP_BUILD_TYPE)' != '' ">--full-name</GitLsFilesCommandArgs>
+      <GeneratedDockerfile>$(MSBuildProjectDirectory)/_generated/Dockerfile</GeneratedDockerfile>
+      <DockerfileBasedGitHash Condition=" '$(UseDockerfileForMetadataVersion)' == 'true' AND Exists('$(GeneratedDockerfile)')">true</DockerfileBasedGitHash>
+    </PropertyGroup>
+
+    <Delete Files="$(ProjectDependentFileHash);$(ProjectDependentDeleted);$(ProjectGenHashFileList)" />
+
+    <!-- DockerfileBasedGitHash != true -->
+    <Exec
+      Command="git ls-files $(GitLsFilesCommandArgs) . &gt; $(ProjectDependentFileHash)"
+      Condition=" '$(DockerfileBasedGitHash)' != 'true' " />
+    <Exec
+      Command="git ls-files $(GitLsDeletedFilesCommandArgs) . &gt; $(ProjectDependentDeleted)"
+      Condition=" '$(DockerfileBasedGitHash)' != 'true' " />
+    <Exec
+      Command="git ls-files $(GitLsFilesCommandArgs) %(PackageReferenceProjectReference.RelativeDir) &gt;&gt; $(ProjectDependentFileHash)"
+      Condition=" '$(DockerfileBasedGitHash)' != 'true' AND '@(PackageReferenceProjectReference)' != '' " />
+    <Exec
+      Command="git ls-files $(GitLsDeletedFilesCommandArgs) %(PackageReferenceProjectReference.RelativeDir) &gt;&gt; $(ProjectDependentDeleted)"
+      Condition=" '$(DockerfileBasedGitHash)' != 'true' AND '@(PackageReferenceProjectReference)' != '' " />
+
+    <!-- DockerfileBasedGitHash == true -->
+    <Exec
+      Command="git ls-files $(GitLsFilesCommandArgs) $(GeneratedDockerfile) &gt; $(ProjectDependentFileHash)"
+      Condition=" '$(DockerfileBasedGitHash)' == 'true' " />
+    <WriteLinesToFile
+      File="$(ProjectDependentDeleted)"
+      Overwrite="true"
+      Lines=""
+      Condition=" '$(DockerfileBasedGitHash)' == 'true' " />
+
+    <Exec
+      Command="git ls-files $(GitLsFilesCommandArgs) %(AdditionalMetadataVersionFiles.Identity) &gt;&gt; $(ProjectDependentFileHash)"
+      Condition=" '@(AdditionalMetadataVersionFiles)' != '' " />
+    <Exec Command="$(PowershellCommand) -noprofile $(MSBuildThisFileDirectory)filtermetadatahashfiles.ps1 -inputhashFile $(ProjectDependentFileHash) -inputhashdeleteFile $(ProjectDependentDeleted) -outputhashFilterFile $(ProjectGenHashFileList)" Condition=" '$(OS)' == 'Windows_NT'"/>
+    <Exec Command="$(PowershellCommand) -noprofile $(MSBuildThisFileDirectory)filtermetadatahashfiles.ps1 -inputhashFile '$(ProjectDependentFileHash)' -inputhashdeleteFile '$(ProjectDependentDeleted)' -outputhashFilterFile '$(ProjectGenHashFileList)'" Condition=" '$(OS)' != 'Windows_NT'"/>
+
+    <ReadLinesFromFile File="$(ProjectGenHashFileList)" >
+      <Output TaskParameter="Lines" ItemName="ProjectGenHashFiles"/>
+    </ReadLinesFromFile>
+
+    <Message Text="Files used to generate metadata hash:" />
+    <Message Text="%(ProjectGenHashFiles.Identity)" />
+
+    <Exec Command="git hash-object --stdin-paths &lt; $(ProjectGenHashFileList) | git hash-object --stdin" ConsoleToMsBuild="true" >
+      <Output TaskParameter="ConsoleOutput" PropertyName="ProjectGitHash" />
+    </Exec>
+
+  </Target>
+
+  <Target Name="LoginContainerRegistry">
+    <Exec Command="az acr login -n $(ContainerImageRepository)" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" />
+  </Target>
+
+  <Target Name="GetContainerGitHash" >
+
+    <FindInList CaseSensitive="false" List="@(BuildMetadata)" ItemSpecToFind="$(ContainerImageName)-githash" >
+      <Output TaskParameter="ItemFound" ItemName="ContainerGitHashProperty" />
+    </FindInList>
+
+    <PropertyGroup>
+      <ContainerGitHash>%(ContainerGitHashProperty.Value)</ContainerGitHash>
+    </PropertyGroup>
+
+  </Target>
+
+  <Target Name="GetContainerImageLabel">
+
+    <FindInList CaseSensitive="false" List="@(BuildMetadata)" ItemSpecToFind="$(ContainerImageName)-imagelabel" >
+      <Output TaskParameter="ItemFound" ItemName="ContainerImageLabel"/>
+    </FindInList>
+
+    <Error Text="Build Metadata Parameter '$(ContainerImageName)-imagelabel' not defined" Condition=" '@(ContainerImageLabel)' == '' "/>
+
+  </Target>
+
+  <Target Name="CheckRegistryImageExists" >
+
+    <Exec
+        WorkingDirectory="$(OutDir)"
+        Command="az acr repository show --name $(ContainerImageRepository) --image $(ContainerImageName):%(ContainerImageLabel.Value)"
+        IgnoreExitCode="true"
+        IgnoreStandardErrorWarningFormat="true"
+        ConsoleToMsBuild="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="CheckRegistryImageOutput" />
+    </Exec>
+    <Error Condition="$(CheckRegistryImageOutput.Contains('authorization'))" Text="$(CheckRegistryImageOutput) '$(ContainerImageRepository).azurecr.io'" />
+    <Error Condition="$(CheckRegistryImageOutput.Contains('credentials'))" Text="$(CheckRegistryImageOutput) '$(ContainerImageRepository).azurecr.io'" />
+
+    <Exec
+        WorkingDirectory="$(OutDir)"
+        Command="az acr repository show --name $(PublicContainerImageRepository) --image $(ContainerImageName):%(ContainerImageLabel.Value)"
+        IgnoreExitCode="true"
+        IgnoreStandardErrorWarningFormat="true"
+        ConsoleToMsBuild="true"
+        Condition="$(UsingOfficialContainerImageRepository) and '$(PublicPublish)' == 'true' ">
+      <Output TaskParameter="ConsoleOutput" PropertyName="CheckPublicRegistryImageOutput" />
+    </Exec>
+    <Error Condition="$(CheckPublicRegistryImageOutput.Contains('authorization'))" Text="$(CheckPublicRegistryImageOutput) '$(PublicContainerImageRepository).azurecr.io'" />
+    <Error Condition="$(CheckPublicRegistryImageOutput.Contains('credentials'))" Text="$(CheckPublicRegistryImageOutput) '$(PublicContainerImageRepository).azurecr.io'" />
+
+    <PropertyGroup Condition=" !$(CheckRegistryImageOutput.Contains('does not exist')) ">
+      <ExistingRepositoryImage>true</ExistingRepositoryImage>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="$(UsingOfficialContainerImageRepository) and '$(PublicPublish)' == 'true' and !$(CheckPublicRegistryImageOutput.Contains('does not exist')) ">
+      <ExistingPublicRepositoryImage>true</ExistingPublicRepositoryImage>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="PullImageForPublicRepository"
+          Condition="$(UsingOfficialContainerImageRepository) and '$(PublicPublish)' == 'true' and '$(ExistingPublicRepositoryImage)' != 'true' and '$(ExistingRepositoryImage)' == 'true' ">
+
+    <Exec WorkingDirectory="$(OutDir)" Command="docker pull $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value)" />
+
+    <PropertyGroup>
+      <LocalDockerImage>true</LocalDockerImage>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="CheckLocalImageExists"
+          Condition=" '$(ExistingRepositoryImage)' != 'true' ">
+
+    <Exec WorkingDirectory="$(OutDir)" Command="docker images -q $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value)" IgnoreExitCode="true" ConsoleToMsBuild="true" >
+      <Output TaskParameter="ConsoleOutput" PropertyName="LocalDockerImage" />
+    </Exec>
+
+  </Target>
+
+  <Target Name="ContainerBuildReferences">
+
+    <MSBuild
+        Projects="@(ProjectReference)"
+        Targets="ContainerBuild"
+        BuildInParallel="$(BuildInParallel)"
+        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform);  %(ProjectReference.SetTargetFramework)"
+        Condition="'@(ProjectReference)' != ''"
+        ContinueOnError="$(ContinueOnError)">
+    </MSBuild>
+
+  </Target>
+
+  <Target Name="ContainerPublishReferences">
+
+    <MSBuild
+        Projects="@(ProjectReference)"
+        Targets="ContainerPublish"
+        BuildInParallel="$(BuildInParallel)"
+        Properties="%(ProjectReference.SetConfiguration); %(ProjectReference.SetPlatform);  %(ProjectReference.SetTargetFramework)"
+        Condition="'@(ProjectReference)' != ''"
+        ContinueOnError="$(ContinueOnError)">
+    </MSBuild>
+
+  </Target>
+
+  <Target Name="DockerBuild"
+          Condition=" '$(LocalDockerImage)' == '' and '$(ExistingRepositoryImage)' == '' ">
+    <PropertyGroup>
+      <EnableDockerBuildKit>1</EnableDockerBuildKit>
+      <EnableDockerBuildKit Condition=" '$(ContainerImagePlatform)' == 'Windows' ">0</EnableDockerBuildKit>
+    </PropertyGroup>
+    <Message Text="Running Command 'docker build -t $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value) .' from directory '$(OutDir)'" />
+    <Exec WorkingDirectory="$(OutDir)" EnvironmentVariables="DOCKER_BUILDKIT=$(EnableDockerBuildKit)" Command="docker build -t $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value) ." IgnoreStandardErrorWarningFormat="true" />
+    <Message Text="Running Command 'docker images -q $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value)' from directory '$(OutDir)'" />
+
+    <Exec WorkingDirectory="$(OutDir)" Command="docker images -q $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value)" IgnoreExitCode="true" ConsoleToMsBuild="true" >
+      <Output TaskParameter="ConsoleOutput" PropertyName="LocalDockerImage" />
+    </Exec>
+
+  </Target>
+
+  <Target Name="CheckImageDocumentationExists"
+          Condition="'$(PublicPublish)' == 'true'">
+    <PropertyGroup>
+      <ContainerImageDocumentationFolderPath>$(ContainerImageDocumentationRoot)/$(ContainerImageName)/%(ContainerImageLabel.Value)</ContainerImageDocumentationFolderPath>
+      <ContainerImageDocumentationReadmeFile>$(ContainerImageDocumentationFolderPath)/readme.md</ContainerImageDocumentationReadmeFile>
+    </PropertyGroup>
+    <PropertyGroup Condition="!Exists('$(ContainerImageDocumentationReadmeFile)')">
+      <GenerateContainerImageDocumentation>true</GenerateContainerImageDocumentation>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="GenerateImageDocumentationIfRequiredLinux"
+          Condition=" '$(GenerateContainerImageDocumentation)' == 'true' AND '$(OS)' != 'Windows_NT' AND '$(ContainerImagePlatform)' != 'Windows' ">
+
+  <Message Text="Generating container image documentation at '$(ContainerImageDocumentationReadmeFile)'" Importance="High" />
+
+    <PropertyGroup>
+      <DebianPackageListFile>$(ContainerImageDocumentationFolderPath)\debian-packages.txt</DebianPackageListFile>
+      <CondaPackageListFile>$(ContainerImageDocumentationFolderPath)\conda-packages.txt</CondaPackageListFile>
+      <PipPackageListFile>$(ContainerImageDocumentationFolderPath)\pip-packages.txt</PipPackageListFile>
+    </PropertyGroup>
+
+    <WriteLinesToFile
+      File="$(DebianPackageListFile)"
+      Overwrite="true"
+      Lines="# $(ContainerImageName)" />
+
+    <Exec
+      Command="docker run $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value) bash -c &quot;echo '####__START'; dpkg-query -f '\${Package},\${Version},\${Status}\n' -W | grep 'install ok installed' | awk -F, '{print \$1 \&quot;,\&quot; \$2}'&quot; >> $(DebianPackageListFile)" />
+
+    <WriteLinesToFile
+      File="$(CondaPackageListFile)"
+      Overwrite="true"
+      Lines="# $(ContainerImageName)" />
+
+    <Exec
+      Command="docker run $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value) bash -c &quot;echo '####__START';if ! [command -v conda &amp;&gt; /dev/null]; then conda list | grep '^[^#;]' | awk '{print \$1 \&quot;,\&quot; \$2}'; fi&quot; >> $(CondaPackageListFile)" />
+
+   <WriteLinesToFile
+      File="$(PipPackageListFile)"
+      Overwrite="true"
+      Lines="# $(ContainerImageName)" />
+
+    <Exec
+      Command="docker run $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value) bash -c &quot;echo '####__START';if ! [command -v pip &amp;&gt; /dev/null]; then pip list --disable-pip-version-check --format=freeze | awk -F== '{print \$1 \&quot;,\&quot; \$2}';fi&quot; >> $(PipPackageListFile)" />
+
+    <GenerateContainerImageDoc
+      ContainerImageDocumentationFolder="$(ContainerImageDocumentationFolderPath)"
+      ContainerImageDocumentationTemplateFolder="$(ContainerImageDocumentationTemplateFolder)"
+      ContainerImageName="$(ContainerImageName)"
+      ContainerImageTag="%(ContainerImageLabel.Value)"
+      SourceDockerfilePath="$(OutDir)Dockerfile"
+      BuildBinaryContainerImagesPath="$(BuildBinaryContainerImagesPath)" />
+
+  </Target>
+
+
+  <Target Name="GenerateImageDocumentationIfRequiredWindows"
+          Condition=" '$(GenerateContainerImageDocumentation)' == 'true' AND '$(OS)' == 'Windows_NT' AND '$(ContainerImagePlatform)' != 'Windows' ">
+
+    <Message Text="Generating container image documentation at '$(ContainerImageDocumentationReadmeFile)'" Importance="High" />
+
+    <PropertyGroup>
+      <DebianPackageListFile>$(ContainerImageDocumentationFolderPath)\debian-packages.txt</DebianPackageListFile>
+      <CondaPackageListFile>$(ContainerImageDocumentationFolderPath)\conda-packages.txt</CondaPackageListFile>
+      <PipPackageListFile>$(ContainerImageDocumentationFolderPath)\pip-packages.txt</PipPackageListFile>
+    </PropertyGroup>
+
+    <WriteLinesToFile
+      File="$(DebianPackageListFile)"
+      Overwrite="true"
+      Lines="# $(ContainerImageName)" />
+
+    <Exec
+      Command="docker run $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value) bash -c &quot;echo '####__START';dpkg-query -f '${Package},${Version},${Status}\n' -W | grep 'install ok installed' | awk -F, '{print $1 \&quot;,\&quot; $2}'&quot; >> $(DebianPackageListFile)" />
+
+    <Unix2Dos FilePath="$(DebianPackageListFile)" />
+
+    <WriteLinesToFile
+      File="$(CondaPackageListFile)"
+      Overwrite="true"
+      Lines="# $(ContainerImageName)" />
+
+    <Exec
+      Command="docker run $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value) bash -c &quot;echo '####__START';if ! [command -v conda &amp;&gt; /dev/null]; then conda list | grep '^[^#;]' | awk '{print $1 \&quot;,\&quot; $2}'; fi&quot; >> $(CondaPackageListFile)" />
+
+    <Unix2Dos FilePath="$(CondaPackageListFile)" />
+
+   <WriteLinesToFile
+      File="$(PipPackageListFile)"
+      Overwrite="true"
+      Lines="# $(ContainerImageName)" />
+
+    <Exec
+      Command="docker run $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value) bash -c &quot;echo '####__START';if ! [command -v pip &amp;&gt; /dev/null]; then pip list --disable-pip-version-check --format=freeze | awk -F== '{print $1 \&quot;,\&quot; $2}';fi&quot; >> $(PipPackageListFile)" />
+
+    <Unix2Dos FilePath="$(PipPackageListFile)" />
+
+    <GenerateContainerImageDoc
+      ContainerImageDocumentationFolder="$(ContainerImageDocumentationFolderPath)"
+      ContainerImageDocumentationTemplateFolder="$(ContainerImageDocumentationTemplateFolder)"
+      ContainerImageName="$(ContainerImageName)"
+      ContainerImageTag="%(ContainerImageLabel.Value)"
+      SourceDockerfilePath="$(OutDir)Dockerfile"
+      BuildBinaryContainerImagesPath="$(BuildBinaryContainerImagesPath)" />
+
+      <Unix2Dos FilePath="$(ContainerImageDocumentationFolderPath)/readme.md" />
+    </Target>
+
+  <Target Name="DockerTagForPublicRepository"
+          Condition="$(UsingOfficialContainerImageRepository) and '$(PublicPublish)' == 'true' and '$(ExistingPublicRepositoryImage)' != 'true' ">
+    <Exec WorkingDirectory="$(OutDir)" Command="docker tag $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value) $(PublicContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value)" IgnoreExitCode="true" ConsoleToMsBuild="true" >
+      <Output TaskParameter="ConsoleOutput" PropertyName="LocalPublicDockerImage" />
+    </Exec>
+
+    <PropertyGroup>
+      <LocalPublicDockerImage>true</LocalPublicDockerImage>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="DockerPush"
+          Condition=" '$(ExistingRepositoryImage)' != 'true' ">
+
+     <Message Text="Running Command 'docker push $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value)' from directory '$(OutDir)'" />
+     <Exec WorkingDirectory="$(OutDir)" Command="docker push $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value)" />
+
+  </Target>
+
+    <Target Name="DockerPushPublic"
+          Condition=" $(UsingOfficialContainerImageRepository) and '$(PublicPublish)' == 'true' and '$(ExistingPublicRepositoryImage)' != 'true' ">
+
+     <Message
+         Text="Running Command 'docker push $(PublicContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value)' from directory '$(OutDir)'"
+         Condition="'$(LocalPublicDockerImage)' != ''" />
+     <Exec
+          WorkingDirectory="$(OutDir)"
+          Command="docker push $(PublicContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value)"
+         Condition="'$(LocalPublicDockerImage)' != ''" />
+
+  </Target>
+
+  <Target Name="DockerImageRemove" Condition=" '$(LocalDockerImage)' != '' and '$(RemoveDockerImage)' == 'true' ">
+
+     <Message Text="Running Command 'docker rmi -f $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value)' from directory '$(OutDir)'" />
+     <Exec WorkingDirectory="$(OutDir)" Command="docker rmi -f $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value)" />
+
+  </Target>
+
+  <Target Name="DockerPublicImageRemove" Condition=" '$(LocalPublicDockerImage)' != '' and '$(RemoveDockerImage)' == 'true' ">
+
+     <Message Text="Running Command 'docker rmi -f $(PublicContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value)' from directory '$(OutDir)'" />
+     <Exec WorkingDirectory="$(OutDir)" Command="docker rmi -f $(PublicContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value)" />
+
+  </Target>
+
+  <Target
+    Name="GenerateImageDocumentationIndexIfRequired"
+    Condition=" '$(GenerateImageDocumentationIndex)' == 'true' and '$(ContainerImagePlatform)' != 'Windows' ">
+
+    <Message Text="Updating container image manifest " Importance="High" />
+
+    <UpdateMetadata
+      MetadataDirectory="$(MetadataPath)"
+      TemplateFiles="$(ContainerImageManifestTemplateFile)"
+      GeneratedFiles="$(ContainerImageManifestFile)"
+      MetadataProperties="_unused_=unused">
+    </UpdateMetadata>
+
+    <Message Text="Generating container image documentation at '$(ContainerImageDocumentationRoot)'" Importance="High" />
+
+    <GenerateContainerImageDocIndex
+      ContainerImageDocumentationRoot="$(ContainerImageDocumentationRoot)"
+      ContainerImageDocumentationTemplateFolder="$(ContainerImageDocumentationTemplateFolder)"
+      ImageManifestFilePath="$(ContainerImageManifestFile)" />
+
+    <Unix2Dos FilePath="$(ContainerImageDocumentationRoot)/index.md" />
+  </Target>
+
+  <Target Name="ContainerBuild"
+          DependsOnTargets="$(ContainerBuildDependsOnTargets)" />
+
+  <Target Name="ContainerPublish"
+          DependsOnTargets="$(ContainerPublishDependsOnTargets)" />
+
+  <Target Name="AfterBuild" DependsOnTargets="$(AfterBuildDependsOnTargets);$(AfterBuildPackageDependsOnTargets)" />
+  <Target Name="Package" DependsOnTargets="$(PackageDependsOnTargets)" />
+
+</Project>

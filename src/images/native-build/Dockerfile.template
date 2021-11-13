@@ -1,0 +1,139 @@
+ARG ARG_DACS_BASE_CONTAINER=$(ContainerImageRepository).azurecr.io/cdpxlinux/global/ubuntu-1804-node10:1.0
+#
+# Main Container phase
+#
+FROM $ARG_DACS_BASE_CONTAINER
+
+USER root
+
+# Pytorch version is tightly coupled to CUDA and cuDNN so it should be selected carefully
+ENV DEBIAN_FRONTEND=noninteractive \
+  APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn \
+  PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH} \
+  LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64 \
+  NVIDIA_VISIBLE_DEVICES=all \
+  NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+  NVIDIA_REQUIRE_CUDA="cuda>=10.1 brand=tesla,driver>=396,driver<397 brand=tesla,driver>=410,driver<411 brand=tesla,driver>=418,driver<419" \
+  LIBRARY_PATH=/usr/local/cuda/lib64/stubs \
+  NUGET_CREDENTIALPROVIDER_SESSIONTOKENCACHE_ENABLED=true \
+  CMAKE_DEP_INSTALL_DIR=/dependency
+
+COPY cmake $CMAKE_DEP_INSTALL_DIR/cmake/
+  
+# Remove nodejs sources as we never use this
+RUN rm /etc/apt/sources.list.d/nodesource.list
+
+# Repos and basic tools that likely never change
+RUN \
+  apt-get update && \
+  apt install --reinstall ca-certificates && \
+  apt-get install -yq --no-install-recommends \
+  apt-utils \
+  inotify-tools \
+  software-properties-common \
+  vim \
+  build-essential \
+  gnupg2 \
+  ca-certificates \
+  gcc \
+  g++ \
+  gdb \
+  git-lfs \
+  clang \
+  rsync \
+  tar \
+  protobuf-compiler \
+  libprotobuf-dev \
+  wget \
+  curl \
+  git \
+  ntpdate \
+  locales \
+  locales-all \
+  python3.6 \
+  python3.6-dev \
+  python3.6-distutils \
+  python3-pip && \
+  wget -q https://packages.microsoft.com/config/ubuntu/18.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb && \
+  dpkg -i packages-microsoft-prod.deb && \
+  rm packages-microsoft-prod.deb && \
+  add-apt-repository universe && \
+  curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | tee /etc/apt/trusted.gpg.d/microsoft.asc.gpg && \
+  add-apt-repository "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli $(lsb_release -cs) main" && \
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add - && \
+  add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" && \
+  wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | sudo tee /etc/apt/trusted.gpg.d/kitware.gpg >/dev/null && \
+  sudo apt-add-repository 'deb https://apt.kitware.com/ubuntu/ bionic main' && \
+  apt-get update && \
+  apt-get install -yq --no-install-recommends \
+  cmake \
+  apt-transport-https \
+  gnupg \
+  pass \
+  gnupg-agent \
+  software-properties-common \
+  lsb-release \
+  dotnet-sdk-3.1=3.1.402-1 \
+  azure-cli=2.28.0-1~bionic \
+  powershell \
+  docker-ce && \
+  curl -L "https://github.com/docker/compose/releases/download/1.25.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/bin/docker-compose && \
+  chmod +x /usr/bin/docker-compose && \
+  wget -qO- https://aka.ms/install-artifacts-credprovider.sh | bash && \
+  pip3 install lxml && \
+  apt-get update && apt-get install -y --no-install-recommends \
+  gnupg2 && \
+  wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/datacenter-gpu-manager_2.1.7_amd64.deb && \
+  dpkg -i datacenter-gpu-manager_2.1.7_amd64.deb && \
+  apt-get install libboost-all-dev -y && \
+  apt-get install python3.7-dev -y && apt-get install python3.8-dev -y && \
+  apt-get install libgoogle-perftools-dev -y && \
+  sudo ln -s /usr/lib/x86_64-linux-gnu/libprofiler.so /usr/lib/libprofiler.so && \
+  apt-get install ninja-build -y && \
+# Following is used to prebuild all DACS dependencies
+  cd $CMAKE_DEP_INSTALL_DIR && \
+  cmake -DCMAKE_BUILD_TYPE=Release -G Ninja $CMAKE_DEP_INSTALL_DIR/cmake && \
+  ninja && \
+  cd ~ && \
+# Following is needed for interactive ssh connection with the container during
+# local developement (with pycharm/clion etc). This is not needed for cdpx containers
+  apt-get update && apt-get install -yq --no-install-recommends ssh && \
+  ( \
+    echo 'LogLevel DEBUG2'; \
+    echo 'PermitRootLogin yes'; \
+    echo 'PasswordAuthentication yes'; \
+    echo 'Subsystem sftp /usr/lib/openssh/sftp-server'; \
+  ) > /etc/ssh/sshd_dev_config && \
+  mkdir /run/sshd && \
+  useradd -m dacsuser && \
+  find /dependency -type d | xargs chmod 777
+
+# Create cuda 10.1.243, nccl 2.4.8, cudnn 7.6.3 conda environment
+RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
+  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-101 && \
+  . /opt/conda-cuda-101/bin/activate && \
+  conda install -y -c conda-forge cudatoolkit-dev=10.1.243 && \
+  conda install -y --no-deps -c conda-forge cudnn=7.6 nccl=2.4.8 && \
+  conda deactivate && \
+  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
+
+# Create cuda 11.0.221, nccl 2.7.5, cudnn 8.0.5 conda environment
+RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
+  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-110 && \
+  . /opt/conda-cuda-110/bin/activate && \
+  conda install -y -c conda-forge cudatoolkit-dev=11.0.3 && \
+  conda install -y --no-deps -c conda-forge cudnn=8.0.5 nccl=2.7.8 && \
+  conda deactivate && \
+  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
+
+# Create cuda 11.3.109, nccl 2.9.9, cudnn 8.2.1 conda environment
+RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
+  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-113 && \
+  . /opt/conda-cuda-113/bin/activate && \
+  conda install -y -c conda-forge cudatoolkit-dev=11.3.1 && \
+  conda install -y --no-deps -c conda-forge cudnn=8.2.1 nccl=2.9.9 && \
+  conda deactivate && \
+  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
+
+# Install az module for powershell
+RUN pwsh -c "Install-Module -Name Az -Scope AllUsers -Repository PSGallery -Force"
