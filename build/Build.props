@@ -15,6 +15,11 @@
     <OutputPath>$(BuildBinaryRoot)\$(Configuration)\$(MSBuildProjectRelativePath)</OutputPath>
     <BaseIntermediateOutputPath>$(BuildObjectRoot)\$(Configuration)\$(MSBuildProjectRelativePath)</BaseIntermediateOutputPath>
     <IntermediateOutputPath>$(BuildObjectRoot)\$(Configuration)\$(MSBuildProjectRelativePath)</IntermediateOutputPath>
+    <ContainerImageRepository Condition=" '$(ContainerImageRepository)'=='' ">dacs</ContainerImageRepository>
+    <ContainerImageRepository Condition=" '$(CDP_BUILD_TYPE)'=='PullRequest' or '$(PARENT_CDP_BUILD_TYPE)'=='PullRequest' ">dacspullrequestacr</ContainerImageRepository>
+    <ContainerImageRepository Condition=" '$(CDP_BUILD_TYPE)'=='Official' or '$(PARENT_CDP_BUILD_TYPE)'=='Official' ">dacsofficialacr</ContainerImageRepository>
+    <UsingOfficialContainerImageRepository>false</UsingOfficialContainerImageRepository>
+    <UsingOfficialContainerImageRepository Condition=" '$(ContainerImageRepository)'=='dacsofficialacr' ">true</UsingOfficialContainerImageRepository>
     <PublishDir>$(IntermediateOutputPath)\$(RuntimeIdentifier)\publish\</PublishDir>
     <PowershellCoreCommand>pwsh</PowershellCoreCommand>
     <PowershellCommand Condition=" '$(OS)' != 'Windows_NT' ">pwsh</PowershellCommand>

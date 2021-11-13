@@ -1,0 +1,42 @@
+# Globally available cuda variables
+if(${CUDA_DEPENDENCY} MATCHES "cuda_11_3")
+    message("Set Variables for cuda 11_3 ${CMAKE_SOURCE_DIR}")
+    set(DEVICE_PROXY_NCCL_VERSION "2.9.9")
+    set(DEVICE_PROXY_CUDA_VERSION "11.3.109")
+    set(ENV{CUDA_ROOT} "/opt/conda-cuda-113/pkgs/cuda-toolkit/")
+    set(ENV{NCCL_ROOT} "/opt/conda-cuda-113/pkgs/nccl-2.9.9.1-hdc17891_0/")
+    set(ENV{CUDNN_ROOT} "/opt/conda-cuda-113/pkgs/cudnn-8.2.1.32-h86fa8c9_0/")
+
+    link_directories("$ENV{CUDA_ROOT}/targets/x86_64-linux/lib/stubs")
+elseif(${CUDA_DEPENDENCY} MATCHES "cuda_11_0")
+    message("Set Variables for cuda 11_0 ${CMAKE_SOURCE_DIR}")
+    set(DEVICE_PROXY_NCCL_VERSION "2.7.5")
+    set(DEVICE_PROXY_CUDA_VERSION "11.0.167")
+    set(ENV{CUDA_ROOT} "/opt/conda-cuda-110/pkgs/cuda-toolkit/")
+    set(ENV{NCCL_ROOT} "/opt/conda-cuda-110/pkgs/nccl-2.7.8.1-h4962215_1/")
+    set(ENV{CUDNN_ROOT} "/opt/conda-cuda-110/pkgs/cudnn-8.0.5.39-ha5ca753_1/")
+
+    link_directories("$ENV{CUDA_ROOT}/targets/x86_64-linux/lib/stubs")
+else()
+    message("Set Variables for cuda 10 from ${CMAKE_SOURCE_DIR}")
+    set(DEVICE_PROXY_NCCL_VERSION "2.4.8")
+    set(DEVICE_PROXY_CUDA_VERSION "10.1.243")
+    set(ENV{CUDA_ROOT} "/opt/conda-cuda-101/pkgs/cuda-toolkit/")
+    set(ENV{NCCL_ROOT} "/opt/conda-cuda-101/pkgs/nccl-2.4.8.1-h51cf6c1_1/")
+    set(ENV{CUDNN_ROOT} "/opt/conda-cuda-101/pkgs/cudnn-7.6.5.32-hc0a50b0_1/")
+
+    link_directories("$ENV{CUDA_ROOT}/lib64/stubs")
+endif()
+
+set(CUDAToolkit_ROOT "$ENV{CUDA_ROOT}")
+
+include_directories("$ENV{CUDA_ROOT}/include")
+include_directories("$ENV{NCCL_ROOT}/include")
+include_directories("$ENV{CUDNN_ROOT}/include")
+
+link_directories("$ENV{CUDA_ROOT}/lib64")
+link_directories("$ENV{CUDA_ROOT}/lib")
+link_directories("$ENV{NCCL_ROOT}/lib64")
+link_directories("$ENV{NCCL_ROOT}/lib")
+link_directories("$ENV{CUDNN_ROOT}/lib64")
+link_directories("$ENV{CUDNN_ROOT}/lib")
