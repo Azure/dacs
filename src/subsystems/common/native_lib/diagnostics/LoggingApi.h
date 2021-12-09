@@ -142,7 +142,9 @@ auto parseFileName(const char(&file)[N])
     return pos ? pos + 1 : file;
 }
 #define __FILENAME__ parseFileName(__FILE__)
+#ifndef FORMAT_BASE
 #define FORMAT_BASE "|DeviceProxy|time_int:{}|pid:{}|tid:{}|"
+#endif
 #define FORMAT_STR FORMAT_BASE "operation_Id:{}|rank:{}|{}:{}({}): "
 //-------------------------------------------------------------------------------------------------------------------------------------------
 #define LOG_TRACE(message, args...) \

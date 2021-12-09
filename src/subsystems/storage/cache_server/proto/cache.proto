@@ -1,0 +1,186 @@
+//---------------------------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.  All rights reserved.
+//---------------------------------------------------------------------------------------------------------------------
+syntax = "proto3";
+package cache;
+//---------------------------------------------------------------------------------------------------------------------
+/** 
+ * RPC Mechanism
+ *
+ * Lock API
+ *
+ * Client has to first send a 4 byte buffer containing the proto message length,
+ *         then followed by the "Request" proto message with the appropriate LockFileRequest fields populated.
+ * The server will respond with a 4 byte buffer containing the proto message length and 
+ *         then followed by the LockFileResponse proto message.
+ *
+ * Upload API
+ *
+ * Client has to first send a 4 byte buffer containing the proto message length, 
+ *         then followed by the "Request" proto message with the appropriate UploadRequest fields populated.
+ *         The raw file bytes has to be streamed immediately after the proto buffer is sent.
+ * The server will respond with a 4 byte buffer containing the proto message length and
+ *         then followed by the UploadResponse proto message.
+ * Note: The server might fail-fast and not read the entire upload stream for certain errors,
+ *       in which case client may not receive proper error codes.
+ *       To avoid this we can implement something like HTTP 100 continue semantics,
+ *       but may not be optimal in steady state.
+ * 
+ * Download API
+ *
+ * Client has to first send a 4 byte buffer containing the proto message length,
+ *         then followed by the "Request" proto message with the appropriate DownloadRequest fields populated.
+ * The server will respond with a 4 byte buffer containing the proto message length and
+ *         then followed by the DownloadResponse proto message. 
+ *         If file exists the proto message will be immediately followed by the contents of the file.
+ *
+ * PutAttribute API
+ *
+ * Client has to first send a 4 byte buffer containing the proto message length, 
+ *         then followed by the "Request" proto message with the appropriate PutAttributeRequest fields populated.
+ *         The raw file bytes has to be streamed immediately after the proto buffer is sent.
+ * The server will respond with a 4 byte buffer containing the proto message length and
+ *         then followed by the PutAttributeResponse proto message.
+ * 
+ * GetAttribute API
+ *
+ * Client has to first send a 4 byte buffer containing the proto message length,
+ *         then followed by the "Request" proto message with the appropriate GetAttributeRequest fields populated.
+ * The server will respond with a 4 byte buffer containing the proto message length and
+ *         then followed by the GetAttributeResponse proto message. 
+ *
+ */
+//---------------------------------------------------------------------------------------------------------------------
+// Locking required to coordinate parallel uploads across workers
+// Only the client which succeeds should perform the upload
+message LockFileRequest
+{
+    string filename = 1;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message LockFileResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        ALREADY_LOCKED = 1;
+        INTERNAL_ERROR = 2;
+    }
+    Result result = 1;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Upload the file contents into the cache
+message UploadRequest
+{
+    string filename = 1;
+    uint64 filesize = 2;
+
+    // If this is set to false then upload will succeed only if a DownloadRequest was 
+    //     called prior to this with enablelock set
+    bool ignorelock = 3;
+
+    // TODO: cache expiry not yet implemented
+    uint32 expiryseconds = 4;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message UploadResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        FILE_EXISTS = 1;
+        INTERNAL_ERROR = 2;
+    }
+    Result result = 1;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Check and download file from cache
+// Use enablelock to coordinate across multiple workers so that only one worker attempts to populate the cache
+message DownloadRequest
+{
+    string filename = 1;
+    uint64 offset = 2;
+
+    // Set length to 0 to fetch entire cached contents 
+    uint64 length = 3;
+    bool enablelock = 4;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message DownloadResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        NOT_FOUND_GOT_LOCK = 1;
+        NOT_FOUND_ALREADY_LOCKED = 2;
+        NOT_FOUND = 3;
+        INVALID_OFFSET_LENGTH = 4;
+        FILENAME_LIMIT_EXCEEDED = 5;
+        INTERNAL_ERROR = 6;
+    }
+    Result result = 1;
+    uint64 filesize = 2;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message FileAttribute
+{
+    bool isdir = 1;
+    uint64 filesize = 2;
+    uint64 accessedtime = 3;
+    uint64 modifiedtime = 4;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message FileAttributes
+{
+    string filename = 1;
+    FileAttribute fileattribute = 2;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Check and get file atrributes from cache
+// Use enablelock to coordinate across multiple workers so that only one worker attempts to populate the cache
+message GetAttributeRequest
+{
+    string filename = 1;
+    bool enablelock = 2;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message GetAttributeResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        NOT_FOUND_GOT_LOCK = 1;
+        NOT_FOUND = 2;
+        INTERNAL_ERROR = 3;
+    }
+    Result result = 1;
+    FileAttribute fileattribute = 2;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message PutAttributeRequest
+{
+    repeated FileAttributes fileattributes = 1;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message PutAttributeResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        INTERNAL_ERROR = 1;
+    }
+    Result result = 1;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message Request
+{
+    oneof type
+    {
+        LockFileRequest lockrequest = 1;
+        UploadRequest uploadrequest = 2;
+        DownloadRequest downloadrequest = 3;
+        GetAttributeRequest getattributerequest = 4;
+        PutAttributeRequest putattributerequest = 5;
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
