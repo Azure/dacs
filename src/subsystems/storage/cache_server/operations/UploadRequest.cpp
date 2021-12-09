@@ -1,0 +1,198 @@
+///--------------------------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.  All rights reserved.
+//---------------------------------------------------------------------------------------------------------------------
+#include "UploadRequest.h"
+#include "Utils.h"
+#include "SocketUtils.h"
+#include "Constants.h"
+#include "Logger.h"
+#include <fstream>
+#include <iostream>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <fcntl.h>
+#include <sstream>
+#include <cstring>
+#include <map>
+#include <queue>
+#include <chrono>
+#include <set>
+#include <memory>
+#include <atomic>
+//---------------------------------------------------------------------------------------------------------------------
+using namespace std;
+using namespace cache;
+//---------------------------------------------------------------------------------------------------------------------
+uint64_t CacheSizeLimitBytes = DefaultCacheSizeLimitBytes; 
+atomic_uint_fast64_t TotalCachedSize = 0;
+//---------------------------------------------------------------------------------------------------------------------
+void SetCacheSizeLimit(const uint64_t limitCacheSizeBytes)
+{
+    CacheSizeLimitBytes = limitCacheSizeBytes;
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool UploadFile(int clientFd, const UploadRequest& uploadRequest)
+{
+    LOG_DEBUG("filename received: {}", uploadRequest.filename());
+
+    // Set limit on filename length
+    if (uploadRequest.filename().size() > UPLOAD_FILENAME_LIMIT)
+    {
+        LOG_WARN("filename too large, size: {}", uploadRequest.filename().size());
+        return false;
+    }
+
+    CacheInfo cacheInfo = GetCacheStatus(uploadRequest.filename());
+    if (cacheInfo.m_status == COMPLETED)
+    {
+        LOG_WARN("file already uploaded {}", uploadRequest.filename());
+        return false;
+    }
+
+    if (cacheInfo.m_status == STARTED)
+    {
+        LOG_WARN("file already being uploaded by another client {}, will attempt to upload anyway",
+            uploadRequest.filename());
+    }
+
+    if (uploadRequest.filesize() > UPLOAD_FILESIZE_LIMIT)
+    {
+        LOG_WARN("filesize too large: {}", uploadRequest.filesize());
+        return false;
+    }
+
+    if (!UpdateCacheStatus(
+        uploadRequest.filename(),
+        uploadRequest.ignorelock(),
+        CacheInfo(uploadRequest.filesize(), STARTED)))
+    {
+        LOG_WARN("error starting upload for: {}", uploadRequest.filename());
+        return false;
+    }
+
+    // TODO: use meta field for cache TTL
+
+    UploadResponse uploadResponse;
+
+    LOG_DEBUG("file size to upload: {}", uploadRequest.filesize());
+    if (uploadRequest.filesize() > 0)
+    {
+        if ((TotalCachedSize.fetch_add(uploadRequest.filesize()) + uploadRequest.filesize()) > CacheSizeLimitBytes)
+        {
+            LOG_WARN("TotalCachedSize: {}, exceeds limit: {}", TotalCachedSize, CacheSizeLimitBytes);
+            TotalCachedSize.fetch_sub(uploadRequest.filesize());
+            return false;
+        }
+
+        // write to temp file on disk
+        string tempFilename = GetCacheTempPath(uploadRequest.filename());
+        if (tempFilename.empty())
+        {
+            LOG_WARN("Couldn't create a temp file for uploading: {}", uploadRequest.filename());
+            TotalCachedSize.fetch_sub(uploadRequest.filesize());
+            return false;
+        }
+
+        LOG_DEBUG("Using temp file {} for uploading {}", tempFilename, uploadRequest.filename());
+        std::ofstream fileOutput(tempFilename, ofstream::out | ofstream::binary | ofstream::trunc);
+
+        // TODO: Verify if sufficient disk space is available for this write and reserve it
+
+        const int writeBufferSize = 1024 * 1024;
+        char buffer[writeBufferSize];
+        uint64_t totalRead = 0;
+
+        // TODO: we can try sendfile() for uploads too 
+        while (totalRead < uploadRequest.filesize())
+        {
+            int bufferPos = 0;
+            while (true)
+            {
+                int temp = read(clientFd, buffer + bufferPos, writeBufferSize - bufferPos);
+                if (temp <= 0)
+                {
+                    LOG_WARN("couldn't read file completely from socket for file: {}. Bytes expected: {}, read: {}",
+                        uploadRequest.filename(),
+                        uploadRequest.filesize(),
+                        totalRead);
+                    fileOutput.close();
+                    remove(tempFilename.c_str());
+                    TotalCachedSize.fetch_sub(uploadRequest.filesize());
+                    return false;
+                }
+                bufferPos += temp;
+                if (bufferPos >= writeBufferSize || totalRead + bufferPos >= uploadRequest.filesize())
+                {
+                    break;
+                }
+            }
+            totalRead += bufferPos;
+            fileOutput.write(buffer, bufferPos);
+        }
+
+        fileOutput.flush();
+        fileOutput.close();
+
+        if (totalRead != uploadRequest.filesize())
+        {
+            LOG_WARN("Read more bytes than expected. expected: {}. read: {}",
+                uploadRequest.filesize(),
+                totalRead);
+            remove(tempFilename.c_str());
+            TotalCachedSize.fetch_sub(uploadRequest.filesize());
+            return false;
+        }
+
+        // Now atomically rename file to final target
+        string destFilename = GetCachePath(uploadRequest.filename());
+        int ret = rename(tempFilename.c_str(), destFilename.c_str());
+        if (ret != 0)
+        {
+            LOG_WARN("Failed to rename file from {} to {}. error: {}", tempFilename, destFilename, ret);
+            remove(tempFilename.c_str());
+            TotalCachedSize.fetch_sub(uploadRequest.filesize());
+            uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
+            if (!UpdateCacheStatus(uploadRequest.filename(), true, CacheInfo(uploadRequest.filesize(), INITIATED)))
+            {
+                LOG_ERROR("error resetting upload status to INITIATED: {}", uploadRequest.filename());
+            }
+        }
+        else
+        {
+            if (!UpdateCacheStatus(uploadRequest.filename(), true, CacheInfo(uploadRequest.filesize(), COMPLETED)))
+            {
+                uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
+                LOG_ERROR("error updating upload status to COMPLETED: {}", uploadRequest.filename());
+            }
+            else
+            {
+                uploadResponse.set_result(UploadResponse::SUCCESS);
+                LOG_INFO("File successfully written to cache: {}", uploadRequest.filename());
+            }
+        }
+    }
+    else
+    {
+        uploadResponse.set_result(UploadResponse::SUCCESS);
+        if (!UpdateCacheStatus(uploadRequest.filename(), true, CacheInfo(uploadRequest.filesize(), COMPLETED)))
+        {
+            uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
+            LOG_WARN("error updating upload status to COMPLETED: {}", uploadRequest.filename());
+        }
+        else
+        {
+            LOG_INFO("File successfully written to cache: {}", uploadRequest.filename());
+        }
+    }
+
+    if (!SendMessageToRemote(clientFd, uploadResponse))
+    {
+        LOG_WARN("Error sending response to client for file: {}", uploadRequest.filename());
+        return false;
+    }
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------

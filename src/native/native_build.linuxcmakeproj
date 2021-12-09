@@ -19,6 +19,7 @@
     <_LfsCkpt>src/subsystems/reliability/lfs_ckpt/</_LfsCkpt>
     <_NodeResourceManagerDeviceManagement>src/subsystems/hosting/node_resource_manager/DeviceManagement/</_NodeResourceManagerDeviceManagement>
     <_ReliabilityCommonNative>src/subsystems/reliability/common/native/</_ReliabilityCommonNative>
+    <_CacheServer>src/subsystems/storage/cache_server/</_CacheServer>
 
     <_SrcSyncDirs>$(RepositoryRootPath)/$(_NativeBuild)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_CudaBuild)</_SrcSyncDirs>
@@ -29,6 +30,7 @@
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_LfsCkpt)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_NodeResourceManagerDeviceManagement)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_ReliabilityCommonNative)</_SrcSyncDirs>
+    <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_CacheServer)</_SrcSyncDirs>
   </PropertyGroup>
 
   <ItemGroup>
@@ -45,5 +47,6 @@
     <NativeInputFiles Include="$(RepositoryRootPath)$(_LfsCkpt)**" />
     <NativeInputFiles Include="$(RepositoryRootPath)$(_NodeResourceManagerDeviceManagement)**" />
     <NativeInputFiles Include="$(RepositoryRootPath)$(_ReliabilityCommonNative)**" />
+    <NativeInputFiles Include="$(RepositoryRootPath)$(_CacheServer)**" />
   </ItemGroup>
 </Project>
