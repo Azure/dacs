@@ -125,11 +125,20 @@ RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86
   conda deactivate && \
   rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
 
-# Create cuda 11.0.221, nccl 2.7.5, cudnn 8.0.5 conda environment
+# Create cuda 11.0.221, nccl 2.7.8, cudnn 8.0.5 conda environment
 RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
   bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-110 && \
   . /opt/conda-cuda-110/bin/activate && \
   conda install -y -c conda-forge cudatoolkit-dev=11.0.3 && \
+  conda install -y --no-deps -c conda-forge cudnn=8.0.5 nccl=2.7.8 && \
+  conda deactivate && \
+  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
+
+# Create cuda 11.1 nccl 2.7.8, cudnn 8.0.5 conda environment
+RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
+  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-111 && \
+  . /opt/conda-cuda-111/bin/activate && \
+  conda install -y -c conda-forge cudatoolkit-dev=11.1 && \
   conda install -y --no-deps -c conda-forge cudnn=8.0.5 nccl=2.7.8 && \
   conda deactivate && \
   rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh

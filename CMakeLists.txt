@@ -53,7 +53,7 @@ include(${CMAKE_EXTERNAL_PROJECT}/json_include.cmake)
 include(${CMAKE_EXTERNAL_PROJECT}/xxHash_include.cmake)
 
 # Include CUDA, NCCL and CuDNN libraries
-include(${CMAKE_EXTERNAL_PROJECT}/cuda_include.cmake)
+include(build/SetupBuildDependencies/cuda_include.cmake)
 
 # ctest
 include(CTest)

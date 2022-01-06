@@ -78,6 +78,8 @@ if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
 
   cleanup_build "cuda_11_0"
 
+  cleanup_build "cuda_11_1"
+
   cleanup_build "cuda_11_3"
 
   CMAKE_BINARY_DIR_ORIG=$CMAKE_BINARY_DIR
@@ -113,6 +115,8 @@ for pythonVersion in "3.6" "3.7" "3.8"; do
 
   if [[ "$SKIP_CUDA_11_BUILD" != "true" ]]; then
     execute_build "cuda_11_0" "$pythonVersion"
+
+    execute_build "cuda_11_1" "$pythonVersion"
 
     execute_build "cuda_11_3" "$pythonVersion"
   fi
