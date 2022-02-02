@@ -64,7 +64,6 @@ include_directories(src/subsystems/common/native_lib/utils/)
 include_directories(src/subsystems/reliability/callstack_utils/)
 include_directories(src/subsystems/reliability/profiler_utils/)
 
-
 # Enable testing at the root level
 enable_testing()
 
