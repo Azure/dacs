@@ -7,7 +7,7 @@
     <NativeBuildPath>$([MSBuild]::NormalizeDirectory($(SubsystemsPath)reliability\device_proxy))</NativeBuildPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <Configuration Condition=" '$(Configuration)'=='' ">Debug</Configuration>
-    <SkipCuda11Build Condition=" '$(SkipCuda11Build)'=='' ">false</SkipCuda11Build>
+    <SkipNativeSubmoduleBuild Condition=" '$(SkipNativeSubmoduleBuild)'=='' ">false</SkipNativeSubmoduleBuild>
     <MSBuildProjectRelativePath>$(MSBuildProjectDirectory.Replace($(RepositorySrcRootPath), ''))</MSBuildProjectRelativePath>
     <MSBuildProjectRelativePath Condition="$([System.IO.Path]::IsPathRooted($(MSBuildProjectRelativePath)))"></MSBuildProjectRelativePath>
     <BuildBinaryRoot Condition=" '$(BuildBinaryRoot)'=='' ">$(RepositoryRootPath)bin</BuildBinaryRoot>

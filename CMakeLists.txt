@@ -77,14 +77,15 @@ add_subdirectory(src/subsystems/common/native_lib/diagnostics.tests)
 add_subdirectory(src/subsystems/reliability/common/native/)
 add_subdirectory(src/subsystems/reliability/callstack_utils/)
 add_subdirectory(src/subsystems/reliability/profiler_utils/)
-message("CUDA_DEPENDENCY: ${CUDA_DEPENDENCY}")
 
-if(NOT CUDA_DEPENDENCY OR NOT ("${CUDA_DEPENDENCY}" MATCHES "non_cuda"))
+message("CUDA_VERSION: ${CUDA_VERSION}")
+
+if(NOT CUDA_VERSION OR NOT ("${CUDA_VERSION}" MATCHES "non_cuda"))
     message("add CUDA dependant projects")
     add_subdirectory(src/subsystems/reliability/device_proxy/)
 endif()
 
-if(NOT CUDA_DEPENDENCY OR "${CUDA_DEPENDENCY}" MATCHES "non_cuda")
+if(NOT CUDA_VERSION OR "${CUDA_VERSION}" MATCHES "non_cuda")
     message("add non CUDA dependant projects")
     add_subdirectory(src/subsystems/reliability/criu_deduper/)
     add_subdirectory(src/subsystems/reliability/lfs_ckpt/)
