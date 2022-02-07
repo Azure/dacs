@@ -8,9 +8,10 @@ function execute_build() {
   mkdir -p $CMAKE_RUNTIME_OUTPUT_DIRECTORY/${cuda_deps}
   cd $CMAKE_RUNTIME_OUTPUT_DIRECTORY/${cuda_deps}
   cmake \
-    -DPYTHON_DEPENDENCY=${python_deps} \
-    -DCUDA_DEPENDENCY=${cuda_deps} \
+    -DPYTHON_VERSION=${python_deps} \
+    -DCUDA_VERSION=${cuda_deps} \
     -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_CONFIGURATION \
+    -DSKIP_SUBMODULE_BUILD=$SKIP_NATIVE_SUBMODULE_BUILD \
     -G Ninja \
     $PATH_TO_SOURCE
 
@@ -74,13 +75,13 @@ if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
   # we should cleanup the tmp repo
   cleanup_build "non_cuda"
 
-  cleanup_build "cuda_10_1"
-
-  cleanup_build "cuda_11_0"
-
-  cleanup_build "cuda_11_1"
-
-  cleanup_build "cuda_11_3"
+  if [[ ! -z "$BUILD_CUDA_VERSION" ]]; then
+    cleanup_build "$BUILD_CUDA_VERSION"
+  else
+    for cudaVersion in "10_1" "11_0" "11_1" "11_3"; do
+      cleanup_build "cuda_$cudaVersion"
+    done
+  fi
 
   CMAKE_BINARY_DIR_ORIG=$CMAKE_BINARY_DIR
   CMAKE_BINARY_DIR=/tmp$CMAKE_BINARY_DIR
@@ -107,20 +108,21 @@ fi
 # Though we are looping over different python versions
 # Device proxy should not be rebuilt and hence the build time
 # would not be significantly higher
-for pythonVersion in "3.6" "3.7" "3.8"; do
+if [[ ! -z "$BUILD_PYTHON_VERSION" ]]; then
+  execute_build "non_cuda" "$BUILD_PYTHON_VERSION"
+else
+  for pythonVersion in "3.6" "3.7" "3.8"; do
+    execute_build "non_cuda" "$pythonVersion"
+  done
+fi
 
-  execute_build "non_cuda" "$pythonVersion"
-
-  execute_build "cuda_10_1" "$pythonVersion"
-
-  if [[ "$SKIP_CUDA_11_BUILD" != "true" ]]; then
-    execute_build "cuda_11_0" "$pythonVersion"
-
-    execute_build "cuda_11_1" "$pythonVersion"
-
-    execute_build "cuda_11_3" "$pythonVersion"
-  fi
-done
+if [[ ! -z "$BUILD_CUDA_VERSION" ]]; then
+  execute_build "$BUILD_CUDA_VERSION" "3.6"
+else
+  for cudaVersion in "10_1" "11_0" "11_1" "11_3"; do
+    execute_build "cuda_$cudaVersion" "3.6"
+  done
+fi
 
 if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
   execute_rsync $CMAKE_BINARY_DIR/ $CMAKE_BINARY_DIR_ORIG -avu --delete --exclude=src --exclude=CMakeFiles
