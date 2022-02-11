@@ -16,6 +16,7 @@
     <_DeviceProxy>src/subsystems/reliability/device_proxy/</_DeviceProxy>
     <_CriuDeduper>src/subsystems/reliability/criu_deduper/</_CriuDeduper>
     <_CallStackUtils>src/subsystems/reliability/callstack_utils/</_CallStackUtils>
+    <_ProfilerUtils>src/subsystems/reliability/profiler_utils/</_ProfilerUtils>
     <_LfsCkpt>src/subsystems/reliability/lfs_ckpt/</_LfsCkpt>
     <_NodeResourceManagerDeviceManagement>src/subsystems/hosting/node_resource_manager/DeviceManagement/</_NodeResourceManagerDeviceManagement>
     <_ReliabilityCommonNative>src/subsystems/reliability/common/native/</_ReliabilityCommonNative>
@@ -26,6 +27,7 @@
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_NativeLib)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_CriuDeduper)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_CallStackUtils)</_SrcSyncDirs>
+    <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_ProfilerUtils)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_DeviceProxy)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_LfsCkpt)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_NodeResourceManagerDeviceManagement)</_SrcSyncDirs>
@@ -44,6 +46,7 @@
     <NativeInputFiles Include="$(RepositoryRootPath)$(_DeviceProxy)**" />
     <NativeInputFiles Include="$(RepositoryRootPath)$(_CriuDeduper)**" />
     <NativeInputFiles Include="$(RepositoryRootPath)$(_CallStackUtils)**" />
+    <NativeInputFiles Include="$(RepositoryRootPath)$(_ProfilerUtils)**" />
     <NativeInputFiles Include="$(RepositoryRootPath)$(_LfsCkpt)**" />
     <NativeInputFiles Include="$(RepositoryRootPath)$(_NodeResourceManagerDeviceManagement)**" />
     <NativeInputFiles Include="$(RepositoryRootPath)$(_ReliabilityCommonNative)**" />
