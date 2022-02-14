@@ -20,6 +20,7 @@
     <_LfsCkpt>src/subsystems/reliability/lfs_ckpt/</_LfsCkpt>
     <_NodeResourceManagerDeviceManagement>src/subsystems/hosting/node_resource_manager/DeviceManagement/</_NodeResourceManagerDeviceManagement>
     <_ReliabilityCommonNative>src/subsystems/reliability/common/native/</_ReliabilityCommonNative>
+    <_StorageIntercept>src/subsystems/storage/storage_intercept/</_StorageIntercept>
     <_CacheServer>src/subsystems/storage/cache_server/</_CacheServer>
 
     <_SrcSyncDirs>$(RepositoryRootPath)/$(_NativeBuild)</_SrcSyncDirs>
@@ -32,6 +33,7 @@
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_LfsCkpt)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_NodeResourceManagerDeviceManagement)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_ReliabilityCommonNative)</_SrcSyncDirs>
+    <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_StorageIntercept)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_CacheServer)</_SrcSyncDirs>
   </PropertyGroup>
 

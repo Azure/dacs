@@ -1,0 +1,53 @@
+//---------------------------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.  All rights reserved.
+//---------------------------------------------------------------------------------------------------------------------
+#pragma once
+//---------------------------------------------------------------------------------------------------------------------
+#include <string>
+//---------------------------------------------------------------------------------------------------------------------
+namespace StorageInterceptConstants
+{
+    const char* const ConfigFilePath = "/tmp/storageIntercept.config";
+
+    const char* const ConfigNameStoragePath = "storagePath";
+
+    const char* const ConfigNameRemoteType = "type";
+    const char* const ConfigValRemoteTypeBlob = "blob";
+    const char* const ConfigValRemoteTypeAdls = "adls";
+    const char* const ConfigValRemoteTypeMock = "mock";
+
+    const char* const ConfigNameMockClientRoot = "mockFsRoot";
+
+    const char* const ConfigNameAdlsHostName = "adlsHostname";
+    const char* const ConfigNameAdlsClientId = "adlsClientId";
+    const char* const ConfigNameAdlsClientSecret = "adlsClientSecret";
+    const char* const ConfigNameAdlsAuthTokenUrl = "adlsAuthTokenUrl";
+
+    const char* const ConfigNameStreamingChunkSize = "streamingChunkSize";
+    const char* const ConfigNameIoBlockSize = "ioBlockSize";
+
+    // Config constants for caching
+    const char* const ConfigNameCacheEnable = "cacheEnable";
+    const char* const ConfigNameCacheServerPort = "cacheServerPort";
+    const char* const ConfigNameCacheEnableRemote = "cacheEnableRemote";
+    const char* const ConfigNameCacheUseLocalFS = "cacheUseLocalFS";
+    const char* const ConfigNameLocalFSCachePath = "cacheLocalFSCachePath";
+    const char* const ConfigNameCacheNumRemoteServers = "cacheNumServers";
+    const char* const ConfigNameCacheUploaderThreadsPerProcess = "cacheNumUploadThreadsPerProcess";
+    const char* const ConfigNameCacheUploaderMaxBufferSizePerProcess = "cacheMaxUploadBufferSizePerProcess";
+    const char* const ConfigNameCacheReuseServerConnections = "cacheReuseServerConnections";
+
+    // Config for Attributes cache
+    const char* const ConfigNameAttributesCacheEnable = "attributesCacheEnable";
+    const char* const ConfigNameAttributesCacheMaxEntries = "attributesCacheMaxEntries";
+    const char* const ConfigNameAttributesCacheUseLocalServer = "attributesCacheUseLocalServer";
+
+    // Config constants for blob client
+    const char* const ConfigNameAzBlobStorageAccName = "azBlobStorageAccountName";
+    const char* const ConfigNameAzBlobSASToken = "azBlobSASToken";
+    const char* const ConfigNameAzBlobStorageAccKey = "azBlobStorageAccountKey";
+    const char* const ConfigNameAzBlobStorageEndpointUrl = "azBlobStorageEndpoint";
+    const char* const ConfigNameAzBlobContainerName = "azBlobContainerName";
+    const char* const ConfigNameMaxConnsPerBlobClient = "maxConnsPerBlobClient";
+};
+//---------------------------------------------------------------------------------------------------------------------
