@@ -55,6 +55,12 @@ include(${CMAKE_EXTERNAL_PROJECT}/xxHash_include.cmake)
 # Include CUDA, NCCL and CuDNN libraries
 include(build/SetupBuildDependencies/cuda_include.cmake)
 
+# Azure storage lite lib - to communicate with blob services
+include(${CMAKE_EXTERNAL_PROJECT}/storagelite_include.cmake)
+
+# Google protobuf static lib
+include(${CMAKE_EXTERNAL_PROJECT}/protobufstatic_include.cmake)
+
 # ctest
 include(CTest)
 
@@ -77,6 +83,7 @@ add_subdirectory(src/subsystems/common/native_lib/diagnostics.tests)
 add_subdirectory(src/subsystems/reliability/common/native/)
 add_subdirectory(src/subsystems/reliability/callstack_utils/)
 add_subdirectory(src/subsystems/reliability/profiler_utils/)
+add_subdirectory(src/subsystems/storage/storage_intercept/)
 
 message("CUDA_VERSION: ${CUDA_VERSION}")
 

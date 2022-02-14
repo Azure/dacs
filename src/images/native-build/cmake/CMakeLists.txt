@@ -38,3 +38,11 @@ include_directories(SYSTEM ${PROJECT_BINARY_DIR}/include)
 # include xxHash
 include(external/External_xxHash.cmake)
 include_directories(${CMAKE_DEP_INSTALL_DIR}/include)
+
+# azure storage lite library to communicate with blob services
+include(external/External_storagelite.cmake)
+include_directories(SYSTEM ${PROJECT_BINARY_DIR}/include)
+
+# google protobuf static library
+include(external/External_protobufstatic.cmake)
+include_directories(SYSTEM ${PROJECT_BINARY_DIR}/include)

@@ -98,6 +98,9 @@ RUN \
   apt-get install libgoogle-perftools-dev -y && \
   sudo ln -s /usr/lib/x86_64-linux-gnu/libprofiler.so /usr/lib/libprofiler.so && \
   apt-get install ninja-build -y && \
+# Dependencies for storage
+  apt-get update && apt-get install -y --no-install-recommends \
+  libssl-dev libcurl4-openssl-dev curl libjsoncpp-dev uuid-dev && \
 # Following is used to prebuild all DACS dependencies
   cd $CMAKE_DEP_INSTALL_DIR && \
   cmake -DCMAKE_BUILD_TYPE=Release -G Ninja $CMAKE_DEP_INSTALL_DIR/cmake && \
