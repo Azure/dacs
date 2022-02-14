@@ -7,13 +7,14 @@ include_directories(${CMAKE_SOURCE_DIR}/src/subsystems/common/native_lib/diagnos
                     ./operations
                     ./proto
                     ./utils
+                    /opt/protobufstatic-3.0.0/include
                     )
 
 set(CACHE_SERVER_EXEC CacheServer)
 
 # Generate protobuf source files
 execute_process(
-    COMMAND protoc
+    COMMAND /opt/protobufstatic-3.0.0/bin/protoc
                 --proto_path=${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/proto 
                 --cpp_out=${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/proto
                 ${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/proto/cache.proto)
@@ -22,12 +23,17 @@ file(GLOB CACHE_SERVER_SOURCES *cpp ./operations/*cpp ./utils/*cpp ./proto/*cc)
 
 add_executable(${CACHE_SERVER_EXEC} ${CACHE_SERVER_SOURCES})
 
+# Statically link to precompiled protobuf library to prevent mismatch with system installed versions
+ADD_LIBRARY(staticprotobuf STATIC IMPORTED)
+SET_TARGET_PROPERTIES(staticprotobuf PROPERTIES
+        IMPORTED_LOCATION /opt/protobufstatic-3.0.0/lib/libprotobuf.a)
+
 target_link_libraries(
     ${CACHE_SERVER_EXEC}
     pthread
-    protobuf
     diagnostics
     reliability_common
+    staticprotobuf
 )
 
 add_custom_command(
