@@ -38,13 +38,10 @@ else()
 endif()
 
 set(CUDAToolkit_ROOT "$ENV{CUDA_ROOT}")
-# Using libcupti-10.1 for all cuda versions as libupti-11.0 and libupti-11.1 are not stable and may cause issues
-set(ENV{CUPTI_ROOT} "/opt/conda-cuda-101/pkgs/cuda-toolkit/extras/CUPTI")
 
 include_directories("$ENV{CUDA_ROOT}/include")
 include_directories("$ENV{NCCL_ROOT}/include")
 include_directories("$ENV{CUDNN_ROOT}/include")
-include_directories("$ENV{CUPTI_ROOT}/include")
 
 link_directories("$ENV{CUDA_ROOT}/lib64")
 link_directories("$ENV{CUDA_ROOT}/lib")
