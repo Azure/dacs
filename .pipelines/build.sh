@@ -19,11 +19,13 @@ dotnet msbuild dirs.proj \
 -fileLoggerParameters:"logfile=$DIR/Log/msbuild.build.log" \
 "${@:2}"
 
-if [ $? -ne 0 ]
-  then
-    exit 1
+if [[ $? -ne 0 ]]; then
+  echo "Build failed, exiting with status code 1"
+  exit 1
 fi
 
-echo Validate no source files modified. Any files found sent to stderr
-echo git clean -x -d -n src
+echo "Validate no source files modified. Any files found sent to stderr"
+echo "git clean -x -d -n src"
 git clean -x -d -n src 1>&2
+
+exit 0
