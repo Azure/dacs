@@ -29,12 +29,17 @@
 #pragma once
 
 #include <iostream>
+#include <fstream>
+#include <mutex>
 #include <assert.h>
 #include <string>
 #include <chrono>
 #include <atomic>
 #include <sys/syscall.h>
 #include <unistd.h>
+#include "ILogger.h"
+#include "FileLogger.h"
+#include "StandardLogger.h"
 #define INVALID_PID -1
 #define gettid() syscall(SYS_gettid)
 #define GET_TIME std::chrono::duration_cast<std::chrono::nanoseconds>\
@@ -86,19 +91,22 @@ public:
     template<LogLevel LEVEL, typename... _TArgs>
     static void LogMessage(_TArgs&&... Fargs)
     {
+        if(!m_bIsInitialized)
+        {
+            Init();
+        }
+
         static_assert(LEVEL >= LogLevel::Critical && LEVEL <= LogLevel::Trace);
 
         if(LOG_LEVEL < static_cast<int>(LEVEL)) return;
 
-        if(m_bShutdownLogging) return;
-
         if(LEVEL >= LogLevel::Warn)
         {
-            std::cout << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
+            m_upLogger->LogOutput(FormatMsg(std::forward<_TArgs>(Fargs)...));
         }
         else
         {
-            std::cerr << FormatMsg(std::forward<_TArgs>(Fargs)...) << std::endl;
+            m_upLogger->LogError(FormatMsg(std::forward<_TArgs>(Fargs)...));
         }
     }
 
@@ -106,9 +114,8 @@ public:
     ~LoggingApi() { Shutdown(); }
 
 private:
-    // Disable async/sync logging when set
-    static bool m_bShutdownLogging;
-
+    static std::atomic<bool> m_bIsInitialized;
+    static std::atomic<bool> m_bIsInitializing;
     // 1. Proxy client can read its owner from configuration
     // 2. Proxy server will use the owner of proxy client it's attached to.
     // 3. For external processes like CriuDumpHandler etc. it will remain unset.
@@ -116,6 +123,9 @@ private:
 
     static pid_t m_nCachedPid;
     static std::atomic<bool> m_bForkFlag;
+
+    static std::shared_ptr<ILogger> m_upLogger;
+    static std::recursive_mutex m_lock;
 
     template<size_t M, typename... _TArgs>
     static decltype(auto) FormatMsg(const char(&message)[M], _TArgs&&... Fargs)

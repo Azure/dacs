@@ -8,33 +8,70 @@
 //--------------------------------------------------------------------------------------------------------------------------------------------
 thread_local std::string AutoOperationIdTLS::OperationIdTLS{};
 //--------------------------------------------------------------------------------------------------------------------------------------------
-bool LoggingApi::m_bShutdownLogging{false};
 int LoggingApi::m_nOwnerId{-1};
 pid_t LoggingApi::m_nCachedPid{INVALID_PID};
 std::atomic<bool> LoggingApi::m_bForkFlag{false};
+std::shared_ptr<ILogger> LoggingApi::m_upLogger;
+std::atomic<bool> LoggingApi::m_bIsInitialized{false};
+std::atomic<bool> LoggingApi::m_bIsInitializing{false};
+std::recursive_mutex LoggingApi::m_lock;
 //-------------------------------------------------------------------------------------------------------------------------------------------
 void LoggingApi::Init()
 {
-    Shutdown();
+    std::lock_guard<std::recursive_mutex> lock(m_lock);
 
-    m_bShutdownLogging = false;
-    LOG_INFO("Initialized logging.");
+    //prevent multiple initialization coming in.
+    if(m_bIsInitialized || m_bIsInitializing)
+    {
+        return;
+    }
 
+    m_bIsInitializing = true;
+    
+    char* fileStandardOutput = std::getenv("DACS_LOG_OUTPUT_FLIE");
+    char* fileErrorOutput = std::getenv("DACS_LOG_ERROR_FILE");
+
+    if(!fileStandardOutput || !fileErrorOutput)
+    {
+        m_upLogger = std::make_shared<StandardLogger>();
+    }
+    else
+    {
+        m_upLogger = std::make_shared<FileLogger>(fileStandardOutput, fileErrorOutput);
+    }
+
+    m_upLogger->Flush();
     pthread_atfork(LoggingApi::Prepare, LoggingApi::Parent, LoggingApi::Child);
+
+    m_bIsInitialized = true;
+    m_bIsInitializing = false;
 };
 //-------------------------------------------------------------------------------------------------------------------------------------------
 void LoggingApi::Shutdown()
 {
+    std::lock_guard<std::recursive_mutex> lock(m_lock);
+
+    if(!m_bIsInitialized)
+    {
+        return;
+    }
+
     Flush();
 
-    LOG_INFO("LoggingApi::Shutdown()");
-    m_bShutdownLogging = true;
+    m_bIsInitialized = false;
+    m_upLogger->Shutdown();
 }
 //-------------------------------------------------------------------------------------------------------------------------------------------
 void LoggingApi::Flush()
-{
-    ::fflush(stdout);
-    ::fflush(stderr);
+{ 
+    std::lock_guard<std::recursive_mutex> lock(m_lock);
+
+    if(!m_bIsInitialized)
+    {
+        return;
+    }
+
+    m_upLogger->Flush();
 }
 //-------------------------------------------------------------------------------------------------------------------------------------------
 void LoggingApi::SetOwnerId(/*[in]*/ int nOwnerId)
