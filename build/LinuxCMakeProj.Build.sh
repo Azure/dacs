@@ -27,7 +27,7 @@ function cleanup_build() {
   echo "Clean build output for ${cuda_deps} projects......"
   CLEAN_BIN_PATH="$CMAKE_BINARY_DIR/${cuda_deps}"
   CLEAN_OBJ_PATH="$OBJ_DIR/${cuda_deps}"
-  if [[ ! -f $CLEAN_BIN_PATH/Makefile ]]; then
+  if [[ ! -f $CLEAN_BIN_PATH/build.ninja ]]; then
     echo Cleaning up /tmp$CLEAN_BIN_PATH
     rm -rf /tmp$CLEAN_BIN_PATH/*
     if [ $? -ne 0 ]; then
