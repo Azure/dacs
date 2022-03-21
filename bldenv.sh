@@ -22,7 +22,6 @@ docker run \
     --rm \
     -i \
     --ipc host \
-    --gpus all \
     $TTY_OPTION \
     --privileged \
     --env VSS_NUGET_URI_PREFIXES \
