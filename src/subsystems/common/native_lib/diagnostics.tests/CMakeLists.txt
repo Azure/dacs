@@ -4,6 +4,7 @@ project(diagnostics.tests)
 enable_testing()
 add_executable(diagnostics_tests
         LoggingApiTest.cpp
+        FileLoggerTest.cpp
         TestMain.cpp)
 
 target_include_directories(diagnostics_tests PRIVATE  ../diagnostics)

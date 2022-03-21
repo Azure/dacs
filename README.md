@@ -152,12 +152,12 @@ These are the steps used to run native unit tests.
    $ .pipelines/nativeunittest.sh [Release|Debug]
    ```
 
-## Updating native build container 
+## Updating native build container
 
 - Run from Command Prompt
     ```
    $ cd <path to repository root>
    $ dotnet restore src/images/native-build/native-build.dockerproj           
-   $ dotnet msbuild -M -t:ContainerBuild src/images/native-build/native-build.dockerproj           
+   $ dotnet msbuild -M -t:ContainerPublish src/images/native-build/native-build.dockerproj           
    ```
 - Make sure that the final update to build/.metadata/native-build.container.metadata is included in your PR.
