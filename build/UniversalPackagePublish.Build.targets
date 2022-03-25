@@ -14,9 +14,9 @@
       <PackageChannel Condition="'$(PackageChannel)'==''">$(DevChannelName)</PackageChannel>
       <PackageName>$(PackageBaseName)-$(PackageChannel)</PackageName>
 
-      <CurrentDate>$([System.DateTime]::Now.ToString(yyMMddhhmm))</CurrentDate>
+      <CurrentDate>$([System.DateTime]::Now.ToString(Myddhhmm))</CurrentDate>
       <BranchHash Condition="'$(GitBranchName)'=='main'">0</BranchHash>
-      <BranchHash Condition="'$(BranchHash)'==''">$([System.Math]::Abs($(GitBranchName.GetHashCode())))</BranchHash>
+      <BranchHash Condition="'$(BranchHash)'==''">$([System.Math]::Abs($(GitBranchName.GetHashCode())).ToString().Substring(0, 5))</BranchHash>
 
       <PackageRevision Condition="'$(GitBranchName)'=='main'">$(PACKAGE_REVISION)</PackageRevision>
       <PackageRevision Condition="'$(PackageRevision)'==''">0</PackageRevision>
@@ -32,6 +32,7 @@
     <Message Importance="high"  text="Publishing universal package $(PackageName) in directory $(PackagePublishDir) with version $(PackageVersion)" />
     <Exec Command="az artifacts universal publish --organization $(AzOrganization) --project=$(AzProject) --scope project --feed $(AzArtifactFeed) --name $(PackageName) --version $(PackageVersion) --path $(PackagePublishDir)"/>
     <Exec Command="git tag -a 'v$(PackageVersion)' -m 'Published universal pacakge for $(PackageName) with version $(PackageVersion)'"/>
+    <Exec Condition="$(AZURE_DEVOPS_EXT_PAT)!=''" Command="git push origin 'v$(PackageVersion)'"/>
   </Target>
 
   <Target Name="AfterPublish" DependsOnTargets="PublishUniversalPackage" AfterTargets="Publish" />

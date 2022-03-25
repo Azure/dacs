@@ -27,6 +27,7 @@ docker run \
     --env VSS_NUGET_URI_PREFIXES \
     --env VSS_NUGET_ACCESSTOKEN \
     --env VSS_NUGET_EXTERNAL_FEED_ENDPOINTS \
+    --env AZURE_DEVOPS_EXT_PAT \
     -v /etc/group:/etc/group:ro \
     -v /etc/passwd:/etc/passwd:ro \
     -v /etc/shadow:/etc/shadow:ro \
