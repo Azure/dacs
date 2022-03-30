@@ -192,7 +192,6 @@ off64_t ContentHandler::HandleLseek(int fd, off64_t offset, int whence)
     }
 
     off64_t nextOffset = fdIt->second.FileOffset;
-
     int isModified = 0;
     switch(whence)
     {
@@ -205,6 +204,42 @@ off64_t ContentHandler::HandleLseek(int fd, off64_t offset, int whence)
             isModified |= offset;
             nextOffset += offset;
             break;
+
+        case SEEK_END:
+            FileAttributes attributes;
+            std::string path = fdIt->second.RemotePath;
+            /* offset > 0 is currently not supported for SEEK_END case */
+            if (offset > 0)
+            {
+                StreamingClient::GetInstance().GetProperties(path, attributes);
+                LOG_ERROR(
+                    "Lseek request to an offset beyond file size encountered. path={}, requestedOffset={}, fileSize={}",
+                    path,
+                    attributes.size + offset,
+                    attributes.size);
+                nextOffset = -1;
+                return nextOffset;
+            }
+            /* Releasing lock during expensive I/O operation */
+            openHandlesLock.unlock();
+            StreamingClient::GetInstance().GetProperties(path, attributes);
+            openHandlesLock.lock();
+            fdIt = m_mapOpenHandles.find(fd);
+            if (fdIt == m_mapOpenHandles.end())
+            {
+                openHandlesLock.unlock();
+                LOG_WARN(
+                    "Fd was closed in between lseek handling, falling back to original lseek. path={}, fd={}, offset={}, whence={}",
+                    path,
+                    fd,
+                    offset,
+                    whence);
+                return StorageDlsymWrapper::lseek64(fd, offset, whence);
+            }
+            isModified = (attributes.size + offset) ^ nextOffset;
+            nextOffset = attributes.size + offset;
+            break;
+
     }
     if (isModified == 0)
     {
