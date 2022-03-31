@@ -60,7 +60,7 @@ enum class LogLevel
     Trace = 5
 };
 #ifndef LOG_LEVEL
-#define LOG_LEVEL static_cast<int>(LogLevel::Debug)
+#define LOG_LEVEL static_cast<int>(LogLevel::Info)
 #endif
 //-------------------------------------------------------------------------------------------------------------------------------------------
 struct AutoOperationIdTLS

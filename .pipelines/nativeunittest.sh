@@ -10,7 +10,7 @@ function execute_test() {
       exit 1
   fi
 
-  echo "PWD = $DIR/../obj/$BUILD_CONFIGURATION/native/${cuda_deps}/"
+  echo "PWD = $DIR/../bin/$BUILD_CONFIGURATION/native/${cuda_deps}/"
   cd $DIR/../bin/$BUILD_CONFIGURATION/native/${cuda_deps}/
 
   if [ ! -z "$TEST_NAME" ]; then
