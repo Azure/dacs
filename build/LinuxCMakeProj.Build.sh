@@ -78,7 +78,7 @@ if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
   if [[ ! -z "$BUILD_CUDA_VERSION" ]]; then
     cleanup_build "$BUILD_CUDA_VERSION"
   else
-    for cudaVersion in "10_1" "11_0" "11_1" "11_3"; do
+    for cudaVersion in "11_0" "11_1" "11_3"; do
       cleanup_build "cuda_$cudaVersion"
     done
   fi
@@ -119,7 +119,7 @@ fi
 if [[ ! -z "$BUILD_CUDA_VERSION" ]]; then
   execute_build "$BUILD_CUDA_VERSION" "3.6"
 else
-  for cudaVersion in "10_1" "11_0" "11_1" "11_3"; do
+  for cudaVersion in "11_0" "11_1" "11_3"; do
     execute_build "cuda_$cudaVersion" "3.6"
   done
 fi
