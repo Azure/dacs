@@ -26,15 +26,6 @@ elseif(${CUDA_VERSION} MATCHES "cuda_11_0")
     set(ENV{CUDNN_ROOT} "/opt/conda-cuda-110/pkgs/cudnn-8.0.5.39-ha5ca753_1/")
 
     link_directories("$ENV{CUDA_ROOT}/targets/x86_64-linux/lib/stubs")
-else()
-    message("Set Variables for cuda 10 from ${CMAKE_SOURCE_DIR}")
-    set(DEVICE_PROXY_NCCL_VERSION "2.4.8")
-    set(DEVICE_PROXY_CUDA_VERSION "10.1.243")
-    set(ENV{CUDA_ROOT} "/opt/conda-cuda-101/pkgs/cuda-toolkit/")
-    set(ENV{NCCL_ROOT} "/opt/conda-cuda-101/pkgs/nccl-2.4.8.1-h51cf6c1_1/")
-    set(ENV{CUDNN_ROOT} "/opt/conda-cuda-101/pkgs/cudnn-7.6.5.32-hc0a50b0_1/")
-
-    link_directories("$ENV{CUDA_ROOT}/lib64/stubs")
 endif()
 
 set(CUDAToolkit_ROOT "$ENV{CUDA_ROOT}")

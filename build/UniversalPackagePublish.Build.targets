@@ -4,21 +4,21 @@
   <Import Project="$(MSBuildThisFileDirectory)ResolveFrameworkReferences.targets" />
 
   <Target Name="PublishUniversalPackage">
-    <Exec Command="git rev-parse --symbolic-full-name --abbrev-ref HEAD" ConsoleToMsBuild="true" >
-      <Output TaskParameter="ConsoleOutput" PropertyName="GitBranchName" />
+    <Exec Condition="$(GIT_BRANCH)==''" Command="git rev-parse --symbolic-full-name --abbrev-ref HEAD" ConsoleToMsBuild="true" >
+      <Output TaskParameter="ConsoleOutput" PropertyName="GIT_BRANCH" />
     </Exec>
-    <Error Condition="'$(GitBranchName)'=='main' And $(AZURE_DEVOPS_EXT_PAT)==''"
+    <Error Condition="'$(GIT_BRANCH)'=='main' And $(AZURE_DEVOPS_EXT_PAT)==''"
       Text="Build on main branch can only be executed in official pipeline." />
     <PropertyGroup>
-      <PackageChannel Condition="'$(GitBranchName)'=='main'">$(OfficialChannelName)</PackageChannel>
+      <PackageChannel Condition="'$(GIT_BRANCH)'=='main'">$(OfficialChannelName)</PackageChannel>
       <PackageChannel Condition="'$(PackageChannel)'==''">$(DevChannelName)</PackageChannel>
       <PackageName>$(PackageBaseName)-$(PackageChannel)</PackageName>
 
       <CurrentDate>$([System.DateTime]::Now.ToString(Myddhhmm))</CurrentDate>
-      <BranchHash Condition="'$(GitBranchName)'=='main'">0</BranchHash>
-      <BranchHash Condition="'$(BranchHash)'==''">$([System.Math]::Abs($(GitBranchName.GetHashCode())).ToString().Substring(0, 5))</BranchHash>
+      <BranchHash Condition="'$(GIT_BRANCH)'=='main'">0</BranchHash>
+      <BranchHash Condition="'$(BranchHash)'==''">$([System.Math]::Abs($(GIT_BRANCH.GetHashCode())).ToString().Substring(0, 5))</BranchHash>
 
-      <PackageRevision Condition="'$(GitBranchName)'=='main'">$(PACKAGE_REVISION)</PackageRevision>
+      <PackageRevision Condition="'$(GIT_BRANCH)'=='main'">$(PACKAGE_REVISION)</PackageRevision>
       <PackageRevision Condition="'$(PackageRevision)'==''">0</PackageRevision>
       <PackageVersion>$(CurrentDate).$(BranchHash).$(PackageRevision)</PackageVersion>
 

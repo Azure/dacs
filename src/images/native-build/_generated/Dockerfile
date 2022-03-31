@@ -119,16 +119,6 @@ RUN \
   useradd -m dacsuser && \
   find /dependency -type d | xargs chmod 777
 
-# Create cuda 10.1.243, nccl 2.4.8, cudnn 7.6.3 conda environment
-RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
-  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-101 && \
-  . /opt/conda-cuda-101/bin/activate && \
-  conda install -y -c conda-forge cudatoolkit-dev=10.1.243 && \
-  conda install -y --no-deps -c conda-forge cudnn=7.6 nccl=2.4.8 && \
-  conda clean -a && \
-  conda deactivate && \
-  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
-
 # Create cuda 11.0.221, nccl 2.7.8, cudnn 8.0.5 conda environment
 RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
   bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-110 && \
