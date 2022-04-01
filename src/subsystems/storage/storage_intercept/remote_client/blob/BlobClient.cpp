@@ -7,6 +7,7 @@
 #include "BlobClientException.h"
 #include <dirent.h>
 #include <sstream>
+#include <mstream.h>
 //---------------------------------------------------------------------------------------------------------------------
 BlobClient::BlobClient()
 {
@@ -59,9 +60,9 @@ void BlobClient::GetConfigProperties()
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t BlobClient::ReadChunkSync(const std::string& remotePath, void* buf, size_t size, off_t offset)
 {
-    std::stringstream sStream;
+    azure::storage_lite::omstream oStream((char *)buf, size);
     ssize_t nBytesRead = -1;
-    auto blobOutcome = m_spClient->get_chunk_to_stream_sync(m_strContainerName, remotePath, offset, size, sStream);
+    auto blobOutcome = m_spClient->get_chunk_to_stream_sync(m_strContainerName, remotePath, offset, size, oStream);
 
     if (!blobOutcome.success())
     {
@@ -87,7 +88,6 @@ ssize_t BlobClient::ReadChunkSync(const std::string& remotePath, void* buf, size
     }
 
     nBytesRead = static_cast<ssize_t>(blobOutcome.response().size);
-    sStream.read(static_cast<char*>(buf), nBytesRead);
     LOG_DEBUG("Read chunk API response received for path={}, nBytesRead={}", remotePath, nBytesRead);
     return nBytesRead;
 }

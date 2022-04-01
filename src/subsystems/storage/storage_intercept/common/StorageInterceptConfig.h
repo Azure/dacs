@@ -57,6 +57,14 @@ class StorageInterceptConfig
         std::string GetBlobContainerName();
         uint64_t GetMaxBlobConnectionsPerClient();
 
+        // Getters for chunk download parallelism
+        bool GetChunkDownloadParallelismEnabled();
+        uint64_t GetChunkDownloadMaxConcurrency();
+
+        // Getters for large prefetch        
+        bool GetEnableLargePrefetch();
+        uint64_t GetPrefetchWindowSizeInMB();
+
     private:
         // Constructor
         StorageInterceptConfig();

@@ -408,3 +408,31 @@ uint64_t StorageInterceptConfig::GetMaxBlobConnectionsPerClient()
         10);
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::GetChunkDownloadParallelismEnabled()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps, StorageInterceptConstants::ConfigNameChunkDownloadParallelismEnabled, true);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint64_t StorageInterceptConfig::GetChunkDownloadMaxConcurrency()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint64(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameChunkDownloadMaxConcurrency,
+        GetMaxBlobConnectionsPerClient());
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::GetEnableLargePrefetch()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps, StorageInterceptConstants::ConfigNameLargePrefetchEnabled, false);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint64_t StorageInterceptConfig::GetPrefetchWindowSizeInMB()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint64(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNamePrefetchSizeInMB,
+        100);
+}
+//---------------------------------------------------------------------------------------------------------------------
