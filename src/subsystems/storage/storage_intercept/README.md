@@ -64,6 +64,15 @@ azBlobSASToken <any-type-of-sas-token>
 ```
 instead of the property: `azBlobStorageAccountKey`.
 
+### Other config settings
+Other config settings you can experiment with in `/tmp/storageIntercept.config`
+```
+chunkDownloadParallelismEnabled [true or false]
+chunkDownloadMaxConcurrency [eg. 40, should ideally be same as maxConnsPerBlobClient]
+enableLargePrefetch [true or false]
+prefetchWindowSizeInMB [eg. 100]
+```
+
 ### Run Unit test with cache enabled
 1. Start cache_server at port 20000 in the same container as the client
 2. Set the STORAGE_INTERCEPT_USE_EXISITNG_CONFIG to true

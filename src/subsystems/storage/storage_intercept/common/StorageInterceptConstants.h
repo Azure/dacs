@@ -49,5 +49,13 @@ namespace StorageInterceptConstants
     const char* const ConfigNameAzBlobStorageEndpointUrl = "azBlobStorageEndpoint";
     const char* const ConfigNameAzBlobContainerName = "azBlobContainerName";
     const char* const ConfigNameMaxConnsPerBlobClient = "maxConnsPerBlobClient";
+
+    // Config constants for chunk download parallelism
+    const char* const ConfigNameChunkDownloadParallelismEnabled = "chunkDownloadParallelismEnabled";
+    const char* const ConfigNameChunkDownloadMaxConcurrency = "chunkDownloadMaxConcurrency";
+
+    // Config constants for large prefetch
+    const char* const ConfigNameLargePrefetchEnabled = "enableLargePrefetch";
+    const char* const ConfigNamePrefetchSizeInMB = "prefetchWindowSizeInMB";
 };
 //---------------------------------------------------------------------------------------------------------------------

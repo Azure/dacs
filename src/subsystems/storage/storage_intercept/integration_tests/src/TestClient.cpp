@@ -49,7 +49,7 @@ void TestFileRead(
   
   while (true)
   {
-    uint64_t toRead = 64 * 1024;
+    uint64_t toRead = std::min(64UL * 1024UL * 1024UL, size);
     ssize_t nBytesReadNow = ::read(fd, writeAddr + readSize, toRead);
     if (nBytesReadNow > 0)
     {

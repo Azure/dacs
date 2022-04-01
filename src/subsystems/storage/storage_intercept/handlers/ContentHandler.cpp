@@ -81,6 +81,7 @@ int ContentHandler::OpenInternal(const char* path, int flags, mode_t mode, bool 
 
     // TODO: Do getProperties here in case we need to error out for non-existent files.
     // TODO: Open a directoryStream similar to opendir() once we support open() for directories.
+    StreamingClient::GetInstance().OpenFile(relPath);
 
     int fd = AllotNewFd(fullFd);
     if (fd == -1)

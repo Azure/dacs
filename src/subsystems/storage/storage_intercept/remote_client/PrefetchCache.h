@@ -5,15 +5,17 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include <memory>
 #include <string>
+#include <vector>
 #include <map>
-#include <mutex>
+#include <set>
+#include <shared_mutex>
 #include "FileReadData.h"
 //---------------------------------------------------------------------------------------------------------------------
 /*
- * Cache to store the current chunk being read in memory.
+ * Cache to store the downloaded chunks of a file in memory.
  *
- * This type of caching would be helpful for workloads which do very small reads on a file sequentially. Any reads
- * which fall inside the cached chunk won't need to do a remote read.
+ * Note: To keep the total cache size in check, limits are enforced on number of entries per file and the total number
+ *       of entries.
  */
 class PrefetchCache
 {
@@ -22,21 +24,34 @@ class PrefetchCache
         /* Singleton */
         static PrefetchCache& GetInstance();
 
+        std::set<off64_t> GetCachedOffsets(/*[in]*/  const std::string& path) const;
+
         std::shared_ptr<const FileReadData> Get(
             /*[in]*/  const std::string& path,
-            /*[in]*/  off64_t offset);
+            /*[in]*/  off64_t offset) const;
 
         void Put(
             /*[in]*/ const std::string& path,
             /*[in]*/ std::shared_ptr<const FileReadData> buffer);
 
-        void Purge(/*[in] */ const std::string& path);
+        void PurgeOffsets(
+            /*[in] */ const std::string& path,
+            /*[in] */ const std::vector<off64_t>& offsetsToPurge);
 
+        void PurgeAll(/*[in] */ const std::string& path);
+
+        // Limits on max entries per file and overall.
+        static constexpr uint32_t    MAX_ENTRIES_PER_FILE = 250;
+        static constexpr uint32_t    MAX_ENTRIES_ALL = 2000;
     private:
         PrefetchCache();
 
+        static std::string GetCacheKey(
+            /*[in]*/  const std::string& path,
+            /*[in]*/  off64_t offset);
+
         std::map<std::string, std::shared_ptr<const FileReadData>>    m_mapBuffers;
-        std::mutex                                                    m_mutexBuffers;
-        static constexpr int                                          MAX_ENTRIES = 100;
+        std::map<std::string, std::set<off64_t>>                      m_mapCachedOffsets;
+        mutable std::shared_mutex                                     m_mutexBuffers;
 };
 //---------------------------------------------------------------------------------------------------------------------
