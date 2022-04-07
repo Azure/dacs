@@ -12,10 +12,12 @@ enum CacheStatus
 //---------------------------------------------------------------------------------------------------------------------
 struct CacheInfo
 {
-    CacheInfo(uint64_t fileSize, CacheStatus status) : m_fileSize(fileSize), m_status(status) {}
+    CacheInfo(uint64_t fileSize, const ::google::protobuf::Map<std::string, std::string>& metadata, CacheStatus status)
+        : m_fileSize(fileSize), m_metadata(metadata), m_status(status) {}
     CacheInfo() : m_fileSize(0), m_status(NOTFOUND) {}
 
     uint64_t m_fileSize;
+    ::google::protobuf::Map<std::string, std::string> m_metadata;
     CacheStatus m_status;
 };
 //---------------------------------------------------------------------------------------------------------------------
@@ -39,6 +41,9 @@ std::string GetCacheTempFolderPath();
 std::string GetCacheTempPath(const std::string& fileName);
 std::string GetCachePath(const std::string& fileName);
 void Initialize();
+bool IsAuthEnabled();
+bool ValidateAuthSignature(const std::string& clientAccountName, const std::string& clientSignature,
+    const std::string& message, time_t timestamp);
 bool GetLockForUpload(const std::string& fileName);
 CacheInfo GetAndInitCacheStatus(const std::string& fileName);
 CacheInfo GetCacheStatus(const std::string& fileName);

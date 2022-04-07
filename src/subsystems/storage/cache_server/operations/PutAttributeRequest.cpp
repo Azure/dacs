@@ -25,12 +25,56 @@
 using namespace std;
 using namespace cache;
 //---------------------------------------------------------------------------------------------------------------------
+bool AuthenticateRequest(const PutAttributeRequest& request)
+{
+    if (!IsAuthEnabled())
+    {
+        return true;
+    }
+
+    time_t timestamp = request.authparams().timestamp();
+    string serializedHeaders = 
+        std::string("P") + 
+        std::to_string(request.fileattributes_size()) + 
+        std::to_string(timestamp);
+    for (auto fileAttribute : request.fileattributes())
+    {
+        serializedHeaders += fileAttribute.filename();
+        serializedHeaders += std::to_string(fileAttribute.fileattribute().filesize());
+    }
+
+   if (!request.authparams().enabled())
+    {
+        LOG_WARN("Auth params not sent by client");
+        return false;
+    }
+    
+    if (!ValidateAuthSignature(
+        request.authparams().accountname(),
+        request.authparams().signature(),
+        serializedHeaders,
+        timestamp))
+    {
+        LOG_WARN("Auth validation failure");
+        return false;
+    }
+
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool HandlePutAttribute(int clientFd, const PutAttributeRequest& putAttributeRequest)
 {
     LOG_DEBUG("Num entries received: {}, first entry: {}",
         putAttributeRequest.fileattributes_size(), putAttributeRequest.fileattributes(0).filename());
 
     PutAttributeResponse putAttributeResponse;
+    if (!AuthenticateRequest(putAttributeRequest))
+    {
+        LOG_WARN("Failed to authenticate request");
+        putAttributeResponse.set_result(PutAttributeResponse::AUTH_FAILED);
+        return SendMessageToRemote(clientFd, putAttributeResponse);
+    }
+
     bool bRet = PutAttributes(putAttributeRequest);
     if (bRet)
     {

@@ -19,7 +19,7 @@ LocalAttributesCache::LocalAttributesCache()
 : m_stop(false)
 {
     int serverPort = StorageInterceptConfig::GetInstance().GetCacheServerPort();
-    m_spConnectionManager = make_unique<ConnectionManager>(serverPort, true, 1);
+    m_spConnectionManager = make_unique<ConnectionManager>(serverPort, true, vector<string>());
 
     // start worker thread
     m_uploadThread = make_unique<thread>([this]() {
@@ -92,6 +92,11 @@ IAttributesCache::CacheStatus LocalAttributesCache::Get(const std::string& path,
     else if (response.result() == cache::GetAttributeResponse::NOT_FOUND)
     {
         cacheStatus = IAttributesCache::NOTFOUND;
+    }
+    else if (response.result() == cache::GetAttributeResponse::AUTH_FAILED)
+    {
+        LOG_WARN("Server returned auth failure for key: {}", path);
+        cacheStatus = IAttributesCache::AUTH_FAILED;
     }
     else
     {

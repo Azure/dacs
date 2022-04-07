@@ -26,6 +26,7 @@
 #include <thread>
 #include <vector>
 #include <fstream>
+#include <errno.h>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 using namespace cache;
@@ -37,7 +38,7 @@ void HandleSocket(int epollFd)
     {
         int nEvents = epoll_wait(epollFd, epollEvents, 1, -1);
         if (nEvents <= 0) {
-            LOG_CRITICAL("epoll_wait failed");
+            LOG_CRITICAL("epoll_wait failed, errno: {}", errno);
             exit(-1);
         }
 

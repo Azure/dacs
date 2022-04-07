@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sstream>
+#include <boost/algorithm/string.hpp>
 //---------------------------------------------------------------------------------------------------------------------
 StorageInterceptConfig::StorageInterceptConfig()
     : m_IsConfigLoaded(false)
@@ -85,6 +86,12 @@ void StorageInterceptConfig::LoadConfig()
     uint32_t lineNumber = 0;
     while (std::getline(ssConfigStream, line))
     {
+        boost::trim(line);
+        if (line.empty())
+        {
+            continue;
+        }
+
         size_t idx = line.find(' ');
         if (idx == std::string::npos)
         {
@@ -96,6 +103,23 @@ void StorageInterceptConfig::LoadConfig()
 
         std::string key = line.substr(0, idx);
         std::string value = line.substr(idx + 1);
+
+        boost::trim(key);
+        boost::trim(value);
+        if (value.find("${") == 0 && value.back() == '}')
+        {
+            // Config entry expects an environment variable
+            // key=${ENV}
+            std::string strEnvKey = value.substr(2, value.length() - 3);
+            char* envVal = std::getenv(strEnvKey.c_str());
+            if (envVal == NULL)
+            {
+                LOG_ERROR("Missing environment variable={}.", strEnvKey);
+                throw "Missing environment variable=" + strEnvKey;
+            }
+
+            value = envVal;
+        }
         m_ConfigProps[key] = value;
         LOG_DEBUG("Loaded config key={}", key);
 
@@ -324,6 +348,14 @@ uint64_t StorageInterceptConfig::GetCacheNumServers()
         1);
 }
 //---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::GetCacheServerList()
+{
+    return StorageInterceptConfig::GetOptionalConfigStr(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheServerList,
+        "");
+}
+//---------------------------------------------------------------------------------------------------------------------
 uint64_t StorageInterceptConfig::GetCacheNumUploadThreadsPerProcess()
 {
     return StorageInterceptConfig::GetOptionalConfigUint64(m_ConfigProps,
@@ -361,6 +393,40 @@ bool StorageInterceptConfig::GetAttributesCacheUseLocalServer()
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(
         m_ConfigProps, StorageInterceptConstants::ConfigNameAttributesCacheUseLocalServer, true);
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::GetCacheAuthEnabled()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps, StorageInterceptConstants::ConfigNameCacheAuthEnabled, false);
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::GetCacheAuthAccountName()
+{
+    return StorageInterceptConfig::GetConfigStr(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheAuthAccountName);
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::GetCacheAuthAccountKey()
+{
+    return StorageInterceptConfig::GetConfigStr(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheAuthAccountKey);
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::GetCacheEncryptionEnabled()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps, StorageInterceptConstants::ConfigNameCacheEncryptionEnabled, false);
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::GetCacheEncryptionKey()
+{
+    return StorageInterceptConfig::GetOptionalConfigStr(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheEncryptionKey,
+        "");
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::string StorageInterceptConfig::GetStorageAccountName()

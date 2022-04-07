@@ -19,6 +19,7 @@
 #include <iomanip>
 #include <errno.h>
 #include <atomic>
+#include <openssl/hmac.h>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
@@ -31,6 +32,9 @@ vector<mutex *> AttributesMutex;
 string CacheRootFolder = ".";
 uint64_t AttributeCacheLimit = DefaultAttributeCacheLimit;
 atomic_uint_fast64_t TotalCachedAttributes = 0;
+string AuthAccountName = "";
+string AuthAccountKey = "";
+bool AuthEnabled = false;
 //---------------------------------------------------------------------------------------------------------------------
 void SetCacheRootPath(const string& rootFolder)
 {
@@ -70,6 +74,63 @@ void Initialize()
         AttributesMap.push_back(new unordered_map<string, CacheAttributes>());
         AttributesMutex.push_back(new mutex());
     }
+
+    char* authEnabled = std::getenv("CACHESERVER_AUTH_ENABLED");
+    if (authEnabled != NULL && strcasecmp(authEnabled, "true") == 0)
+    {
+        AuthEnabled = true;
+        char* accountName = std::getenv("CACHESERVER_AUTH_ACCOUNTNAME");
+        char* accountKey = std::getenv("CACHESERVER_AUTH_ACCOUNTKEY");
+        if (accountName == NULL || accountKey == NULL)
+        {
+            LOG_CRITICAL("Auth is enabled but Account name or key not set");
+            exit(-1);
+        }
+        AuthAccountName = accountName;
+        AuthAccountKey = accountKey;
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool IsAuthEnabled()
+{
+    return AuthEnabled;
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool ValidateAuthSignature(const string& clientAccountName, const string& clientSignature, const string& message,
+    time_t timestamp)
+{
+    time_t currentTimeStamp = time(NULL);
+    
+    // Allowing only 2 minutes drift in timestamp
+    if (abs(currentTimeStamp - timestamp) > 120)
+    {
+        LOG_WARN("Timestamp not within bound, server ts: {}, client ts: {}", currentTimeStamp, timestamp);
+        return false;
+    }
+
+    if (clientAccountName != AuthAccountName)
+    {
+        LOG_WARN("Account name does not match, client: {}, server: {}", clientAccountName, AuthAccountName);
+        return false;
+    }
+
+    string hashValue(EVP_MAX_MD_SIZE, '\0');
+    unsigned int hashLen = EVP_MAX_MD_SIZE;
+    
+    if (!HMAC(EVP_sha256(), AuthAccountKey.data(), AuthAccountKey.length(),
+        (const unsigned char *)message.data(), message.length(), (unsigned char *)hashValue.data(), &hashLen))
+    {
+        LOG_ERROR("Failed to generate HMAC signature");
+        return false;
+    }
+
+    if (clientSignature != hashValue.substr(0, hashLen))
+    {
+        LOG_WARN("Auth signatures don't match");
+        return false;
+    }
+
+    return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
 CacheInfo GetAndInitCacheStatus(const string& fileName)
@@ -84,7 +145,8 @@ CacheInfo GetAndInitCacheStatus(const string& fileName)
     auto iter = CacheInfoMap[index]->find(fileName);
     if (iter == CacheInfoMap[index]->end())
     {
-        CacheInfoMap[index]->insert(make_pair(fileName, CacheInfo(0, INITIATED)));
+        CacheInfoMap[index]->insert(make_pair(fileName,
+            CacheInfo(0, ::google::protobuf::Map<std::string, std::string>(), INITIATED)));
     }
     else
     {

@@ -10,7 +10,7 @@
 class ICacheClient
 {
     public:
-        enum CacheStatus {SUCCESS, NOTFOUND, NOTFOUND_LOCKED, INTERNAL_ERROR};
+        enum CacheStatus {SUCCESS, NOTFOUND, NOTFOUND_LOCKED, AUTH_FAILED, INTERNAL_ERROR};
 
         virtual CacheStatus DownloadSync(
             /*[in] */ const std::string& cacheKey,

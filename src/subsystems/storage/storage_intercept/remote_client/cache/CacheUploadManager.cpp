@@ -13,11 +13,13 @@ using namespace cacheutils;
 //---------------------------------------------------------------------------------------------------------------------
 CacheUploadManager::CacheUploadManager(
     ConnectionManager& connectionManager,
+    EncryptionUtil& encryptionUtil,
     int numUploadThreads,
     uint64_t maxTotalBufferSize)
     : m_stop(false),
       m_uploadBufferMemory(0),
       m_connectionManager(connectionManager),
+      m_encryptionUtil(encryptionUtil),
       m_numUploadThreads(numUploadThreads),
       m_maxBufferMemory(maxTotalBufferSize)
 {
@@ -30,7 +32,8 @@ CacheUploadManager::CacheUploadManager(
         m_vecUploadThread.push_back(move(uploadThread));
     }
 
-    LOG_INFO("Started CacheUploadManager. Num workers: {}", m_numUploadThreads);
+    LOG_INFO("Started CacheUploadManager. Num workers: {}, max upload buffer size: {} bytes",
+        m_numUploadThreads, m_maxBufferMemory);
 }
 //---------------------------------------------------------------------------------------------------------------------
 CacheUploadManager::~CacheUploadManager()
@@ -50,11 +53,41 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
     LOG_DEBUG("Uploading file: {}, length: {}",
         uploadContext->m_strCacheKey, uploadContext->m_fileData->BufferSize);
 
+    char* bufferToSend = uploadContext->m_fileData->Buffer.get();
+    size_t bufferSizeToSend = uploadContext->m_fileData->BufferSize;
+
     Request request;
     UploadRequest* uploadRequest = request.mutable_uploadrequest();
     uploadRequest->set_filename(uploadContext->m_strCacheKey);
-    uploadRequest->set_filesize(uploadContext->m_fileData->BufferSize);    
+    uploadRequest->set_filesize(uploadContext->m_fileData->BufferSize);
     uploadRequest->set_ignorelock(false);
+
+    if (!AddAuthParams(request))
+    {
+        LOG_WARN("failed to create auth request for file: {}", uploadContext->m_strCacheKey);
+        m_uploadBufferMemory -= uploadContext->m_fileData->BufferSize;
+        return false;
+    }
+
+    std::unique_ptr<char[]> encBuffer;
+    int64_t encLen = -1;
+    if (bufferSizeToSend > 0)
+    {
+        bool bRet = m_encryptionUtil.DoEncrypt(uploadRequest, uploadContext->m_fileData, encBuffer, encLen);
+        if (!bRet)
+        {
+            LOG_WARN("couldn't encrypt data to send to server, file: {}", uploadContext->m_strCacheKey);
+            m_uploadBufferMemory -= uploadContext->m_fileData->BufferSize;
+            return false;
+        }
+        
+        // encLen will be updated if encrypted data needs to be used 
+        if (encLen == bufferSizeToSend)
+        {
+            // Data encrypted to new buffer, replace original send buffer with the encrypted one
+            bufferToSend = encBuffer.get();
+        }
+    }
 
     int serverFd = m_connectionManager.GetFd(uploadContext->m_serverIndex);
     if (serverFd < 0)
@@ -72,32 +105,18 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
         return false;
     }
 
-    LOG_DEBUG("upload request sent to server");
-    if (uploadContext->m_fileData->BufferSize > 0)
+    if (bufferSizeToSend > 0)
     {
-        uint64_t totalWritten = 0;
-        while (totalWritten < uploadContext->m_fileData->BufferSize)
+        bool bRet = cacheutils::WriteAll(serverFd, bufferToSend, bufferSizeToSend);
+        if (!bRet)
         {
-            int bufferLen = uploadContext->m_fileData->BufferSize - totalWritten;
-            int tempWrite;
-            if ((tempWrite = TimedWrite(
-                serverFd, 
-                static_cast<const char*>(uploadContext->m_fileData->Buffer.get()) + totalWritten,
-                bufferLen)) > 0)
-            {
-                totalWritten += tempWrite;
-            }
-            else 
-            {
-                LOG_WARN("couldn't complete write to server. wrote: {}, error: {}", totalWritten, tempWrite);
-                m_connectionManager.ReleaseFd(uploadContext->m_serverIndex, serverFd, true);
-                m_uploadBufferMemory -= uploadContext->m_fileData->BufferSize;
-                return false;
-            }
+            LOG_WARN("couldn't complete write to server, file: {}", uploadContext->m_strCacheKey);
+            m_connectionManager.ReleaseFd(uploadContext->m_serverIndex, serverFd, true);
+            m_uploadBufferMemory -= uploadContext->m_fileData->BufferSize;
+            return false;
         }
     }
 
-    LOG_DEBUG("uploaded file to server");
     string strResponse;
     if (!ReadMessageFromRemote(serverFd, strResponse))
     {

@@ -3,6 +3,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #pragma once
 #include "ConnectionManager.h"
+#include "EncryptionUtil.h"
 #include "FileReadData.h"
 #include <vector>
 #include <queue>
@@ -17,7 +18,8 @@
 class CacheUploadManager
 {
     public:
-        CacheUploadManager(ConnectionManager& connectionManager, int numUploadThreads, uint64_t maxTotalBufferSize);
+        CacheUploadManager(ConnectionManager& connectionManager, EncryptionUtil& encryptionUtil, int numUploadThreads,
+            uint64_t maxTotalBufferSize);
         ~CacheUploadManager();
 
     public:
@@ -51,6 +53,7 @@ class CacheUploadManager
         std::atomic_bool                               m_stop;
 
         ConnectionManager&                             m_connectionManager;
+        EncryptionUtil&                                m_encryptionUtil;
 
         void UploadWorker();
         bool StartUpload(std::unique_ptr<UploadContext> uploadContext);

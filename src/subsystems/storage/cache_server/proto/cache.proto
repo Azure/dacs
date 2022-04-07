@@ -51,11 +51,26 @@ package cache;
  *
  */
 //---------------------------------------------------------------------------------------------------------------------
+// Authentication params
+message AuthParams
+{
+    bool enabled = 1;
+    uint32 version = 2;
+    string accountname = 3;
+
+    // Current timestamp, number of seconds since epoch
+    uint32 timestamp = 4;
+
+    // HMACSHA256 signature using account key and message constructed from request parameters
+    bytes signature = 5;
+}
+//---------------------------------------------------------------------------------------------------------------------
 // Locking required to coordinate parallel uploads across workers
 // Only the client which succeeds should perform the upload
 message LockFileRequest
 {
     string filename = 1;
+    AuthParams authparams = 2;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message LockFileResponse
@@ -64,7 +79,8 @@ message LockFileResponse
     {
         SUCCESS = 0;
         ALREADY_LOCKED = 1;
-        INTERNAL_ERROR = 2;
+        AUTH_FAILED = 2;
+        INTERNAL_ERROR = 3;
     }
     Result result = 1;
 }
@@ -81,6 +97,12 @@ message UploadRequest
 
     // TODO: cache expiry not yet implemented
     uint32 expiryseconds = 4;
+
+    // optional arbitrary key,value pairs which will be persisted and returned when the file is downloaded
+    map<string, bytes> metadata = 5;
+
+    // authentication params required if authentication is enabled for the cache server APIs 
+    AuthParams authparams = 6;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message UploadResponse
@@ -89,7 +111,8 @@ message UploadResponse
     {
         SUCCESS = 0;
         FILE_EXISTS = 1;
-        INTERNAL_ERROR = 2;
+        AUTH_FAILED = 2;
+        INTERNAL_ERROR = 3;
     }
     Result result = 1;
 }
@@ -104,6 +127,7 @@ message DownloadRequest
     // Set length to 0 to fetch entire cached contents 
     uint64 length = 3;
     bool enablelock = 4;
+    AuthParams authparams = 5;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message DownloadResponse
@@ -116,10 +140,12 @@ message DownloadResponse
         NOT_FOUND = 3;
         INVALID_OFFSET_LENGTH = 4;
         FILENAME_LIMIT_EXCEEDED = 5;
-        INTERNAL_ERROR = 6;
+        AUTH_FAILED = 6;
+        INTERNAL_ERROR = 7;
     }
     Result result = 1;
     uint64 filesize = 2;
+    map<string, bytes> metadata = 3;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message FileAttribute
@@ -142,6 +168,7 @@ message GetAttributeRequest
 {
     string filename = 1;
     bool enablelock = 2;
+    AuthParams authparams = 3;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message GetAttributeResponse
@@ -151,7 +178,8 @@ message GetAttributeResponse
         SUCCESS = 0;
         NOT_FOUND_GOT_LOCK = 1;
         NOT_FOUND = 2;
-        INTERNAL_ERROR = 3;
+        AUTH_FAILED = 3;
+        INTERNAL_ERROR = 4;
     }
     Result result = 1;
     FileAttribute fileattribute = 2;
@@ -160,6 +188,7 @@ message GetAttributeResponse
 message PutAttributeRequest
 {
     repeated FileAttributes fileattributes = 1;
+    AuthParams authparams = 2;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message PutAttributeResponse
@@ -167,7 +196,8 @@ message PutAttributeResponse
     enum Result
     {
         SUCCESS = 0;
-        INTERNAL_ERROR = 1;
+        AUTH_FAILED = 1;
+        INTERNAL_ERROR = 2;
     }
     Result result = 1;
 }
