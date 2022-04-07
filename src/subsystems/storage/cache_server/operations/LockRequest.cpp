@@ -11,11 +11,50 @@
 using namespace std;
 using namespace cache;
 //---------------------------------------------------------------------------------------------------------------------
+bool AuthenticateRequest(const LockFileRequest& request)
+{
+    if (!IsAuthEnabled())
+    {
+        return true;
+    }
+
+    time_t timestamp = request.authparams().timestamp();
+    string serializedHeaders = 
+        std::string("L") + 
+        request.filename() + 
+        std::to_string(timestamp);
+
+   if (!request.authparams().enabled())
+    {
+        LOG_WARN("Auth params not sent by client");
+        return false;
+    }
+    
+    if (!ValidateAuthSignature(
+        request.authparams().accountname(),
+        request.authparams().signature(),
+        serializedHeaders,
+        timestamp))
+    {
+        LOG_WARN("Auth validation failure");
+        return false;
+    }
+
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool LockFile(int clientFd, const LockFileRequest& lockRequest)
 {
     LOG_DEBUG("filename received: {}", lockRequest.filename());
 
     LockFileResponse lockResponse;
+    if (!AuthenticateRequest(lockRequest))
+    {
+        LOG_WARN("Failed to authenticate request");
+        lockResponse.set_result(LockFileResponse::AUTH_FAILED);
+        return SendMessageToRemote(clientFd, lockResponse);
+    }
+
     if (GetLockForUpload(lockRequest.filename()))
     {
         LOG_INFO("Locked file successfully: {}", lockRequest.filename());

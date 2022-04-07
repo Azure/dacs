@@ -4,15 +4,15 @@
 #include "StreamingClient.h"
 #include "RemoteClientProvider.h"
 #include "CacheClientFactory.h"
+#include "CacheUtils.h"
 #include "AttributesCacheFactory.h"
 #include "InMemoryAttributesCache.h"
 #include "PrefetchCache.h"
 #include "StorageInterceptConfig.h"
 #include "StorageInterceptLogger.h"
+#include "StorageInterceptConstants.h"
 #include <cstring>
 #include <algorithm>
-#include <iomanip>
-#include <openssl/sha.h>
 #include <pthread.h>
 #include <future>
 //---------------------------------------------------------------------------------------------------------------------
@@ -461,7 +461,7 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
     auto cacheClient = std::atomic_load(&m_spCacheClient);
     if (cacheClient)
     {
-        strCacheKey = GetCacheKey(remotePath, chunkOffset);
+        strCacheKey = cacheutils::GetCacheKey(remotePath, chunkOffset);
         LOG_DEBUG("Using cache key: {} for file: {}, offset: {}", strCacheKey, remotePath, chunkOffset);
         uint64_t readLength = 0;
         cacheStatus = cacheClient->DownloadSync(
@@ -638,27 +638,5 @@ void StreamingClient::PreReadChunkCheck()
 
     m_nReadChunksInProgress++;
     LOG_DEBUG("Exit PreReadChunkCheck. m_nReadChunksInProgress={}", m_nReadChunksInProgress);
-}
-//---------------------------------------------------------------------------------------------------------------------
-std::string StreamingClient::GetCacheKey(
-    const std::string& remotePath,
-    off64_t chunkOffset)
-{
-    std::string strCacheKey = remotePath + ":" + std::to_string(chunkOffset);
-
-    unsigned char shaHash[SHA256_DIGEST_LENGTH];
-    SHA256_CTX sha256;
-    SHA256_Init(&sha256);
-    SHA256_Update(&sha256, strCacheKey.c_str(), strCacheKey.size());
-    SHA256_Final(shaHash, &sha256);
-
-    // hex encode the sha digest
-    // TODO: this is not really necessary, review and remove
-    std::stringstream ss;
-    for(auto i = 0; i < SHA256_DIGEST_LENGTH; i++)
-    {
-        ss << std::setfill('0') << std::setw(2) << std::hex << static_cast<int>(shaHash[i]);
-    }
-    return ss.str();
 }
 //---------------------------------------------------------------------------------------------------------------------

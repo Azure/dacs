@@ -71,6 +71,12 @@ chunkDownloadParallelismEnabled [true or false]
 chunkDownloadMaxConcurrency [eg. 40, should ideally be same as maxConnsPerBlobClient]
 enableLargePrefetch [true or false]
 prefetchWindowSizeInMB [eg. 100]
+cacheServerList [If cache is enabled remote cache servers to use for this client, eg. node-0#node-1#node-3]
+cacheEncryptionEnabled [true or false - Enable end to end encryption for data stored in cache]
+cacheEncryptionKey [Key to use if encryption is enabled]
+cacheAuthEnabled [true or false - Required when cache server APIs have authentication enabled]
+cacheAuthAccountName [Account name to be used for authenticatio]
+cacheAuthAccountKey [Shared key used for authentication]
 ```
 
 ### Run Unit test with cache enabled

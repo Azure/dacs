@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <iostream>
 #include <uuid/uuid.h>
+#include <openssl/evp.h>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
@@ -228,7 +229,8 @@ TEST_F(CacheClientTest, ZeroSizeUploadDownloadTest)
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(CacheClientTest, PartialDownloadTest)
 {
-    if (this->m_cacheClient == nullptr)
+    // Partial downloads are not supported with encryption enabled.
+    if (this->m_cacheClient == nullptr || StorageInterceptConfig::GetInstance().GetCacheEncryptionEnabled())
     {
         GTEST_SKIP();
     }

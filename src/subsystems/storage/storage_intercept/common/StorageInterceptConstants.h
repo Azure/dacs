@@ -33,9 +33,15 @@ namespace StorageInterceptConstants
     const char* const ConfigNameCacheUseLocalFS = "cacheUseLocalFS";
     const char* const ConfigNameLocalFSCachePath = "cacheLocalFSCachePath";
     const char* const ConfigNameCacheNumRemoteServers = "cacheNumServers";
+    const char* const ConfigNameCacheServerList = "cacheServerList";
     const char* const ConfigNameCacheUploaderThreadsPerProcess = "cacheNumUploadThreadsPerProcess";
     const char* const ConfigNameCacheUploaderMaxBufferSizePerProcess = "cacheMaxUploadBufferSizePerProcess";
     const char* const ConfigNameCacheReuseServerConnections = "cacheReuseServerConnections";
+    const char* const ConfigNameCacheAuthEnabled = "cacheAuthEnabled";
+    const char* const ConfigNameCacheAuthAccountName = "cacheAuthAccountName";
+    const char* const ConfigNameCacheAuthAccountKey = "cacheAuthAccountKey";
+    const char* const ConfigNameCacheEncryptionEnabled = "cacheEncryptionEnabled";
+    const char* const ConfigNameCacheEncryptionKey = "cacheEncryptionKey";
 
     // Config for Attributes cache
     const char* const ConfigNameAttributesCacheEnable = "attributesCacheEnable";

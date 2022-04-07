@@ -19,10 +19,9 @@
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
-ConnectionManager::ConnectionManager(int serverPort, bool useLocalServer, int numCacheServers)
+ConnectionManager::ConnectionManager(int serverPort, bool useLocalServer, const std::vector<std::string>& cacheServers)
     : m_bReuseServerConnections(StorageInterceptConfig::GetInstance().GetCacheReuseServerConnections())
 {
-    m_numServerNodes = numCacheServers;
     if (useLocalServer)
     {
         m_numServerNodes = 1;
@@ -46,10 +45,15 @@ ConnectionManager::ConnectionManager(int serverPort, bool useLocalServer, int nu
     }
     else
     {
-        for (int index = 0; index < m_numServerNodes; index++)
+        m_numServerNodes = cacheServers.size();
+        if (m_numServerNodes < 1)
         {
-            string nodeEntry = string("node-") + to_string(index);
+            LOG_CRITICAL("No remote cache servers configured");
+            throw "No remote cache servers configured";
+        }
 
+        for (const string& nodeEntry : cacheServers)
+        {
             struct addrinfo *result;
             int ret = getaddrinfo(nodeEntry.c_str(), NULL, NULL, &result);
             if (ret != 0)
@@ -76,8 +80,9 @@ ConnectionManager::ConnectionManager(int serverPort, bool useLocalServer, int nu
     m_vecLocks.swap(initMutices);
 
     this->m_nMaxConnsPerServer = (MAX_CONNECTIONS_REUSE_SIZE + m_numServerNodes - 1) / m_numServerNodes;
-    LOG_INFO("Initialized Cache ConnectionManager. m_numServerNodes: {}, m_nMaxConnsPerServer: {},"
+    LOG_INFO("Initialized Cache ConnectionManager. serverPort: {}, m_numServerNodes: {}, m_nMaxConnsPerServer: {},"
         " m_bReuseServerConnections: {}",
+        serverPort,
         m_numServerNodes,
         m_nMaxConnsPerServer,
         m_bReuseServerConnections ? "true" : "false"
@@ -124,7 +129,7 @@ int ConnectionManager::InitFreshConnection(int serverIndex)
         return -1;
     }
 
-    LOG_INFO("Created new server connection, fd={}", serverFd);
+    LOG_INFO("Created new server connection, fd={}, serverIndex={}", serverFd, serverIndex);
     return serverFd;
 }
 //---------------------------------------------------------------------------------------------------------------------

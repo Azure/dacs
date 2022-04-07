@@ -31,6 +31,7 @@ SET_TARGET_PROPERTIES(staticprotobuf PROPERTIES
 target_link_libraries(
     ${CACHE_SERVER_EXEC}
     pthread
+    crypto
     diagnostics
     reliability_common
     staticprotobuf

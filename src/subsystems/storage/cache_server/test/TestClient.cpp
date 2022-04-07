@@ -28,6 +28,8 @@
 #include <queue>
 #include <xxhash.h>
 #include <atomic>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
 #include "cache.pb.cc"
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
@@ -87,6 +89,13 @@ int GetConnection()
         return -1;
     }
     return clientSocketFd;
+}
+//---------------------------------------------------------------------------------------------------------------------
+string GetUniqueFilename(const string& filename)
+{
+    static boost::uuids::random_generator uuidGenerator;
+    boost::uuids::uuid uuid = uuidGenerator();
+    return boost::uuids::to_string(uuid).substr(0, 12) + filename;
 }
 //---------------------------------------------------------------------------------------------------------------------
 void ReleaseConnection(int fd)
@@ -250,7 +259,7 @@ bool TestParallelLock(int parallelism, int durationInSeconds)
     std::atomic_bool stop(false);
     std::vector<std::thread *> threads;
 
-    string filePrefix = "paralelleltest-" + std::to_string(rand()) + "-";
+    string filePrefix = GetUniqueFilename("paralelleltest-" + std::to_string(rand()) + "-");
     for (int threadId = 0; threadId < parallelism; threadId++)
     {
         auto t = new std::thread([&filePrefix, &totalLocked, parallelism, &stop]()
@@ -510,7 +519,7 @@ bool TestParallelUploadDownload(int parallelism, int durationInSeconds)
     std::atomic_bool stop(false);
     std::vector<std::thread *> threads;
 
-    string filePrefix = "paralelleltest-" + std::to_string(rand()) + "-";
+    string filePrefix = GetUniqueFilename("paralelleltest-" + std::to_string(rand()) + "-");
     for (int threadId = 0; threadId < parallelism; threadId++)
     {
         auto t = new std::thread([&filePrefix, &totalFailed, threadId, parallelism, &stop]()
@@ -672,7 +681,7 @@ bool TestParallelAttributeCache(int parallelism, int durationInSeconds)
     std::atomic_bool stop(false);
     std::vector<std::thread *> threads;
 
-    string filePrefix = "paralellelattrtest-" + std::to_string(rand()) + "-";
+    string filePrefix = GetUniqueFilename("paralellelattrtest-" + std::to_string(rand()) + "-");
     for (int threadId = 0; threadId < parallelism; threadId++)
     {
         auto t = new std::thread([&filePrefix, &totalFailed, threadId, parallelism, &stop]()
@@ -766,7 +775,7 @@ int TestLimits()
     cout << "Test attribute cache limits" << endl;
     for (int i = 0; i < AttributeLimit; i++)
     {
-        string fileName = string("test-") + to_string(i);
+        string fileName = GetUniqueFilename(string("test-") + to_string(i));
         PutAttributeRequest putRequest;
         {
             auto fileAttr = putRequest.add_fileattributes();
@@ -782,7 +791,7 @@ int TestLimits()
         RUNTEST(TestGetAttributeAPI(fileName, false, GetAttributeResponse::SUCCESS, false, 100, 101, 102));
     }
 
-    string extraFileName = "extraFile";
+    string extraFileName = GetUniqueFilename("extraFile");
     PutAttributeRequest putRequest;
     {
         auto fileAttr = putRequest.add_fileattributes();
@@ -802,7 +811,7 @@ int TestLimits()
     uint64_t hashValue = 0;
     for (int i = 0; i < 100; i++)
     {
-        string fileName = string("test-") + to_string(i);
+        string fileName = GetUniqueFilename(string("test-") + to_string(i));
         RUNTEST(TestDownloadAPI(fileName, 0, 1024*1024, false, DownloadResponse::NOT_FOUND));
         RUNTEST(TestUploadAPI(fileName, 1024*1024, true, UploadResponse::SUCCESS, &hashValue));
         RUNTEST(TestDownloadAPI(fileName, 0, 1024*1024, false, DownloadResponse::SUCCESS, &hashValue));
@@ -815,6 +824,120 @@ int TestLimits()
     return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool TestMetadata(const google::protobuf::Map<string, string>& metadata)
+{
+    int serverFd = GetConnection();
+    if (serverFd < 0)
+    { 
+        cout << "failed to get server connection" << endl;
+        return false;
+    }
+
+    string filename = GetUniqueFilename("testmeta"); 
+    Request request;
+    UploadRequest* uploadRequest = request.mutable_uploadrequest();
+    uploadRequest->set_filename(filename);
+    uploadRequest->set_filesize(0);
+    uploadRequest->set_ignorelock(true);
+    if (metadata.size() > 0)
+    {
+        *(uploadRequest->mutable_metadata()) = metadata;
+    }
+
+    if (!SendMessageToRemote(serverFd, request))
+    {
+        cout << "couldn't send message to server" << endl;
+        close(serverFd);
+        return false;
+    }
+
+    string responseMessage;
+    if (!ReadMessageFromRemote(serverFd, responseMessage))
+    {
+        cout << "couldn't read message from server" << endl;
+        close(serverFd);
+        return false;
+    }
+
+    UploadResponse response;
+    if (!response.ParseFromString(responseMessage))
+    {
+        std::cout << "error: Failed to parse protobuf message" << endl;
+        return false;
+    }
+
+    if (response.result() != UploadResponse::SUCCESS)
+    {
+        std::cout << "error: upload failed" << endl;
+        close(serverFd);
+        return false;
+    }
+
+
+    Request drequest;
+
+    DownloadRequest* downloadRequest = drequest.mutable_downloadrequest();
+    downloadRequest->set_filename(filename);
+    downloadRequest->set_enablelock(false);
+
+    if (!SendMessageToRemote(serverFd, drequest))
+    {
+        cout << "couldn't send message to server" << endl;
+        close(serverFd);
+        return false;
+    }
+
+    if (!ReadMessageFromRemote(serverFd, responseMessage))
+    {
+        cout << "couldn't read message from server" << endl;
+        close(serverFd);
+        return false;
+    }
+
+    DownloadResponse dresponse;
+    if (!dresponse.ParseFromString(responseMessage))
+    {
+        std::cout << "error: Failed to parse protobuf message" << endl;
+        close(serverFd);
+        return false;
+    }
+
+    if (dresponse.result() != DownloadResponse::SUCCESS)
+    {
+        std::cout << "error: download failed: response.result() != expectedResult:" << endl;
+        close(serverFd);
+        return false;
+    }
+
+    if (dresponse.filesize() != 0)
+    {
+        cout << "error: bad filesize: " << dresponse.filesize() << endl;
+        close(serverFd);
+        return false;
+    }
+
+    // check if we got back correct metadata
+    if (dresponse.metadata().size() != metadata.size())
+    {
+        cout << "error: bad metadatasize: " << dresponse.metadata().size() << endl;
+        close(serverFd);
+        return false;
+    }
+
+    for (auto iter : dresponse.metadata())
+    {
+        if (metadata.at(iter.first) != iter.second)
+        {
+            cout << "error: received bad metadata. " << metadata.at(iter.first) << " != " << iter.second << endl;
+            close(serverFd);
+            return false;
+        }
+    }
+
+    ReleaseConnection(serverFd);
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
 int main(int argc, char *argv[])
 {
     if (argc > 1)
@@ -823,90 +946,102 @@ int main(int argc, char *argv[])
     }
 
     cout << "Test lock APIs" << endl;
-    RUNTEST(TestLockAPI("testlock1", true));
-    RUNTEST(TestLockAPI("testlock1", false));
-    RUNTEST(TestLockAPI("testlock1", false));
-    RUNTEST(TestLockAPI("testlock1", false));
-    RUNTEST(TestLockAPI("testlock1", false));
-    RUNTEST(TestLockAPI("testlock2", true));
-    RUNTEST(TestLockAPI("testlock2", false));
-    RUNTEST(TestLockAPI("testlock1", false));
-    RUNTEST(TestLockAPI("testlock1", false));
-    RUNTEST(TestLockAPI("testlock2", false));
+    string testlock1 = GetUniqueFilename("testlock1");
+    string testlock2 = GetUniqueFilename("testlock2");
+    RUNTEST(TestLockAPI(testlock1, true));
+    RUNTEST(TestLockAPI(testlock1, false));
+    RUNTEST(TestLockAPI(testlock1, false));
+    RUNTEST(TestLockAPI(testlock1, false));
+    RUNTEST(TestLockAPI(testlock1, false));
+    RUNTEST(TestLockAPI(testlock2, true));
+    RUNTEST(TestLockAPI(testlock2, false));
+    RUNTEST(TestLockAPI(testlock1, false));
+    RUNTEST(TestLockAPI(testlock1, false));
+    RUNTEST(TestLockAPI(testlock2, false));
 
     cout << "Basic upload/download tests" << endl;
     uint64_t hashValue = 0;
-    RUNTEST(TestDownloadAPI("test1", 0, 100, true, DownloadResponse::NOT_FOUND_GOT_LOCK));
-    RUNTEST(TestDownloadAPI("test1", 0, 100, true, DownloadResponse::NOT_FOUND_ALREADY_LOCKED));
+    string test1 = GetUniqueFilename("test1");
+    string test2 = GetUniqueFilename("test2");
+    string test3 = GetUniqueFilename("test3");
+    string test4 = GetUniqueFilename("test4");
+    string test5 = GetUniqueFilename("test5");
+    string test6 = GetUniqueFilename("test6");
+    string test7 = GetUniqueFilename("test7");
+    string test8 = GetUniqueFilename("test8");
+    string test9 = GetUniqueFilename("test9");
+    RUNTEST(TestDownloadAPI(test1, 0, 100, true, DownloadResponse::NOT_FOUND_GOT_LOCK));
+    RUNTEST(TestDownloadAPI(test1, 0, 100, true, DownloadResponse::NOT_FOUND_ALREADY_LOCKED));
 
-    RUNTEST(TestUploadAPI("test1", 100, false, UploadResponse::SUCCESS, &hashValue));
+    RUNTEST(TestUploadAPI(test1, 100, false, UploadResponse::SUCCESS, &hashValue));
 
-    RUNTEST(TestDownloadAPI("test1", 0, 100, true, DownloadResponse::SUCCESS, &hashValue));
-    RUNTEST(TestDownloadAPI("test1", 0, 100, true, DownloadResponse::SUCCESS, &hashValue));
+    RUNTEST(TestDownloadAPI(test1, 0, 100, true, DownloadResponse::SUCCESS, &hashValue));
+    RUNTEST(TestDownloadAPI(test1, 0, 100, true, DownloadResponse::SUCCESS, &hashValue));
     
-    RUNTEST(TestDownloadAPI("test2", 0, 100, false, DownloadResponse::NOT_FOUND));
-    RUNTEST(TestDownloadAPI("test2", 0, 100, true, DownloadResponse::NOT_FOUND_GOT_LOCK));
-    RUNTEST(TestDownloadAPI("test2", 0, 100, false, DownloadResponse::NOT_FOUND));
-    RUNTEST(TestDownloadAPI("test2", 0, 100, true, DownloadResponse::NOT_FOUND_ALREADY_LOCKED));
-    RUNTEST(TestUploadAPI("test2", 1024*1024*10 + 1, false, UploadResponse::SUCCESS));
-    RUNTEST(TestDownloadAPI("test2", 0, 1024*1024*10 + 1, false, DownloadResponse::SUCCESS));
-    RUNTEST(TestDownloadAPI("test2", 0, 1024*1024*10 + 1, true, DownloadResponse::SUCCESS));
-    RUNTEST(TestDownloadAPI("test2", 0, 1024*1024*10 + 1, false, DownloadResponse::SUCCESS));
+    RUNTEST(TestDownloadAPI(test2, 0, 100, false, DownloadResponse::NOT_FOUND));
+    RUNTEST(TestDownloadAPI(test2, 0, 100, true, DownloadResponse::NOT_FOUND_GOT_LOCK));
+    RUNTEST(TestDownloadAPI(test2, 0, 100, false, DownloadResponse::NOT_FOUND));
+    RUNTEST(TestDownloadAPI(test2, 0, 100, true, DownloadResponse::NOT_FOUND_ALREADY_LOCKED));
+    RUNTEST(TestUploadAPI(test2, 1024*1024*10 + 1, false, UploadResponse::SUCCESS));
+    RUNTEST(TestDownloadAPI(test2, 0, 1024*1024*10 + 1, false, DownloadResponse::SUCCESS));
+    RUNTEST(TestDownloadAPI(test2, 0, 1024*1024*10 + 1, true, DownloadResponse::SUCCESS));
+    RUNTEST(TestDownloadAPI(test2, 0, 1024*1024*10 + 1, false, DownloadResponse::SUCCESS));
 
     cout << "Partial download tests" << endl;
-    RUNTEST(TestDownloadAPI("test2", 1, 1024*1024*10, false, DownloadResponse::SUCCESS));
-    RUNTEST(TestDownloadAPI("test2", 1, 1024*1024*20, false, DownloadResponse::SUCCESS) == false);
-    RUNTEST(TestDownloadAPI("test2", 1024*1024*10, 1, false, DownloadResponse::SUCCESS));
-    RUNTEST(TestDownloadAPI("test2", 1024*1024*10+1, 0, false, DownloadResponse::SUCCESS));
-    RUNTEST(TestDownloadAPI("test2", 1024*1024*10+1, 10, false, DownloadResponse::SUCCESS) == false);
-    RUNTEST(TestDownloadAPI("test2", 1024*1024*10+2, 0, false, DownloadResponse::INVALID_OFFSET_LENGTH));
-    RUNTEST(TestDownloadAPI("test2", 1024*1024*20, 10, false, DownloadResponse::INVALID_OFFSET_LENGTH));
+    RUNTEST(TestDownloadAPI(test2, 1, 1024*1024*10, false, DownloadResponse::SUCCESS));
+    RUNTEST(TestDownloadAPI(test2, 1, 1024*1024*20, false, DownloadResponse::SUCCESS) == false);
+    RUNTEST(TestDownloadAPI(test2, 1024*1024*10, 1, false, DownloadResponse::SUCCESS));
+    RUNTEST(TestDownloadAPI(test2, 1024*1024*10+1, 0, false, DownloadResponse::SUCCESS));
+    RUNTEST(TestDownloadAPI(test2, 1024*1024*10+1, 10, false, DownloadResponse::SUCCESS) == false);
+    RUNTEST(TestDownloadAPI(test2, 1024*1024*10+2, 0, false, DownloadResponse::INVALID_OFFSET_LENGTH));
+    RUNTEST(TestDownloadAPI(test2, 1024*1024*20, 10, false, DownloadResponse::INVALID_OFFSET_LENGTH));
 
-    RUNTEST(TestDownloadAPI("test1", 0, 100, false, DownloadResponse::SUCCESS));
-    RUNTEST(TestDownloadAPI("test1", 0, 100, true, DownloadResponse::SUCCESS));
+    RUNTEST(TestDownloadAPI(test1, 0, 100, false, DownloadResponse::SUCCESS));
+    RUNTEST(TestDownloadAPI(test1, 0, 100, true, DownloadResponse::SUCCESS));
 
-    RUNTEST(TestUploadAPI("test3", 1, true, UploadResponse::SUCCESS));
-    RUNTEST(TestUploadAPI("test3", 10, true, UploadResponse::SUCCESS) == false);
-    RUNTEST(TestUploadAPI("test4", 10, false, UploadResponse::SUCCESS) == false);
-    RUNTEST(TestUploadAPI("test5", 0, true, UploadResponse::SUCCESS));
-    RUNTEST(TestUploadAPI("test5", 10, true, UploadResponse::SUCCESS) == false);
+    RUNTEST(TestUploadAPI(test3, 1, true, UploadResponse::SUCCESS));
+    RUNTEST(TestUploadAPI(test3, 10, true, UploadResponse::SUCCESS) == false);
+    RUNTEST(TestUploadAPI(test4, 10, false, UploadResponse::SUCCESS) == false);
+    RUNTEST(TestUploadAPI(test5, 0, true, UploadResponse::SUCCESS));
+    RUNTEST(TestUploadAPI(test5, 10, true, UploadResponse::SUCCESS) == false);
 
-    RUNTEST(TestDownloadAPI("test4", 0, 1024*1024, true, DownloadResponse::NOT_FOUND_GOT_LOCK));
-    RUNTEST(TestUploadAPI("test4", 1024*1024, false, UploadResponse::SUCCESS, &hashValue));
-    RUNTEST(TestDownloadAPI("test4", 0, 1024*1024, true, DownloadResponse::SUCCESS, &hashValue));
+    RUNTEST(TestDownloadAPI(test4, 0, 1024*1024, true, DownloadResponse::NOT_FOUND_GOT_LOCK));
+    RUNTEST(TestUploadAPI(test4, 1024*1024, false, UploadResponse::SUCCESS, &hashValue));
+    RUNTEST(TestDownloadAPI(test4, 0, 1024*1024, true, DownloadResponse::SUCCESS, &hashValue));
 
     cout << "test special chars" << endl;
+    string testspecial = GetUniqueFilename("test5/dir/%$^&*(^%$#^*////\\\\////");
     RUNTEST(TestDownloadAPI(
-        "test5/dir/%$^&*(^%$#^*////\\\\////", 0, 1024*1024+1, true, DownloadResponse::NOT_FOUND_GOT_LOCK));
+        testspecial, 0, 1024*1024+1, true, DownloadResponse::NOT_FOUND_GOT_LOCK));
     RUNTEST(TestUploadAPI(
-        "test5/dir/%$^&*(^%$#^*////\\\\////", 1024*1024+1, false, UploadResponse::SUCCESS, &hashValue));
+        testspecial, 1024*1024+1, false, UploadResponse::SUCCESS, &hashValue));
     RUNTEST(TestDownloadAPI(
-        "test5/dir/%$^&*(^%$#^*////\\\\////", 0, 1024*1024+1, true, DownloadResponse::SUCCESS, &hashValue));
+        testspecial, 0, 1024*1024+1, true, DownloadResponse::SUCCESS, &hashValue));
 
     cout << "test zero length files" << endl;
-    RUNTEST(TestDownloadAPI("test6", 0, 0, true, DownloadResponse::NOT_FOUND_GOT_LOCK));
-    RUNTEST(TestUploadAPI("test6", 0, false, UploadResponse::SUCCESS));
-    RUNTEST(TestDownloadAPI("test6", 0, 0, true, DownloadResponse::SUCCESS));
+    RUNTEST(TestDownloadAPI(test6, 0, 0, true, DownloadResponse::NOT_FOUND_GOT_LOCK));
+    RUNTEST(TestUploadAPI(test6, 0, false, UploadResponse::SUCCESS));
+    RUNTEST(TestDownloadAPI(test6, 0, 0, true, DownloadResponse::SUCCESS));
 
     cout << "test long file names" << endl;
-    string longFile1(127, '1');
-    string longFile2(128, '2');
+    string longFile1 = GetUniqueFilename(string(115, '1'));
+    string longFile2 = GetUniqueFilename(string(116, '2'));
     RUNTEST(TestUploadAPI(longFile1, 1024*1024+1, true, UploadResponse::SUCCESS, &hashValue));
     RUNTEST(TestDownloadAPI(longFile1, 0, 1024*1024+1, true, DownloadResponse::SUCCESS, &hashValue));
     RUNTEST(TestUploadAPI(longFile2, 1024*1024+1, true, UploadResponse::SUCCESS) == false);
     RUNTEST(TestDownloadAPI(longFile2, 0, 1024*1024+1, true, DownloadResponse::FILENAME_LIMIT_EXCEEDED));
 
     cout << "test large file uploads" << endl;
-    RUNTEST(TestDownloadAPI("test7", 0, 1024*1024*1024, true, DownloadResponse::NOT_FOUND_GOT_LOCK));
-    RUNTEST(TestUploadAPI("test7", 1024*1024*1024, false, UploadResponse::SUCCESS, &hashValue));
-    RUNTEST(TestDownloadAPI("test7", 0, 1024*1024*1024, true, DownloadResponse::SUCCESS, &hashValue));
-    RUNTEST(TestUploadAPI("test8", (uint64_t)4*1024*1024*1024, true, UploadResponse::SUCCESS, &hashValue));
-    RUNTEST(TestDownloadAPI("test8", 0, (uint64_t)4*1024*1024*1024, true, DownloadResponse::SUCCESS, &hashValue));
-    RUNTEST(TestDownloadAPI("test8", 0, (uint64_t)4*1024*1024*1024, true, DownloadResponse::SUCCESS, &hashValue));
+    RUNTEST(TestDownloadAPI(test7, 0, 1024*1024*1024, true, DownloadResponse::NOT_FOUND_GOT_LOCK));
+    RUNTEST(TestUploadAPI(test7, 1024*1024*1024, false, UploadResponse::SUCCESS, &hashValue));
+    RUNTEST(TestDownloadAPI(test7, 0, 1024*1024*1024, true, DownloadResponse::SUCCESS, &hashValue));
+    RUNTEST(TestUploadAPI(test8, (uint64_t)4*1024*1024*1024, true, UploadResponse::SUCCESS, &hashValue));
+    RUNTEST(TestDownloadAPI(test8, 0, (uint64_t)4*1024*1024*1024, true, DownloadResponse::SUCCESS, &hashValue));
+    RUNTEST(TestDownloadAPI(test8, 0, (uint64_t)4*1024*1024*1024, true, DownloadResponse::SUCCESS, &hashValue));
     RUNTEST(TestUploadAPI(
-        "test9", (uint64_t)4*1024*1024*1024 + 1, true, UploadResponse::SUCCESS, &hashValue) == false);
+        test9, (uint64_t)4*1024*1024*1024 + 1, true, UploadResponse::SUCCESS, &hashValue) == false);
     RUNTEST(TestDownloadAPI(
-        "test9", 0, (uint64_t)4*1024*1024*1024 + 1, false, DownloadResponse::NOT_FOUND, &hashValue));
+        test9, 0, (uint64_t)4*1024*1024*1024 + 1, false, DownloadResponse::NOT_FOUND, &hashValue));
 
     cout << "test parallel lock" << endl;
     RUNTEST(TestParallelLock(200, 5));
@@ -922,24 +1057,24 @@ int main(int argc, char *argv[])
     PutAttributeRequest putRequest;
     {
         auto fileAttr = putRequest.add_fileattributes();
-        fileAttr->set_filename("test1");
+        fileAttr->set_filename(test1);
         auto attr = fileAttr->mutable_fileattribute();
         attr->set_isdir(true);
         attr->set_filesize(100);
         attr->set_accessedtime(101);
         attr->set_modifiedtime(102);
     }
-    RUNTEST(TestGetAttributeAPI("test1", false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
-    RUNTEST(TestGetAttributeAPI("test1", true, GetAttributeResponse::NOT_FOUND_GOT_LOCK, false, 0, 0, 0));
-    RUNTEST(TestGetAttributeAPI("test1", true, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
-    RUNTEST(TestGetAttributeAPI("test1", false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
+    RUNTEST(TestGetAttributeAPI(test1, false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
+    RUNTEST(TestGetAttributeAPI(test1, true, GetAttributeResponse::NOT_FOUND_GOT_LOCK, false, 0, 0, 0));
+    RUNTEST(TestGetAttributeAPI(test1, true, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
+    RUNTEST(TestGetAttributeAPI(test1, false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
     RUNTEST(TestPutAttributeAPI(putRequest, PutAttributeResponse::SUCCESS));
-    RUNTEST(TestGetAttributeAPI("test1", false, GetAttributeResponse::SUCCESS, true, 100, 101, 102));
+    RUNTEST(TestGetAttributeAPI(test1, false, GetAttributeResponse::SUCCESS, true, 100, 101, 102));
 
     {
         putRequest.clear_fileattributes();
         auto fileAttr = putRequest.add_fileattributes();
-        fileAttr->set_filename("test2");
+        fileAttr->set_filename(test2);
         auto attr = fileAttr->mutable_fileattribute();
         attr->set_isdir(true);
         attr->set_filesize(0);
@@ -947,25 +1082,44 @@ int main(int argc, char *argv[])
         attr->set_modifiedtime(202);
 
         fileAttr = putRequest.add_fileattributes();
-        fileAttr->set_filename("test3");
+        fileAttr->set_filename(test3);
         attr = fileAttr->mutable_fileattribute();
         attr->set_isdir(false);
         attr->set_filesize(300);
         attr->set_accessedtime(301);
         attr->set_modifiedtime(302);
     }
-    RUNTEST(TestGetAttributeAPI("test2", false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
-    RUNTEST(TestGetAttributeAPI("test3", true, GetAttributeResponse::NOT_FOUND_GOT_LOCK, false, 0, 0, 0));
-    RUNTEST(TestGetAttributeAPI("test3", true, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
-    RUNTEST(TestGetAttributeAPI("test2", false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
+    RUNTEST(TestGetAttributeAPI(test2, false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
+    RUNTEST(TestGetAttributeAPI(test3, true, GetAttributeResponse::NOT_FOUND_GOT_LOCK, false, 0, 0, 0));
+    RUNTEST(TestGetAttributeAPI(test3, true, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
+    RUNTEST(TestGetAttributeAPI(test2, false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
     RUNTEST(TestPutAttributeAPI(putRequest, PutAttributeResponse::SUCCESS));
-    RUNTEST(TestGetAttributeAPI("test2", true, GetAttributeResponse::SUCCESS, true, 0, 201, 202));
-    RUNTEST(TestGetAttributeAPI("test3", false, GetAttributeResponse::SUCCESS, false, 300, 301, 302));
+    RUNTEST(TestGetAttributeAPI(test2, true, GetAttributeResponse::SUCCESS, true, 0, 201, 202));
+    RUNTEST(TestGetAttributeAPI(test3, false, GetAttributeResponse::SUCCESS, false, 300, 301, 302));
 
     cout << "Test parallel attribute cache" << endl;
     RUNTEST(TestParallelAttributeCache(200, 5));
     RUNTEST(TestParallelAttributeCache(1, 2));
     RUNTEST(TestParallelAttributeCache(500, 10));
+
+    cout << "Test cache metadata" << endl;
+
+    // simple metadata
+    google::protobuf::Map<string, string> metadata;
+    metadata["key1"] = "val1";
+    RUNTEST(TestMetadata(metadata));
+
+    // empty metadata
+    RUNTEST(TestMetadata(google::protobuf::Map<string, string>()));
+
+    // binary and long metadata
+    metadata["key2"] = "val2";
+    // long binary data
+    metadata["key3"] = string(100*1024, '\4');
+    metadata["looooooooooooooooooooooooooooooooooooooongkey4"] = "val4";
+    // long text data
+    metadata["key5"] = string(100*1024, 'A');
+    RUNTEST(TestMetadata(metadata));
 
     cout << "Total established connections: " << totalConnections << endl;
     cout << "Test complete. Total tests: " << TotalTests << ". Failed: " << TestsFailed << endl;

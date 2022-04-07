@@ -25,11 +25,51 @@
 using namespace std;
 using namespace cache;
 //---------------------------------------------------------------------------------------------------------------------
+bool AuthenticateRequest(const GetAttributeRequest& request)
+{
+    if (!IsAuthEnabled())
+    {
+        return true;
+    }
+
+    time_t timestamp = request.authparams().timestamp();
+    string serializedHeaders = 
+        std::string("G") + 
+        request.filename() + 
+        (request.enablelock() ? "1" : "0") +
+        std::to_string(timestamp);
+
+   if (!request.authparams().enabled())
+    {
+        LOG_WARN("Auth params not sent by client");
+        return false;
+    }
+    
+    if (!ValidateAuthSignature(
+        request.authparams().accountname(),
+        request.authparams().signature(),
+        serializedHeaders,
+        timestamp))
+    {
+        LOG_WARN("Auth validation failure");
+        return false;
+    }
+
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool HandleGetAttribute(int clientFd, const GetAttributeRequest& getAttributeRequest)
 {
     LOG_DEBUG("filename received: {}, lock: {}", getAttributeRequest.filename(), getAttributeRequest.enablelock());
 
     GetAttributeResponse getAttributeResponse;
+    if (!AuthenticateRequest(getAttributeRequest))
+    {
+        LOG_WARN("Failed to authenticate request");
+        getAttributeResponse.set_result(GetAttributeResponse::AUTH_FAILED);
+        return SendMessageToRemote(clientFd, getAttributeResponse);
+    }
+
     if (getAttributeRequest.enablelock())
     {
         CacheAttributes cacheAttributes;

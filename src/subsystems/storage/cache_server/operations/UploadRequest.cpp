@@ -34,9 +34,52 @@ void SetCacheSizeLimit(const uint64_t limitCacheSizeBytes)
     CacheSizeLimitBytes = limitCacheSizeBytes;
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool AuthenticateRequest(const UploadRequest& request)
+{
+    if (!IsAuthEnabled())
+    {
+        return true;
+    }
+
+    time_t timestamp = request.authparams().timestamp();
+    string serializedHeaders = 
+        std::string("U") + 
+        request.filename() + 
+        std::to_string(request.filesize()) +
+        (request.ignorelock() ? "1" : "0") +
+        std::to_string(request.expiryseconds()) +
+        std::to_string(timestamp);
+
+   if (!request.authparams().enabled())
+    {
+        LOG_WARN("Auth params not sent by client");
+        return false;
+    }
+    
+    if (!ValidateAuthSignature(
+        request.authparams().accountname(),
+        request.authparams().signature(),
+        serializedHeaders,
+        timestamp))
+    {
+        LOG_WARN("Auth validation failure");
+        return false;
+    }
+
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool UploadFile(int clientFd, const UploadRequest& uploadRequest)
 {
     LOG_DEBUG("filename received: {}", uploadRequest.filename());
+
+    UploadResponse uploadResponse;
+    if (!AuthenticateRequest(uploadRequest))
+    {
+        LOG_WARN("Failed to authenticate request");
+        uploadResponse.set_result(UploadResponse::AUTH_FAILED);
+        return SendMessageToRemote(clientFd, uploadResponse);
+    }
 
     // Set limit on filename length
     if (uploadRequest.filename().size() > UPLOAD_FILENAME_LIMIT)
@@ -67,16 +110,13 @@ bool UploadFile(int clientFd, const UploadRequest& uploadRequest)
     if (!UpdateCacheStatus(
         uploadRequest.filename(),
         uploadRequest.ignorelock(),
-        CacheInfo(uploadRequest.filesize(), STARTED)))
+        CacheInfo(uploadRequest.filesize(), uploadRequest.metadata(), STARTED)))
     {
         LOG_WARN("error starting upload for: {}", uploadRequest.filename());
         return false;
     }
 
     // TODO: use meta field for cache TTL
-
-    UploadResponse uploadResponse;
-
     LOG_DEBUG("file size to upload: {}", uploadRequest.filesize());
     if (uploadRequest.filesize() > 0)
     {
@@ -155,14 +195,16 @@ bool UploadFile(int clientFd, const UploadRequest& uploadRequest)
             remove(tempFilename.c_str());
             TotalCachedSize.fetch_sub(uploadRequest.filesize());
             uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
-            if (!UpdateCacheStatus(uploadRequest.filename(), true, CacheInfo(uploadRequest.filesize(), INITIATED)))
+            if (!UpdateCacheStatus(uploadRequest.filename(), true,
+                CacheInfo(uploadRequest.filesize(), uploadRequest.metadata(), INITIATED)))
             {
                 LOG_ERROR("error resetting upload status to INITIATED: {}", uploadRequest.filename());
             }
         }
         else
         {
-            if (!UpdateCacheStatus(uploadRequest.filename(), true, CacheInfo(uploadRequest.filesize(), COMPLETED)))
+            if (!UpdateCacheStatus(uploadRequest.filename(), true,
+                CacheInfo(uploadRequest.filesize(), uploadRequest.metadata(), COMPLETED)))
             {
                 uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
                 LOG_ERROR("error updating upload status to COMPLETED: {}", uploadRequest.filename());
@@ -177,7 +219,8 @@ bool UploadFile(int clientFd, const UploadRequest& uploadRequest)
     else
     {
         uploadResponse.set_result(UploadResponse::SUCCESS);
-        if (!UpdateCacheStatus(uploadRequest.filename(), true, CacheInfo(uploadRequest.filesize(), COMPLETED)))
+        if (!UpdateCacheStatus(uploadRequest.filename(), true,
+            CacheInfo(uploadRequest.filesize(), uploadRequest.metadata(), COMPLETED)))
         {
             uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
             LOG_WARN("error updating upload status to COMPLETED: {}", uploadRequest.filename());

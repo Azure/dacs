@@ -40,6 +40,7 @@ class StorageInterceptConfig
         bool GetCacheUseLocalFS();
         std::string GetCacheLocalFSCachePath();
         uint64_t GetCacheNumServers();
+        std::string GetCacheServerList();
         uint64_t GetCacheNumUploadThreadsPerProcess();
         uint64_t GetCacheMaxUploadBufferSizePerProcess();
         uint64_t GetCacheReuseServerConnections();
@@ -48,6 +49,15 @@ class StorageInterceptConfig
         bool GetAttributesCacheEnable();
         uint64_t GetAttributesCacheMaxEntries();
         bool GetAttributesCacheUseLocalServer();
+
+        // Getters for authentication
+        bool GetCacheAuthEnabled();
+        std::string GetCacheAuthAccountName();
+        std::string GetCacheAuthAccountKey();
+
+        // Getters for encryption
+        bool GetCacheEncryptionEnabled();
+        std::string GetCacheEncryptionKey();
 
         // Getters for blob config
         std::string GetStorageAccountName();

@@ -30,12 +30,52 @@
 using namespace std;
 using namespace cache;
 //---------------------------------------------------------------------------------------------------------------------
+bool AuthenticateRequest(const DownloadRequest& request)
+{
+    if (!IsAuthEnabled())
+    {
+        return true;
+    }
+
+    time_t timestamp = request.authparams().timestamp();
+    string serializedHeaders = 
+        std::string("D") + 
+        request.filename() + 
+        std::to_string(request.offset()) +
+        std::to_string(request.length()) +
+        (request.enablelock() ? "1" : "0") +
+        std::to_string(timestamp);
+    if (!request.authparams().enabled())
+    {
+        LOG_WARN("Auth params not sent by client");
+        return false;
+    }
+
+    if (!ValidateAuthSignature(
+        request.authparams().accountname(),
+        request.authparams().signature(),
+        serializedHeaders,
+        timestamp))
+    {
+        LOG_WARN("Auth validation failure");
+        return false;
+    }
+
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool DownloadFile(int clientFd, const DownloadRequest& downloadRequest)
 {
     LOG_DEBUG("filename: {}, offset: {}, length: {}",
         downloadRequest.filename(), downloadRequest.offset(), downloadRequest.length());
 
     DownloadResponse downloadResponse;
+    if (!AuthenticateRequest(downloadRequest))
+    {
+        LOG_WARN("Failed to authenticate request");
+        downloadResponse.set_result(DownloadResponse::AUTH_FAILED);
+        return SendMessageToRemote(clientFd, downloadResponse);
+    }
 
     // Set limit on filename length
     if (downloadRequest.filename().size() > UPLOAD_FILENAME_LIMIT)
@@ -82,7 +122,7 @@ bool DownloadFile(int clientFd, const DownloadRequest& downloadRequest)
         }
     }
 
-    // update download filesize
+    // update download filesize and metadata
     uint64_t downloadFileSize = 0;
     if (cacheInfo.m_status == COMPLETED)
     {
@@ -103,6 +143,9 @@ bool DownloadFile(int clientFd, const DownloadRequest& downloadRequest)
             downloadFileSize = std::min(cacheInfo.m_fileSize - downloadRequest.offset(), downloadRequest.length());
         }
         LOG_DEBUG("Set download filesize to: {}", downloadFileSize);
+
+        *(downloadResponse.mutable_metadata()) = cacheInfo.m_metadata;
+
     }
 
     downloadResponse.set_filesize(downloadFileSize);
