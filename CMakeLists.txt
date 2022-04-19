@@ -68,6 +68,8 @@ include(CTest)
 include_directories(src/subsystems/common/native_lib/diagnostics/)
 include_directories(src/subsystems/common/native_lib/utils/)
 include_directories(src/subsystems/reliability/callstack_utils/)
+include_directories(src/subsystems/reliability/profiler_utils/)
+
 
 # Enable testing at the root level
 enable_testing()
@@ -81,6 +83,8 @@ add_subdirectory(src/subsystems/common/native_lib/diagnostics)
 add_subdirectory(src/subsystems/common/native_lib/diagnostics.tests)
 add_subdirectory(src/subsystems/reliability/common/native/)
 add_subdirectory(src/subsystems/reliability/callstack_utils/)
+add_subdirectory(src/subsystems/reliability/profiler_utils/)
+
 message("CUDA_VERSION: ${CUDA_VERSION}")
 
 if(NOT CUDA_VERSION OR NOT ("${CUDA_VERSION}" MATCHES "non_cuda"))
