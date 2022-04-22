@@ -31,12 +31,14 @@ void LoggingApi::Init()
     char* fileStandardOutput = std::getenv("DACS_LOG_OUTPUT_FLIE");
     char* fileErrorOutput = std::getenv("DACS_LOG_ERROR_FILE");
     char* bEnableElasticity = std::getenv("DACS_ENABLE_TRANSPARENT_ELASTICITY");
+    char* bDisableFileLogger = std::getenv("DACS_DISABLE_FILE_LOGGER");
 
     // Enable file logger when the issue is fixed
     if(
         !fileStandardOutput
         || !fileErrorOutput
         || (bEnableElasticity != nullptr && std::strcmp(bEnableElasticity, "true") == 0)
+        || (bDisableFileLogger != nullptr && std::strcmp(bDisableFileLogger, "true") == 0)
     )
     {
         m_upLogger = std::make_shared<StandardLogger>();
