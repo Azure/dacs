@@ -54,7 +54,7 @@ RUN \
   libprotobuf-dev \
   wget \
   curl \
-  git \
+  git=1:2.17.0-1ubuntu1 \
   ntpdate \
   locales \
   locales-all \
@@ -118,6 +118,15 @@ RUN \
   mkdir /run/sshd && \
   useradd -m dacsuser && \
   find /dependency -type d | xargs chmod 777
+
+# Create cuda 10.1.243 conda environment, this is needed for CUPTI 10.1 library
+RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
+  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-101 && \
+  . /opt/conda-cuda-101/bin/activate && \
+  conda install -y -c conda-forge cudatoolkit-dev=10.1.243 && \
+  conda clean -a && \
+  conda deactivate && \
+  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
 
 # Create cuda 11.0.221, nccl 2.7.8, cudnn 8.0.5 conda environment
 RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
