@@ -159,6 +159,18 @@ TEST_F(ContentHandlerTest, GetPropertiesOneThreadTest)
     GetPropertiesCheck(task);
 }
 //---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, GetPropertiesNonExistentTest)
+{
+    std::string nonExistentPath = m_strInterceptPath + "/non-existent-file";
+    struct stat64 fileAttr;
+
+    // XStat for non-existent file should return proper error
+    int xstatRet = ContentHandler::GetInstance().HandleXstat64(
+        1, nonExistentPath.c_str(), &fileAttr);
+    ASSERT_EQ(xstatRet, -1);
+    ASSERT_EQ(errno, ENOENT);
+}
+//---------------------------------------------------------------------------------------------------------------------
 TEST_F(ContentHandlerTest, OpenReadAndCloseManyThreadsTest)
 {
     std::vector<OpenReadAndCloseTask> tasks;

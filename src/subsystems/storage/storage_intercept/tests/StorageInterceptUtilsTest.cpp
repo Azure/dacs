@@ -67,4 +67,24 @@ TEST(StorageInterceptUtilsTest, GetRelativePathTest)
         StorageInterceptUtils::GetRelativePath("/foo", "/aa/foo/bar", result),
         false);
     EXPECT_EQ(result, "");
+
+    EXPECT_EQ(
+        StorageInterceptUtils::GetRelativePath("/foo", "/foo//bar//aa", result),
+        true);
+    EXPECT_EQ(result, "bar/aa");
+
+    EXPECT_EQ(
+        StorageInterceptUtils::GetRelativePath("/foo/bar", "/foo//bar", result),
+        true);
+    EXPECT_EQ(result, "");
+
+    EXPECT_EQ(
+        StorageInterceptUtils::GetRelativePath("/foo/bar", "/foo//bar//aa/bb//cc", result),
+        true);
+    EXPECT_EQ(result, "aa/bb/cc");
+
+    EXPECT_EQ(
+        StorageInterceptUtils::GetRelativePath("/foo/bar", "/foo//bart", result),
+        false);
+    EXPECT_EQ(result, "");
 }

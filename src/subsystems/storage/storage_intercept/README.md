@@ -8,9 +8,11 @@ cd <path to repository root>
 ./bldenv.sh
 ```
 Above command would automatically boot up a docker container with the latest image, and open a shell attached to it. Some packages being used with recent changes are required to be installed (as they're not part of the latest image yet). \
-Run:
+Run (only needed to run E2E pytorch job):
 ```
-pip3 install torch torchvision torchsummary (only needed to run E2E pytorch job)
+pip3 install setuptools
+apt-get install libjpeg-dev
+pip3 install torch torchvision torchsummary
 ```
 To do a full build:
 ```
@@ -52,17 +54,25 @@ adlsAuthTokenUrl <adls-app-oauth2-token-url>
 ```
 type blob
 azBlobStorageAccountName <storage-account-name>
-azBlobStorageAccountKey <storage-account-key>
 azBlobStorageEndpoint <storage-account-blob-endpoint>
 azBlobContainerName <storage-account-container>
 maxConnsPerBlobClient [eg. 10 or 100]
+```
+
+If the blob requests need to be authenticated using account key, use
+```
+azBlobStorageAccountKey <storage-account-key>
 ```
 
 If the blob requests need to be authenticated using SASToken, use
 ```
 azBlobSASToken <any-type-of-sas-token>
 ```
-instead of the property: `azBlobStorageAccountKey`.
+
+If the blob requests need to be authenticated using an accessToken obtained from Managed Identity, use
+```
+azBlobAccessToken <token>
+```
 
 ### Other config settings
 Other config settings you can experiment with in `/tmp/storageIntercept.config`

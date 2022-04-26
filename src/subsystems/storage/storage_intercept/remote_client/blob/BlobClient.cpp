@@ -26,9 +26,7 @@ BlobClient::BlobClient()
         "Initialized blob client with accountName={}, maxConnections={} and authType={} successfully",
         m_storageAccountContext.accountName,
         m_nMaxConnections,
-        m_storageAuthContext.authType == AzStorageAuthType::SASToken
-            ? "SASToken"
-            : "StorageAccountKey");
+        m_storageAuthContext.authType);
 }
 //---------------------------------------------------------------------------------------------------------------------
 const std::set<HttpStatus> BlobClient::m_setIgnorableErrors =
@@ -45,14 +43,30 @@ void BlobClient::GetConfigProperties()
         StorageInterceptConfig::GetInstance().GetStorageAccountName(),
         StorageInterceptConfig::GetInstance().GetStorageEndpointUrl()
     );
-    m_storageAuthContext =
-        StorageInterceptConfig::GetInstance().GetStorageAccountKey().length() == 0
-        ? StorageInterceptConfig::GetInstance().GetStorageSASToken().length() == 0
-            ? throw BlobClientException("Blob auth credentials missing")
-            : AzStorageAuthContext(StorageInterceptConfig::GetInstance().GetStorageSASToken())
-        : AzStorageAuthContext(
+    
+    if (StorageInterceptConfig::GetInstance().GetStorageAccountKey().length() != 0)
+    {
+        m_storageAuthContext = AzStorageAuthContext(
             StorageInterceptConfig::GetInstance().GetStorageAccountName(),
             StorageInterceptConfig::GetInstance().GetStorageAccountKey());
+    }
+    else if (StorageInterceptConfig::GetInstance().GetStorageSASToken().length() != 0)
+    {
+        m_storageAuthContext = AzStorageAuthContext(
+            AzStorageAuthType::SASToken,
+            StorageInterceptConfig::GetInstance().GetStorageSASToken());
+    }
+    else if (StorageInterceptConfig::GetInstance().GetBlobAccessToken().length() != 0)
+    {
+        m_storageAuthContext = AzStorageAuthContext(
+            AzStorageAuthType::AccessToken,
+            StorageInterceptConfig::GetInstance().GetBlobAccessToken());
+        // TODO: add support for taking in managed identity params and fetch+renew access tokens.
+    }
+    else
+    {
+        throw BlobClientException("Blob auth credentials missing");
+    }
 
     m_strContainerName = StorageInterceptConfig::GetInstance().GetBlobContainerName();
     m_nMaxConnections = static_cast<size_t>(StorageInterceptConfig::GetInstance().GetMaxBlobConnectionsPerClient());
@@ -165,16 +179,17 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
     /* We are only interested in getting one response */
     const int MAX_RESULTS = 1;
 
+    std::string listBlobsQueryPrefix = (remotePath.size() == 0) ? ""
+        : remotePath.back() == DIRECTORY_DELIMITER.back()
+            ? remotePath.substr(0, remotePath.size() - 1)
+            : remotePath;
+
     const auto blobOutcome =
         m_spClient->list_blobs_segmented(
             m_strContainerName,
             DIRECTORY_DELIMITER,
             emptyContinuationToken,
-            remotePath.size() == 0
-                ? ""
-                : remotePath.back() == DIRECTORY_DELIMITER.back()
-                    ? remotePath.substr(0, remotePath.size() - 1)
-                    : remotePath,
+            listBlobsQueryPrefix,
             MAX_RESULTS).get();
 
     if (!blobOutcome.success())
@@ -190,8 +205,9 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
 
     if (blobOutcome.response().blobs.size() == 0)
     {
-        LOG_ERROR("Invalid blob path provided {}", remotePath);
-        throw BlobClientException("Invalid blob path provided");
+        LOG_WARN("Blob not found in GetProperties. remotePath={}, queryPrefix={}", remotePath, listBlobsQueryPrefix);
+        errno = ENOENT;
+        return -1;
     }
 
     /* Case of root directory */

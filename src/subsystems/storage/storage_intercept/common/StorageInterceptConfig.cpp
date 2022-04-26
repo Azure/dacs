@@ -23,8 +23,19 @@ StorageInterceptConfig& StorageInterceptConfig::GetInstance()
 //---------------------------------------------------------------------------------------------------------------------
 void StorageInterceptConfig::LoadConfig()
 {
+    // There should be no logging from this function to prevent deadlock with LFS interceptor.
+
     const mode_t CONFIG_FILE_OPEN_MODE=0777;
     const int XSTAT_VERSION=1;
+
+    struct stat64 stBuf;
+    if (StorageDlsymWrapper::xstat64(
+        XSTAT_VERSION,
+        StorageInterceptConstants::ConfigFilePath,
+        &stBuf) != 0)
+    {
+        throw "Error getting stat for config file";
+    }
 
     int nConfigFileHandle = StorageDlsymWrapper::open(
             StorageInterceptConstants::ConfigFilePath,
@@ -33,18 +44,7 @@ void StorageInterceptConfig::LoadConfig()
 
     if (nConfigFileHandle < 0)
     {
-        LOG_ERROR("Error opening config file at {}", StorageInterceptConstants::ConfigFilePath);
         throw "Error opening config file";
-    }
-
-    struct stat64 stBuf;
-    if (StorageDlsymWrapper::xstat64(
-        XSTAT_VERSION,
-        StorageInterceptConstants::ConfigFilePath,
-        &stBuf) != 0)
-    {
-        LOG_ERROR("Error getting stat for config file at {}", StorageInterceptConstants::ConfigFilePath);
-        throw "Error getting stat for config file";
     }
 
     size_t nConfigFileSize = stBuf.st_size;
@@ -62,7 +62,6 @@ void StorageInterceptConfig::LoadConfig()
                 nConfigFileSize - nConfigBytesRead);
         if (nConfigBytesReadNow < 0)
         {
-            LOG_ERROR("Error occurred while reading the config file");
             throw "Error occurred while reading config file";
         }
         else if(nConfigBytesReadNow == 0)
@@ -75,7 +74,6 @@ void StorageInterceptConfig::LoadConfig()
 
     if(StorageDlsymWrapper::close(nConfigFileHandle) != 0)
     {
-        LOG_ERROR("Error handling close for config file at {}", StorageInterceptConstants::ConfigFilePath);
         throw "Error handling close for config file";
     }
 
@@ -95,9 +93,7 @@ void StorageInterceptConfig::LoadConfig()
         size_t idx = line.find(' ');
         if (idx == std::string::npos)
         {
-            LOG_ERROR("Missing space at configFile={} lineNumber={}.",
-                StorageInterceptConstants::ConfigFilePath,
-                lineNumber);
+
             throw "Invalid config entry at lineNumber " + std::to_string(lineNumber);
         }
 
@@ -114,28 +110,22 @@ void StorageInterceptConfig::LoadConfig()
             char* envVal = std::getenv(strEnvKey.c_str());
             if (envVal == NULL)
             {
-                LOG_ERROR("Missing environment variable={}.", strEnvKey);
                 throw "Missing environment variable=" + strEnvKey;
             }
 
             value = envVal;
         }
         m_ConfigProps[key] = value;
-        LOG_DEBUG("Loaded config key={}", key);
 
         lineNumber++;
     }
 
     if (lineNumber == 0)
     {
-        LOG_ERROR("Empty config file at {}", StorageInterceptConstants::ConfigFilePath);
         throw "Config file is empty";
     }
 
     m_IsConfigLoaded = true;
-    LOG_INFO("Loaded config from configFile={} Number of settings={}",
-        StorageInterceptConstants::ConfigFilePath,
-        lineNumber);
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::string StorageInterceptConfig::GetConfigStr(
@@ -264,7 +254,14 @@ bool StorageInterceptConfig::GetOptionalConfigBoolean(
 //---------------------------------------------------------------------------------------------------------------------
 std::string StorageInterceptConfig::GetStoragePath()
 {
-    return StorageInterceptConfig::GetConfigStr(m_ConfigProps, StorageInterceptConstants::ConfigNameStoragePath);
+    std::string storagePath = StorageInterceptConfig::GetConfigStr(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameStoragePath);
+
+    // Remove trailing '/' from the storage path
+    while (storagePath.back() == '/') storagePath.pop_back();
+
+    return storagePath;
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::string StorageInterceptConfig::GetRemoteStoreType()
@@ -449,6 +446,14 @@ std::string StorageInterceptConfig::GetStorageSASToken()
     return StorageInterceptConfig::GetOptionalConfigStr(
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameAzBlobSASToken,
+        "");
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::GetBlobAccessToken()
+{
+    return StorageInterceptConfig::GetOptionalConfigStr(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameAzBlobAccessToken,
         "");
 }
 //---------------------------------------------------------------------------------------------------------------------

@@ -5,9 +5,12 @@
 //---------------------------------------------------------------------------------------------------------------------
 enum class AzStorageAuthType
 {
-    /* General SAS token type, could be: User delegation SAS or Service SAS or Account SAS */
-    SASToken,
+    // General SAS token type, could be: User delegation SAS or Service SAS or Account SAS
+    SASToken = 1,
 
-    StorageAccountKey
+    // An accessToken obtained from managed identity
+    AccessToken = 2,
+
+    StorageAccountKey = 3
 };
 //---------------------------------------------------------------------------------------------------------------------

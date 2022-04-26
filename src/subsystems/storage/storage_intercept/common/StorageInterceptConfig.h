@@ -63,6 +63,7 @@ class StorageInterceptConfig
         std::string GetStorageAccountName();
         std::string GetStorageAccountKey();
         std::string GetStorageSASToken();
+        std::string GetBlobAccessToken();
         std::string GetStorageEndpointUrl();
         std::string GetBlobContainerName();
         uint64_t GetMaxBlobConnectionsPerClient();
