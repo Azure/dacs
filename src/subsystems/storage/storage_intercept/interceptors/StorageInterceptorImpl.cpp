@@ -4,7 +4,6 @@
 #include "StorageInterceptorImpl.h"
 #include "StorageDlsymWrapper.h"
 #include <cstdlib>
-#include "StorageInterceptLogger.h"
 #include "ContentHandler.h"
 //---------------------------------------------------------------------------------------------------------------------
 int StorageInterceptorImpl::open(const char* pathname, int flags, mode_t mode)

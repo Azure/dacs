@@ -14,12 +14,8 @@
 ContentHandler::ContentHandler()
     : m_strStorageRoot(StorageInterceptConfig::GetInstance().GetStoragePath())
 {
-    // Initialize logger
-    static LoggingApi _;
-
+    // There should be no logging from this constructor to prevent deadlock with LFS interceptor.
     srand(time(NULL));
-
-    LOG_INFO("Initialized ContentHandler. StorageRoot={}", m_strStorageRoot);
 }
 //---------------------------------------------------------------------------------------------------------------------
 ContentHandler& ContentHandler::GetInstance()
@@ -487,7 +483,7 @@ int ContentHandler::GetPropertiesInternal(
     int result = StreamingClient::GetInstance().GetProperties(relPath, attributes);
     if (result < 0)
     {
-        LOG_ERROR("Error handling {} call for remote path {}", interceptedCall, relPath);
+        LOG_ERROR("Error in {} call for remote path {}, errno={}", interceptedCall, relPath, strerror(errno));
         result = -1;
         return result;
     }

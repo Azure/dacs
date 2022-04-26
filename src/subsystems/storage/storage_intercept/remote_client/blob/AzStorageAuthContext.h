@@ -14,6 +14,7 @@ struct AzStorageAuthContext
     typedef azure::storage_lite::storage_credential                     storageCredential_t;
     typedef azure::storage_lite::shared_key_credential                  sharedKeyCredential_t;
     typedef azure::storage_lite::shared_access_signature_credential     sasCredential_t;
+    typedef azure::storage_lite::token_credential                       tokenCredential_t;
 
     AzStorageAuthContext() {}
 
@@ -25,10 +26,23 @@ struct AzStorageAuthContext
         credential = std::make_shared<sharedKeyCredential_t>(azStorageAccountName, azStorageAccountKey);
     }
 
-    AzStorageAuthContext(/*[in]*/ const std::string& azSASToken)
+    AzStorageAuthContext(
+        /*[in]*/ AzStorageAuthType tokenType,
+        /*[in]*/ const std::string& token)
     {
-        authType = AzStorageAuthType::SASToken;
-        credential = std::make_shared<sasCredential_t>(azSASToken);
+        authType = tokenType;
+        if (tokenType == AzStorageAuthType::SASToken)
+        {
+            credential = std::make_shared<sasCredential_t>(token);
+        }
+        else if (tokenType == AzStorageAuthType::AccessToken)
+        {
+            credential = std::make_shared<tokenCredential_t>(token);
+        }
+        else
+        {
+            throw "Unsupported token type passed";
+        }
     }
 
     AzStorageAuthType authType;

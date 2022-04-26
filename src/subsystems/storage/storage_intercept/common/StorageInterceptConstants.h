@@ -51,6 +51,7 @@ namespace StorageInterceptConstants
     // Config constants for blob client
     const char* const ConfigNameAzBlobStorageAccName = "azBlobStorageAccountName";
     const char* const ConfigNameAzBlobSASToken = "azBlobSASToken";
+    const char* const ConfigNameAzBlobAccessToken = "azBlobAccessToken";
     const char* const ConfigNameAzBlobStorageAccKey = "azBlobStorageAccountKey";
     const char* const ConfigNameAzBlobStorageEndpointUrl = "azBlobStorageEndpoint";
     const char* const ConfigNameAzBlobContainerName = "azBlobContainerName";
