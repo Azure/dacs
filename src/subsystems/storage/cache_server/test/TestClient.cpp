@@ -26,6 +26,7 @@
 #include <fstream>
 #include <mutex>
 #include <queue>
+#include <list>
 #include <xxhash.h>
 #include <atomic>
 #include <boost/uuid/uuid_generators.hpp>
@@ -42,12 +43,15 @@ mutex LockPool;
 std::atomic_uint_fast64_t totalConnections(0);
 int TotalTests = 0;
 int TestsFailed = 0;
+list<string> FailedTests;
+
 #define RUNTEST(x) { \
         cout << "Running test: " << #x << endl; \
         TotalTests++; \
         if (!(x)) \
         { \
-            cout << "###TEST FAILED###: " << #x << endl; \
+            cout << "###TEST FAILED###: " << __LINE__ << " - " << #x << endl; \
+            FailedTests.emplace_back(std::to_string(__LINE__) + ":" + #x); \
             TestsFailed++; \
         } \
     }
@@ -93,7 +97,7 @@ int GetConnection()
 //---------------------------------------------------------------------------------------------------------------------
 string GetUniqueFilename(const string& filename)
 {
-    static boost::uuids::random_generator uuidGenerator;
+    static thread_local boost::uuids::random_generator uuidGenerator;
     boost::uuids::uuid uuid = uuidGenerator();
     return boost::uuids::to_string(uuid).substr(0, 12) + filename;
 }
@@ -309,7 +313,9 @@ bool TestUploadAPI(
     uint64_t filesize,
     bool ignoreLock,
     UploadResponse_Result expectedResult,
-    uint64_t *hashValue = nullptr)
+    uint64_t *hashValue = nullptr,
+    const string& groupid = "",
+    uint32_t ttlInSeconds = 0)
 {
     int serverFd = GetConnection();
     if (serverFd < 0)
@@ -322,9 +328,17 @@ bool TestUploadAPI(
     //cout << "testupload. filesize: " << filesize << endl;
 
     UploadRequest* uploadRequest = request.mutable_uploadrequest();
-    uploadRequest->set_filename(filename.c_str());
+    uploadRequest->set_filename(filename);
     uploadRequest->set_filesize(filesize);    
     uploadRequest->set_ignorelock(ignoreLock);
+    if (!groupid.empty())
+    {
+        uploadRequest->set_groupid(groupid);
+    }
+    if (ttlInSeconds > 0)
+    {
+        uploadRequest->set_expiryseconds(ttlInSeconds);
+    }
 
     if (!SendMessageToRemote(serverFd, request))
     {
@@ -507,6 +521,56 @@ bool TestDownloadAPI(
             close(serverFd);
             return false;
         }
+    }
+
+    ReleaseConnection(serverFd);
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool TestDeleteAPI(
+    const string& groupid,
+    DeleteResponse_Result expectedResult)
+{
+    int serverFd = GetConnection();
+    if (serverFd < 0)
+    { 
+        cout << "failed to get server connection" << endl;
+	    return false;
+    }
+    Request request;
+
+    DeleteRequest* deleteRequest = request.mutable_deleterequest();
+    deleteRequest->set_groupid(groupid.c_str());
+
+    if (!SendMessageToRemote(serverFd, request))
+    {
+        cout << "couldn't send message to server" << endl;
+        close(serverFd);
+        return false;
+    }
+
+    string requestMessage;
+    if (!ReadMessageFromRemote(serverFd, requestMessage))
+    {
+        cout << "couldn't read message from server" << endl;
+        close(serverFd);
+        return false;
+    }
+
+    DeleteResponse response;
+    if (!response.ParseFromString(requestMessage))
+    {
+        std::cout << "error: Failed to parse protobuf message" << endl;
+        close(serverFd);
+        return false;
+    }
+
+    if (response.result() != expectedResult)
+    {
+        std::cout << "error: delete failed: response.result() != expectedResult:" << response.result() << ", " <<
+            expectedResult << endl;
+        close(serverFd);
+        return false;
     }
 
     ReleaseConnection(serverFd);
@@ -770,7 +834,7 @@ int TestLimits()
     // AttributeLimit = 1024
     // CacheSizeLimit = 100 * 1024 * 1024 bytes;
     int AttributeLimit = 1024;
-    int CacheSizeLimit = 100 * 1024 * 1024;
+    int CacheSizeLimit = 104857600;
 
     cout << "Test attribute cache limits" << endl;
     for (int i = 0; i < AttributeLimit; i++)
@@ -813,14 +877,64 @@ int TestLimits()
     {
         string fileName = GetUniqueFilename(string("test-") + to_string(i));
         RUNTEST(TestDownloadAPI(fileName, 0, 1024*1024, false, DownloadResponse::NOT_FOUND));
-        RUNTEST(TestUploadAPI(fileName, 1024*1024, true, UploadResponse::SUCCESS, &hashValue));
+        RUNTEST(TestUploadAPI(fileName, 1024*1024, true, UploadResponse::SUCCESS, &hashValue, "groupid1"));
         RUNTEST(TestDownloadAPI(fileName, 0, 1024*1024, false, DownloadResponse::SUCCESS, &hashValue));
     }
+    RUNTEST(TestDownloadAPI(extraFileName, 0, 1, false, DownloadResponse::NOT_FOUND));
+    RUNTEST(TestUploadAPI(extraFileName, 1, true, UploadResponse::SUCCESS, &hashValue) == false);
     RUNTEST(TestDownloadAPI(extraFileName, 0, 1024*1024, false, DownloadResponse::NOT_FOUND));
     RUNTEST(TestUploadAPI(extraFileName, 1024*1024, true, UploadResponse::SUCCESS, &hashValue) == false);
     RUNTEST(TestDownloadAPI(extraFileName, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, &hashValue));
 
+    RUNTEST(TestDeleteAPI("groupid1", DeleteResponse::SUCCESS));
+
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+
+    for (int i = 0; i < 99; i++)
+    {
+        string fileName = GetUniqueFilename(string("test-") + to_string(i));
+        RUNTEST(TestDownloadAPI(fileName, 0, 1024*1024, false, DownloadResponse::NOT_FOUND));
+        RUNTEST(TestUploadAPI(fileName, 1024*1024, true, UploadResponse::SUCCESS, &hashValue, "groupid1"));
+        RUNTEST(TestDownloadAPI(fileName, 0, 1024*1024, false, DownloadResponse::SUCCESS, &hashValue));
+    }
+
+    string fileName1 = GetUniqueFilename("test-99");
+    RUNTEST(TestDownloadAPI(fileName1, 0, 1024*1024, false, DownloadResponse::NOT_FOUND));
+    RUNTEST(TestUploadAPI(fileName1, 1024*1024, true, UploadResponse::SUCCESS, &hashValue, "groupid2"));
+    RUNTEST(TestDownloadAPI(fileName1, 0, 1024*1024, false, DownloadResponse::SUCCESS, &hashValue));
+
+    string fileName2 = GetUniqueFilename("test-100");
+    RUNTEST(TestDownloadAPI(fileName2, 0, 1024*1024, false, DownloadResponse::NOT_FOUND));
+    RUNTEST(TestUploadAPI(fileName2, 1024*1024, true, UploadResponse::SUCCESS, &hashValue, "groupid2") == false);
+    RUNTEST(TestDownloadAPI(fileName2, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, &hashValue));
+
+    RUNTEST(TestDeleteAPI("groupid2", DeleteResponse::SUCCESS));
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+
+    RUNTEST(TestDownloadAPI(fileName1, 0, 1024*1024, false, DownloadResponse::NOT_FOUND));
+    RUNTEST(TestDownloadAPI(fileName2, 0, 1024*1024, false, DownloadResponse::NOT_FOUND));
+    RUNTEST(TestUploadAPI(fileName2, 1024*1024, true, UploadResponse::SUCCESS, &hashValue, "", 1));
+    RUNTEST(TestDownloadAPI(fileName2, 0, 1024*1024, false, DownloadResponse::SUCCESS, &hashValue));
+
+    RUNTEST(TestDownloadAPI(fileName1, 0, 1024*1024, false, DownloadResponse::NOT_FOUND));
+    RUNTEST(TestUploadAPI(fileName1, 1024*1024, true, UploadResponse::SUCCESS, &hashValue, "groupid2") == false);
+    RUNTEST(TestDownloadAPI(fileName1, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, &hashValue));
+
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+
+    RUNTEST(TestDownloadAPI(fileName1, 0, 1024*1024, false, DownloadResponse::NOT_FOUND));
+    RUNTEST(TestUploadAPI(fileName1, 1024*1024, true, UploadResponse::SUCCESS, &hashValue, "groupid2"));
+    RUNTEST(TestDownloadAPI(fileName1, 0, 1024*1024, false, DownloadResponse::SUCCESS, &hashValue));
+
+    RUNTEST(TestDownloadAPI(fileName2, 0, 1024*1024, false, DownloadResponse::NOT_FOUND));
+    RUNTEST(TestUploadAPI(fileName2, 1024*1024, true, UploadResponse::SUCCESS, &hashValue, "", 1) == false);
+    RUNTEST(TestDownloadAPI(fileName2, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, &hashValue));
+
     cout << "Test complete. Total tests: " << TotalTests << ". Failed: " << TestsFailed << endl;
+    if (TestsFailed > 0)
+    {
+        cout << "Ensure cache server is started as: ./CacheServer 20000 <folder path on ssd> 104857600 1024 1" << endl;
+    }
     return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -938,13 +1052,8 @@ bool TestMetadata(const google::protobuf::Map<string, string>& metadata)
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-int main(int argc, char *argv[])
+void TestLockAPIs()
 {
-    if (argc > 1)
-    {
-        return TestLimits();
-    }
-
     cout << "Test lock APIs" << endl;
     string testlock1 = GetUniqueFilename("testlock1");
     string testlock2 = GetUniqueFilename("testlock2");
@@ -958,7 +1067,10 @@ int main(int argc, char *argv[])
     RUNTEST(TestLockAPI(testlock1, false));
     RUNTEST(TestLockAPI(testlock1, false));
     RUNTEST(TestLockAPI(testlock2, false));
-
+}
+//---------------------------------------------------------------------------------------------------------------------
+void TestUploadDownload()
+{
     cout << "Basic upload/download tests" << endl;
     uint64_t hashValue = 0;
     string test1 = GetUniqueFilename("test1");
@@ -1001,6 +1113,7 @@ int main(int argc, char *argv[])
 
     RUNTEST(TestUploadAPI(test3, 1, true, UploadResponse::SUCCESS));
     RUNTEST(TestUploadAPI(test3, 10, true, UploadResponse::SUCCESS) == false);
+
     RUNTEST(TestUploadAPI(test4, 10, false, UploadResponse::SUCCESS) == false);
     RUNTEST(TestUploadAPI(test5, 0, true, UploadResponse::SUCCESS));
     RUNTEST(TestUploadAPI(test5, 10, true, UploadResponse::SUCCESS) == false);
@@ -1042,18 +1155,16 @@ int main(int argc, char *argv[])
         test9, (uint64_t)4*1024*1024*1024 + 1, true, UploadResponse::SUCCESS, &hashValue) == false);
     RUNTEST(TestDownloadAPI(
         test9, 0, (uint64_t)4*1024*1024*1024 + 1, false, DownloadResponse::NOT_FOUND, &hashValue));
-
-    cout << "test parallel lock" << endl;
-    RUNTEST(TestParallelLock(200, 5));
-    RUNTEST(TestParallelLock(1, 2));
-    RUNTEST(TestParallelLock(100, 5));
-
-    cout << "test parallel upload/download" << endl;
-    RUNTEST(TestParallelUploadDownload(200, 5));
-    RUNTEST(TestParallelUploadDownload(1, 2));
-    RUNTEST(TestParallelUploadDownload(500, 10));
-
+}
+//---------------------------------------------------------------------------------------------------------------------
+void TestAttributeCache()
+{
     cout << "Test attribute cache" << endl;
+
+    string test1 = GetUniqueFilename("test1");
+    string test2 = GetUniqueFilename("test2");
+    string test3 = GetUniqueFilename("test3");
+
     PutAttributeRequest putRequest;
     {
         auto fileAttr = putRequest.add_fileattributes();
@@ -1096,12 +1207,28 @@ int main(int argc, char *argv[])
     RUNTEST(TestPutAttributeAPI(putRequest, PutAttributeResponse::SUCCESS));
     RUNTEST(TestGetAttributeAPI(test2, true, GetAttributeResponse::SUCCESS, true, 0, 201, 202));
     RUNTEST(TestGetAttributeAPI(test3, false, GetAttributeResponse::SUCCESS, false, 300, 301, 302));
+}
+//---------------------------------------------------------------------------------------------------------------------
+void TestParallelism()
+{
+    cout << "test parallel lock" << endl;
+    RUNTEST(TestParallelLock(200, 5));
+    RUNTEST(TestParallelLock(1, 2));
+    RUNTEST(TestParallelLock(100, 5));
+
+    cout << "test parallel upload/download" << endl;
+    RUNTEST(TestParallelUploadDownload(200, 5));
+    RUNTEST(TestParallelUploadDownload(1, 2));
+    RUNTEST(TestParallelUploadDownload(500, 10));
 
     cout << "Test parallel attribute cache" << endl;
     RUNTEST(TestParallelAttributeCache(200, 5));
     RUNTEST(TestParallelAttributeCache(1, 2));
     RUNTEST(TestParallelAttributeCache(500, 10));
-
+}
+//---------------------------------------------------------------------------------------------------------------------
+void TestCacheMetadata()
+{
     cout << "Test cache metadata" << endl;
 
     // simple metadata
@@ -1120,9 +1247,206 @@ int main(int argc, char *argv[])
     // long text data
     metadata["key5"] = string(100*1024, 'A');
     RUNTEST(TestMetadata(metadata));
+}
+//---------------------------------------------------------------------------------------------------------------------
+void TestDeletes()
+{
+    cout << "Test delete APIs based on groupids" << endl;
 
-    cout << "Total established connections: " << totalConnections << endl;
+    // Test groupid based delete APIs
+    // upload multiple files with different groupids
+    string groupid1 = GetUniqueFilename("group1");
+    string groupid2 = GetUniqueFilename("group2");
+    string deleteFilename1 = GetUniqueFilename("deletefile1");
+    string deleteFilename2 = GetUniqueFilename("deletefile2");
+    for (int i = 0; i < 100; i++)
+    {
+        TestUploadAPI(deleteFilename1 + to_string(i), 1024*1024, true, UploadResponse::SUCCESS, nullptr,
+            groupid1);
+        TestUploadAPI(deleteFilename2 + to_string(i), 1024*1024, true, UploadResponse::SUCCESS, nullptr,
+            groupid2);
+    }
+
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(1), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(50), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(99), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(1), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(50), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(99), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+
+    // Delete groupid1, should reflect after a few seconds
+    RUNTEST(TestDeleteAPI(groupid1, DeleteResponse::SUCCESS));
+
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(1), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(50), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(99), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(1), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(50), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(99), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(1), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
+        nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(50), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
+        nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(99), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
+        nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(1), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(50), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(99), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+
+    // Delete groupid2, should reflect after a few seconds
+    RUNTEST(TestDeleteAPI(groupid2, DeleteResponse::SUCCESS));
+
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(1), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
+        nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(50), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
+        nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(99), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
+        nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(1), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(50), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(99), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(1), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
+        nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(50), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
+        nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(99), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
+        nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(1), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
+        nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(50), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
+        nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(99), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
+        nullptr));
+
+    // Should be able to upload the same file immediately after it is deleted
+    RUNTEST(TestUploadAPI(deleteFilename1 + to_string(1), 1024*1024, true, UploadResponse::SUCCESS, nullptr,
+        groupid1));
+    RUNTEST(TestDeleteAPI(groupid1, DeleteResponse::SUCCESS));
+
+    int retryCount = 1;
+    while (true)
+    {
+        if (retryCount % 1000 == 0)
+        {
+            cout << "retryCount: " << retryCount << ". Still retrying upload after delete" << endl;
+            if (TestDownloadAPI(deleteFilename1 + to_string(1), 0, 1024*1024, true,
+                DownloadResponse::NOT_FOUND_GOT_LOCK))
+            {
+                RUNTEST(TestUploadAPI(deleteFilename1 + to_string(1), 1024*1024, true, UploadResponse::SUCCESS,
+                    nullptr, groupid1));
+                break;
+            }
+        }
+        retryCount++;
+    }
+
+    RUNTEST(TestDeleteAPI(groupid1, DeleteResponse::SUCCESS));
+
+    retryCount = 1;
+    while (true)
+    {
+        if (retryCount % 1000 == 0)
+        {
+            cout << "retryCount: " << retryCount << ". Still retrying upload after delete" << endl;
+            if (TestDownloadAPI(deleteFilename1 + to_string(1), 0, 1024*1024, false,
+                DownloadResponse::NOT_FOUND))
+            {
+                RUNTEST(TestUploadAPI(deleteFilename1 + to_string(1), 1024*1024, true, UploadResponse::SUCCESS,
+                    nullptr, groupid1));
+                break;
+            }
+        }
+        retryCount++;
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void TestExpiry()
+{
+    cout << "Test cache expiry" << endl;
+    string file1 = GetUniqueFilename("file1");
+    string file2 = GetUniqueFilename("file2");
+    string file3 = GetUniqueFilename("file3");
+    string file4 = GetUniqueFilename("file4");
+    string file5 = GetUniqueFilename("file5");
+    string file6 = GetUniqueFilename("file6");
+    string file7 = GetUniqueFilename("file7");
+    string file8 = GetUniqueFilename("file8");
+
+    TestUploadAPI(file1, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 0);
+    TestUploadAPI(file2, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 1);
+    TestUploadAPI(file3, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 4);
+    TestUploadAPI(file4, 0, true, UploadResponse::SUCCESS, nullptr, "", 4);
+    TestUploadAPI(file5, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", UINT32_MAX);
+    TestUploadAPI(file6, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 1);
+    TestUploadAPI(file7, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 1);
+    TestUploadAPI(file8, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 20);
+
+    RUNTEST(TestDownloadAPI(file1, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(file2, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(file3, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(file4, 0, 0, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(file5, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(file6, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(file7, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(file8, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+
+    RUNTEST(TestDownloadAPI(file1, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(file2, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, nullptr));
+    RUNTEST(TestDownloadAPI(file3, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(file4, 0, 0, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(file5, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(file6, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, nullptr));
+    RUNTEST(TestDownloadAPI(file7, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, nullptr));
+    RUNTEST(TestDownloadAPI(file8, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+
+    RUNTEST(TestDownloadAPI(file1, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(file2, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, nullptr));
+    RUNTEST(TestDownloadAPI(file3, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, nullptr));
+    RUNTEST(TestDownloadAPI(file4, 0, 0, false, DownloadResponse::NOT_FOUND, nullptr));
+    RUNTEST(TestDownloadAPI(file5, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(file6, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, nullptr));
+    RUNTEST(TestDownloadAPI(file7, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, nullptr));
+    RUNTEST(TestDownloadAPI(file8, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+}
+//---------------------------------------------------------------------------------------------------------------------
+int main(int argc, char *argv[])
+{
+    if (argc > 1)
+    {
+        return TestLimits();
+    }
+
+    TestLockAPIs();
+    TestUploadDownload();
+    TestAttributeCache();
+    TestParallelism();
+    TestCacheMetadata();
+    TestDeletes();
+    TestExpiry();
+
+    cout << endl << "Total established connections: " << totalConnections << endl;
     cout << "Test complete. Total tests: " << TotalTests << ". Failed: " << TestsFailed << endl;
+    
+    if (TestsFailed > 0)
+    {
+        cout << endl << "Ensure cache server is started as "
+            "./CacheServer 20000 <folder path on ssd> 100000000000 10000000 1" << endl;
+        cout << endl << "Failed tests: " << endl;
+        for (string test: FailedTests)
+        {
+            cout << test << endl;
+        }
+    }
     return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------

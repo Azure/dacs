@@ -47,6 +47,8 @@ int ReadBytesToArray(int clientFd, char* data, int size)
         }
         else 
         {
+            LOG_WARN("read client incomplete, fd: {}, errno: {}:{}, expected: {}, read: {}",
+                clientFd, errno, strerror(errno), size, totalRead);
             return totalRead;
         }
     }
@@ -69,7 +71,7 @@ bool SendMessageToRemote(int clientFd, const ::google::protobuf::Message& messag
 
     if (write(clientFd, outputBuffer.data(), outputBuffer.size()) != outputBuffer.size())
     {
-        LOG_WARN("couldn't write response to client fd: {}", clientFd);
+        LOG_WARN("couldn't write response to client fd: {}, errno: {}:{}", clientFd, errno, strerror(errno));
         return false;
     }
     return true;

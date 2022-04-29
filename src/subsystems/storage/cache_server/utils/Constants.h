@@ -10,6 +10,9 @@ constexpr int TCP_BACKLOG_SIZE = 1000;
 constexpr int REQUEST_METADATA_SIZE = 4;
 constexpr int NUM_MAPS = 50;
 
+// Window size for cache expiry cleanup
+constexpr uint32_t DefaultCacheTTLWindowSizeSeconds = 60;
+
 // 1TB cache size
 constexpr uint64_t DefaultCacheSizeLimitBytes = 1024ull * 1024 * 1024 * 1024; 
 

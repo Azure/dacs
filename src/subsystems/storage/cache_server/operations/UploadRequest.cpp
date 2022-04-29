@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "UploadRequest.h"
+#include "CacheManager.h"
 #include "Utils.h"
 #include "SocketUtils.h"
 #include "Constants.h"
@@ -25,14 +26,6 @@
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 using namespace cache;
-//---------------------------------------------------------------------------------------------------------------------
-uint64_t CacheSizeLimitBytes = DefaultCacheSizeLimitBytes; 
-atomic_uint_fast64_t TotalCachedSize = 0;
-//---------------------------------------------------------------------------------------------------------------------
-void SetCacheSizeLimit(const uint64_t limitCacheSizeBytes)
-{
-    CacheSizeLimitBytes = limitCacheSizeBytes;
-}
 //---------------------------------------------------------------------------------------------------------------------
 bool AuthenticateRequest(const UploadRequest& request)
 {
@@ -88,14 +81,14 @@ bool UploadFile(int clientFd, const UploadRequest& uploadRequest)
         return false;
     }
 
-    CacheInfo cacheInfo = GetCacheStatus(uploadRequest.filename());
-    if (cacheInfo.m_status == COMPLETED)
+    CacheManager::CacheInfo cacheInfo = CacheManager::GetInstance().GetCacheInfo(uploadRequest.filename());
+    if (cacheInfo.m_status == CacheManager::COMPLETED)
     {
         LOG_WARN("file already uploaded {}", uploadRequest.filename());
         return false;
     }
 
-    if (cacheInfo.m_status == STARTED)
+    if (cacheInfo.m_status == CacheManager::STARTED)
     {
         LOG_WARN("file already being uploaded by another client {}, will attempt to upload anyway",
             uploadRequest.filename());
@@ -107,32 +100,22 @@ bool UploadFile(int clientFd, const UploadRequest& uploadRequest)
         return false;
     }
 
-    if (!UpdateCacheStatus(
-        uploadRequest.filename(),
-        uploadRequest.ignorelock(),
-        CacheInfo(uploadRequest.filesize(), uploadRequest.metadata(), STARTED)))
+    if (!CacheManager::GetInstance().InitCacheInfo(uploadRequest.filename(), uploadRequest.ignorelock(),
+        uploadRequest.filesize()))
     {
         LOG_WARN("error starting upload for: {}", uploadRequest.filename());
         return false;
     }
 
-    // TODO: use meta field for cache TTL
     LOG_DEBUG("file size to upload: {}", uploadRequest.filesize());
     if (uploadRequest.filesize() > 0)
     {
-        if ((TotalCachedSize.fetch_add(uploadRequest.filesize()) + uploadRequest.filesize()) > CacheSizeLimitBytes)
-        {
-            LOG_WARN("TotalCachedSize: {}, exceeds limit: {}", TotalCachedSize, CacheSizeLimitBytes);
-            TotalCachedSize.fetch_sub(uploadRequest.filesize());
-            return false;
-        }
-
         // write to temp file on disk
         string tempFilename = GetCacheTempPath(uploadRequest.filename());
         if (tempFilename.empty())
         {
             LOG_WARN("Couldn't create a temp file for uploading: {}", uploadRequest.filename());
-            TotalCachedSize.fetch_sub(uploadRequest.filesize());
+            CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
             return false;
         }
 
@@ -141,7 +124,7 @@ bool UploadFile(int clientFd, const UploadRequest& uploadRequest)
 
         // TODO: Verify if sufficient disk space is available for this write and reserve it
 
-        const int writeBufferSize = 1024 * 1024;
+        const int writeBufferSize = 4 * 1024 * 1024;
         char buffer[writeBufferSize];
         uint64_t totalRead = 0;
 
@@ -154,13 +137,15 @@ bool UploadFile(int clientFd, const UploadRequest& uploadRequest)
                 int temp = read(clientFd, buffer + bufferPos, writeBufferSize - bufferPos);
                 if (temp <= 0)
                 {
-                    LOG_WARN("couldn't read file completely from socket for file: {}. Bytes expected: {}, read: {}",
+                    LOG_WARN("read failed for file: {}. errno: {}:{}, Bytes expected: {}, read: {}",
                         uploadRequest.filename(),
+                        errno,
+                        strerror(errno),
                         uploadRequest.filesize(),
                         totalRead);
                     fileOutput.close();
                     remove(tempFilename.c_str());
-                    TotalCachedSize.fetch_sub(uploadRequest.filesize());
+                    CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
                     return false;
                 }
                 bufferPos += temp;
@@ -182,7 +167,7 @@ bool UploadFile(int clientFd, const UploadRequest& uploadRequest)
                 uploadRequest.filesize(),
                 totalRead);
             remove(tempFilename.c_str());
-            TotalCachedSize.fetch_sub(uploadRequest.filesize());
+            CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
             return false;
         }
 
@@ -191,20 +176,16 @@ bool UploadFile(int clientFd, const UploadRequest& uploadRequest)
         int ret = rename(tempFilename.c_str(), destFilename.c_str());
         if (ret != 0)
         {
-            LOG_WARN("Failed to rename file from {} to {}. error: {}", tempFilename, destFilename, ret);
+            LOG_WARN("Failed to rename file from {} to {}. errno: {}:{}",
+                tempFilename, destFilename, errno, strerror(errno));
             remove(tempFilename.c_str());
-            TotalCachedSize.fetch_sub(uploadRequest.filesize());
             uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
-            if (!UpdateCacheStatus(uploadRequest.filename(), true,
-                CacheInfo(uploadRequest.filesize(), uploadRequest.metadata(), INITIATED)))
-            {
-                LOG_ERROR("error resetting upload status to INITIATED: {}", uploadRequest.filename());
-            }
+            CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
         }
         else
         {
-            if (!UpdateCacheStatus(uploadRequest.filename(), true,
-                CacheInfo(uploadRequest.filesize(), uploadRequest.metadata(), COMPLETED)))
+            if (!CacheManager::GetInstance().UpdateCacheInfo(uploadRequest.filename(), uploadRequest.filesize(),
+                uploadRequest.metadata(), uploadRequest.expiryseconds(), uploadRequest.groupid()))
             {
                 uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
                 LOG_ERROR("error updating upload status to COMPLETED: {}", uploadRequest.filename());
@@ -219,8 +200,8 @@ bool UploadFile(int clientFd, const UploadRequest& uploadRequest)
     else
     {
         uploadResponse.set_result(UploadResponse::SUCCESS);
-        if (!UpdateCacheStatus(uploadRequest.filename(), true,
-            CacheInfo(uploadRequest.filesize(), uploadRequest.metadata(), COMPLETED)))
+        if (!CacheManager::GetInstance().UpdateCacheInfo(uploadRequest.filename(), uploadRequest.filesize(),
+            uploadRequest.metadata(), uploadRequest.expiryseconds(), uploadRequest.groupid()))
         {
             uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
             LOG_WARN("error updating upload status to COMPLETED: {}", uploadRequest.filename());

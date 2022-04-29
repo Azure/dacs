@@ -1,6 +1,7 @@
 ## Cache server
 
-Usage: ./CacheServer <port> <cache folder root>
+Usage: ./CacheServer <port> <cache folder root> <cache size in bytes - default 1TB> \
+<Num attributes limit - default 10M> <cache expiry ttl window size in seconds - default 60 seconds>
 
 ### Supported environment variables:
 

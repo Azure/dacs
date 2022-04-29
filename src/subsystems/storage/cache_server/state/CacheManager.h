@@ -1,0 +1,128 @@
+///--------------------------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.  All rights reserved.
+//---------------------------------------------------------------------------------------------------------------------
+#pragma once
+//---------------------------------------------------------------------------------------------------------------------
+#include "cache.pb.h"
+#include <string>
+#include <thread>
+#include <atomic>
+#include <vector>
+#include <mutex>
+#include <condition_variable>
+#include <unordered_map>
+#include <map>
+#include <list>
+#include <queue>
+//---------------------------------------------------------------------------------------------------------------------
+class CacheManager
+{
+    public:
+        static CacheManager& GetInstance();
+
+        enum CacheStatus
+        {
+            NOTFOUND, INITIATED, STARTED, COMPLETED
+        };
+
+        struct CacheInfo
+        {
+            CacheInfo(uint64_t fileSize, const ::google::protobuf::Map<std::string, std::string>& metadata,
+                CacheStatus status)
+                : m_fileSize(fileSize), m_metadata(metadata), m_status(status) {}
+            CacheInfo(CacheStatus status) : m_fileSize(0), m_status(status) {}
+            CacheInfo() : m_fileSize(0), m_status(NOTFOUND) {}
+
+            uint64_t m_fileSize;
+            ::google::protobuf::Map<std::string, std::string> m_metadata;
+            CacheStatus m_status;
+        };
+
+        // Fetch cached info and initialize (to coordinate multiple updates from clients) if it does not exist
+        CacheInfo GetAndInitCacheInfo(
+            /*[in] */ const std::string& fileName);
+
+        // Fetch cached attributes
+        CacheInfo GetCacheInfo(
+            /*[in] */ const std::string& fileName);
+
+        // Initialize cache info for file to indicate start of an cache upload
+        // Set ignoreLock to false to ensure upload is started after the file is locked, this mechanism is used
+        // to ensure only one client attempts to upload a file
+        bool InitCacheInfo(
+            /*[in] */ const std::string& fileName,
+            /*[in] */ bool ignoreLock,
+            /*[in] */ uint64_t fileSize);
+
+        // Remove/reset cache entry in case of incomplete uploads to allow for next clean uploads
+        bool ResetCacheInfo(
+            /*[in] */ const std::string& fileName,
+            /*[in] */ uint64_t fileSize);
+
+        // Update cache info after upload file is successful
+        bool UpdateCacheInfo(
+            /*[in] */ const std::string& fileName,
+            /*[in] */ uint64_t fileSize,
+            /*[in] */ const ::google::protobuf::Map<std::string, std::string>& metadata,
+            /*[in] */ uint32_t cacheExpirySeconds,
+            /*[in] */ const std::string& groupId);
+
+        // Delete all cache files matching the group-id.
+        // This is asynchronous and actual file deletion happens in the background after this call returns.
+        bool DeleteCacheEntryByGroupID(
+            /*[in] */ const std::string& groupId);
+
+        void SetCacheSizeLimit(
+            /*[in] */ const uint64_t limitCacheSizeBytes);
+
+        void SetCacheTTLWindowSize(
+            /*[in] */ const uint32_t cacheTTLWindowSizeSeconds);
+
+    private:
+        CacheManager();
+        ~CacheManager();
+
+        // Delete file path from local disk
+        void DeleteFile(
+            /*[in] */ const std::string& filename);
+
+        void CacheCleanupWorker();
+
+        std::atomic_uint_fast64_t m_cacheSizeLimitBytes;
+        std::atomic_uint_fast64_t m_totalCachedSize;
+
+        // Bucketized Cache info map
+        std::vector<std::unordered_map<std::string, CacheInfo>> m_vCacheInfoMap;
+
+        // mutexes for cached buckets
+        std::vector<std::mutex> m_vCacheInfoMapMutex;
+
+        // keys stored in buckets based on its expiry time and sorted by time ascending.
+        // The buckets are created using the same key as cache info map and uses same mutexes for synchronization
+        std::vector<std::map<time_t, std::list<std::string>>> m_vCacheTTLMap;
+
+        // The ttl bucket window size. All files with expiry time failing within this bucket will expire together
+        std::atomic_uint m_ttlWindowSizeSeconds;
+
+        // keys stored in buckets based on its group-id
+        std::vector<std::unordered_map<std::string, std::list<std::string>>> m_vCacheGroupIDMap;
+
+        // mutexes for the group-id buckets
+        std::vector<std::mutex> m_vCacheGroupIDMapMutex;
+
+        // Background thread processing all deletes
+        std::unique_ptr<std::thread> m_cleanupThread;
+
+        // Flag to stop the cleanup thread
+        std::atomic_bool m_stopCleanupThread;
+
+        // Queue to mark group-ids for deletion
+        std::queue<std::string> m_groupIdQueue;
+
+        // Mutex to sychronize the deletion queue
+        std::mutex m_mutexQueue;
+
+        // CV for waking up the cleanup thread and manage cleanup timer
+        std::condition_variable m_cvQueue;
+};
+//---------------------------------------------------------------------------------------------------------------------

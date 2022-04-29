@@ -9,6 +9,9 @@
 #include "DownloadRequest.h"
 #include "PutAttributeRequest.h"
 #include "GetAttributeRequest.h"
+#include "DeleteRequest.h"
+#include "CacheManager.h"
+#include "AttributesManager.h"
 #include "cache.pb.h"
 #include "Logger.h"
 #include <iostream>
@@ -38,7 +41,7 @@ void HandleSocket(int epollFd)
     {
         int nEvents = epoll_wait(epollFd, epollEvents, 1, -1);
         if (nEvents <= 0) {
-            LOG_CRITICAL("epoll_wait failed, errno: {}", errno);
+            LOG_CRITICAL("epoll_wait failed, errno: {}:{}", errno, strerror(errno));
             exit(-1);
         }
 
@@ -61,7 +64,7 @@ void HandleSocket(int epollFd)
 
             // remove fd from epoll list and then start using the fd
             if (epoll_ctl(epollFd, EPOLL_CTL_DEL , clientFd, nullptr) == -1) {
-                LOG_CRITICAL("Failed to remove  fd from epoll list");
+                LOG_CRITICAL("Failed to remove  fd from epoll list, errno: {}:{}", errno, strerror(errno));
                 exit(-1);
             }    
         }
@@ -125,6 +128,10 @@ void HandleSocket(int epollFd)
         {
             bReuse = HandlePutAttribute(clientFd, request.putattributerequest());
         }
+        else if (request.type_case() == Request::kDeleterequest)
+        {
+            bReuse = DeleteFile(clientFd, request.deleterequest());
+        }
         else
         {
             LOG_ERROR("unkown req type: {}, close fd={}", request.type_case(), clientFd);
@@ -139,7 +146,8 @@ void HandleSocket(int epollFd)
             ev.events = EPOLLIN | EPOLLET | EPOLLONESHOT | EPOLLRDHUP;
             ev.data.fd = clientFd;
             if (epoll_ctl(epollFd, EPOLL_CTL_ADD, clientFd, &ev) == -1) {
-                LOG_WARN("Failed to re-insert client fd={} to epoll list", clientFd);
+                LOG_WARN("Failed to re-insert client fd={} to epoll list, errno: {}:{}",
+                    clientFd, errno, strerror(errno));
                 close(clientFd);
             }    
         }
@@ -156,14 +164,14 @@ void StartServer(int port)
     int server_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket_fd < 0)
     {
-        LOG_CRITICAL("Failed to create server socket");
+        LOG_CRITICAL("Failed to create server socket, errno: {}:{}", errno, strerror(errno));
         exit(-1);
     }
 
     int enable;
     if (setsockopt(server_socket_fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)) != 0)
     {
-        LOG_CRITICAL("Failed to set SO_REUSEADDR");
+        LOG_CRITICAL("Failed to set SO_REUSEADDR, errno: {}:{}", errno, strerror(errno));
         close(server_socket_fd);
         exit(-1);
     }
@@ -174,14 +182,14 @@ void StartServer(int port)
     server_adderss.sin_addr.s_addr = INADDR_ANY;
     if (bind(server_socket_fd, (struct sockaddr *)&server_adderss, sizeof(server_adderss)) != 0)
     {
-        LOG_CRITICAL("Failed to bind to given port");
+        LOG_CRITICAL("Failed to bind to given port, errno: {}:{}", errno, strerror(errno));
         close(server_socket_fd);
         exit(-1);
     }
     
     if (listen(server_socket_fd, TCP_BACKLOG_SIZE) != 0)
     {
-        LOG_CRITICAL("Failed to listen on server port");
+        LOG_CRITICAL("Failed to listen on server port, errno: {}:{}", errno, strerror(errno));
         close(server_socket_fd);
         exit(-1);
     }
@@ -193,7 +201,7 @@ void StartServer(int port)
     int epollWorkerFd = epoll_create1(0);
     if (epollWorkerFd < 0)
     {
-        LOG_CRITICAL("Failed to create epoll for workers");
+        LOG_CRITICAL("Failed to create epoll for workers, errno: {}:{}", errno, strerror(errno));
         close(server_socket_fd);
         exit(-1);
     }
@@ -218,13 +226,13 @@ void StartServer(int port)
         clientFd = accept(server_socket_fd, nullptr, &client_len);
         if (clientFd < 0) 
         {
-            LOG_WARN("accept failed on server port");
+            LOG_WARN("accept failed on server port, errno: {}:{}", errno, strerror(errno));
             continue;
         }
         int enable = 1;
         if (setsockopt(clientFd, SOL_TCP, TCP_NODELAY, &enable, sizeof(enable)) != 0)
         {
-            LOG_ERROR("Error setting TCP_NODELAY on client socket");
+            LOG_ERROR("Error setting TCP_NODELAY on client socket, errno: {}:{}", errno, strerror(errno));
             close(clientFd);
             continue;
         }
@@ -234,7 +242,7 @@ void StartServer(int port)
         ev.events = EPOLLIN | EPOLLET | EPOLLONESHOT | EPOLLRDHUP;
         ev.data.fd = clientFd;
         if (epoll_ctl(epollWorkerFd, EPOLL_CTL_ADD, clientFd, &ev) == -1) {
-            LOG_CRITICAL("Failed to insert client fd to epoll list");
+            LOG_CRITICAL("Failed to insert client fd to epoll list, errno: {}:{}", errno, strerror(errno));
             close(clientFd);
             exit(-1);
         }    
@@ -248,7 +256,8 @@ int main(int argc, char *argv[])
 
     if (argc < 2) 
     {
-        LOG_CRITICAL("Usage: ./CacheServer <port> <cache folder root> <cache size in bytes> <Num attributes limit>");
+        LOG_CRITICAL("Usage: ./CacheServer <port> <cache folder root> <cache size in bytes - default 1TB>"
+        " <Num attributes limit - default 10M> <cache expiry ttl window size in seconds - default 60 seconds>");
         return -1;
     }
     int port = atoi(argv[1]);
@@ -260,12 +269,17 @@ int main(int argc, char *argv[])
 
     if (argc > 3)
     {
-        SetCacheSizeLimit(stoull(argv[3]));
+        CacheManager::GetInstance().SetCacheSizeLimit(stoull(argv[3]));
     }
 
     if (argc > 4)
     {
-        SetAttributeCacheLimit(stoull(argv[4]));
+        AttributesManager::GetInstance().SetAttributeCacheLimit(stoull(argv[4]));
+    }
+
+    if (argc > 5)
+    {
+        CacheManager::GetInstance().SetCacheTTLWindowSize(stoull(argv[5]));
     }
 
     Initialize();

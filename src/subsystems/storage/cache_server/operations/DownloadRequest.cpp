@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "DownloadRequest.h"
+#include "CacheManager.h"
 #include "Utils.h"
 #include "SocketUtils.h"
 #include "Constants.h"
@@ -85,18 +86,18 @@ bool DownloadFile(int clientFd, const DownloadRequest& downloadRequest)
         return SendMessageToRemote(clientFd, downloadResponse);
     }
 
-    CacheInfo cacheInfo;
+    CacheManager::CacheInfo cacheInfo;
     if (downloadRequest.enablelock())
     {
-        cacheInfo = GetAndInitCacheStatus(downloadRequest.filename());
-        if (cacheInfo.m_status == NOTFOUND)
+        cacheInfo = CacheManager::GetInstance().GetAndInitCacheInfo(downloadRequest.filename());
+        if (cacheInfo.m_status == CacheManager::NOTFOUND)
         {
             // TODO: Handle scenario when this response doesn't make it to the client.
             //       Subsequent clients will never get a lock and the file will not be cached.
             LOG_DEBUG("Locked file for download: {}", downloadRequest.filename())
             downloadResponse.set_result(DownloadResponse::NOT_FOUND_GOT_LOCK);
         }
-        else if (cacheInfo.m_status == COMPLETED)
+        else if (cacheInfo.m_status == CacheManager::COMPLETED)
         {
             LOG_DEBUG("Found file in cache: {}, length: {}", downloadRequest.filename(), cacheInfo.m_fileSize);
             downloadResponse.set_result(DownloadResponse::SUCCESS);
@@ -109,8 +110,8 @@ bool DownloadFile(int clientFd, const DownloadRequest& downloadRequest)
     }
     else
     {
-        cacheInfo = GetCacheStatus(downloadRequest.filename());
-        if (cacheInfo.m_status == COMPLETED)
+        cacheInfo = CacheManager::GetInstance().GetCacheInfo(downloadRequest.filename());
+        if (cacheInfo.m_status == CacheManager::COMPLETED)
         {
             LOG_DEBUG("Found file in cache: {}, length: {}", downloadRequest.filename(), cacheInfo.m_fileSize);
             downloadResponse.set_result(DownloadResponse::SUCCESS);
@@ -124,12 +125,12 @@ bool DownloadFile(int clientFd, const DownloadRequest& downloadRequest)
 
     // update download filesize and metadata
     uint64_t downloadFileSize = 0;
-    if (cacheInfo.m_status == COMPLETED)
+    if (cacheInfo.m_status == CacheManager::COMPLETED)
     {
         if (downloadRequest.offset() > cacheInfo.m_fileSize)
         {
-            LOG_WARN("offset more than cached filesize: {}, cached filesize: {}",
-                downloadRequest.offset(), cacheInfo.m_fileSize);
+            LOG_WARN("Download failure, file: {}, offset: {} more than cached filesize: {}",
+                downloadRequest.filename(), downloadRequest.offset(), cacheInfo.m_fileSize);
             downloadResponse.set_result(DownloadResponse::INVALID_OFFSET_LENGTH);
             return SendMessageToRemote(clientFd, downloadResponse);
         }
@@ -149,12 +150,13 @@ bool DownloadFile(int clientFd, const DownloadRequest& downloadRequest)
     }
 
     downloadResponse.set_filesize(downloadFileSize);
-    if (cacheInfo.m_status == COMPLETED && downloadFileSize > 0) 
+    if (cacheInfo.m_status == CacheManager::COMPLETED && downloadFileSize > 0) 
     {
         int corkState = 1;
         if (setsockopt(clientFd, IPPROTO_TCP, TCP_CORK, &corkState, sizeof(corkState)) != 0)
         {
-            LOG_WARN("Error setting TCP_CORK, will ignore error and continue");
+            LOG_WARN("Error setting TCP_CORK, will ignore error and continue, errno: {}:{}",
+                errno, strerror(errno));
         }
         if (!SendMessageToRemote(clientFd, downloadResponse))
         {
@@ -166,7 +168,14 @@ bool DownloadFile(int clientFd, const DownloadRequest& downloadRequest)
         int fileFD = open(destFilename.c_str(), O_RDONLY, 0);
         if (fileFD < 0)
         {
-            LOG_WARN("Error opening cached file: {}", destFilename.c_str());
+            LOG_WARN("Error opening local file: {}, filename: {}, errno: {}:{}",
+                destFilename, downloadRequest.filename(), errno, strerror(errno));
+            if (errno == ENOENT)
+            {
+                // Local file not present, cache state is not consistent with filesystem, reset the cache entry
+                LOG_WARN("Resetting cache for file: {}", downloadRequest.filename());
+                CacheManager::GetInstance().ResetCacheInfo(downloadRequest.filename(), downloadFileSize);
+            }
             return false;
         }
 
@@ -175,10 +184,11 @@ bool DownloadFile(int clientFd, const DownloadRequest& downloadRequest)
         while (totalWritten < downloadFileSize)
         {
             off_t startOffset = downloadRequest.offset() + totalWritten;
-            uint64_t written = sendfile(clientFd, fileFD, &startOffset, downloadFileSize - totalWritten);
+            ssize_t written = sendfile(clientFd, fileFD, &startOffset, downloadFileSize - totalWritten);
             if (written <= 0)
             {
-                LOG_WARN("Error during sendfile: {}. total bytes wrote: {}", destFilename.c_str(), totalWritten);
+                LOG_WARN("Error during sendfile: {}, errno: {}:{}. total bytes written: {}",
+                    destFilename, errno, strerror(errno), totalWritten);
                 close(fileFD);
                 return false;
             }
@@ -187,7 +197,8 @@ bool DownloadFile(int clientFd, const DownloadRequest& downloadRequest)
                 corkState = 0;
                 if (setsockopt(clientFd, IPPROTO_TCP, TCP_CORK, &corkState, sizeof(corkState)) != 0)
                 {
-                    LOG_WARN("Error re-setting TCP_CORK, will ignore error and continue");
+                    LOG_WARN("Error re-setting TCP_CORK, will ignore error and continue, errno: {}:{}",
+                        errno, strerror(errno));
                 }
             }
 
