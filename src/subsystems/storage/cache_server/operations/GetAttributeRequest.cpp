@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "UploadRequest.h"
+#include "AttributesManager.h"
 #include "Utils.h"
 #include "SocketUtils.h"
 #include "Constants.h"
@@ -58,6 +59,16 @@ bool AuthenticateRequest(const GetAttributeRequest& request)
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
+void PopulateAttributesInResponse(GetAttributeResponse& getAttributeResponse,
+    const AttributesManager::CacheAttributes& cacheAttr)
+{
+    auto fileAttr = getAttributeResponse.mutable_fileattribute();
+    fileAttr->set_isdir(cacheAttr.m_isdir);
+    fileAttr->set_filesize(cacheAttr.m_filesize);
+    fileAttr->set_accessedtime(cacheAttr.m_accessedtime);
+    fileAttr->set_modifiedtime(cacheAttr.m_modifiedtime);
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool HandleGetAttribute(int clientFd, const GetAttributeRequest& getAttributeRequest)
 {
     LOG_DEBUG("filename received: {}, lock: {}", getAttributeRequest.filename(), getAttributeRequest.enablelock());
@@ -72,8 +83,9 @@ bool HandleGetAttribute(int clientFd, const GetAttributeRequest& getAttributeReq
 
     if (getAttributeRequest.enablelock())
     {
-        CacheAttributes cacheAttributes;
-        bool bRet = GetAndInitAttribute(getAttributeRequest.filename(), cacheAttributes);
+        AttributesManager::CacheAttributes cacheAttributes;
+        bool bRet = AttributesManager::GetInstance().GetAndInitAttribute(
+            getAttributeRequest.filename(), cacheAttributes);
         if (bRet == false)
         {
             LOG_DEBUG("Locked entry for get: {}", getAttributeRequest.filename())
@@ -85,11 +97,7 @@ bool HandleGetAttribute(int clientFd, const GetAttributeRequest& getAttributeReq
                 getAttributeRequest.filename(), cacheAttributes.m_filesize);
 
             getAttributeResponse.set_result(GetAttributeResponse::SUCCESS);
-            auto fileAttr = getAttributeResponse.mutable_fileattribute();
-            fileAttr->set_isdir(cacheAttributes.m_isdir);
-            fileAttr->set_filesize(cacheAttributes.m_filesize);
-            fileAttr->set_accessedtime(cacheAttributes.m_accessedtime);
-            fileAttr->set_modifiedtime(cacheAttributes.m_modifiedtime);
+            PopulateAttributesInResponse(getAttributeResponse, cacheAttributes);
         }
         else
         {
@@ -99,19 +107,15 @@ bool HandleGetAttribute(int clientFd, const GetAttributeRequest& getAttributeReq
     }
     else
     {
-        CacheAttributes cacheAttributes;
-        bool bRet = GetAttribute(getAttributeRequest.filename(), cacheAttributes);
+        AttributesManager::CacheAttributes cacheAttributes;
+        bool bRet = AttributesManager::GetInstance().GetAttribute(getAttributeRequest.filename(), cacheAttributes);
         if (bRet && cacheAttributes.m_filesize != -1)
         {
             LOG_DEBUG("Found entry in cache: {}, length: {}",
                 getAttributeRequest.filename(), cacheAttributes.m_filesize);
 
             getAttributeResponse.set_result(GetAttributeResponse::SUCCESS);
-            auto fileAttr = getAttributeResponse.mutable_fileattribute();
-            fileAttr->set_isdir(cacheAttributes.m_isdir);
-            fileAttr->set_filesize(cacheAttributes.m_filesize);
-            fileAttr->set_accessedtime(cacheAttributes.m_accessedtime);
-            fileAttr->set_modifiedtime(cacheAttributes.m_modifiedtime);
+            PopulateAttributesInResponse(getAttributeResponse, cacheAttributes);
         }
         else
         {

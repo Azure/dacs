@@ -6,6 +6,5 @@
 #include <string>
 #include "cache.pb.h"
 //---------------------------------------------------------------------------------------------------------------------
-void SetCacheSizeLimit(const uint64_t limitCacheSizeBytes);
 bool UploadFile(int clientFd, const cache::UploadRequest& uploadRequest);
 //---------------------------------------------------------------------------------------------------------------------

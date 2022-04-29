@@ -202,7 +202,7 @@ namespace cacheutils
     {        
         if (numServers > 1)
         {
-            static hash<string> hasher;
+            static thread_local hash<string> hasher;
             auto hash_val = hasher(filePath);
             return hash_val % numServers;            
         }

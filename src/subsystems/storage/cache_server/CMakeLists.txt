@@ -7,6 +7,7 @@ include_directories(${CMAKE_SOURCE_DIR}/src/subsystems/common/native_lib/diagnos
                     ./operations
                     ./proto
                     ./utils
+                    ./state
                     /opt/protobufstatic-3.0.0/include
                     )
 
@@ -19,7 +20,7 @@ execute_process(
                 --cpp_out=${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/proto
                 ${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/proto/cache.proto)
 
-file(GLOB CACHE_SERVER_SOURCES *cpp ./operations/*cpp ./utils/*cpp ./proto/*cc)
+file(GLOB CACHE_SERVER_SOURCES *cpp ./operations/*cpp ./utils/*cpp ./state/*cpp ./proto/*cc)
 
 add_executable(${CACHE_SERVER_EXEC} ${CACHE_SERVER_SOURCES})
 

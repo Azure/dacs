@@ -95,7 +95,7 @@ message UploadRequest
     //     called prior to this with enablelock set
     bool ignorelock = 3;
 
-    // TODO: cache expiry not yet implemented
+    // cache expiry time in seconds, 0 indicates no expiry. If groupid field is also set then this field is ignored (0)
     uint32 expiryseconds = 4;
 
     // optional arbitrary key,value pairs which will be persisted and returned when the file is downloaded
@@ -103,6 +103,9 @@ message UploadRequest
 
     // authentication params required if authentication is enabled for the cache server APIs 
     AuthParams authparams = 6;
+
+    // optional client managed groupid this key belongs too. Clients need to ensure uniqueness of this id
+    bytes groupid = 7;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message UploadResponse
@@ -146,6 +149,31 @@ message DownloadResponse
     Result result = 1;
     uint64 filesize = 2;
     map<string, bytes> metadata = 3;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Delete file entry from cache
+message DeleteRequest
+{
+    oneof type
+    {
+        // TODO: Not yet supported
+        string filename = 1;
+
+        // if groupid is selected, all files belonging to the group will be deleted
+        bytes groupid = 2;
+    }
+    AuthParams authparams = 3;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message DeleteResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        AUTH_FAILED = 1;
+        INTERNAL_ERROR = 2;
+    }
+    Result result = 1;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message FileAttribute
@@ -211,6 +239,7 @@ message Request
         DownloadRequest downloadrequest = 3;
         GetAttributeRequest getattributerequest = 4;
         PutAttributeRequest putattributerequest = 5;
+        DeleteRequest deleterequest = 6;
     }
 }
 //---------------------------------------------------------------------------------------------------------------------

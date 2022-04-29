@@ -111,12 +111,12 @@ int ConnectionManager::InitFreshConnection(int serverIndex)
     int serverFd = socket(AF_INET, SOCK_STREAM, 0);
     if (serverFd < 0)
     {
-        LOG_CRITICAL("Error creating a socket fd at client: {}", errno);
+        LOG_CRITICAL("Error creating a socket fd at client: {}-{}", errno, strerror(errno));
         return -1;
     }
     if (connect(serverFd, (sockaddr * ) &(m_vecCacheServers[serverIndex]), sizeof(sockaddr)) < 0)
     {
-        LOG_CRITICAL("Error during socket connect: {}", errno);
+        LOG_CRITICAL("Error during socket connect: {}-{}", errno, strerror(errno));
         StorageDlsymWrapper::close(serverFd);
         return -1;
     }
@@ -124,7 +124,7 @@ int ConnectionManager::InitFreshConnection(int serverIndex)
     int enable = 1;
     if (setsockopt(serverFd, SOL_TCP, TCP_NODELAY, &enable, sizeof(enable)) != 0)
     {
-        LOG_CRITICAL("Error setting TCP_NODELAY on client socket: {}", errno);
+        LOG_CRITICAL("Error setting TCP_NODELAY on client socket: {}-{}", errno, strerror(errno));
         StorageDlsymWrapper::close(serverFd);
         return -1;
     }

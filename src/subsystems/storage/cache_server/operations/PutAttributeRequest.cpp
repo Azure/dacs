@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "UploadRequest.h"
+#include "AttributesManager.h"
 #include "Utils.h"
 #include "SocketUtils.h"
 #include "Constants.h"
@@ -75,7 +76,7 @@ bool HandlePutAttribute(int clientFd, const PutAttributeRequest& putAttributeReq
         return SendMessageToRemote(clientFd, putAttributeResponse);
     }
 
-    bool bRet = PutAttributes(putAttributeRequest);
+    bool bRet = AttributesManager::GetInstance().PutAttributes(putAttributeRequest);
     if (bRet)
     {
         LOG_DEBUG("Updated cache entries: {}", putAttributeRequest.fileattributes_size());

@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "LockRequest.h"
+#include "LockManager.h"
 #include "Utils.h"
 #include "SocketUtils.h"
 #include "Logger.h"
@@ -55,7 +56,7 @@ bool LockFile(int clientFd, const LockFileRequest& lockRequest)
         return SendMessageToRemote(clientFd, lockResponse);
     }
 
-    if (GetLockForUpload(lockRequest.filename()))
+    if (LockManager::GetInstance().GetLockForUpload(lockRequest.filename()))
     {
         LOG_INFO("Locked file successfully: {}", lockRequest.filename());
         lockResponse.set_result(LockFileResponse::SUCCESS);
