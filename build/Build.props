@@ -8,6 +8,7 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <Configuration Condition=" '$(Configuration)'=='' ">Debug</Configuration>
     <SkipNativeSubmoduleBuild Condition=" '$(SkipNativeSubmoduleBuild)'=='' ">false</SkipNativeSubmoduleBuild>
+    <BuildWithDebugSymbols Condition=" '$(BuildWithDebugSymbols)'=='' ">false</BuildWithDebugSymbols>
     <MSBuildProjectRelativePath>$(MSBuildProjectDirectory.Replace($(RepositorySrcRootPath), ''))</MSBuildProjectRelativePath>
     <MSBuildProjectRelativePath Condition="$([System.IO.Path]::IsPathRooted($(MSBuildProjectRelativePath)))"></MSBuildProjectRelativePath>
     <BuildBinaryRoot Condition=" '$(BuildBinaryRoot)'=='' ">$(RepositoryRootPath)bin</BuildBinaryRoot>
