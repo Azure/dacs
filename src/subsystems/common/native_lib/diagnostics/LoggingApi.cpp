@@ -28,18 +28,17 @@ void LoggingApi::Init()
 
     m_bIsInitializing = true;
     
-    char* fileStandardOutput = std::getenv("DACS_LOG_OUTPUT_FLIE");
+    char* fileStandardOutput = std::getenv("DACS_LOG_OUTPUT_FILE");
     char* fileErrorOutput = std::getenv("DACS_LOG_ERROR_FILE");
-    char* bEnableElasticity = std::getenv("DACS_ENABLE_TRANSPARENT_ELASTICITY");
-    char* bDisableFileLogger = std::getenv("DACS_DISABLE_FILE_LOGGER");
+    
+    char* fileStandardOutputOverride = std::getenv("DACS_LOG_OUTPUT_FILE_OVERRIDE");
+    char* fileErrorOutputOverride = std::getenv("DACS_LOG_ERROR_FILE_OVERRIDE");
+
+    fileStandardOutput = fileStandardOutputOverride ? fileStandardOutputOverride : fileStandardOutput;
+    fileErrorOutput = fileErrorOutputOverride ? fileErrorOutputOverride : fileErrorOutput;
 
     // Enable file logger when the issue is fixed
-    if(
-        !fileStandardOutput
-        || !fileErrorOutput
-        || (bEnableElasticity != nullptr && std::strcmp(bEnableElasticity, "true") == 0)
-        || (bDisableFileLogger != nullptr && std::strcmp(bDisableFileLogger, "true") == 0)
-    )
+    if(!fileStandardOutput || !fileErrorOutput)
     {
         m_upLogger = std::make_shared<StandardLogger>();
     }

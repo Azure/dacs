@@ -7,13 +7,16 @@
 //-------------------------------------------------------------------------------------------------------------------------------------------
 FileLogger::FileLogger(std::string outputFileName, std::string errorFileName)
 {
-    m_outputStream.open(outputFileName);
+    FormatFileName(outputFileName);
+    FormatFileName(errorFileName);
+
+    m_outputStream.open(outputFileName, std::ios_base::app);
     if (m_outputStream.fail())
     {
       throw std::iostream::failure("Cannot open file: " + outputFileName);
     }
 
-    m_errStream.open(errorFileName);
+    m_errStream.open(errorFileName, std::ios_base::app);
     if (m_errStream.fail())
     {
       throw std::iostream::failure("Cannot open file: " + errorFileName);
@@ -23,6 +26,25 @@ FileLogger::FileLogger(std::string outputFileName, std::string errorFileName)
 FileLogger::~FileLogger()
 {
     Shutdown();
+}
+//-------------------------------------------------------------------------------------------------------------------------------------------
+void FileLogger::FormatFileName(/*[inout]*/ std::string& strFileName)
+{
+    const std::string strRankMarker = "{{RANK}}";
+    std::size_t nRankMarkerPosition = strFileName.find(strRankMarker);
+    if (nRankMarkerPosition != std::string::npos)
+    {
+        char* rank = std::getenv("RANK");
+
+        if(rank)
+        {
+            strFileName.replace(nRankMarkerPosition, strRankMarker.length(), rank);
+        }
+        else
+        {
+            strFileName.replace(nRankMarkerPosition, strRankMarker.length(), "");
+        }
+    }
 }
 //-------------------------------------------------------------------------------------------------------------------------------------------
 void FileLogger::Shutdown()
