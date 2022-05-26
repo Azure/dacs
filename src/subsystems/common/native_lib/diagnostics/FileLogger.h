@@ -16,8 +16,9 @@ public:
     void Flush();
     void LogOutput(std::string logContent);
     void LogError(std::string logContent);
-
 private:
+    void FormatFileName(/*[inout]*/ std::string& strFileName);
+
     std::ofstream m_outputStream;
     std::ofstream m_errStream;
 };

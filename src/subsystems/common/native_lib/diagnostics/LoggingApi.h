@@ -49,6 +49,7 @@
 #include "spdlog/fmt/bundled/format.h"
 #include "spdlog/fmt/bundled/core.h"
 #include "spdlog/fmt/bundled/ostream.h"
+#include "spdlog/fmt/bundled/ranges.h"
 //-------------------------------------------------------------------------------------------------------------------------------------------
 enum class LogLevel
 {
