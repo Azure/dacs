@@ -10,11 +10,6 @@ SCRIPT_DIR="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 SCRIPT_NAME="$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")"
 REPOSITORY_ROOT="$(readlink -f ${SCRIPT_DIR}/../../../../../)"
 
-STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/obj/Debug/native/linux-x64/publish/libStorageIntercept.so"
-LFS_INTERCEPTOR="${REPOSITORY_ROOT}/obj/Debug/native/linux-x64/publish/libLfsIntercept.so"
-PYTHON_IO_TEST="${SCRIPT_DIR}/io_test.py"
-EXE_TEST="${REPOSITORY_ROOT}/bin/Debug/native/StorageInterceptIntegTest"
-
 # ==================================================
 # Help with usage
 # ==================================================
@@ -22,7 +17,7 @@ _usage()
 {
     echo "Storage intercept integration test with synthetic dataset"
     echo
-    echo "Usage synthetictest.sh [-h] | [-s] -d <OPTION> -n <NUM> -p <NUM>"
+    echo "Usage synthetictest.sh -b Debug|Release [-h] | [-s] -d <OPTION> -n <NUM> -p <NUM>"
     echo "options:"
     echo "-s (stacking-enabled) Enables the stacked interception in test, along with LfsInterceptor"
     echo "-d "OPTION" Type of dataset to test against [small | large]"
@@ -71,13 +66,27 @@ _test_runner()
     echo "Starting the python io test"
     runTestCmd="${STORAGE_INTERCEPT_LD_PRELOAD} python3 ${PYTHON_IO_TEST} --folder_path ${_IO_TEST_FOLDER_PATH} --compressed_tar_path ${_IO_TEST_TAR_PATH} --compressed_zip_path ${_IO_TEST_ZIP_PATH}"
     eval $runTestCmd
-    echo "Python io test terminated"
+    if [ $? -ne 0 ]
+    then
+        echo "Python io test failed"
+        exit 1
+    fi
+
+    echo "Python io test completed"
     echo
 
     export STORAGE_INTEG_TESTCASE_FILE=$_SAMPLES_DIR
     runTestCmd="${STORAGE_INTERCEPT_LD_PRELOAD} ${EXE_TEST} ${_NUM_FILES} ${_PARALLELISM}"
     eval $runTestCmd
+    if [ $? -ne 0 ]
+    then
+        echo "Synthetic test failed"
+        exit 1
+    fi
+
     unset STORAGE_INTEG_TESTCASE_FILE
+    echo "Synthetic test completed"
+    echo
 }
 
 # ==================================================
@@ -87,15 +96,17 @@ enable_stacking=false
 dataset="small"
 num_files_to_test=100
 parallelism=4
+build_configuration=Debug
 
 # ==================================================
 # Parse command line args
 # ==================================================
-while getopts :d:n:p:sh flag
+while getopts :b:d:n:p:sh flag
 do
     case "${flag}" in
         h) _usage;
             exit 0;;
+        b) build_configuration=${OPTARG};;
         d) dataset=${OPTARG};;
         n) num_files_to_test=${OPTARG};;
         p) parallelism=${OPTARG};;
@@ -120,6 +131,11 @@ else
         [compressed_zip_path]="/mnt/quiverfs/books_wiki_en_corpus.zip")
 fi
 
+STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${build_configuration}/native/linux-x64/publish/libStorageIntercept.so"
+LFS_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${build_configuration}/native/linux-x64/publish/libLfsIntercept.so"
+PYTHON_IO_TEST="${SCRIPT_DIR}/io_test.py"
+EXE_TEST="${REPOSITORY_ROOT}/bin/${build_configuration}/native/StorageInterceptIntegTest"
+
 echo "$(readlink -f ${STORAGE_INTERCEPTOR})"
 echo "$(readlink -f ${EXE_TEST})"
 
@@ -127,4 +143,9 @@ echo "$(readlink -f ${EXE_TEST})"
 echo "Starting the integration test"
 ioTestArgs="declare -p io_test_args"
 _test_runner $enable_stacking "$($ioTestArgs)" $samples_file $num_files_to_test $parallelism
-echo "Integration test terminated succesfully"
+if [ $? -ne 0 ]
+then
+    echo "Integration test failed"
+    exit 1
+fi
+echo "Integration test completed succesfully"
