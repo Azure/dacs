@@ -141,5 +141,8 @@ class StreamingClient
          */
         void SetClient();
         void ClearClient();
+
+        // Helper funtion to log stats 
+        void LogStats(bool forceLog = false);
 };
 //---------------------------------------------------------------------------------------------------------------------

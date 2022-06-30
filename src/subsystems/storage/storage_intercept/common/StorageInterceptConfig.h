@@ -47,6 +47,7 @@ class StorageInterceptConfig
 
         // Getters for attribute cache
         bool GetAttributesCacheEnable();
+        uint64_t GetAttributesCacheServerPort();
         uint64_t GetAttributesCacheMaxEntries();
         bool GetAttributesCacheUseLocalServer();
 
@@ -71,6 +72,10 @@ class StorageInterceptConfig
         // Getters for chunk download parallelism
         bool GetChunkDownloadParallelismEnabled();
         uint64_t GetChunkDownloadMaxConcurrency();
+
+        // Getters for prefetch cache
+        uint64_t GetPrefetchCacheTotalSizeInMB();
+        uint64_t GetPrefetchCachePerFileSizeInMB();
 
         // Getters for large prefetch        
         bool GetEnableLargePrefetch();

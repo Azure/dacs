@@ -3,9 +3,15 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "PrefetchCache.h"
 #include "StorageInterceptLogger.h"
+#include "StorageInterceptConfig.h"
 //---------------------------------------------------------------------------------------------------------------------
 PrefetchCache::PrefetchCache()
+  : MAX_ENTRIES_PER_FILE(CalculateNumEntries(StorageInterceptConfig::GetInstance().GetPrefetchCachePerFileSizeInMB()))
+  , MAX_ENTRIES_OVERALL(CalculateNumEntries(StorageInterceptConfig::GetInstance().GetPrefetchCacheTotalSizeInMB()))
 {
+    LOG_INFO("PrefetchCache initialized. MaxEntriesOverall={} MaxEntriesPerFile={}",
+        MAX_ENTRIES_OVERALL,
+        MAX_ENTRIES_PER_FILE);
 }
 //---------------------------------------------------------------------------------------------------------------------
 PrefetchCache& PrefetchCache::GetInstance()
@@ -41,7 +47,7 @@ void PrefetchCache::Put(const std::string& path, std::shared_ptr<const FileReadD
 {
     std::unique_lock<std::shared_mutex> buffersLock(m_mutexBuffers);
 
-    if (m_mapBuffers.size() >= PrefetchCache::MAX_ENTRIES_ALL)
+    if (m_mapBuffers.size() >= MAX_ENTRIES_OVERALL)
     {
         LOG_WARN("Too many entries in PrefetchCache. nEntries={}", m_mapBuffers.size());
         return;
@@ -49,7 +55,7 @@ void PrefetchCache::Put(const std::string& path, std::shared_ptr<const FileReadD
 
     auto offsetIt = m_mapCachedOffsets.find(path);
     const size_t nCachedFileOffsets = (offsetIt == m_mapCachedOffsets.end()) ? 0 : offsetIt->second.size();
-    if (nCachedFileOffsets >= PrefetchCache::MAX_ENTRIES_PER_FILE)
+    if (nCachedFileOffsets >= MAX_ENTRIES_PER_FILE)
     {
         // Purge the first non-zero offset chunk to make space for the chunk being added right now.
         auto offsetToPurge = offsetIt->second.begin();
@@ -102,6 +108,11 @@ void PrefetchCache::PurgeAll(const std::string& path)
     }
 
     m_mapCachedOffsets.erase(offsetIt);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint32_t PrefetchCache::CalculateNumEntries(uint64_t cacheSizeInMB)
+{
+    return (uint32_t)((cacheSizeInMB * 1024 * 1024) / StorageInterceptConfig::GetInstance().GetStreamingChunkSize());
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::string PrefetchCache::GetCacheKey(const std::string& path, off64_t offset)

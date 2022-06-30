@@ -45,6 +45,7 @@ namespace StorageInterceptConstants
 
     // Config for Attributes cache
     const char* const ConfigNameAttributesCacheEnable = "attributesCacheEnable";
+    const char* const ConfigNameAttributesCacheServerPort = "attributesCacheServerPort";
     const char* const ConfigNameAttributesCacheMaxEntries = "attributesCacheMaxEntries";
     const char* const ConfigNameAttributesCacheUseLocalServer = "attributesCacheUseLocalServer";
 
@@ -60,6 +61,10 @@ namespace StorageInterceptConstants
     // Config constants for chunk download parallelism
     const char* const ConfigNameChunkDownloadParallelismEnabled = "chunkDownloadParallelismEnabled";
     const char* const ConfigNameChunkDownloadMaxConcurrency = "chunkDownloadMaxConcurrency";
+
+    // Config constants for prefetch cache
+    const char* const ConfigPrefetchCacheTotalSizeInMB = "prefetchCacheTotalSizeInMB";
+    const char* const ConfigPrefetchCachePerFileSizeInMB = "prefetchCachePerFileSizeInMB";
 
     // Config constants for large prefetch
     const char* const ConfigNameLargePrefetchEnabled = "enableLargePrefetch";
