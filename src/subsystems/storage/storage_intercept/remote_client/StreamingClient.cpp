@@ -69,7 +69,7 @@ StreamingClient::StreamingClient()
     }
 
     // Sanitize prefetch window size
-    const size_t maxPrefetchWindowSize = (size_t)m_nChunkSize * (PrefetchCache::MAX_ENTRIES_PER_FILE / 2);
+    const size_t maxPrefetchWindowSize = (size_t)m_nChunkSize * (PrefetchCache::GetInstance().MAX_ENTRIES_PER_FILE / 2);
     if (m_nPrefetchWindowSize > maxPrefetchWindowSize)
     {
         LOG_INFO(
@@ -101,16 +101,7 @@ StreamingClient::StreamingClient()
 }
 StreamingClient::~StreamingClient()
 {
-    LOG_INFO("GetProperties stats: Total={} CacheHit={} CacheMiss={}",
-        m_nGetPropertiesTotal,
-        m_nGetPropertiesCache,
-        m_nGetPropertiesRemoteClient);
-    
-    LOG_INFO("ReadChunk stats. Total={} PrefetchCache={} RemoteCache={} RemoteClient={}",
-        m_nReadChunksTotal,
-        m_nReadChunksPrefetchCache,
-        m_nReadChunksRemoteCache,
-        m_nReadChunksRemoteClient);
+    LogStats(true);
 }
 //---------------------------------------------------------------------------------------------------------------------
 StreamingClient& StreamingClient::GetInstance()
@@ -436,6 +427,8 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
     off64_t chunkOffset)
 {
     m_nReadChunksTotal++;
+    LogStats();
+
     if ((chunkOffset % m_nChunkSize) != 0)
     {
         LOG_ERROR("Invalid usage of readChunk. chunkOffset={} is not at chunk boundary.", chunkOffset);
@@ -548,9 +541,9 @@ void StreamingClient::EnsurePrefetchCacheWindowPopulated(
     if (uncachedOffsets.size() == 0)    return; // Prefetch window(s) already fully cached.
 
     // Purge some offsets if we are near the per-file limit of PrefetchCache.
-    if (cachedOffsets.size() + uncachedOffsets.size() > PrefetchCache::MAX_ENTRIES_PER_FILE)
+    if (cachedOffsets.size() + uncachedOffsets.size() > PrefetchCache::GetInstance().MAX_ENTRIES_PER_FILE)
     {
-        uint32_t nPurgeNeeded = PrefetchCache::MAX_ENTRIES_PER_FILE - (cachedOffsets.size() + uncachedOffsets.size());
+        uint32_t nPurgeNeeded = PrefetchCache::GetInstance().MAX_ENTRIES_PER_FILE - (cachedOffsets.size() + uncachedOffsets.size());
         uint32_t nPurged = 0;
 
         // Pick the offsets to purge.
@@ -638,5 +631,23 @@ void StreamingClient::PreReadChunkCheck()
 
     m_nReadChunksInProgress++;
     LOG_DEBUG("Exit PreReadChunkCheck. m_nReadChunksInProgress={}", m_nReadChunksInProgress);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void StreamingClient::LogStats(bool forceLog)
+{
+    // TODO: To get these logs for low QPS cases, log at fixed inervals (every 2 minutes for e.g).
+    if (forceLog || m_nReadChunksTotal % 200 == 0)
+    {
+        LOG_INFO("GetProperties stats: Total={} CacheHit={} CacheMiss={}",
+            m_nGetPropertiesTotal,
+            m_nGetPropertiesCache,
+            m_nGetPropertiesRemoteClient);
+        
+        LOG_INFO("ReadChunk stats. Total={} PrefetchCache={} RemoteCache={} RemoteClient={}",
+            m_nReadChunksTotal,
+            m_nReadChunksPrefetchCache,
+            m_nReadChunksRemoteCache,
+            m_nReadChunksRemoteClient);
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------

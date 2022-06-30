@@ -137,6 +137,21 @@ TEST_F(ContentHandlerTest, OpenReadCloseOneThreadTest)
     OpenReadAndCloseCheck(task);
 }
 //---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, OpenFileNonExistentTest)
+{
+    std::string nonExistentPath = m_strInterceptPath + "/non-existent-file";
+
+    // Open64 for non-existent file should return proper error
+    int openRet = ContentHandler::GetInstance().HandleOpen64(nonExistentPath.c_str(), O_RDONLY);
+    ASSERT_EQ(openRet, -1);
+    ASSERT_EQ(errno, ENOENT);
+
+    // Open for non-existent file should return proper error
+    openRet = ContentHandler::GetInstance().HandleOpen(nonExistentPath.c_str(), O_RDONLY);
+    ASSERT_EQ(openRet, -1);
+    ASSERT_EQ(errno, ENOENT);
+}
+//---------------------------------------------------------------------------------------------------------------------
 TEST_F(ContentHandlerTest, ReaddirOneThreadTest)
 {
     ReaddirTask task;

@@ -41,10 +41,12 @@ class PrefetchCache
         void PurgeAll(/*[in] */ const std::string& path);
 
         // Limits on max entries per file and overall.
-        static constexpr uint32_t    MAX_ENTRIES_PER_FILE = 250;
-        static constexpr uint32_t    MAX_ENTRIES_ALL = 2000;
+        const uint32_t    MAX_ENTRIES_PER_FILE;
+        const uint32_t    MAX_ENTRIES_OVERALL;
     private:
         PrefetchCache();
+
+        static uint32_t CalculateNumEntries(/*[in]*/ uint64_t cacheSizeInMB);
 
         static std::string GetCacheKey(
             /*[in]*/  const std::string& path,

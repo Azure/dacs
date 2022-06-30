@@ -75,8 +75,13 @@ int ContentHandler::OpenInternal(const char* path, int flags, mode_t mode, bool 
     fullFd.RemotePath = relPath;
     fullFd.OpenFlags = flags;
 
-    // TODO: Do getProperties here in case we need to error out for non-existent files.
-    // TODO: Open a directoryStream similar to opendir() once we support open() for directories.
+    int getPropertiesResult = StreamingClient::GetInstance().GetProperties(relPath, fullFd.Attributes);
+    if (getPropertiesResult < 0)
+    {
+        LOG_ERROR("Error in getProperties during open for remote path {}, errno={}", relPath, strerror(errno));
+        return -1;
+    }
+
     StreamingClient::GetInstance().OpenFile(relPath);
 
     int fd = AllotNewFd(fullFd);
@@ -203,38 +208,23 @@ off64_t ContentHandler::HandleLseek(int fd, off64_t offset, int whence)
             break;
 
         case SEEK_END:
-            FileAttributes attributes;
             std::string path = fdIt->second.RemotePath;
+            off64_t fileSize = fdIt->second.Attributes.size;
+
             /* offset > 0 is currently not supported for SEEK_END case */
             if (offset > 0)
             {
-                StreamingClient::GetInstance().GetProperties(path, attributes);
                 LOG_ERROR(
                     "Lseek request to an offset beyond file size encountered. path={}, requestedOffset={}, fileSize={}",
                     path,
-                    attributes.size + offset,
-                    attributes.size);
+                    fileSize + offset,
+                    fileSize);
                 nextOffset = -1;
                 return nextOffset;
             }
-            /* Releasing lock during expensive I/O operation */
-            openHandlesLock.unlock();
-            StreamingClient::GetInstance().GetProperties(path, attributes);
-            openHandlesLock.lock();
-            fdIt = m_mapOpenHandles.find(fd);
-            if (fdIt == m_mapOpenHandles.end())
-            {
-                openHandlesLock.unlock();
-                LOG_WARN(
-                    "Fd was closed in between lseek handling, falling back to original lseek. path={}, fd={}, offset={}, whence={}",
-                    path,
-                    fd,
-                    offset,
-                    whence);
-                return StorageDlsymWrapper::lseek64(fd, offset, whence);
-            }
-            isModified = (attributes.size + offset) ^ nextOffset;
-            nextOffset = attributes.size + offset;
+
+            isModified = (fileSize + offset) ^ nextOffset;
+            nextOffset = fileSize + offset;
             break;
 
     }
@@ -411,17 +401,13 @@ int ContentHandler::HandleFxstat(int __ver, int fd, struct stat* statbuf)
         openHandlesLock.unlock();
         return StorageDlsymWrapper::fxstat(__ver, fd, statbuf);
     }
-    const std::string path = fdIt->second.RemotePath;
+    FileAttributes attributes = fdIt->second.Attributes;
     openHandlesLock.unlock();
 
     struct stat64 stat64buf;
-    int result = GetPropertiesInternal(path, "fxstat", &stat64buf);
-    if (result == 0)
-    {
-        CopyStat64ToStat(&stat64buf, statbuf);
-    }
-
-    return result;
+    PopulateStatBuf(attributes, &stat64buf);
+    CopyStat64ToStat(&stat64buf, statbuf);
+    return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::HandleFxstat64(int __ver, int fd, struct stat64* statbuf)
@@ -433,10 +419,11 @@ int ContentHandler::HandleFxstat64(int __ver, int fd, struct stat64* statbuf)
         openHandlesLock.unlock();
         return StorageDlsymWrapper::fxstat64(__ver, fd, statbuf);
     }
-    const std::string path = fdIt->second.RemotePath;
+    FileAttributes attributes = fdIt->second.Attributes;
     openHandlesLock.unlock();
 
-    return GetPropertiesInternal(path, "fxstat64", statbuf);
+    PopulateStatBuf(attributes, statbuf);
+    return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::HandleLxstat(int __ver, const char* pathname, struct stat* statbuf)

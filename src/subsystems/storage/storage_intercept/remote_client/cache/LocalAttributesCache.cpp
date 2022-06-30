@@ -18,7 +18,7 @@ using namespace cacheutils;
 LocalAttributesCache::LocalAttributesCache()
 : m_stop(false)
 {
-    int serverPort = StorageInterceptConfig::GetInstance().GetCacheServerPort();
+    int serverPort = StorageInterceptConfig::GetInstance().GetAttributesCacheServerPort();
     m_spConnectionManager = make_unique<ConnectionManager>(serverPort, true, vector<string>());
 
     // start worker thread

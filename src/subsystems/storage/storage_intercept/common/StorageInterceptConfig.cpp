@@ -377,7 +377,15 @@ uint64_t StorageInterceptConfig::GetCacheReuseServerConnections()
 bool StorageInterceptConfig::GetAttributesCacheEnable()
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(
-        m_ConfigProps, StorageInterceptConstants::ConfigNameAttributesCacheEnable, false);
+        m_ConfigProps, StorageInterceptConstants::ConfigNameAttributesCacheEnable, true);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint64_t StorageInterceptConfig::GetAttributesCacheServerPort()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint64(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameAttributesCacheServerPort,
+        20000);
 }
 //---------------------------------------------------------------------------------------------------------------------
 uint64_t StorageInterceptConfig::GetAttributesCacheMaxEntries()
@@ -389,7 +397,7 @@ uint64_t StorageInterceptConfig::GetAttributesCacheMaxEntries()
 bool StorageInterceptConfig::GetAttributesCacheUseLocalServer()
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(
-        m_ConfigProps, StorageInterceptConstants::ConfigNameAttributesCacheUseLocalServer, true);
+        m_ConfigProps, StorageInterceptConstants::ConfigNameAttributesCacheUseLocalServer, false);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetCacheAuthEnabled()
@@ -491,6 +499,22 @@ uint64_t StorageInterceptConfig::GetChunkDownloadMaxConcurrency()
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameChunkDownloadMaxConcurrency,
         GetMaxBlobConnectionsPerClient());
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint64_t StorageInterceptConfig::GetPrefetchCacheTotalSizeInMB()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint64(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigPrefetchCacheTotalSizeInMB,
+        8000);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint64_t StorageInterceptConfig::GetPrefetchCachePerFileSizeInMB()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint64(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigPrefetchCachePerFileSizeInMB,
+        800);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetEnableLargePrefetch()

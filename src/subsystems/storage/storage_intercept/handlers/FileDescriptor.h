@@ -5,6 +5,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include <memory>
 #include "DirectoryStream.h"
+#include "FileAttributes.h"
 //---------------------------------------------------------------------------------------------------------------------
 /*
  * File descriptor struct to maintain information about open files and directories. Used by ContentHandler.
@@ -29,6 +30,9 @@ struct FileDescriptor
 
     // offset for file read\writes
     off64_t FileOffset;
+
+    // File attributes
+    FileAttributes Attributes;
 
     // read directory data (for directory streams)
     DirectoryStream* DirStream;
