@@ -12,6 +12,7 @@ function execute_test() {
 
   echo "PWD = $DIR/../bin/$BUILD_CONFIGURATION/native/${cuda_deps}/"
   cd $DIR/../bin/$BUILD_CONFIGURATION/native/${cuda_deps}/
+  log_file="`pwd`/Testing/Temporary/LastTest.log"
 
   if [ ! -z "$TEST_NAME" ]; then
     ctest -V --no-tests=error -j -1 -R "$TEST_NAME"
@@ -21,11 +22,12 @@ function execute_test() {
 
   if [ $? -ne 0 ]
   then
+    log_count=`cat $log_file | wc -l`
+    if [[ "$log_count" -ne 3 ]]; then # when all tests are skipped
       exit 1
+    fi
   fi
 }
-
-set -e
 
 if [ -z "$1" ]
 then
