@@ -37,7 +37,7 @@ echo "Running unit tests against blob"
 add_interception_config_blob /mnt/dataPathIntcpt
 export STORAGE_INTERCEPT_USE_EXISITNG_CONFIG=true
 cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
-eval "ctest -V --no-tests=error -j -1 -R  StorageIntercept"
+eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
 if [ $? -ne 0 ]
 then
     echo "Unit tests against blob failed"
