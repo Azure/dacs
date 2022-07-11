@@ -229,18 +229,28 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
         }
         else
         {
-            /* Case where
-             * (1) remotePath is a prefix to a valid path,
-             *     but the sub-directory name after the last DIRECTORY_DELIMITER
-             *     is not completely formed. eg: /mnt/DACS/dataplane/ a valid path
-             *     and the requested path is /mnt/DACS/data/ ( ending '/' is removed before sending blob request).
-             *     blobResponse for the above request is: /mnt/DACS/dataplane/
-             * OR
-             * (2) remotePath is (valid-file-path + DIRECTORY_DELIMITER). It is still an invalid request, since
-             *     a typical linux stat call also fails in such a scenario.
-             */
-            LOG_ERROR("Invalid blob path provided {}, response path {}", remotePath, blobResponse.name);
-            throw BlobClientException("Invalid blob path provided");
+            LOG_WARN("Invalid blob path provided {}, response path {}", remotePath, blobResponse.name);
+            if (listBlobsQueryPrefix == blobResponse.name)
+            {
+                /*
+                 * Case where remotePath is (valid-file-path + DIRECTORY_DELIMITER). It is still an invalid request,
+                 * since a typical linux stat call also fails in such a scenario.
+                 */
+                errno = ENOTDIR;
+            }
+            else
+            {
+                /*
+                 * Case where remotePath is a prefix to a valid path,
+                 * but the sub-directory name after the last DIRECTORY_DELIMITER
+                 * is not completely formed. eg: /mnt/DACS/dataplane/ a valid path
+                 * and the requested path is /mnt/DACS/data/ ( ending '/' is removed before sending blob request).
+                 * blobResponse for the above request is: /mnt/DACS/dataplane/
+                 */
+                errno = ENOENT;
+            }
+
+            return -1;
         }
     }
     else
@@ -266,8 +276,9 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
             }
 
             /* strict prefix of a valid path */
-            LOG_ERROR("Invalid blob path provided {}, response path {}", remotePath, blobResponse.name);
-            throw BlobClientException("Invalid blob path provided");
+            LOG_WARN("Invalid blob path provided {}, response path {}", remotePath, blobResponse.name);
+            errno = ENOENT;
+            return -1;
         }
     }
     LOG_DEBUG("Get properties API response received for path={}, isDirectory={}, size={}", remotePath, attr.isDir, attr.size);

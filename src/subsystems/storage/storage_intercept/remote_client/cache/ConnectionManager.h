@@ -2,7 +2,6 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #pragma once
-#include <netinet/in.h>
 #include <vector>
 #include <queue>
 #include <string>
@@ -29,9 +28,10 @@ class ConnectionManager
         static constexpr int                    CONNECT_TIMEOUT = 2;
         static constexpr int                    MAX_CONNECTIONS_REUSE_SIZE = 128;
 
+        const int                               m_ServerPort;
         std::vector<std::mutex>                 m_vecLocks;
         std::vector<std::queue<int> >           m_vecFdQueue;
-        std::vector<sockaddr_in>                m_vecCacheServers;
+        std::vector<std::string>                m_vecCacheServers;
         int                                     m_numServerNodes;
         int                                     m_nMaxConnsPerServer;
         const bool                              m_bReuseServerConnections;

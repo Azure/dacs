@@ -87,6 +87,8 @@ cacheEncryptionKey [Key to use if encryption is enabled]
 cacheAuthEnabled [true or false - Required when cache server APIs have authentication enabled]
 cacheAuthAccountName [Account name to be used for authenticatio]
 cacheAuthAccountKey [Shared key used for authentication]
+prefetchCacheTotalSizeInMB [Max in-memory data cache size]
+prefetchCachePerFileSizeInMB [Max in-memory data cache size per file]
 ```
 
 ### Run Unit test with cache enabled

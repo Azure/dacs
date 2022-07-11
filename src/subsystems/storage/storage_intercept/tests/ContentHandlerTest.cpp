@@ -176,14 +176,35 @@ TEST_F(ContentHandlerTest, GetPropertiesOneThreadTest)
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(ContentHandlerTest, GetPropertiesNonExistentTest)
 {
-    std::string nonExistentPath = m_strInterceptPath + "/non-existent-file";
+    std::vector<std::string> nonExistentPaths{
+        m_strInterceptPath + "/non-existent-file",
+        m_strInterceptPath + "/" + m_strRemoteFilePath.substr(0, m_strRemoteFilePath.size() - 1),
+        m_strInterceptPath + '/' + m_strRemoteDirPath.substr(0, m_strRemoteDirPath.size() - 1) + '/'
+    };
     struct stat64 fileAttr;
 
+    for (const std::string nonExistentPath : nonExistentPaths)
+    {
+        // XStat for non-existent file should return proper error
+        errno = 0;
+        int xstatRet = ContentHandler::GetInstance().HandleXstat64(
+            1, nonExistentPath.c_str(), &fileAttr);
+        ASSERT_EQ(xstatRet, -1);
+        ASSERT_EQ(errno, ENOENT);
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, GetPropertiesFileAsDirectoryTest)
+{
+    std::string dirPath = m_strInterceptPath + '/' + m_strRemoteFilePath + '/';
+    struct stat64 dirAttr;
+
     // XStat for non-existent file should return proper error
+    errno = 0;
     int xstatRet = ContentHandler::GetInstance().HandleXstat64(
-        1, nonExistentPath.c_str(), &fileAttr);
+        1, dirPath.c_str(), &dirAttr);
     ASSERT_EQ(xstatRet, -1);
-    ASSERT_EQ(errno, ENOENT);
+    ASSERT_EQ(errno, ENOTDIR);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(ContentHandlerTest, OpenReadAndCloseManyThreadsTest)

@@ -7,6 +7,7 @@
 #include "StorageDlsymWrapper.h"
 #include <errno.h>
 #include <string.h>
+#include <netinet/in.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <iostream>
@@ -20,28 +21,14 @@
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
 ConnectionManager::ConnectionManager(int serverPort, bool useLocalServer, const std::vector<std::string>& cacheServers)
-    : m_bReuseServerConnections(StorageInterceptConfig::GetInstance().GetCacheReuseServerConnections())
+    : m_ServerPort(serverPort)
+    , m_bReuseServerConnections(StorageInterceptConfig::GetInstance().GetCacheReuseServerConnections())
 {
     if (useLocalServer)
     {
         m_numServerNodes = 1;
+        m_vecCacheServers.push_back("127.0.0.1");
         LOG_INFO("Using 127.0.0.1 as cache server");
-
-        struct addrinfo *result;
-        int ret = getaddrinfo("127.0.0.1", NULL, NULL, &result);
-        if (ret != 0)
-        {
-            LOG_CRITICAL("Couldn't create 127.0.0.1 address");
-            throw "Couldn't create 127.0.0.1 address";
-        }
-
-        sockaddr_in structSockAddr; 
-        structSockAddr.sin_addr = ((sockaddr_in *)result->ai_addr)->sin_addr; 
-        structSockAddr.sin_family = AF_INET;
-        structSockAddr.sin_port = htons(serverPort);
-
-        m_vecCacheServers.push_back(structSockAddr);        
-        freeaddrinfo(result);
     }
     else
     {
@@ -54,21 +41,7 @@ ConnectionManager::ConnectionManager(int serverPort, bool useLocalServer, const 
 
         for (const string& nodeEntry : cacheServers)
         {
-            struct addrinfo *result;
-            int ret = getaddrinfo(nodeEntry.c_str(), NULL, NULL, &result);
-            if (ret != 0)
-            {
-                LOG_CRITICAL("Couldn't resolve server address: {}", nodeEntry);
-                throw "Couldn't resolve server address";
-            }
-
-            sockaddr_in structSockAddr; 
-            structSockAddr.sin_addr = ((sockaddr_in *)result->ai_addr)->sin_addr; 
-            structSockAddr.sin_family = AF_INET;
-            structSockAddr.sin_port = htons(serverPort);
-
-            m_vecCacheServers.push_back(structSockAddr);        
-            freeaddrinfo(result);
+            m_vecCacheServers.push_back(nodeEntry);
             LOG_INFO("Added cache server: {}", nodeEntry)
         }
     }
@@ -114,7 +87,22 @@ int ConnectionManager::InitFreshConnection(int serverIndex)
         LOG_CRITICAL("Error creating a socket fd at client: {}-{}", errno, strerror(errno));
         return -1;
     }
-    if (connect(serverFd, (sockaddr * ) &(m_vecCacheServers[serverIndex]), sizeof(sockaddr)) < 0)
+
+    struct addrinfo *structAddrInfo;
+    int ret = getaddrinfo(m_vecCacheServers[serverIndex].c_str(), NULL, NULL, &structAddrInfo);
+    if (ret != 0)
+    {
+        LOG_CRITICAL("Couldn't resolve server address: {}", m_vecCacheServers[serverIndex]);
+        return -1;
+    }
+
+    sockaddr_in structSockAddr; 
+    structSockAddr.sin_addr = ((sockaddr_in *)structAddrInfo->ai_addr)->sin_addr; 
+    structSockAddr.sin_family = AF_INET;
+    structSockAddr.sin_port = htons(m_ServerPort);
+    freeaddrinfo(structAddrInfo);
+
+    if (connect(serverFd, (sockaddr * ) &structSockAddr, sizeof(sockaddr)) < 0)
     {
         LOG_CRITICAL("Error during socket connect: {}-{}", errno, strerror(errno));
         StorageDlsymWrapper::close(serverFd);
