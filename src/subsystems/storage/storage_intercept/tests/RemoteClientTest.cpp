@@ -62,18 +62,7 @@ TEST_F(RemoteClientTest, GetPropForDirPathEndingWithDirDelimiterTest)
 {
     const std::string remoteDirPath = m_strRemoteDirPath + DIR_DELIMITER;
     FileAttributes attr;
-    int nResult;
-    if (RemoteClientTest::IsInstanceOf<MockRemoteClient>(m_RemoteClient.get()))
-    {
-        nResult = m_RemoteClient->GetProperties(remoteDirPath, attr);
-    }
-    else
-    {
-        ASSERT_NO_THROW(
-        {
-            nResult = m_RemoteClient->GetProperties(remoteDirPath, attr);
-        });
-    }
+    int nResult = m_RemoteClient->GetProperties(remoteDirPath, attr);
     ASSERT_EQ(nResult, 0);
     ASSERT_EQ(attr.isDir, true);
 }
@@ -81,18 +70,7 @@ TEST_F(RemoteClientTest, GetPropForDirPathEndingWithDirDelimiterTest)
 TEST_F(RemoteClientTest, GetPropForDirPathEndingWithoutDirDelimiterTest)
 {
     FileAttributes attr;
-    int nResult;
-    if (RemoteClientTest::IsInstanceOf<MockRemoteClient>(m_RemoteClient.get()))
-    {
-        nResult = m_RemoteClient->GetProperties(m_strRemoteDirPath, attr);
-    }
-    else
-    {
-        ASSERT_NO_THROW(
-        {
-            nResult = m_RemoteClient->GetProperties(m_strRemoteDirPath, attr);
-        });
-    }
+    int nResult = m_RemoteClient->GetProperties(m_strRemoteDirPath, attr);
     ASSERT_EQ(nResult, 0);
     ASSERT_EQ(attr.isDir, true);
 }
@@ -101,65 +79,27 @@ TEST_F(RemoteClientTest, GetPropForPrefixToValidPathWithoutDirDelimiterTest)
 {
     FileAttributes attr;
     int nResult;
+
     const std::string remoteDirPath = m_strRemoteDirPath.substr(0, m_strRemoteDirPath.size() - 2);
-    if (RemoteClientTest::IsInstanceOf<MockRemoteClient>(m_RemoteClient.get()))
-    {
-        nResult = m_RemoteClient->GetProperties(remoteDirPath, attr);
-        ASSERT_NE(nResult, 0);
-    }
-    else
-    {
-        ASSERT_ANY_THROW(
-        {
-            nResult = m_RemoteClient->GetProperties(remoteDirPath, attr);
-        });
-    }
+    nResult = m_RemoteClient->GetProperties(remoteDirPath, attr);
+    ASSERT_NE(nResult, 0);
 
     const std::string remoteFilePath = m_strRemoteFilePath.substr(0, m_strRemoteFilePath.size() - 2);
-    if (RemoteClientTest::IsInstanceOf<MockRemoteClient>(m_RemoteClient.get()))
-    {
-        nResult = m_RemoteClient->GetProperties(remoteFilePath, attr);
-        ASSERT_NE(nResult, 0);
-    }
-    else
-    {
-        ASSERT_ANY_THROW(
-        {
-            nResult = m_RemoteClient->GetProperties(remoteFilePath, attr);
-        });
-    }
+    nResult = m_RemoteClient->GetProperties(remoteFilePath, attr);
+    ASSERT_NE(nResult, 0);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(RemoteClientTest, GetPropForPrefixToValidPathWithDirDelimiterTest)
 {
     FileAttributes attr;
     int nResult;
+
     const std::string remoteDirPath = m_strRemoteDirPath.substr(0, m_strRemoteDirPath.size() - 2) + DIR_DELIMITER;
-    if (RemoteClientTest::IsInstanceOf<MockRemoteClient>(m_RemoteClient.get()))
-    {
-        nResult = m_RemoteClient->GetProperties(remoteDirPath, attr);
-        ASSERT_NE(nResult, 0);
-    }
-    else
-    {
-        ASSERT_ANY_THROW(
-        {
-            nResult = m_RemoteClient->GetProperties(remoteDirPath, attr);
-        });
-    }
+    nResult = m_RemoteClient->GetProperties(remoteDirPath, attr);
+    ASSERT_NE(nResult, 0);
 
     const std::string remoteFilePath = m_strRemoteFilePath.substr(0, m_strRemoteFilePath.size() - 2) + DIR_DELIMITER;
-    if (RemoteClientTest::IsInstanceOf<MockRemoteClient>(m_RemoteClient.get()))
-    {
-        nResult = m_RemoteClient->GetProperties(remoteFilePath, attr);
-        ASSERT_NE(nResult, 0);
-    }
-    else
-    {
-        ASSERT_ANY_THROW(
-        {
-            nResult = m_RemoteClient->GetProperties(remoteFilePath, attr);
-        });
-    }
+    nResult = m_RemoteClient->GetProperties(remoteFilePath, attr);
+    ASSERT_NE(nResult, 0);
 }
 //---------------------------------------------------------------------------------------------------------------------
