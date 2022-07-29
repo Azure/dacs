@@ -12,5 +12,6 @@ public:
     virtual void Flush() = 0;
     virtual void LogOutput(std::string logContent) = 0;
     virtual void LogError(std::string logContent) = 0;
+    virtual void FlushCachedLogInfo() = 0;
 };
 //-------------------------------------------------------------------------------------------------------------------------------------------
