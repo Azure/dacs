@@ -85,6 +85,7 @@ public:
     static void Prepare();
     static void Parent();
     static void Child();
+    static void FlushCachedLog();
 
     // Set the owner information so log messages for a given owner can be correlated. 
     static void SetOwnerId(/*[in]*/ int nOwnerId);

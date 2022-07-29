@@ -16,6 +16,7 @@ public:
     void Flush();
     void LogOutput(std::string logContent);
     void LogError(std::string logContent);
+    void FlushCachedLogInfo();
 private:
     void FormatFileName(/*[inout]*/ std::string& strFileName);
 
