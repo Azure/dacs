@@ -1,4 +1,5 @@
 #!/bin/bash
+
 function execute_test() {
   local cuda_deps=$1
   echo "Testing for ${cuda_deps} projects......"
@@ -42,7 +43,6 @@ then
 else
   TEST_NAME="$2"
 fi
-
 
 echo "Start running native unit tests"
 
