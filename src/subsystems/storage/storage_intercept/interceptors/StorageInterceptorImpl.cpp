@@ -16,6 +16,36 @@ int StorageInterceptorImpl::open64(const char* pathname, int flags, mode_t mode)
     return ContentHandler::GetInstance().HandleOpen64(pathname, flags, mode);
 }
 //---------------------------------------------------------------------------------------------------------------------
+void* StorageInterceptorImpl::fopen(const char* pathname, const char* mode)
+{
+    return ContentHandler::GetInstance().HandleFopen(pathname, mode, false);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void* StorageInterceptorImpl::fopen64(const char* pathname, const char* mode)
+{
+    return ContentHandler::GetInstance().HandleFopen(pathname, mode, true);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageInterceptorImpl::fileno(void* stream)
+{
+    return ContentHandler::GetInstance().HandleFileNo(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageInterceptorImpl::fclose(void* stream)
+{
+    return ContentHandler::GetInstance().HandleFClose(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageInterceptorImpl::openat(int dirfd, const char* pathname, int flags, mode_t mode)
+{
+    return ContentHandler::GetInstance().HandleOpenAt(dirfd, pathname, flags, mode, false);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageInterceptorImpl::openat64(int dirfd, const char* pathname, int flags, mode_t mode)
+{
+    return ContentHandler::GetInstance().HandleOpenAt(dirfd, pathname, flags, mode, true);
+}
+//---------------------------------------------------------------------------------------------------------------------
 ssize_t StorageInterceptorImpl::read(int fd, void* buf, size_t nByte)
 {
     return ContentHandler::GetInstance().HandleRead(fd, buf, nByte);
@@ -41,14 +71,24 @@ void* StorageInterceptorImpl::opendir(const char* pathname)
     return ContentHandler::GetInstance().HandleOpendir(pathname);;
 }
 //---------------------------------------------------------------------------------------------------------------------
+void* StorageInterceptorImpl::readdir(void* dirp)
+{
+    return ContentHandler::GetInstance().HandleReaddir(dirp, false);
+}
+//---------------------------------------------------------------------------------------------------------------------
 void* StorageInterceptorImpl::readdir64(void* dirp)
 {
-    return ContentHandler::GetInstance().HandleReaddir64(dirp);
+    return ContentHandler::GetInstance().HandleReaddir(dirp, true);
 }
 //---------------------------------------------------------------------------------------------------------------------
 int StorageInterceptorImpl::closedir(void* dirp)
 {
     return ContentHandler::GetInstance().HandleClosedir(dirp);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageInterceptorImpl::access(const char *pathname, int mode)
+{
+    return ContentHandler::GetInstance().HandleAccess(pathname, mode);
 }
 //---------------------------------------------------------------------------------------------------------------------
 int StorageInterceptorImpl::xstat(int __ver, const char* pathname, struct stat* statbuf)

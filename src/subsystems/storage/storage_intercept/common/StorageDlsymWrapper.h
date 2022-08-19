@@ -1,8 +1,9 @@
 ///--------------------------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
-// The StorageDlsymWrapper provides the original libc implementation of the intercepted libc calls, in case the intercepted
-// libc calls need to fallback to their original counterpart. It loads the "next" libc call in the load order.
+// The StorageDlsymWrapper provides the original libc implementation of the intercepted libc calls, in case the 
+// intercepted libc calls need to fallback to their original counterpart. It loads the "next" libc call in the load
+// order.
 //---------------------------------------------------------------------------------------------------------------------
 #pragma once
 #include <sys/types.h>
@@ -21,11 +22,34 @@ class StorageDlsymWrapper
                           /*[in]*/ int flags,
                           /*[in]*/ mode_t mode);
 
+        static int openat(/*[in]*/ int dirfd,
+                        /*[in]*/ const char* pathname,
+                        /*[in]*/ int flags,
+                        /*[in]*/ mode_t mode);
+
+        static int openat64(/*[in]*/ int dirfd,
+                          /*[in]*/ const char* pathname,
+                          /*[in]*/ int flags,
+                          /*[in]*/ mode_t mode);
+
+        static void* fopen(/*[in]*/ const char* pathname,
+                        /*[in]*/ const char* mode);
+
+        static void* fopen64(/*[in]*/ const char* pathname,
+                        /*[in]*/ const char* mode);
+
+        static int fileno(/*[in]*/ void* stream);
+
+        static int fclose(/*[in]*/ void* stream);
+
         static off64_t lseek64(/*[in]*/ int fd,
                              /*[in]*/ off64_t offset,
                              /*[in]*/ int whence);
 
         static int close(/*[in]*/ int fd);
+
+        static int access(/*[in]*/ const char* pathname,
+                         /*[in]*/ int mode);
 
         static int xstat(/*[in]*/ int __ver,
                          /*[in]*/ const char* pathname,
@@ -62,6 +86,8 @@ class StorageDlsymWrapper
 
         static void* opendir(/*[in]*/ const char* pathname);
 
+        static void* readdir(/*[in]*/ void* dirp);
+
         static void* readdir64(/*[in]*/ void* dirp);
 
         static int closedir(/*[in]*/ void* dirp);
@@ -73,20 +99,34 @@ class StorageDlsymWrapper
 
         typedef int (*Original_open) (/*[in]*/ const char* pathname, /*[in]*/ int flags, /*[in]*/ mode_t mode);
         typedef int (*Original_open64) (/*[in]*/ const char* pathname, /*[in]*/ int flags, /*[in]*/ mode_t mode);
+        typedef int (*Original_openat) (/*[in]*/ int dirfd, /*[in]*/ const char* pathname, /*[in]*/ int flags,
+            /*[in]*/ mode_t mode);
+        typedef int (*Original_openat64) (/*[in]*/ int dirfd, /*[in]*/ const char* pathname, /*[in]*/ int flags,
+            /*[in]*/ mode_t mode);
+        typedef void* (*Original_fopen) (/*[in]*/ const char* pathname, /*[in]*/ const char* mode);
+        typedef void* (*Original_fopen64) (/*[in]*/ const char* pathname, /*[in]*/ const char* mode);
+        typedef int (*Original_fileno) (/*[in]*/ void* stream);
+        typedef int (*Original_fclose) (/*[in]*/ void* stream);
         typedef int (*Original_close) (/*[in]*/ int fd);
         typedef ssize_t (*Original_read) (/*[in]*/ int fd, /*[out]*/ void *buf, /*[in]*/ size_t nByte);
-        typedef ssize_t (*Original_pread) (/*[in]*/ int fd, /*[out]*/ void *buf, /*[in]*/ size_t nByte, /*[in]*/ off64_t offset);
-        typedef int (*Original_openat) (/*[in]*/ int dirfd, /*[in]*/ const char* pathname, /*[in]*/ int flags, /*[in]*/ mode_t mode);
+        typedef ssize_t (*Original_pread) (/*[in]*/ int fd, /*[out]*/ void *buf, /*[in]*/ size_t nByte,
+            /*[in]*/ off64_t offset);
         typedef off64_t (*Original_lseek64) (/*[in]*/ int fd, /*[in]*/ off64_t offset, /*[in]*/ int whence);
         typedef void* (*Original_opendir) (/*[in]*/ const char* pathname);
+        typedef void* (*Original_readdir)(/*[in]*/ void* dirp);
         typedef void* (*Original_readdir64)(/*[in]*/ void* dirp);
         typedef int (*Original_closedir)(/*[in]*/ void* dirp);
-        typedef int (*Original_xstat)(/*[in]*/ int __ver, /*[in]*/ const char* pathname, /*[out]*/ struct stat* statbuf);
-        typedef int (*Original_xstat64)(/*[in]*/ int __ver, /*[in]*/ const char* pathname, /*[out]*/ struct stat64* statbuf);
+        typedef int (*Original_access)(/*[in]*/ const char* pathname, /*[in]*/ int mode);
+        typedef int (*Original_xstat)(/*[in]*/ int __ver, /*[in]*/ const char* pathname,
+            /*[out]*/ struct stat* statbuf);
+        typedef int (*Original_xstat64)(/*[in]*/ int __ver, /*[in]*/ const char* pathname,
+            /*[out]*/ struct stat64* statbuf);
         typedef int (*Original_fxstat)(/*[in]*/ int __ver, /*[in]*/ int fd, /*[out]*/ struct stat* statbuf);
         typedef int (*Original_fxstat64)(/*[in]*/ int __ver, /*[in]*/ int fd, /*[out]*/ struct stat64* statbuf);
-        typedef int (*Original_lxstat)(/*[in]*/ int __ver, /*[in]*/ const char* pathname, /*[out]*/ struct stat* statbuf);
-        typedef int (*Original_lxstat64)(/*[in]*/ int __ver, /*[in]*/ const char* pathname, /*[out]*/ struct stat64* statbuf);
+        typedef int (*Original_lxstat)(/*[in]*/ int __ver, /*[in]*/ const char* pathname,
+            /*[out]*/ struct stat* statbuf);
+        typedef int (*Original_lxstat64)(/*[in]*/ int __ver, /*[in]*/ const char* pathname,
+            /*[out]*/ struct stat64* statbuf);
         typedef int (*Original_ioctl)(/*[in]*/ int fd, /*[in]*/ unsigned long request, /*[out]*/ void* argp);
         typedef int (*Original_isatty)(/*[in]*/ int fd);
         typedef int (*Original_flock)(/*[in]*/ int fd, /*[in]*/ int operation);

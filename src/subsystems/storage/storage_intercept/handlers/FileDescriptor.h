@@ -4,6 +4,7 @@
 #pragma once
 //---------------------------------------------------------------------------------------------------------------------
 #include <memory>
+#include <stdio.h>
 #include "DirectoryStream.h"
 #include "FileAttributes.h"
 //---------------------------------------------------------------------------------------------------------------------
@@ -18,7 +19,6 @@ struct FileDescriptor
         : ParentDirFd(-1)
         , OpenFlags(0x0)
         , FileOffset(0)
-        , DirStream(nullptr)
     {}
 
     // Input params
@@ -35,6 +35,9 @@ struct FileDescriptor
     FileAttributes Attributes;
 
     // read directory data (for directory streams)
-    DirectoryStream* DirStream;
+    std::unique_ptr<DirectoryStream> DirStream;
+
+    // File pointer
+    std::unique_ptr<FILE> FileStream;
 };
 //---------------------------------------------------------------------------------------------------------------------
