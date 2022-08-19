@@ -19,6 +19,42 @@ int StorageDlsymWrapper::open64(const char* pathname, int flags, mode_t mode=077
     return m_originalOpen64(pathname, flags, mode);
 }
 //---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::openat(int dirfd, const char* pathname, int flags, mode_t mode)
+{
+    Original_openat m_originalOpenAt = (Original_openat)dlsym(RTLD_NEXT, "openat");
+    return m_originalOpenAt(dirfd, pathname, flags, mode);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::openat64(int dirfd, const char* pathname, int flags, mode_t mode)
+{
+    Original_openat64 m_originalOpenAt64 = (Original_openat64)dlsym(RTLD_NEXT, "openat64");
+    return m_originalOpenAt64(dirfd, pathname, flags, mode);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void* StorageDlsymWrapper::fopen(const char* pathname, const char* mode)
+{
+    Original_fopen m_originalFopen = (Original_fopen)dlsym(RTLD_NEXT, "fopen");
+    return m_originalFopen(pathname,  mode);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void* StorageDlsymWrapper::fopen64(const char* pathname, const char* mode)
+{
+    Original_fopen64 m_originalFopen64 = (Original_fopen64)dlsym(RTLD_NEXT, "fopen64");
+    return m_originalFopen64(pathname,  mode);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::fileno(void* stream)
+{
+    Original_fileno m_originalFileno = (Original_fileno)dlsym(RTLD_NEXT, "fileno");
+    return m_originalFileno(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::fclose(void* stream)
+{
+    Original_fclose m_originalFClose = (Original_fclose)dlsym(RTLD_NEXT, "fclose");
+    return m_originalFClose(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
 int StorageDlsymWrapper::close(int fd)
 {
     Original_close m_originalClose = (Original_close)dlsym(RTLD_NEXT, "close");
@@ -49,6 +85,12 @@ void* StorageDlsymWrapper::opendir(const char* pathname)
     return m_OriginalOpendir(pathname);
 }
 //---------------------------------------------------------------------------------------------------------------------
+void* StorageDlsymWrapper::readdir(void* dirp)
+{
+    Original_readdir m_OriginalReaddir = (Original_readdir)dlsym(RTLD_NEXT, "readdir");
+    return m_OriginalReaddir(dirp);
+}
+//---------------------------------------------------------------------------------------------------------------------
 void* StorageDlsymWrapper::readdir64(void* dirp)
 {
     Original_readdir64 m_OriginalReaddir64 = (Original_readdir64)dlsym(RTLD_NEXT, "readdir64");
@@ -59,6 +101,12 @@ int StorageDlsymWrapper::closedir(void* dirp)
 {
     Original_closedir m_OriginalClosedir = (Original_closedir)dlsym(RTLD_NEXT, "closedir");
     return m_OriginalClosedir(dirp);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::access(const char* pathname, int mode)
+{
+    Original_access m_OriginalAccess = (Original_access)dlsym(RTLD_NEXT, "access");
+    return m_OriginalAccess(pathname, mode);
 }
 //---------------------------------------------------------------------------------------------------------------------
 int StorageDlsymWrapper::xstat(int __ver, const char* pathname, struct stat* statbuf)

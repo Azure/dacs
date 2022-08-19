@@ -36,6 +36,25 @@ class ContentHandler
             /*[in]*/ int flags,
             /*[in]*/ mode_t mode);
 
+        void* HandleFopen(
+            /*[in]*/ const char* path,
+            /*[in]*/ const char* mode,
+            /*[in]*/ bool isOpen64);
+
+        int HandleFileNo(
+            /*[in]*/ void* stream);
+
+        int HandleFClose(
+            /*[in]*/ void* stream);
+
+        int HandleOpenAt(
+            /*[in]*/ int dirfd,
+            /*[in]*/ const char* path,
+            /*[in]*/ int flags,
+            /*[in]*/ mode_t mode,
+            /*[in]*/ bool isOpen64
+            );
+
         ssize_t HandleRead(
             /*[in] */ int fd,
             /*[out]*/ void *buf,
@@ -56,9 +75,13 @@ class ContentHandler
 
         void* HandleOpendir(/*[in]*/ const char* path);
 
-        void* HandleReaddir64(/*[in]*/ void* dirp);
+        void* HandleReaddir(/*[in]*/ void* dirp, bool isRead64);
 
         int HandleClosedir(/*[in]*/ void* dirp);
+
+        int HandleAccess(
+            /*[in] */ const char* pathname,
+            /*[in]*/ int mode);
 
         int HandleXstat(
             /*[in] */ int __ver,
@@ -108,6 +131,11 @@ class ContentHandler
         ContentHandler();
 
     private:
+        int OpenValidatedPathInternal(
+            /*[in]*/ const char* relativePath,
+            /*[in]*/ int flags,
+            /*[in]*/ std::unique_ptr<FILE> fileStream = nullptr);
+
         int OpenInternal(
             /*[in]*/ const char* path,
             /*[in]*/ int flags,
@@ -116,7 +144,10 @@ class ContentHandler
 
         // Helper method to add a unique fd for a new open.
         // Returns new fd in case of success, -1 in case of error
-        int AllotNewFd(/*[in]*/ const FileDescriptor& fd);
+        int AllotNewFd(/*[in]*/ std::unique_ptr<FileDescriptor> fd);
+
+        // Check if fd is within our internal range
+        bool IsFdInRange(/*[in]*/ uint64_t fd);
 
         int GetPropertiesInternal(
             /*[in]*/ const std::string& relPath,
@@ -132,9 +163,13 @@ class ContentHandler
             /*[out]*/ struct stat* statbuf);
 
     private:
+        // file fd allocated range (min/max) we use internally
+        static constexpr uint32_t                                    FD_VALUE_START = 90000;
+        static constexpr uint32_t                                    FD_VALUE_RANGE = 100000;
+
         const std::string                                            m_strStorageRoot;
 
-        std::map<int, FileDescriptor>                                m_mapOpenHandles;
+        std::map<int, std::unique_ptr<FileDescriptor>>               m_mapOpenHandles;
         std::mutex                                                   m_lockOpenHandles;
 
         std::map<DirectoryStream*, std::unique_ptr<DirectoryStream>> m_mapDirectoryStreams;

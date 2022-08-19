@@ -92,7 +92,7 @@ void ContentHandlerTest::ReaddirCheck(ReaddirTask task)
     // Read the dir contents. There should be 4 entries (".", "..", testFile and testDir)
     uint32_t nFiles = 0, nDirs = 0;
     struct dirent *dirEntry;
-    while ((dirEntry = (struct dirent* )ContentHandler::GetInstance().HandleReaddir64(dirp)) != NULL) {
+    while ((dirEntry = (struct dirent* )ContentHandler::GetInstance().HandleReaddir(dirp, true)) != NULL) {
         if (dirEntry->d_type == DT_DIR)
         {
             nDirs++;
@@ -341,5 +341,246 @@ TEST_F(ContentHandlerTest, GetPropertiesManyThreadsTest)
             this,
             std::placeholders::_1);
     ExecuteParallelWithArgs(lambda, tasks, nParallelism);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void ContentHandlerTest::FOpenReadAndCloseCheck(OpenReadAndCloseTask task)
+{
+    // ContentHandler should intercept fopen() and return a file handle.
+    void* stream = ContentHandler::GetInstance().HandleFopen(task.filePath.c_str(), "rb", true);
+    ASSERT_NE(stream, nullptr);
+
+    // Fetch the fd for the stream
+    int fd = ContentHandler::GetInstance().HandleFileNo(stream);
+    ASSERT_NE(fd, -1);
+
+    // Reading the entire file using the file handle should work.
+    std::vector<char> readBuf(task.readSize);
+    ssize_t nBytesRead = ContentHandler::GetInstance().HandleRead(fd, readBuf.data(), task.readSize);
+    ASSERT_EQ(nBytesRead, task.readSize);
+
+    // We should not be able to read more data now that we have reached end of file.
+    nBytesRead = ContentHandler::GetInstance().HandleRead(fd, readBuf.data(), 1);
+    ASSERT_EQ(nBytesRead, 0);
+
+    // Closing the file handle should work.
+    const int closeRet = ContentHandler::GetInstance().HandleFClose(stream);
+    ASSERT_EQ(closeRet, 0);
+
+    // Closing the stream should internally close the fd too and the following fd access should fail.
+    nBytesRead = ContentHandler::GetInstance().HandleRead(fd, readBuf.data(), 1);
+    ASSERT_TRUE(nBytesRead < 0);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, FOpenReadCloseOneThreadTest)
+{
+    OpenReadAndCloseTask task;
+    task.filePath = m_strInterceptPath + '/' + m_strRemoteFilePath;
+    task.openFlags = O_RDONLY;
+    task.readSize = REMOTE_FILE_SIZE;
+
+    // Execute FOpenReadAndCloseCheck with the task parameters
+    FOpenReadAndCloseCheck(task);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, FOpenReadAndCloseManyThreadsTest)
+{
+    std::vector<OpenReadAndCloseTask> tasks;
+    const int nParallelism = 50;
+    if (m_bUsingMock)
+    {
+        for(int idx = 0; idx < nParallelism; idx++)
+        {
+            OpenReadAndCloseTask task;
+            task.filePath = m_strInterceptPath + '/' + m_strRemoteFilePath;
+            task.openFlags = O_RDONLY;
+            task.readSize = REMOTE_FILE_SIZE;
+            tasks.push_back(task);
+        }
+    }
+    else
+    {
+        std::ifstream testCaseStream(
+        StorageInterceptUtils::CombinePath(m_strTestCaseDir, "file_paths_sizes.txt"),
+        std::ios::in);
+        std::string entry;
+        while(std::getline(testCaseStream, entry))
+        {
+            auto delimiterIndex = entry.rfind(',');
+            if (delimiterIndex == std::string::npos)
+            {
+                continue;
+            }
+            OpenReadAndCloseTask task;
+            task.filePath = entry.substr(0, delimiterIndex);
+            task.readSize = static_cast<size_t>(::atoi(entry.substr(delimiterIndex + 1).c_str()));
+            task.openFlags = O_RDONLY;
+            tasks.push_back(task);
+        }
+        testCaseStream.close();
+    }
+
+    std::function<void(OpenReadAndCloseTask)> lambda =
+        std::bind(
+            &ContentHandlerTest::FOpenReadAndCloseCheck,
+            this,
+            std::placeholders::_1);
+    ExecuteParallelWithArgs(lambda, tasks, nParallelism);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, FOpenFailureTest)
+{
+    // Open to non-existing stream should fail
+    std::string nonExistingfilePath = m_strInterceptPath + '/' + "some-non-existing-file";
+    void* stream = ContentHandler::GetInstance().HandleFopen(nonExistingfilePath.c_str(), "rb", true);
+    ASSERT_EQ(stream, nullptr);
+    ASSERT_EQ(errno, ENOENT);
+
+    std::string existingFilePath = m_strInterceptPath + '/' + m_strRemoteFilePath;
+    stream = ContentHandler::GetInstance().HandleFopen(existingFilePath.c_str(), "rb", true);
+    ASSERT_NE(stream, nullptr);
+
+    const int closeRet = ContentHandler::GetInstance().HandleFClose(stream);
+    ASSERT_EQ(closeRet, 0);
+
+    // We only support opening binary files
+    stream = ContentHandler::GetInstance().HandleFopen(existingFilePath.c_str(), "r", true);
+    ASSERT_EQ(stream, nullptr);
+
+    // Non-readonly opens should fail
+    stream = ContentHandler::GetInstance().HandleFopen(existingFilePath.c_str(), "w", true);
+    ASSERT_EQ(stream, nullptr);
+
+    stream = ContentHandler::GetInstance().HandleFopen(existingFilePath.c_str(), "a", true);
+    ASSERT_EQ(stream, nullptr);
+
+    stream = ContentHandler::GetInstance().HandleFopen(existingFilePath.c_str(), "r+", true);
+    ASSERT_EQ(stream, nullptr);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void ContentHandlerTest::OpenAtReadAndCloseCheck(OpenReadAndCloseTask task)
+{
+    // ContentHandler should intercept openat() and return a file handle.
+    int fd = ContentHandler::GetInstance().HandleOpenAt(AT_FDCWD, task.filePath.c_str(), task.openFlags, true, 0);
+    ASSERT_TRUE(fd >= 0);
+
+    // Reading the entire file using the file handle should work.
+    std::vector<char> readBuf(task.readSize);
+    ssize_t nBytesRead = ContentHandler::GetInstance().HandleRead(fd, readBuf.data(), task.readSize);
+    ASSERT_EQ(nBytesRead, task.readSize);
+
+    // We should not be able to read more data now that we have reached end of file.
+    nBytesRead = ContentHandler::GetInstance().HandleRead(fd, readBuf.data(), 1);
+    ASSERT_EQ(nBytesRead, 0);
+
+    // Closing the file handle should work.
+    const int closeRet = ContentHandler::GetInstance().HandleClose(fd);
+    ASSERT_EQ(closeRet, 0);
+
+    // we should not be able to read anymore
+    nBytesRead = ContentHandler::GetInstance().HandleRead(fd, readBuf.data(), 1);
+    ASSERT_TRUE(nBytesRead < 0);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, OpenAtReadCloseOneThreadTest)
+{
+    OpenReadAndCloseTask task;
+    task.filePath = m_strInterceptPath + '/' + m_strRemoteFilePath;
+    task.openFlags = O_RDONLY;
+    task.readSize = REMOTE_FILE_SIZE;
+
+    // Execute FOpenReadAndCloseCheck with the task parameters
+    OpenAtReadAndCloseCheck(task);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, OpenAtReadAndCloseManyThreadsTest)
+{
+    std::vector<OpenReadAndCloseTask> tasks;
+    const int nParallelism = 50;
+    if (m_bUsingMock)
+    {
+        for(int idx = 0; idx < nParallelism; idx++)
+        {
+            OpenReadAndCloseTask task;
+            task.filePath = m_strInterceptPath + '/' + m_strRemoteFilePath;
+            task.openFlags = O_RDONLY;
+            task.readSize = REMOTE_FILE_SIZE;
+            tasks.push_back(task);
+        }
+    }
+    else
+    {
+        std::ifstream testCaseStream(
+        StorageInterceptUtils::CombinePath(m_strTestCaseDir, "file_paths_sizes.txt"),
+        std::ios::in);
+        std::string entry;
+        while(std::getline(testCaseStream, entry))
+        {
+            auto delimiterIndex = entry.rfind(',');
+            if (delimiterIndex == std::string::npos)
+            {
+                continue;
+            }
+            OpenReadAndCloseTask task;
+            task.filePath = entry.substr(0, delimiterIndex);
+            task.readSize = static_cast<size_t>(::atoi(entry.substr(delimiterIndex + 1).c_str()));
+            task.openFlags = O_RDONLY;
+            tasks.push_back(task);
+        }
+        testCaseStream.close();
+    }
+
+    std::function<void(OpenReadAndCloseTask)> lambda =
+        std::bind(
+            &ContentHandlerTest::OpenAtReadAndCloseCheck,
+            this,
+            std::placeholders::_1);
+    ExecuteParallelWithArgs(lambda, tasks, nParallelism);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, OpenAtFailureTest)
+{
+    // Open to non-existing stream should fail
+    std::string nonExistingfilePath = m_strInterceptPath + '/' + "some-non-existing-file";
+    int fd = ContentHandler::GetInstance().HandleOpenAt(AT_FDCWD, nonExistingfilePath.c_str(), O_RDONLY, true, 0);
+    ASSERT_EQ(fd, -1);
+    ASSERT_EQ(errno, ENOENT);
+
+    // Only read-only access is supported
+    std::string existingFilePath = m_strInterceptPath + '/' + m_strRemoteFilePath;
+    fd = ContentHandler::GetInstance().HandleOpenAt(AT_FDCWD, nonExistingfilePath.c_str(), O_WRONLY, true, 0);
+    ASSERT_EQ(fd, -1);
+
+    fd = ContentHandler::GetInstance().HandleOpenAt(AT_FDCWD, nonExistingfilePath.c_str(), O_RDWR, true, 0);
+    ASSERT_EQ(fd, -1);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, AccessTest)
+{
+    // Access should succeed for existing files when asked for read-only access
+    std::string existingFilePath = m_strInterceptPath + '/' + m_strRemoteFilePath;
+    int retVal = ContentHandler::GetInstance().HandleAccess(existingFilePath.c_str(), F_OK);
+    ASSERT_EQ(retVal, 0);
+
+    retVal = ContentHandler::GetInstance().HandleAccess(existingFilePath.c_str(), R_OK);
+    ASSERT_EQ(retVal, 0);
+
+    retVal = ContentHandler::GetInstance().HandleAccess(existingFilePath.c_str(), W_OK);
+    ASSERT_EQ(retVal, -1);
+    ASSERT_EQ(errno, EACCES);
+
+    retVal = ContentHandler::GetInstance().HandleAccess(existingFilePath.c_str(), W_OK | R_OK);
+    ASSERT_EQ(retVal, -1);
+    ASSERT_EQ(errno, EACCES);
+
+    std::string nonExistingfilePath = m_strInterceptPath + '/' + "some-non-existing-file";
+    retVal = ContentHandler::GetInstance().HandleAccess(nonExistingfilePath.c_str(), F_OK);
+    ASSERT_EQ(retVal, -1);
+    ASSERT_EQ(errno, ENOENT);
+
+    retVal = ContentHandler::GetInstance().HandleAccess(nonExistingfilePath.c_str(), W_OK);
+    ASSERT_EQ(retVal, -1);
+
+    retVal = ContentHandler::GetInstance().HandleAccess(nonExistingfilePath.c_str(), W_OK | R_OK);
+    ASSERT_EQ(retVal, -1);
 }
 //---------------------------------------------------------------------------------------------------------------------

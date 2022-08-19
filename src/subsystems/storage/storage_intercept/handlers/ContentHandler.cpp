@@ -46,16 +46,207 @@ int ContentHandler::HandleOpen64(const char* path, int flags, mode_t mode)
     return OpenInternal(path, flags, mode, IS_OPEN64);
 }
 //---------------------------------------------------------------------------------------------------------------------
+void* ContentHandler::HandleFopen(const char* path, const char* mode, bool isOpen64)
+{
+    // Check for binary and readonly flags "rb"
+    const bool isReadonlyOpen = (strcmp(mode, "rb") == 0);
+    std::string relPath;
+    const bool isRelative = StorageInterceptUtils::GetRelativePath(m_strStorageRoot, path, relPath);
+    if (isRelative && !isReadonlyOpen)
+    {
+        LOG_ERROR(
+            "Skipped intercepting non-readonly {} for path={} with mode={}",
+            isOpen64 ? "fopen64" : "fopen",
+            path,
+            mode)
+    }
+
+    if (!isRelative || !isReadonlyOpen)
+    {
+        if (!isOpen64)
+        {
+            return StorageDlsymWrapper::fopen(path, mode);
+        }
+        return StorageDlsymWrapper::fopen64(path, mode);
+    }
+
+    std::unique_ptr<FILE> fileStream = std::make_unique<FILE>();
+    void* fileStreamPtr = fileStream.get();
+    memset(fileStreamPtr, 0, sizeof(FILE));
+
+    int fd = OpenValidatedPathInternal(relPath.c_str(), O_RDONLY, std::move(fileStream));
+    LOG_DEBUG(
+        "Intercepted the {} system call at path={} mode={} fd={}",
+        isOpen64 ? "fopen64" : "fopen",
+        path,
+        mode,
+        fd);
+
+    if (fd < 0)
+    {
+        LOG_WARN("Failed to open and alloc fd for path={}", path);
+        return nullptr;
+    }
+
+    return fileStreamPtr;
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::HandleFileNo(void* stream)
+{
+    // Extract the fd and check if we manage this, if not fallback to libc wrapper
+    // If stream is valid and _fileno is set to -1, we know that this is managed by us and extract the fd from _flags.
+    FILE* fileStreamPtr = static_cast<FILE*>(stream);
+    if (fileStreamPtr == nullptr || fileStreamPtr->_fileno != -1 || !IsFdInRange(fileStreamPtr->_flags))
+    {
+        return StorageDlsymWrapper::fileno(stream);
+    }
+
+    int fd = fileStreamPtr->_flags;
+    std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
+    auto fdIt = m_mapOpenHandles.find(fd);
+    if (fdIt == m_mapOpenHandles.end())
+    {
+        openHandlesLock.unlock();
+        return StorageDlsymWrapper::fileno(stream);
+    }
+
+    openHandlesLock.unlock();
+    LOG_DEBUG("Intercepted the fileno system call fd={}, fileno={}", fd, fdIt->second->FileStream->_fileno);
+    return fd;
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::HandleFClose(void* stream)
+{
+    // Extract the fd and check if we manage this, if not fallback to libc wrapper
+    // If stream is valid and _fileno is set to -1, we know that this is managed by us and extract the fd from _flags.
+    FILE* fileStreamPtr = static_cast<FILE*>(stream);
+    if (fileStreamPtr == nullptr || fileStreamPtr->_fileno != -1 || !IsFdInRange(fileStreamPtr->_flags))
+    {
+        return StorageDlsymWrapper::fclose(stream);
+    }
+
+    int fd = fileStreamPtr->_flags;
+    std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
+    auto fdIt = m_mapOpenHandles.find(fd);
+    if (fdIt == m_mapOpenHandles.end())
+    {
+        openHandlesLock.unlock();
+        return StorageDlsymWrapper::fclose(stream);
+    }
+
+    const std::string remotePath = fdIt->second->RemotePath;
+    m_mapOpenHandles.erase(fdIt);
+    openHandlesLock.unlock();
+
+    StreamingClient::GetInstance().Close(remotePath);
+
+    LOG_DEBUG("Intercepted the fclose system call at fd={} path={}", fd, remotePath);
+    return 0;
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::HandleOpenAt(int dirfd, const char* path, int flags, mode_t mode, bool isOpen64)
+{
+
+    // If dirfd is invalid or AT_FDCWD (path relative to current working dir) or if path is an absolute path, 
+    // this should be treated same as regular open.
+    if (dirfd < 0 || dirfd == AT_FDCWD || (path != nullptr && path[0] == '/'))
+    {
+        const bool isReadonlyOpen = ((flags & O_RDONLY) == O_RDONLY);
+        std::string relPath;
+        const bool isRelative = StorageInterceptUtils::GetRelativePath(m_strStorageRoot, path, relPath);
+        if (isRelative && !isReadonlyOpen)
+        {
+            LOG_WARN(
+                "Skipped intercepting non-readonly {} for path={} with flags={}",
+                isOpen64 ? "openat64" : "openat",
+                path,
+                flags)
+        }
+
+        if (!isRelative || !isReadonlyOpen)
+        {
+            if (!isOpen64)
+            {
+                return StorageDlsymWrapper::openat(dirfd, path, flags, mode);
+            }
+            return StorageDlsymWrapper::openat64(dirfd, path, flags, mode);
+        }
+
+        LOG_DEBUG(
+            "Intercepted the {} system call at path={} dirfd={} flags={}",
+            isOpen64 ? "openat64" : "openat",
+            path,
+            dirfd,
+            flags);
+        return OpenValidatedPathInternal(relPath.c_str(), flags);
+    }
+    else
+    {        
+        if (!IsFdInRange(dirfd))
+        {
+            if (!isOpen64)
+            {
+                return StorageDlsymWrapper::openat(dirfd, path, flags, mode);
+            }
+            return StorageDlsymWrapper::openat64(dirfd, path, flags, mode);
+        }
+
+        // Fallback to system wrapper if we are not managing this fd
+        std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
+        auto fdIt = m_mapOpenHandles.find(dirfd);
+        if (fdIt == m_mapOpenHandles.end())
+        {
+            openHandlesLock.unlock();
+            if (!isOpen64)
+            {
+                return StorageDlsymWrapper::openat(dirfd, path, flags, mode);
+            }
+            return StorageDlsymWrapper::openat64(dirfd, path, flags, mode);
+        }
+
+        // path is relative to the directory referred to by dirfd.
+        // TODO: Support for this is not yet implemented.
+        LOG_ERROR("openat with valid dirfd not supported, path={} dirfd={} dirpath={}",
+            path, dirfd, fdIt->second->RemotePath);
+        throw "openat with valid dirfd not supported";
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::OpenValidatedPathInternal(const char* relativePath, int flags, std::unique_ptr<FILE> fileStream)
+{
+    std::unique_ptr<FileDescriptor> fullFd = std::make_unique<FileDescriptor>();
+    fullFd->RemotePath = relativePath;
+    fullFd->OpenFlags = flags;
+    fullFd->FileStream = move(fileStream);
+
+    int getPropertiesResult = StreamingClient::GetInstance().GetProperties(relativePath, fullFd->Attributes);
+    if (getPropertiesResult < 0)
+    {
+        LOG_ERROR("Error in getProperties during open for remote path {}, errno={}", relativePath, strerror(errno));
+        return -1;
+    }
+
+    StreamingClient::GetInstance().OpenFile(relativePath);
+
+    int fd = AllotNewFd(move(fullFd));
+    if (fd == -1)
+    {
+        LOG_ERROR("Could not allot new fd for relative path {}", relativePath);
+        return -1;
+    }
+
+    return fd;
+}
+//---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::OpenInternal(const char* path, int flags, mode_t mode, bool isOpen64)
 {
     const bool isReadonlyOpen = ((flags & O_RDONLY) == O_RDONLY);
 
     std::string relPath;
     const bool isRelative = StorageInterceptUtils::GetRelativePath(m_strStorageRoot, path, relPath);
-
     if (isRelative && !isReadonlyOpen)
     {
-        LOG_INFO(
+        LOG_WARN(
             "Skipped intercepting non-readonly {} for path={} with flags={}",
             isOpen64 ? "open64" : "open",
             path,
@@ -71,38 +262,21 @@ int ContentHandler::OpenInternal(const char* path, int flags, mode_t mode, bool 
         return StorageDlsymWrapper::open64(path, flags, mode);
     }
 
-    FileDescriptor fullFd;
-    fullFd.RemotePath = relPath;
-    fullFd.OpenFlags = flags;
-
-    int getPropertiesResult = StreamingClient::GetInstance().GetProperties(relPath, fullFd.Attributes);
-    if (getPropertiesResult < 0)
-    {
-        LOG_ERROR("Error in getProperties during open for remote path {}, errno={}", relPath, strerror(errno));
-        return -1;
-    }
-
-    StreamingClient::GetInstance().OpenFile(relPath);
-
-    int fd = AllotNewFd(fullFd);
-    if (fd == -1)
-    {
-        LOG_ERROR("Could not allot new fd for relative path {}", path);
-        return -1;
-    }
-
     LOG_DEBUG(
-        "Intercepted the {} system call at path={} flags={} fd={}",
+        "Intercepted the {} system call at path={} flags={}",
         isOpen64 ? "open64" : "open",
         path,
-        flags,
-        fd);
-
-    return fd;
+        flags);
+    return OpenValidatedPathInternal(relPath.c_str(), flags);
 }
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t ContentHandler::HandleRead(int fd, void *buf, size_t nBytes)
 {
+    if (!IsFdInRange(fd))
+    {
+        return StorageDlsymWrapper::read(fd, buf, nBytes);
+    }
+
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
     auto fdIt = m_mapOpenHandles.find(fd);
     if (fdIt == m_mapOpenHandles.end())
@@ -111,8 +285,8 @@ ssize_t ContentHandler::HandleRead(int fd, void *buf, size_t nBytes)
         return StorageDlsymWrapper::read(fd, buf, nBytes);
     }
 
-    const off64_t readOffset = fdIt->second.FileOffset;
-    const std::string path = fdIt->second.RemotePath;
+    const off64_t readOffset = fdIt->second->FileOffset;
+    const std::string path = fdIt->second->RemotePath;
     openHandlesLock.unlock();
 
     LOG_DEBUG("Intercepting the read system call at fd={} path={} nBytes={} readOffset={}",
@@ -138,7 +312,7 @@ ssize_t ContentHandler::HandleRead(int fd, void *buf, size_t nBytes)
         fdIt = m_mapOpenHandles.find(fd);
         if (fdIt != m_mapOpenHandles.end())
         {
-            fdIt->second.FileOffset = (readOffset + result);
+            fdIt->second->FileOffset = (readOffset + result);
         }
         else
         {
@@ -155,6 +329,11 @@ ssize_t ContentHandler::HandleRead(int fd, void *buf, size_t nBytes)
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t ContentHandler::HandlePRead(int fd, void *buf, size_t nBytes, off64_t offset)
 {
+    if (!IsFdInRange(fd))
+    {
+        return StorageDlsymWrapper::pread(fd, buf, nBytes, offset);
+    }
+
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);    
     auto fdIt = m_mapOpenHandles.find(fd);
     if (fdIt == m_mapOpenHandles.end())
@@ -163,7 +342,7 @@ ssize_t ContentHandler::HandlePRead(int fd, void *buf, size_t nBytes, off64_t of
         return StorageDlsymWrapper::pread(fd, buf, nBytes, offset);
     }
 
-    const std::string path = fdIt->second.RemotePath;
+    const std::string path = fdIt->second->RemotePath;
     openHandlesLock.unlock();
 
     LOG_DEBUG("Intercepting the pread system call at fd={} path={} nBytes={} offset={}", fd, path, nBytes, offset);
@@ -185,6 +364,11 @@ ssize_t ContentHandler::HandlePRead(int fd, void *buf, size_t nBytes, off64_t of
 //---------------------------------------------------------------------------------------------------------------------
 off64_t ContentHandler::HandleLseek(int fd, off64_t offset, int whence)
 {
+    if (!IsFdInRange(fd))
+    {
+        return StorageDlsymWrapper::lseek64(fd, offset, whence);
+    }
+
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
     auto fdIt = m_mapOpenHandles.find(fd);
     if (fdIt == m_mapOpenHandles.end())
@@ -193,7 +377,7 @@ off64_t ContentHandler::HandleLseek(int fd, off64_t offset, int whence)
         return StorageDlsymWrapper::lseek64(fd, offset, whence);
     }
 
-    off64_t nextOffset = fdIt->second.FileOffset;
+    off64_t nextOffset = fdIt->second->FileOffset;
     int isModified = 0;
     switch(whence)
     {
@@ -208,8 +392,8 @@ off64_t ContentHandler::HandleLseek(int fd, off64_t offset, int whence)
             break;
 
         case SEEK_END:
-            std::string path = fdIt->second.RemotePath;
-            off64_t fileSize = fdIt->second.Attributes.size;
+            std::string path = fdIt->second->RemotePath;
+            off64_t fileSize = fdIt->second->Attributes.size;
 
             /* offset > 0 is currently not supported for SEEK_END case */
             if (offset > 0)
@@ -233,7 +417,7 @@ off64_t ContentHandler::HandleLseek(int fd, off64_t offset, int whence)
         return nextOffset;
     }
 
-    fdIt->second.FileOffset = nextOffset;
+    fdIt->second->FileOffset = nextOffset;
     openHandlesLock.unlock();
 
     LOG_DEBUG("Intercepted the lseek system call and updated offset. fd={} offset={} whence={} nextOffset={}",
@@ -246,6 +430,11 @@ off64_t ContentHandler::HandleLseek(int fd, off64_t offset, int whence)
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::HandleClose(int fd)
 {
+    if (!IsFdInRange(fd))
+    {
+        return StorageDlsymWrapper::close(fd);
+    }
+
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
     auto fdIt = m_mapOpenHandles.find(fd);
     if (fdIt == m_mapOpenHandles.end())
@@ -254,13 +443,13 @@ int ContentHandler::HandleClose(int fd)
         return StorageDlsymWrapper::close(fd);
     }
 
-    FileDescriptor fullFd = fdIt->second;
-    m_mapOpenHandles.erase(fd);
+    const std::string remotePath = fdIt->second->RemotePath;
+    m_mapOpenHandles.erase(fdIt);
     openHandlesLock.unlock();
 
-    StreamingClient::GetInstance().Close(fullFd.RemotePath);
+    StreamingClient::GetInstance().Close(remotePath);
 
-    LOG_DEBUG("Intercepted the close system call at fd={} path={}", fd, fullFd.RemotePath);
+    LOG_DEBUG("Intercepted the close system call at fd={} path={}", fd, remotePath);
     return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -302,17 +491,22 @@ void* ContentHandler::HandleOpendir(const char* path)
     return dirStreamPtr;
 }
 //---------------------------------------------------------------------------------------------------------------------
-void* ContentHandler::HandleReaddir64(void* dirp)
+void* ContentHandler::HandleReaddir(void* dirp, bool isRead64)
 {
     std::unique_lock<std::mutex> dirStreamLock(m_lockDirectoryStreams);
     if (m_mapDirectoryStreams.find(static_cast<DirectoryStream *>(dirp)) == m_mapDirectoryStreams.end())
     {
-        return StorageDlsymWrapper::readdir64(dirp);
+        dirStreamLock.unlock();
+        if (isRead64)
+        {
+            return StorageDlsymWrapper::readdir64(dirp);
+        }
+        return StorageDlsymWrapper::readdir(dirp);
     }
     dirStreamLock.unlock();
 
     DirectoryStream& dirStream = *(static_cast<DirectoryStream *>(dirp));
-    LOG_DEBUG("Intercepting the readdir system call for {}", dirStream.RemotePath);
+    LOG_DEBUG("Intercepting the {} system call for {}", isRead64 ? "readdir64" : "readdir", dirStream.RemotePath);
 
     if (static_cast<size_t>(dirStream.Offset) < dirStream.Entries.size())
     {
@@ -337,7 +531,7 @@ void* ContentHandler::HandleReaddir64(void* dirp)
         }
 
         // Retry reading with newly fetched directory entries.
-        return HandleReaddir64(dirp);
+        return HandleReaddir(dirp, isRead64);
     }
     else
     {
@@ -349,21 +543,45 @@ void* ContentHandler::HandleReaddir64(void* dirp)
 int ContentHandler::HandleClosedir(void* dirp)
 {
     std::unique_lock<std::mutex> dirStreamLock(m_lockDirectoryStreams);
-    if (m_mapDirectoryStreams.find(static_cast<DirectoryStream *>(dirp)) == m_mapDirectoryStreams.end())
+    auto dirIter = m_mapDirectoryStreams.find(static_cast<DirectoryStream *>(dirp));
+    if (dirIter == m_mapDirectoryStreams.end())
     {
+        dirStreamLock.unlock();
         return StorageDlsymWrapper::closedir(dirp);
     }
 
     LOG_DEBUG("Intercepting the closedir system call for {}", (((DirectoryStream *)dirp)->RemotePath));
-    m_mapDirectoryStreams.erase((DirectoryStream *)dirp);
+    m_mapDirectoryStreams.erase(dirIter);
     return 0;
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::HandleAccess(const char* pathname, int mode)
+{
+    std::string relPath;
+    const bool isRelative = StorageInterceptUtils::GetRelativePath(m_strStorageRoot, pathname, relPath);
+    if (!isRelative)
+    {
+        return StorageDlsymWrapper::access(pathname, mode);
+    }
+
+    LOG_DEBUG("Intercepted access call for path: {}", pathname);
+    if ((mode & W_OK) == W_OK)
+    {
+        // We don't allow write access
+        LOG_ERROR("Write access not permitted for file: {}", pathname);
+        errno = EACCES;
+        return -1;
+    }
+
+    // Check if file exists and return status
+    struct stat64 stat64buf;
+    return GetPropertiesInternal(relPath, "access", &stat64buf);
 }
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::HandleXstat(int __ver, const char* pathname, struct stat* statbuf)
 {
     std::string relPath;
     const bool isRelative = StorageInterceptUtils::GetRelativePath(m_strStorageRoot, pathname, relPath);
-
     if (!isRelative)
     {
         return StorageDlsymWrapper::xstat(__ver, pathname, statbuf);
@@ -383,7 +601,6 @@ int ContentHandler::HandleXstat64(int __ver, const char* pathname, struct stat64
 {
     std::string relPath;
     const bool isRelative = StorageInterceptUtils::GetRelativePath(m_strStorageRoot, pathname, relPath);
-
     if (!isRelative)
     {
         return StorageDlsymWrapper::xstat64(__ver, pathname, statbuf);
@@ -394,6 +611,11 @@ int ContentHandler::HandleXstat64(int __ver, const char* pathname, struct stat64
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::HandleFxstat(int __ver, int fd, struct stat* statbuf)
 {
+    if (!IsFdInRange(fd))
+    {
+        return StorageDlsymWrapper::fxstat(__ver, fd, statbuf);
+    }
+
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
     auto fdIt = m_mapOpenHandles.find(fd);
     if (fdIt == m_mapOpenHandles.end())
@@ -401,7 +623,7 @@ int ContentHandler::HandleFxstat(int __ver, int fd, struct stat* statbuf)
         openHandlesLock.unlock();
         return StorageDlsymWrapper::fxstat(__ver, fd, statbuf);
     }
-    FileAttributes attributes = fdIt->second.Attributes;
+    FileAttributes attributes = fdIt->second->Attributes;
     openHandlesLock.unlock();
 
     struct stat64 stat64buf;
@@ -412,6 +634,11 @@ int ContentHandler::HandleFxstat(int __ver, int fd, struct stat* statbuf)
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::HandleFxstat64(int __ver, int fd, struct stat64* statbuf)
 {
+    if (!IsFdInRange(fd))
+    {
+        return StorageDlsymWrapper::fxstat64(__ver, fd, statbuf);
+    }
+
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
     auto fdIt = m_mapOpenHandles.find(fd);
     if (fdIt == m_mapOpenHandles.end())
@@ -419,7 +646,7 @@ int ContentHandler::HandleFxstat64(int __ver, int fd, struct stat64* statbuf)
         openHandlesLock.unlock();
         return StorageDlsymWrapper::fxstat64(__ver, fd, statbuf);
     }
-    FileAttributes attributes = fdIt->second.Attributes;
+    FileAttributes attributes = fdIt->second->Attributes;
     openHandlesLock.unlock();
 
     PopulateStatBuf(attributes, statbuf);
@@ -430,7 +657,6 @@ int ContentHandler::HandleLxstat(int __ver, const char* pathname, struct stat* s
 {
     std::string relPath;
     const bool isRelative = StorageInterceptUtils::GetRelativePath(m_strStorageRoot, pathname, relPath);
-
     if (!isRelative)
     {
         return StorageDlsymWrapper::lxstat(__ver, pathname, statbuf);
@@ -450,7 +676,6 @@ int ContentHandler::HandleLxstat64(int __ver, const char* pathname, struct stat6
 {
     std::string relPath;
     const bool isRelative = StorageInterceptUtils::GetRelativePath(m_strStorageRoot, pathname, relPath);
-
     if (!isRelative)
     {
         return StorageDlsymWrapper::lxstat64(__ver, pathname, statbuf);
@@ -481,6 +706,11 @@ int ContentHandler::GetPropertiesInternal(
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::HandleIoctl(int fd, unsigned long request, void* argp)
 {
+    if (!IsFdInRange(fd))
+    {
+        return StorageDlsymWrapper::ioctl(fd, request, argp);
+    }
+
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
     auto fdIt = m_mapOpenHandles.find(fd);
     if (fdIt == m_mapOpenHandles.end())
@@ -489,7 +719,7 @@ int ContentHandler::HandleIoctl(int fd, unsigned long request, void* argp)
         return StorageDlsymWrapper::ioctl(fd, request, argp);
     }
 
-    LOG_DEBUG("Intercepting the ioctl call for fd={} request={} path={}", fd, request, fdIt->second.RemotePath);
+    LOG_DEBUG("Intercepting the ioctl call for fd={} request={} path={}", fd, request, fdIt->second->RemotePath);
 
     // Note: ioctl() is called by python's pathlib module during file open with request as FIOCLEX, which is a no-op
     //       for us.
@@ -499,6 +729,11 @@ int ContentHandler::HandleIoctl(int fd, unsigned long request, void* argp)
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::HandleIsatty(int fd)
 {
+    if (!IsFdInRange(fd))
+    {
+        return StorageDlsymWrapper::isatty(fd);
+    }
+
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
     auto fdIt = m_mapOpenHandles.find(fd);
     if (fdIt == m_mapOpenHandles.end())
@@ -507,7 +742,7 @@ int ContentHandler::HandleIsatty(int fd)
         return StorageDlsymWrapper::isatty(fd);
     }
 
-    LOG_DEBUG("Intercepting the isatty call for fd={} path={}", fd, fdIt->second.RemotePath);
+    LOG_DEBUG("Intercepting the isatty call for fd={} path={}", fd, fdIt->second->RemotePath);
 
     // isatty() is supposed to return 1 if fd refers to a terminal and 0 otherwise (which is the case here).
     return 0;
@@ -515,6 +750,11 @@ int ContentHandler::HandleIsatty(int fd)
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::HandleFlock(int fd, int operation)
 {
+    if (!IsFdInRange(fd))
+    {
+        return StorageDlsymWrapper::flock(fd, operation);
+    }
+
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
     auto fdIt = m_mapOpenHandles.find(fd);
     if (fdIt == m_mapOpenHandles.end())
@@ -526,7 +766,7 @@ int ContentHandler::HandleFlock(int fd, int operation)
     LOG_DEBUG(
         "Intercepting the flock call for fd={} path={} operation={} LOCK_SH={} LOCK_EX={} LOCK_NB={}",
         fd,
-        fdIt->second.RemotePath,
+        fdIt->second->RemotePath,
         operation,
         (operation & LOCK_SH),
         (operation & LOCK_EX),
@@ -537,7 +777,7 @@ int ContentHandler::HandleFlock(int fd, int operation)
     return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
-int ContentHandler::AllotNewFd(const FileDescriptor& fd)
+int ContentHandler::AllotNewFd(std::unique_ptr<FileDescriptor> fd)
 {
     const uint8_t maxAttempts = 5;
     uint8_t nAttempts = 0;
@@ -545,10 +785,19 @@ int ContentHandler::AllotNewFd(const FileDescriptor& fd)
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
     while(nAttempts < maxAttempts)
     {
-        int newFd = rand() % 100000 + 90000; // 90000 is added to avoid collision with system alloted fds.
+        // FD_VALUE_START is added to avoid collision with system alloted fds.
+        int newFd = rand() % FD_VALUE_RANGE + FD_VALUE_START;
         if (m_mapOpenHandles.find(newFd) == m_mapOpenHandles.end())
         {
-            m_mapOpenHandles[newFd] = fd;
+            // If file stream is enabled, set the fd values appropriately
+            // For a valid (non-intercepted) file the fileno will be >= 0. Hence setting this to -1 to distinguish
+            // it from external streams. We are now free to use other fields (_flags) for setting our fd value.
+            if (fd->FileStream)
+            {
+                fd->FileStream->_fileno = -1;
+                fd->FileStream->_flags = newFd;
+            }
+            m_mapOpenHandles[newFd] = std::move(fd);            
             return newFd;
         }
 
@@ -557,6 +806,17 @@ int ContentHandler::AllotNewFd(const FileDescriptor& fd)
 
     LOG_ERROR("Could not get new fd after {} attempts", nAttempts);
     return -1;
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool ContentHandler::IsFdInRange(uint64_t fd)
+{
+    // Check if fd is within our alloted range
+    if (fd < FD_VALUE_START || fd >= (FD_VALUE_START + FD_VALUE_RANGE))
+    {
+        return false;
+    }
+
+    return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
 void ContentHandler::PopulateStatBuf(const FileAttributes& stats, struct stat64* statbuf)

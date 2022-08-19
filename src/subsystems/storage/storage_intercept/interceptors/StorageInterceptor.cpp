@@ -13,6 +13,36 @@ extern "C" int open64(const char *pathname, int flags, mode_t mode)
     return StorageInterceptorImpl::open64(pathname, flags, mode);
 }
 //---------------------------------------------------------------------------------------------------------------------
+extern "C" int openat(int dirfd, const char *pathname, int flags, mode_t mode)
+{
+    return StorageInterceptorImpl::openat(dirfd, pathname, flags, mode);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int openat64(int dirfd, const char *pathname, int flags, mode_t mode)
+{
+    return StorageInterceptorImpl::openat64(dirfd, pathname, flags, mode);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" void* fopen(const char* pathname, const char* mode)
+{
+    return StorageInterceptorImpl::fopen(pathname, mode);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" void* fopen64(const char* pathname, const char* mode)
+{
+    return StorageInterceptorImpl::fopen64(pathname, mode);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int fileno(void* stream)
+{
+    return StorageInterceptorImpl::fileno(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int fclose(void* stream)
+{
+    return StorageInterceptorImpl::fclose(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
 extern "C" ssize_t read(int fd, void* buf, size_t nByte)
 {
     return StorageInterceptorImpl::read(fd, buf, nByte);
@@ -38,6 +68,11 @@ extern "C" void* opendir(const char *pathname)
     return StorageInterceptorImpl::opendir(pathname);
 }
 //---------------------------------------------------------------------------------------------------------------------
+extern "C" void* readdir(void* dirp)
+{
+    return StorageInterceptorImpl::readdir(dirp);
+}
+//---------------------------------------------------------------------------------------------------------------------
 extern "C" void* readdir64(void* dirp)
 {
     return StorageInterceptorImpl::readdir64(dirp);
@@ -46,6 +81,16 @@ extern "C" void* readdir64(void* dirp)
 extern "C" int closedir(void* dirp)
 {
     return StorageInterceptorImpl::closedir(dirp);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int access(const char *pathname, int mode)
+{
+    return StorageInterceptorImpl::access(pathname, mode);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int __xstat(int __ver, const char* pathname, struct stat* statbuf)
+{
+    return StorageInterceptorImpl::xstat(__ver, pathname, statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
 extern "C" int __xstat64(int __ver, const char* pathname, struct stat64* statbuf)

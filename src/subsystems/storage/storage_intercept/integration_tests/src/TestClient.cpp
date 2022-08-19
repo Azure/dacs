@@ -119,6 +119,34 @@ void TestReaddir(
   std::cout << "========================================================" << std::endl;
 }
 //---------------------------------------------------------------------------------------------------------------------
+void TestIfStreamInterception()
+{
+  std::string remoteFilePath = "/mnt/quiverfs/imagenet_data/train/n01494475/n01494475_10008.JPEG";
+  int expectedFileSize = 324089;
+
+  std::ifstream in(remoteFilePath, std::ios::in | std::ios::binary);
+  if (!in)
+  {
+    std::cout << "couldn't open remote file: " << remoteFilePath.c_str() << std::endl;
+    throw "couldn't open remote file";
+  }
+
+  in.seekg(0, std::ios::end);
+  int size = in.tellg();
+  if (size != expectedFileSize)
+  {
+    std::cout << "remote file size mismatch. " << size << " != " << expectedFileSize << std::endl;
+    throw "remote file size mismatch";
+  }
+
+  in.seekg(0, std::ios::beg);
+  char* buffer = new char[size];
+  in.read(buffer, size);
+  in.close();
+
+  std::cout << "Readfile using std::ifstream succeeded." << std::endl;
+}
+//---------------------------------------------------------------------------------------------------------------------
 int main(int argc, char** argv)
 {
   std::cout << "Testing the list directory calls" << std::endl;
@@ -126,6 +154,9 @@ int main(int argc, char** argv)
   TestReaddir("/mnt/quiverfs/imagenet_data/train", 102, 0);
   TestReaddir("/mnt/quiverfs/imagenet_data/train/n01494475", 2, 1300);
   std::cout << "Tests for list directory calls done." << std::endl;
+
+  TestIfStreamInterception();
+  std::cout << "Test using std::ifstream done." << std::endl;
 
   std::ifstream ifil(getenv("STORAGE_INTEG_TESTCASE_FILE"), std::ios::in);
   std::string numFiles;

@@ -16,6 +16,8 @@ class ContentHandlerTest : public TestBase
         };
 
         void OpenReadAndCloseCheck(/*[in]*/ OpenReadAndCloseTask task);
+        void OpenAtReadAndCloseCheck(/*[in]*/ OpenReadAndCloseTask task);
+        void FOpenReadAndCloseCheck(/*[in]*/ OpenReadAndCloseTask task);
 
         struct ReaddirTask
         {
