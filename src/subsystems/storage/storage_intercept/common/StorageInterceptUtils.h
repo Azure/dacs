@@ -28,5 +28,12 @@ class StorageInterceptUtils
             /*[in] */ const std::string& basePath,
             /*[in] */ const char* path,
             /*[out]*/ std::string& outRelativePath);
+
+        static std::string GetFirstComponentFromPath(/*[in] */ const std::string& path);
+
+        static std::string RemoveFirstComponentFromPath(/*[in] */ const std::string& path);
+
+    private:
+        static const char SEPARATOR_CHAR = '/';
 };
 //---------------------------------------------------------------------------------------------------------------------

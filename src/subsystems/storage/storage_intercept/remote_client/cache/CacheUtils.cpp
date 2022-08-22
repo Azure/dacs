@@ -333,9 +333,13 @@ namespace cacheutils
             if (StorageInterceptConfig::GetInstance().GetRemoteStoreType() ==
                 StorageInterceptConstants::ConfigValRemoteTypeBlob)
             {
-                strCachePrefix = StorageInterceptConfig::GetInstance().GetStorageAccountName() + "/" +
-                    StorageInterceptConfig::GetInstance().GetBlobContainerName() + "/";
+                const bool isDynamicContainer = StorageInterceptConfig::GetInstance().IsDynamicContainerMount();
+                strCachePrefix = StorageInterceptConfig::GetInstance().GetStorageAccountName() + "/";
 
+                if (!isDynamicContainer)
+                {
+                    strCachePrefix += StorageInterceptConfig::GetInstance().GetBlobContainerName() + "/";
+                }
             }
             else if (StorageInterceptConfig::GetInstance().GetRemoteStoreType() ==
                 StorageInterceptConstants::ConfigValRemoteTypeAdls)

@@ -78,13 +78,6 @@ class StreamingClient
         std::atomic_uint64_t               m_nGetPropertiesCache;
         std::atomic_uint64_t               m_nGetPropertiesRemoteClient;
 
-        /*
-         * Get unique cache key.
-         */
-        static std::string GetCacheKey(
-            /*[in] */ const std::string& remotePath,
-            /*[in] */ off64_t chunkOffset);
-
         // Wrapper to call ReadChunkImpl() and update the counters tracking read chunk concurrency
         std::shared_ptr<const FileReadData> ReadChunk(
             /*[in] */ const std::string& remotePath,

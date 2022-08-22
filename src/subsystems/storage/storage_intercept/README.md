@@ -56,6 +56,7 @@ type blob
 azBlobStorageAccountName <storage-account-name>
 azBlobStorageEndpoint <storage-account-blob-endpoint>
 azBlobContainerName <storage-account-container>
+azBlobDynamicContainer <true or false - enable interception across multiple containers>
 maxConnsPerBlobClient [eg. 10 or 100]
 ```
 
