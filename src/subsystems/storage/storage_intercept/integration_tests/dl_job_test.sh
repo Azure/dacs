@@ -24,7 +24,7 @@ _run_deep_learning_job()
     _NUM_DATALOADER_WORKERS=$4
     _ENABLE_FP16=$5
     
-    STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/obj/Debug/native/linux-x64/publish/libStorageIntercept.so"
+    STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/obj/Debug/native/linux-x64/publish-storage/libStorageIntercept.so"
     runTestCmd="LD_PRELOAD=${STORAGE_INTERCEPTOR} python3 resnet_distributed.py -n ${_NUM_NODES} -nr ${_GLOBAL_NODE_RANK} -g ${_NUM_GPUS} -w ${_NUM_DATALOADER_WORKERS}"
 
     if [ $_ENABLE_FP16 = true ]
