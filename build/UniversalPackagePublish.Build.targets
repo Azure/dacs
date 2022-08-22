@@ -13,6 +13,7 @@
       <PackageChannel Condition="'$(GIT_BRANCH)'=='main'">$(OfficialChannelName)</PackageChannel>
       <PackageChannel Condition="'$(PackageChannel)'==''">$(DevChannelName)</PackageChannel>
       <PackageName>$(PackageBaseName)-$(PackageChannel)</PackageName>
+      <StoragePackageName>$(PackageBaseName)-storage-$(PackageChannel)</StoragePackageName>
 
       <CurrentDate>$([System.DateTime]::Now.ToString(Myddhhmm))</CurrentDate>
       <BranchHash Condition="'$(GIT_BRANCH)'=='main'">0</BranchHash>
@@ -23,6 +24,7 @@
       <PackageVersion>$(CurrentDate).$(BranchHash).$(PackageRevision)</PackageVersion>
 
       <PackagePublishDir>$(IntermediateOutputPath)$(ReferenceRuntimeIdentifier)\publish</PackagePublishDir>
+      <StoragePackagePublishDir>$(IntermediateOutputPath)$(ReferenceRuntimeIdentifier)\publish-storage</StoragePackagePublishDir>
     </PropertyGroup>
 
     <Exec Command="az devops project list" IgnoreExitCode="true" ConsoleToMsBuild="true" IgnoreStandardErrorWarningFormat="true" >
@@ -31,7 +33,9 @@
     <Exec Condition="$(AZURE_DEVOPS_EXT_PAT)=='' And $(AzAccountListOutput.Contains('az login'))" Command="az login" />
     <Message Importance="high"  text="Publishing universal package $(PackageName) in directory $(PackagePublishDir) with version $(PackageVersion)" />
     <Exec Command="az artifacts universal publish --organization $(AzOrganization) --project=$(AzProject) --scope project --feed $(AzArtifactFeed) --name $(PackageName) --version $(PackageVersion) --path $(PackagePublishDir)"/>
-    <Exec Command="git tag -a 'v$(PackageVersion)' -m 'Published universal pacakge for $(PackageName) with version $(PackageVersion)'"/>
+    <Message Importance="high"  text="Publishing storage package $(StoragePackageName) in directory $(StoragePackagePublishDir) with version $(PackageVersion)" />
+    <Exec Command="az artifacts universal publish --organization $(AzOrganization) --project=$(AzProject) --scope project --feed $(AzArtifactFeed) --name $(StoragePackageName) --version $(PackageVersion) --path $(StoragePackagePublishDir)"/>
+    <Exec Command="git tag -a 'v$(PackageVersion)' -m 'Published universal pacakge for $(PackageName) and $(StoragePackageName) with version $(PackageVersion)'"/>
     <Exec Condition="$(AZURE_DEVOPS_EXT_PAT)!=''" Command="git push origin 'v$(PackageVersion)'"/>
   </Target>
 
