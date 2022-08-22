@@ -61,10 +61,15 @@ class BlobClient : public IRemoteClient
             /*[in]*/ const azBlobItem_t& blobItem,
             /*[out]*/ FileAttributes& attr);
 
+        std::string GetContainerName(/*[in] */ const std::string& remotePath) const;
+
+        std::string GetBlobName(/*[in] */ const std::string& remotePath) const;
+
     private:
         std::unique_ptr<azBlobClient_t>                             m_spClient;
         AzStorageAccountContext                                     m_storageAccountContext;
         AzStorageAuthContext                                        m_storageAuthContext;
+        const bool                                                  m_bIsDynamic;
         std::string                                                 m_strContainerName;
         size_t                                                      m_nMaxConnections;
         static constexpr bool                                       USE_HTTPS=true;

@@ -56,6 +56,7 @@ namespace StorageInterceptConstants
     const char* const ConfigNameAzBlobStorageAccKey = "azBlobStorageAccountKey";
     const char* const ConfigNameAzBlobStorageEndpointUrl = "azBlobStorageEndpoint";
     const char* const ConfigNameAzBlobContainerName = "azBlobContainerName";
+    const char* const ConfigNameAzBlobDynamicContainer = "azBlobDynamicContainer";
     const char* const ConfigNameMaxConnsPerBlobClient = "maxConnsPerBlobClient";
 
     // Config constants for chunk download parallelism

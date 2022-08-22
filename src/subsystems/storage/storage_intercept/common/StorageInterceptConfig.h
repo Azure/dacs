@@ -67,6 +67,7 @@ class StorageInterceptConfig
         std::string GetBlobAccessToken();
         std::string GetStorageEndpointUrl();
         std::string GetBlobContainerName();
+        bool IsDynamicContainerMount();
         uint64_t GetMaxBlobConnectionsPerClient();
 
         // Getters for chunk download parallelism

@@ -479,6 +479,14 @@ std::string StorageInterceptConfig::GetStorageEndpointUrl()
         StorageInterceptConstants::ConfigNameAzBlobStorageEndpointUrl);
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::IsDynamicContainerMount()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameAzBlobDynamicContainer,
+        false);
+}
+//---------------------------------------------------------------------------------------------------------------------
 uint64_t StorageInterceptConfig::GetMaxBlobConnectionsPerClient()
 {
     return StorageInterceptConfig::GetOptionalConfigUint64(

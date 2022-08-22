@@ -4,12 +4,14 @@
 #include "BlobClient.h"
 #include "StorageInterceptConfig.h"
 #include "StorageInterceptLogger.h"
+#include "StorageInterceptUtils.h"
 #include "BlobClientException.h"
 #include <dirent.h>
 #include <sstream>
 #include <mstream.h>
 //---------------------------------------------------------------------------------------------------------------------
 BlobClient::BlobClient()
+    : m_bIsDynamic(StorageInterceptConfig::GetInstance().IsDynamicContainerMount())
 {
     GetConfigProperties();
     m_spClient = std::make_unique<azBlobClient_t>(
@@ -23,9 +25,11 @@ BlobClient::BlobClient()
     );
 
     LOG_INFO(
-        "Initialized blob client with accountName={}, maxConnections={} and authType={} successfully",
+        "Initialized blob client with accountName={}, maxConnections={},"
+        " isDynamicMount={} and authType={} successfully",
         m_storageAccountContext.accountName,
         m_nMaxConnections,
+        m_bIsDynamic,
         m_storageAuthContext.authType);
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -68,7 +72,11 @@ void BlobClient::GetConfigProperties()
         throw BlobClientException("Blob auth credentials missing");
     }
 
-    m_strContainerName = StorageInterceptConfig::GetInstance().GetBlobContainerName();
+    if (!m_bIsDynamic)
+    {
+        m_strContainerName = StorageInterceptConfig::GetInstance().GetBlobContainerName();
+    }
+
     m_nMaxConnections = static_cast<size_t>(StorageInterceptConfig::GetInstance().GetMaxBlobConnectionsPerClient());
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -76,7 +84,12 @@ ssize_t BlobClient::ReadChunkSync(const std::string& remotePath, void* buf, size
 {
     azure::storage_lite::omstream oStream((char *)buf, size);
     ssize_t nBytesRead = -1;
-    auto blobOutcome = m_spClient->get_chunk_to_stream_sync(m_strContainerName, remotePath, offset, size, oStream);
+    auto blobOutcome = m_spClient->get_chunk_to_stream_sync(
+        GetContainerName(remotePath),
+        GetBlobName(remotePath),
+        offset,
+        size,
+        oStream);
 
     if (!blobOutcome.success())
     {
@@ -93,8 +106,11 @@ ssize_t BlobClient::ReadChunkSync(const std::string& remotePath, void* buf, size
         }
 
         LOG_ERROR(
-            "Error occurred while reading blob bytes at path={}, status-code={}, code-name={}, error-msg={}",
+            "Error occurred while reading blob bytes at path={}, container={}, blobPath={},"
+            " status-code={}, code-name={}, error-msg={}",
             remotePath,
+            GetContainerName(remotePath),
+            GetBlobName(remotePath),
             blobOutcome.error().code,
             blobOutcome.error().code_name,
             blobOutcome.error().message);
@@ -111,23 +127,27 @@ std::string BlobClient::ReadDirectory(
   const std::string& continuationToken,
   std::vector<DirectoryEntry>& dirEntries)
 {
+    const std::string blobPath = GetBlobName(remotePath);
     auto blobOutcome =
         m_spClient->list_blobs_segmented(
-            m_strContainerName,
+            GetContainerName(remotePath),
             DIRECTORY_DELIMITER,
             continuationToken,
-            remotePath.size() == 0
+            blobPath.size() == 0
                 ? ""
-                : remotePath.back() == DIRECTORY_DELIMITER.back()
-                    ? remotePath
-                    : remotePath + DIRECTORY_DELIMITER,
+                : blobPath.back() == DIRECTORY_DELIMITER.back()
+                    ? blobPath
+                    : blobPath + DIRECTORY_DELIMITER,
             DIRENTS_BATCH_SIZE).get();
 
     if (!blobOutcome.success())
     {
         LOG_ERROR(
-            "Failed to list directory from remote for path={}, status-code={}, code-name={}, error-msg={}",
+            "Failed to list directory from remote for path={}, container={}, blobPath={},"
+            " status-code={}, code-name={}, error-msg={}",
             remotePath,
+            GetContainerName(remotePath),
+            blobPath,
             blobOutcome.error().code,
             blobOutcome.error().code_name,
             blobOutcome.error().message);
@@ -179,14 +199,15 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
     /* We are only interested in getting one response */
     const int MAX_RESULTS = 1;
 
-    std::string listBlobsQueryPrefix = (remotePath.size() == 0) ? ""
-        : remotePath.back() == DIRECTORY_DELIMITER.back()
-            ? remotePath.substr(0, remotePath.size() - 1)
-            : remotePath;
+    const std::string blobPath = GetBlobName(remotePath);
+    std::string listBlobsQueryPrefix = (blobPath.size() == 0) ? ""
+        : blobPath.back() == DIRECTORY_DELIMITER.back()
+            ? blobPath.substr(0, blobPath.size() - 1)
+            : blobPath;
 
     const auto blobOutcome =
         m_spClient->list_blobs_segmented(
-            m_strContainerName,
+            GetContainerName(remotePath),
             DIRECTORY_DELIMITER,
             emptyContinuationToken,
             listBlobsQueryPrefix,
@@ -195,23 +216,36 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
     if (!blobOutcome.success())
     {
         LOG_ERROR(
-            "Unable to get blobs for path={}, status-code={}, code-name={}, error-msg={}",
+            "Unable to get blobs for path={}, container={}, blobPath={} status-code={}, code-name={}, error-msg={}",
             remotePath,
+            GetContainerName(remotePath),
+            blobPath,
             blobOutcome.error().code,
             blobOutcome.error().code_name,
             blobOutcome.error().message);
+        
+        if (blobOutcome.error().code_name == "ContainerNotFound")
+        {
+            LOG_WARN("Container not found in GetProperties. remotePath={}", remotePath);
+            errno = ENOENT;
+            return -1;
+        }
+
         throw BlobClientException(blobOutcome.error().message);
     }
 
     if (blobOutcome.response().blobs.size() == 0)
     {
-        LOG_WARN("Blob not found in GetProperties. remotePath={}, queryPrefix={}", remotePath, listBlobsQueryPrefix);
+        LOG_WARN("Blob not found in GetProperties. remotePath={}, blobPath={}, queryPrefix={}",
+            remotePath,
+            blobPath,
+            listBlobsQueryPrefix);
         errno = ENOENT;
         return -1;
     }
 
     /* Case of root directory */
-    if (remotePath.length() == 0)
+    if (blobPath.length() == 0)
     {
         MakeDirectoryAttr(attr);
         return 0;
@@ -221,15 +255,15 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
      * so an exact match with request path (if exists), would always occur first in the list
      */
     const auto& blobResponse = blobOutcome.response().blobs[0];
-    if (remotePath.back() == DIRECTORY_DELIMITER.back())
+    if (blobPath.back() == DIRECTORY_DELIMITER.back())
     {
-        if (blobResponse.name.compare(remotePath) == 0)
+        if (blobResponse.name.compare(blobPath) == 0)
         {
             MakeDirectoryAttr(attr);
         }
         else
         {
-            LOG_WARN("Invalid blob path provided {}, response path {}", remotePath, blobResponse.name);
+            LOG_WARN("Invalid blob path provided {}, response path {}", blobPath, blobResponse.name);
             if (listBlobsQueryPrefix == blobResponse.name)
             {
                 /*
@@ -255,28 +289,28 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
     }
     else
     {
-        if (blobResponse.name.compare(remotePath) == 0)
+        if (blobResponse.name.compare(blobPath) == 0)
         {
-            /* remotePath corresponded to a file */
+            /* blobPath corresponded to a file */
             MakeFileAttr(blobResponse, attr);
         }
-        else if (blobResponse.name.compare(remotePath + DIRECTORY_DELIMITER) == 0)
+        else if (blobResponse.name.compare(blobPath + DIRECTORY_DELIMITER) == 0)
         {
-            /* remotePath corresponds to a valid directory */
+            /* blobPath corresponds to a valid directory */
             MakeDirectoryAttr(attr);
         }
         else
         {
-            if (blobResponse.name.rfind(remotePath, 0) != 0)
+            if (blobResponse.name.rfind(blobPath, 0) != 0)
             {
                 LOG_ERROR("Possible memory corruption. List blobs response={}, query={}",
                     blobResponse.name,
-                    remotePath);
+                    blobPath);
                 throw BlobClientException("Invalid blob path received in response");
             }
 
             /* strict prefix of a valid path */
-            LOG_WARN("Invalid blob path provided {}, response path {}", remotePath, blobResponse.name);
+            LOG_WARN("Invalid blob path provided {}, response path {}", blobPath, blobResponse.name);
             errno = ENOENT;
             return -1;
         }
@@ -319,5 +353,15 @@ bool BlobClient::IsIgnorableError(HttpStatus statusCode)
         isIgnorable = true;
     }
     return isIgnorable;
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string BlobClient::GetContainerName(const std::string& remotePath) const
+{
+    return m_bIsDynamic ? StorageInterceptUtils::GetFirstComponentFromPath(remotePath) : m_strContainerName;
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string BlobClient::GetBlobName(const std::string& remotePath) const
+{
+    return m_bIsDynamic ? StorageInterceptUtils::RemoveFirstComponentFromPath(remotePath) : remotePath;
 }
 //---------------------------------------------------------------------------------------------------------------------
