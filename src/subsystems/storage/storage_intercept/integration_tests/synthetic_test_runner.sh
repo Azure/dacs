@@ -131,10 +131,10 @@ else
         [compressed_zip_path]="/mnt/quiverfs/books_wiki_en_corpus.zip")
 fi
 
-STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${build_configuration}/native/linux-x64/publish-storage/libStorageIntercept.so"
+STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${build_configuration}/native/linux-x64/publish-storage/storage/libStorageIntercept.so"
 LFS_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${build_configuration}/native/linux-x64/publish/libLfsIntercept.so"
 PYTHON_IO_TEST="${SCRIPT_DIR}/io_test.py"
-EXE_TEST="${REPOSITORY_ROOT}/bin/${build_configuration}/native-storage/StorageInterceptIntegTest"
+EXE_TEST="${REPOSITORY_ROOT}/bin/${build_configuration}/native-storage/storage/StorageInterceptIntegTest"
 
 echo "$(readlink -f ${STORAGE_INTERCEPTOR})"
 echo "$(readlink -f ${EXE_TEST})"
