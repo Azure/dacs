@@ -253,6 +253,7 @@ int main(int argc, char *argv[])
 {
 
     LoggingApi::Init();
+    LoggingApi::FlushCachedLog();
 
     if (argc < 2) 
     {

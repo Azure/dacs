@@ -11,6 +11,14 @@
 #include <time.h>
 #include <fcntl.h>
 //---------------------------------------------------------------------------------------------------------------------
+/* Initialize logging during shared object init. This is to avoid cyclic dependencies during logging initialization 
+ * when log init is invoked during first log api call.
+ */
+__attribute__((constructor)) void LoggingInit(void) {
+    LoggingApi::Init();
+    LoggingApi::FlushCachedLog();
+}
+//---------------------------------------------------------------------------------------------------------------------
 ContentHandler::ContentHandler()
     : m_strStorageRoot(StorageInterceptConfig::GetInstance().GetStoragePath())
 {
