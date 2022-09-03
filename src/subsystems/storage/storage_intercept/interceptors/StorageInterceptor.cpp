@@ -43,6 +43,18 @@ extern "C" int fclose(void* stream)
     return StorageInterceptorImpl::fclose(stream);
 }
 //---------------------------------------------------------------------------------------------------------------------
+extern "C" ssize_t __read_chk(int fd, void* buf, size_t nByte, size_t buflen)
+{
+    // According to API spec this is same as read() except we should abort if buffer overflow is anticipated
+    // Ref: http://refspecs.linux-foundation.org/LSB_4.1.0/LSB-Core-generic/LSB-Core-generic/libc---read-chk-1.html
+    if (nByte > buflen)
+    {
+        throw "buffer overflow detected";
+    }
+
+    return StorageInterceptorImpl::read(fd, buf, nByte);
+}
+//---------------------------------------------------------------------------------------------------------------------
 extern "C" ssize_t read(int fd, void* buf, size_t nByte)
 {
     return StorageInterceptorImpl::read(fd, buf, nByte);

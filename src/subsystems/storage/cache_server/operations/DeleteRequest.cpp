@@ -4,7 +4,7 @@
 #include "DeleteRequest.h"
 #include "CacheManager.h"
 #include "Utils.h"
-#include "SocketUtils.h"
+#include "ConnectionUtils.h"
 #include "Logger.h"
 #include <string>
 //---------------------------------------------------------------------------------------------------------------------
@@ -44,7 +44,7 @@ bool AuthenticateRequest(const DeleteRequest& request)
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool DeleteFile(int clientFd, const DeleteRequest& deleteRequest)
+bool DeleteFile(IConnection& clientConnection, const DeleteRequest& deleteRequest)
 {
     LOG_DEBUG("filename: {}, group-id: {}",
         deleteRequest.filename(), deleteRequest.groupid());
@@ -54,14 +54,14 @@ bool DeleteFile(int clientFd, const DeleteRequest& deleteRequest)
     {
         LOG_WARN("Failed to authenticate request");
         deleteResponse.set_result(DeleteResponse::AUTH_FAILED);
-        return SendMessageToRemote(clientFd, deleteResponse);
+        return SendMessageToRemoteFinal(clientConnection, deleteResponse);
     }
 
     if (deleteRequest.type_case() != DeleteRequest::kGroupid || deleteRequest.groupid().empty())
     {
         LOG_WARN("Delete failed: groupid cannot be empty");
         deleteResponse.set_result(DeleteResponse::INTERNAL_ERROR);
-        return SendMessageToRemote(clientFd, deleteResponse);
+        return SendMessageToRemoteFinal(clientConnection, deleteResponse);
     }
 
     if (CacheManager::GetInstance().DeleteCacheEntryByGroupID(deleteRequest.groupid()))
@@ -75,7 +75,7 @@ bool DeleteFile(int clientFd, const DeleteRequest& deleteRequest)
         deleteResponse.set_result(DeleteResponse::INTERNAL_ERROR);
     }
 
-    if (!SendMessageToRemote(clientFd, deleteResponse))
+    if (!SendMessageToRemoteFinal(clientConnection, deleteResponse))
     {
         LOG_WARN("Error sending delete response to client for groupId: {}", deleteRequest.groupid());
         return false;

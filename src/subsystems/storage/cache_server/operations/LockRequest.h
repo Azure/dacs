@@ -5,6 +5,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include <string>
 #include "cache.pb.h"
+#include "IConnection.h"
 //---------------------------------------------------------------------------------------------------------------------
-bool LockFile(int clientFd, const cache::LockFileRequest& lockRequest);
+bool LockFile(IConnection& clientConnection, const cache::LockFileRequest& lockRequest);
 //---------------------------------------------------------------------------------------------------------------------

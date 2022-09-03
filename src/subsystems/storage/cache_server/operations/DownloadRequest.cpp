@@ -4,7 +4,7 @@
 #include "DownloadRequest.h"
 #include "CacheManager.h"
 #include "Utils.h"
-#include "SocketUtils.h"
+#include "ConnectionUtils.h"
 #include "Constants.h"
 #include "Logger.h"
 #include <iostream>
@@ -65,7 +65,7 @@ bool AuthenticateRequest(const DownloadRequest& request)
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool DownloadFile(int clientFd, const DownloadRequest& downloadRequest)
+bool DownloadFile(IConnection& clientConnection, const DownloadRequest& downloadRequest)
 {
     LOG_DEBUG("filename: {}, offset: {}, length: {}",
         downloadRequest.filename(), downloadRequest.offset(), downloadRequest.length());
@@ -75,7 +75,7 @@ bool DownloadFile(int clientFd, const DownloadRequest& downloadRequest)
     {
         LOG_WARN("Failed to authenticate request");
         downloadResponse.set_result(DownloadResponse::AUTH_FAILED);
-        return SendMessageToRemote(clientFd, downloadResponse);
+        return SendMessageToRemoteFinal(clientConnection, downloadResponse);
     }
 
     // Set limit on filename length
@@ -83,7 +83,7 @@ bool DownloadFile(int clientFd, const DownloadRequest& downloadRequest)
     {
         LOG_WARN("filename too large, size: {}", downloadRequest.filename().size());
         downloadResponse.set_result(DownloadResponse::FILENAME_LIMIT_EXCEEDED);
-        return SendMessageToRemote(clientFd, downloadResponse);
+        return SendMessageToRemoteFinal(clientConnection, downloadResponse);
     }
 
     CacheManager::CacheInfo cacheInfo;
@@ -132,7 +132,7 @@ bool DownloadFile(int clientFd, const DownloadRequest& downloadRequest)
             LOG_WARN("Download failure, file: {}, offset: {} more than cached filesize: {}",
                 downloadRequest.filename(), downloadRequest.offset(), cacheInfo.m_fileSize);
             downloadResponse.set_result(DownloadResponse::INVALID_OFFSET_LENGTH);
-            return SendMessageToRemote(clientFd, downloadResponse);
+            return SendMessageToRemoteFinal(clientConnection, downloadResponse);
         }
         
         if (downloadRequest.length() == 0)
@@ -152,13 +152,7 @@ bool DownloadFile(int clientFd, const DownloadRequest& downloadRequest)
     downloadResponse.set_filesize(downloadFileSize);
     if (cacheInfo.m_status == CacheManager::COMPLETED && downloadFileSize > 0) 
     {
-        int corkState = 1;
-        if (setsockopt(clientFd, IPPROTO_TCP, TCP_CORK, &corkState, sizeof(corkState)) != 0)
-        {
-            LOG_WARN("Error setting TCP_CORK, will ignore error and continue, errno: {}:{}",
-                errno, strerror(errno));
-        }
-        if (!SendMessageToRemote(clientFd, downloadResponse))
+        if (!SendMessageToRemote(clientConnection, downloadResponse))
         {
             LOG_WARN("Error sending response to client for file: {}", downloadRequest.filename());
             return false;
@@ -179,37 +173,18 @@ bool DownloadFile(int clientFd, const DownloadRequest& downloadRequest)
             return false;
         }
 
-        // loop to serve entire file
-        uint64_t totalWritten = 0;
-        while (totalWritten < downloadFileSize)
-        {
-            off_t startOffset = downloadRequest.offset() + totalWritten;
-            ssize_t written = sendfile(clientFd, fileFD, &startOffset, downloadFileSize - totalWritten);
-            if (written <= 0)
-            {
-                LOG_WARN("Error during sendfile: {}, errno: {}:{}. total bytes written: {}",
-                    destFilename, errno, strerror(errno), totalWritten);
-                close(fileFD);
-                return false;
-            }
-            if (corkState == 1)
-            {
-                corkState = 0;
-                if (setsockopt(clientFd, IPPROTO_TCP, TCP_CORK, &corkState, sizeof(corkState)) != 0)
-                {
-                    LOG_WARN("Error re-setting TCP_CORK, will ignore error and continue, errno: {}:{}",
-                        errno, strerror(errno));
-                }
-            }
-
-            totalWritten += written;
-        }
+        bool bRet = clientConnection.Sendfile(fileFD, downloadRequest.offset(), downloadFileSize);
         close(fileFD);
+        if (!bRet)
+        {
+            LOG_WARN("Failed to send file: {} to client id: {}", downloadRequest.filename(), clientConnection.GetId());
+            return false;
+        }
         LOG_INFO("downloaded and sent file to client successfully: {}", downloadRequest.filename());
     }
     else
     {
-        if (!SendMessageToRemote(clientFd, downloadResponse))
+        if (!SendMessageToRemoteFinal(clientConnection, downloadResponse))
         {
             LOG_WARN("Error sending response to client for file: {}", downloadRequest.filename());
             return false;

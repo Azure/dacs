@@ -173,26 +173,30 @@ TEST_F(CacheClientTest, DifferentFileSizesUploadDownloadTest)
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
     // 10MB file test
-    outBuffer.resize(1024*1024*10);
-    strFileName = GetRandFilename();
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
-    ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND_LOCKED);
+    // We currently don't support > 4MB upload/downloads when using Infiniband
+    if (!StorageInterceptConfig::GetInstance().GetCacheIBEnabled())
+    {
+        outBuffer.resize(1024*1024*10);
+        strFileName = GetRandFilename();
+        cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+        ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND_LOCKED);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
-    ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND);
+        cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+        ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND);
 
-    dataBuffer = GetRandDataBuffer(1024*1024*10);
-    bRetVal = m_cacheClient->UploadAsync(strFileName, dataBuffer);
-    ASSERT_EQ(bRetVal, true);
+        dataBuffer = GetRandDataBuffer(1024*1024*10);
+        bRetVal = m_cacheClient->UploadAsync(strFileName, dataBuffer);
+        ASSERT_EQ(bRetVal, true);
 
-    // wait for async upload to complete 
-    // TODO: make this deterministic
-    sleep(1);
+        // wait for async upload to complete 
+        // TODO: make this deterministic
+        sleep(1);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
-    ASSERT_EQ(cacheStatus, ICacheClient::SUCCESS);
-    ASSERT_EQ(dataRead, 1024*1024*10);
-    AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
+        cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+        ASSERT_EQ(cacheStatus, ICacheClient::SUCCESS);
+        ASSERT_EQ(dataRead, 1024*1024*10);
+        AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(CacheClientTest, ZeroSizeUploadDownloadTest)

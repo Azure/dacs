@@ -6,7 +6,7 @@
 #include "StorageInterceptConstants.h"
 #include "StorageInterceptLogger.h"
 #include "StorageDlsymWrapper.h"
-#include "poll.h"
+#include "IConnection.h"
 #include <sys/socket.h>
 #include <iomanip>
 #include <openssl/evp.h>
@@ -44,89 +44,32 @@ namespace cacheutils
         }
     }
 //---------------------------------------------------------------------------------------------------------------------
-    ssize_t TimedWrite(int fd, const void *buf, size_t nByte)
+    bool WriteAll(IConnection* connection, void *buffer, size_t nBytes)
     {
-        struct pollfd pollFDs[1];
-        memset(pollFDs, 0 , sizeof(pollFDs));
-        pollFDs[0].fd = fd;
-        pollFDs[0].events = POLLOUT;
-
-        int pollResult = poll(pollFDs, 1, SOCKET_TIMEOUT_MILLIS);
-        if (pollResult == 0)
-        {
-            LOG_WARN("Timeout writing to server, fd={}", fd);
-            return -1;
-        }
-        if (pollResult < 0 || pollFDs[0].revents != POLLOUT)
-        {
-            LOG_WARN("Error listening to write event, fd={}", fd);
-            return -1;
-        }
-
-        return send(fd, buf, nByte, 0);
+        uint64_t totalWritten = connection->Send(static_cast<const char*>(buffer), nBytes);
+        return totalWritten == nBytes;
     }
 //---------------------------------------------------------------------------------------------------------------------
-    bool WriteAll(int fd, void *buffer, size_t nBytes)
+    bool WriteAllFinal(IConnection* connection, void *buffer, size_t nBytes)
     {
-        uint64_t totalWritten = 0;
-        while (totalWritten < nBytes)
-        {
-            int bufferLen = nBytes - totalWritten;
-            int tempWrite;
-            if ((tempWrite = TimedWrite(
-                fd, 
-                static_cast<const char*>(buffer) + totalWritten,
-                bufferLen)) > 0)
-            {
-                totalWritten += tempWrite;
-            }
-            else 
-            {
-                LOG_WARN("couldn't complete write to server: fd:{}. wrote: {}, error: {}",
-                    fd, totalWritten, tempWrite);
-                return false;
-            }
-        }
-
-        return true;
+        uint64_t totalWritten = connection->SendAndFinalize(static_cast<const char*>(buffer), nBytes);
+        return totalWritten == nBytes;
     }
 //---------------------------------------------------------------------------------------------------------------------
-    ssize_t TimedRead(int fd, void *buf, size_t nByte)
-    {
-        struct pollfd pollFDs[1];
-        memset(pollFDs, 0 , sizeof(pollFDs));
-        pollFDs[0].fd = fd;
-        pollFDs[0].events = POLLIN;
-
-        int pollResult = poll(pollFDs, 1, SOCKET_TIMEOUT_MILLIS);
-        if (pollResult == 0)
-        {
-            LOG_WARN("Timeout reading from server, fd={}", fd);
-            return -1;
-        }
-        if (pollResult < 0 || pollFDs[0].revents != POLLIN)
-        {
-            LOG_WARN("Error listening to read event, fd={}", fd);
-            return -1;
-        }
-
-        return recv(fd, buf, nByte, 0);
-    }
-//---------------------------------------------------------------------------------------------------------------------
-    bool ReadAll(int fd, void *buffer, size_t nBytes)
+    bool ReadAll(IConnection* connection, void *buffer, size_t nBytes)
     {
         uint64_t totalRead = 0;
         while (totalRead < nBytes)
         {
             int tempRead;
-            if ((tempRead = TimedRead(fd, static_cast<char*>(buffer) + totalRead, nBytes - totalRead)) > 0)
+            if ((tempRead = connection->Receive(static_cast<char*>(buffer) + totalRead, nBytes - totalRead)) > 0)
             {
                 totalRead += tempRead;
             }
             else 
             {
-                LOG_WARN("Failed to download data from server, fd={}, totalRead={}, tempRead={}",
-                    fd, totalRead, tempRead);
+                LOG_WARN("Failed to download data from server, id={}, totalRead={}, tempRead={}",
+                    connection->GetId(), totalRead, tempRead);
                 return false;
             }
         }
@@ -134,14 +77,14 @@ namespace cacheutils
         return true;
     }
 //---------------------------------------------------------------------------------------------------------------------
-    int ReadBytesToArray(int clientFd, char* data, int size)
+    int ReadBytesToArray(IConnection* connection, char* data, int size)
     {
         int totalRead = 0;
 
         while (totalRead < size)
         {
             int tempRead;
-            if ((tempRead = TimedRead(clientFd, data + totalRead, size - totalRead)) > 0)
+            if ((tempRead = connection->Receive(data + totalRead, size - totalRead)) > 0)
             {
                 totalRead += tempRead;
             }
@@ -153,7 +96,7 @@ namespace cacheutils
         return totalRead;
     }
 //---------------------------------------------------------------------------------------------------------------------
-    bool SendMessageToRemote(int clientFd, const ::google::protobuf::Message& message)
+    bool SendMessageToRemote(IConnection* connection, const ::google::protobuf::Message& message)
     {
         string protoBuffer;
         if (!message.SerializeToString(&protoBuffer))
@@ -167,31 +110,53 @@ namespace cacheutils
         
         outputBuffer += protoBuffer;
 
-        if (TimedWrite(clientFd, outputBuffer.data(), outputBuffer.size()) != outputBuffer.size())
+        if (connection->Send(outputBuffer.data(), outputBuffer.size()) != outputBuffer.size())
         {
-            LOG_ERROR("couldn't send message to remote fd={}", clientFd);
+            LOG_ERROR("couldn't send message to remote id={}", connection->GetId());
             return false;
         }
         return true;
     }
 //---------------------------------------------------------------------------------------------------------------------
-    bool ReadMessageFromRemote(int serverFd, string& message)
+    bool SendMessageToRemoteFinal(IConnection* connection, const ::google::protobuf::Message& message)
+    {
+        string protoBuffer;
+        if (!message.SerializeToString(&protoBuffer))
+        {
+            LOG_ERROR("couldn't serialize message proto");
+            return false;
+        }
+
+        string outputBuffer(REQUEST_METADATA_SIZE, 0);
+        ConvertIntToBytes(protoBuffer.size(), outputBuffer.data(), 0, REQUEST_METADATA_SIZE);
+        
+        outputBuffer += protoBuffer;
+
+        if (connection->SendAndFinalize(outputBuffer.data(), outputBuffer.size()) != outputBuffer.size())
+        {
+            LOG_ERROR("couldn't send message to remote id={}", connection->GetId());
+            return false;
+        }
+        return true;
+    }
+//---------------------------------------------------------------------------------------------------------------------
+    bool ReadMessageFromRemote(IConnection* connection, string& message)
     {
         char metaData[REQUEST_METADATA_SIZE];
-        int res = ReadBytesToArray(serverFd, metaData, REQUEST_METADATA_SIZE);
+        int res = ReadBytesToArray(connection, metaData, REQUEST_METADATA_SIZE);
         if (res != REQUEST_METADATA_SIZE)
         {
-            LOG_ERROR("error: Failed to read metadata from server, fd={}", serverFd);
+            LOG_ERROR("error: Failed to read metadata from server, id={}", connection->GetId());
             return false;
         }
 
         uint32_t protoSize = ConvertBytesToInt(metaData, REQUEST_METADATA_SIZE);
 
         string requestMessage(protoSize, 0);
-        res = ReadBytesToArray(serverFd, requestMessage.data(), protoSize);
+        res = ReadBytesToArray(connection, requestMessage.data(), protoSize);
         if (res != protoSize)
         {
-            LOG_ERROR("error: Failed to read protobuf message, fd={}", serverFd);
+            LOG_ERROR("error: Failed to read protobuf message, id={}", connection->GetId());
             return false;
         }
         message = requestMessage;
@@ -291,6 +256,17 @@ namespace cacheutils
                 request.mutable_lockrequest()->filename() + 
                 std::to_string(timestamp);
             authParams = request.mutable_lockrequest()->mutable_authparams();
+        }
+        else if (request.type_case() == Request::kIbinitrequest)
+        {
+            serializedHeaders =
+                std::string("IB") +
+                std::to_string(request.ibinitrequest().clientlid()) +
+                std::to_string(request.ibinitrequest().clientibport()) +
+                std::to_string(request.ibinitrequest().clientmtu()) +
+                std::to_string(request.ibinitrequest().clientqpn_size()) +
+                std::to_string(timestamp);
+            authParams = request.mutable_ibinitrequest()->mutable_authparams();
         }
         else
         {

@@ -14,8 +14,9 @@
 #include <atomic>
 #include <stdint.h>
 #include <cmath>
+#include <errno.h>
+#include <cstring>
 #include "ThreadPool.h"
-#include <ext/stdio_filebuf.h>
 #include <memory>
 //---------------------------------------------------------------------------------------------------------------------
 #define TIME_NOW std::chrono::high_resolution_clock::now();
@@ -27,41 +28,49 @@
 #define TIMED_EXEC(stmt, timer)       { auto tS = TIME_NOW;  stmt; auto tE = TIME_NOW; timer = NANO_INTERVAL(tS, tE); }
 //---------------------------------------------------------------------------------------------------------------------
 void TestFileRead(
-  std::string path,
+  const std::string& path,
   size_t size,
   std::atomic_uint_fast64_t &filesVisited,
   std::atomic_uint_fast64_t &numBytesRead)
 {
   int fd = ::open(path.c_str(), O_RDONLY, 0777);
 
-  ssize_t readSize = 0;
-  std::string fileData;
-  fileData.resize(size, '0');
-  char* writeAddr = &(*fileData.begin());
-  
-  for(int j = 0; j < 4; j ++)
+  static constexpr size_t bufferSize = 64 * 1024 * 1024;
+  static thread_local std::unique_ptr<char[]> writeAddr(new char[bufferSize]);
+
+  // for(int j = 0; j < 4; j ++)
+  // {
+  //   readSize += ::read(fd, writeAddr + readSize, 4096);
+  // }
+  //::lseek64(fd, 0, SEEK_SET);
+
+  size_t readSize = 0;
+  while (readSize < size)
   {
-    readSize += ::read(fd, writeAddr + readSize, 4096);
-  }
-  
-  ::lseek64(fd, 0, SEEK_SET);
-  readSize = 0;
-  
-  while (true)
-  {
-    uint64_t toRead = std::min(64UL * 1024UL * 1024UL, size);
-    ssize_t nBytesReadNow = ::read(fd, writeAddr + readSize, toRead);
+    size_t toRead = std::min(bufferSize, size - readSize);
+    ssize_t nBytesReadNow = ::read(fd, writeAddr.get(), toRead);
     if (nBytesReadNow > 0)
     {
       readSize += nBytesReadNow;
+    }
+    else if (nBytesReadNow < 0)
+    {
+      std::cout << "ERROR: failed to read() err: " << fd << "," << nBytesReadNow << "," << toRead
+        << "," << strerror(errno) << std::endl;
+      throw "failed to read file";
     }
     else
     {
       break;
     }
   }
-  fileData.clear();
   ::close(fd);
+
+  if (size != readSize)
+  {
+    std::cout << "ERROR: read bytes mismatch expected: " << size << ", read: " << readSize << std::endl;
+    throw "read file incomplete";
+  }
 
   filesVisited++;
   numBytesRead += readSize;
@@ -158,13 +167,20 @@ int main(int argc, char** argv)
   TestIfStreamInterception();
   std::cout << "Test using std::ifstream done." << std::endl;
 
+  if (argc < 3)
+  {
+    std::cout << "Too few arguments provided, terminating" << std::endl;
+    exit(0);
+  }
+
   std::ifstream ifil(getenv("STORAGE_INTEG_TESTCASE_FILE"), std::ios::in);
   std::string numFiles;
   std::getline(ifil, numFiles);
   uint64_t numFilesInt = ::atoi(numFiles.c_str());
   std::vector<std::pair<std::string, size_t>> samples;
 
-  for(uint64_t lineNo = 1; lineNo <= numFilesInt; lineNo++)
+  uint64_t numIterations = ::atoi(argv[1]);
+  for(uint64_t lineNo = 1; lineNo <= std::min(numIterations, numFilesInt); lineNo++)
   {
     std::string fileData;
     std::getline(ifil, fileData);
@@ -177,27 +193,20 @@ int main(int argc, char** argv)
   std::cout << "Number of samples in the file : " << samples.size() << std::endl;  
   ifil.close();
 
-  if (argc < 3)
-  {
-    std::cout << "Too few arguments provided, terminating" << std::endl;
-    exit(0);
-  }
-
   std::cout << "Testing the file open / read / close calls" << std::endl;
-  uint64_t numIterations = ::atoi(argv[1]);
   int parallelism = ::atoi(argv[2]);
 
   std::atomic_uint_least64_t filesVisited(0);
   std::atomic_uint_fast64_t numBytesRead(0);
-  
+
   uint64_t fileOpsTimer;
   TIMED_EXEC(
   {
     std::unique_ptr<ThreadPool> jobPool = std::make_unique<ThreadPool>(parallelism);
     for(size_t i = 0; i < numIterations; i++)
     {
-      std::string path = samples[i].first;
-      size_t size = samples[i].second;
+      std::string path = samples[i % numFilesInt].first;
+      size_t size = samples[i % numFilesInt].second;
 
       jobPool->post([path, size, &filesVisited, &numBytesRead]()
       {

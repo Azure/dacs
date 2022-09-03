@@ -5,6 +5,10 @@
 #include "StorageInterceptLogger.h"
 #include "StorageInterceptConfig.h"
 #include "StorageDlsymWrapper.h"
+#include "SocketConnection.h"
+#include "IBConnection.h"
+#include "cache.pb.h"
+#include "CacheUtils.h"
 #include <errno.h>
 #include <string.h>
 #include <netinet/in.h>
@@ -18,15 +22,23 @@
 #include <netdb.h>
 #include <mutex>
 //---------------------------------------------------------------------------------------------------------------------
+using namespace cache;
+using namespace cacheutils;
+using namespace ibutils;
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
 ConnectionManager::ConnectionManager(int serverPort, bool useLocalServer, const std::vector<std::string>& cacheServers)
-    : m_ServerPort(serverPort)
-    , m_bReuseServerConnections(StorageInterceptConfig::GetInstance().GetCacheReuseServerConnections())
+    : m_ServerPort(serverPort),
+      m_bReuseServerConnections(StorageInterceptConfig::GetInstance().GetCacheReuseServerConnections()),
+      m_bUseInfiniband(StorageInterceptConfig::GetInstance().GetCacheIBEnabled()),
+      m_ibDevice{0}
 {
     if (useLocalServer)
     {
         m_numServerNodes = 1;
+
+        // Infiniband is not necessary when using localhost
+        m_bUseInfiniband = false;
         m_vecCacheServers.push_back("127.0.0.1");
         LOG_INFO("Using 127.0.0.1 as cache server");
     }
@@ -42,139 +54,332 @@ ConnectionManager::ConnectionManager(int serverPort, bool useLocalServer, const 
         for (const string& nodeEntry : cacheServers)
         {
             m_vecCacheServers.push_back(nodeEntry);
-            LOG_INFO("Added cache server: {}", nodeEntry)
+            LOG_INFO("Added cache server={}", nodeEntry)
         }
     }
 
-    m_vecFdQueue.resize(m_numServerNodes);
+    // Hack as resize() on vector<queue<unique_ptr>> does not work due to move requirements
+    std::vector<std::queue<std::unique_ptr<IConnection>>> initConnectionQueue(m_numServerNodes);
+    m_vecConnectionQueue.swap(initConnectionQueue);
 
     // Simple hack as resize() on vector<mutex> does not work due to move requirements  
     vector<mutex> initMutices(m_numServerNodes);
     m_vecLocks.swap(initMutices);
 
+    if (m_bUseInfiniband)
+    {
+        InitInfiniband();
+    }
+
     this->m_nMaxConnsPerServer = (MAX_CONNECTIONS_REUSE_SIZE + m_numServerNodes - 1) / m_numServerNodes;
-    LOG_INFO("Initialized Cache ConnectionManager. serverPort: {}, m_numServerNodes: {}, m_nMaxConnsPerServer: {},"
-        " m_bReuseServerConnections: {}",
+    LOG_INFO("Initialized Cache ConnectionManager. serverPort={} m_numServerNodes={} m_nMaxConnsPerServer={}"
+        " m_bReuseServerConnections={} m_bUseInfiniband={}",
         serverPort,
         m_numServerNodes,
         m_nMaxConnsPerServer,
-        m_bReuseServerConnections ? "true" : "false"
+        m_bReuseServerConnections ? "true" : "false",
+        m_bUseInfiniband ? "true" : "false"
         );
 }
 //---------------------------------------------------------------------------------------------------------------------
 ConnectionManager::~ConnectionManager()
 {
     LOG_INFO("Purge all open connections");
-    for (auto queueFd : m_vecFdQueue)
+    for (auto &queueFd : m_vecConnectionQueue)
     {
         while (!queueFd.empty())
         {
-            int serverFd = queueFd.front();
+            auto serverConnection = move(queueFd.front());
             queueFd.pop();
-            LOG_DEBUG("Cleanup server fd={}", serverFd);
-            StorageDlsymWrapper::close(serverFd);
         }
     }
+
+    m_ibDevice.pd.reset(nullptr);
+    m_ibDevice.context.reset(nullptr);
 }
 //---------------------------------------------------------------------------------------------------------------------
-int ConnectionManager::InitFreshConnection(int serverIndex)
+bool ConnectionManager::InitInfiniband()
+{
+    // Ensure ibv_fork_init() is called only once per process
+    static std::once_flag onceFlag;
+
+    // Reset IB flag and enable it only if the IB setup succeeds
+    m_bUseInfiniband = false;
+    std::call_once(onceFlag, [](){
+        int rc = ibv_fork_init();
+        if (rc != 0)
+        {
+            LOG_CRITICAL("ibv_fork_init() failed error={},{}", rc, strerror(errno));
+        }
+    });
+
+    // TODO: check status of ibv_fork_init() return value, not sure if we need to terminate the process
+
+    unique_ibv_context context;
+    bool bDeviceFound = GetIBDeviceInfo(m_ibDevice.lid, m_ibDevice.port, m_ibDevice.mtu, context);
+    if (!bDeviceFound)
+    {
+        LOG_WARN("No active IB ports found");
+        return false;
+    }
+
+    unique_ibv_pd pd(ibv_alloc_pd(context.get()), FreeIbvPd);
+    if (!pd)
+    {
+        LOG_WARN("ibv_alloc_pd failed error={}", strerror(errno));
+        return false;
+    }
+
+    LOG_INFO("IB Init successful");
+    m_ibDevice.context = move(context);
+    m_ibDevice.pd = move(pd);
+    m_bUseInfiniband = true;
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd, int serverIndex)
+{
+    Request request;
+    IBInitRequest* ibRequest = request.mutable_ibinitrequest();
+    ibRequest->set_clientibport(m_ibDevice.port);
+    ibRequest->set_clientlid(m_ibDevice.lid);
+    ibRequest->set_clientmtu(m_ibDevice.mtu);
+    auto clientQpns = ibRequest->mutable_clientqpn();
+    clientQpns->Clear();
+
+    vector<unique_ibv_qp> vectorQps;
+    vector<unique_ibv_cq> vectorCqs;
+    vector<unique_ibv_comp_channel> vectorEventChannels;
+    for (int qpn = 0; qpn < IB_CONNECTIONS_PER_SERVER; qpn++)
+    {
+        unique_ibv_comp_channel compChannel(ibv_create_comp_channel(m_ibDevice.context.get()), FreeIbvCompChannel);
+        if (!compChannel)
+        {
+            LOG_ERROR("ibv_create_comp_channel failed error={}", strerror(errno));
+            close(serverFd);
+            return nullptr;
+        }
+
+        unique_ibv_cq cq(ibv_create_cq(m_ibDevice.context.get(), 2, NULL, compChannel.get(), 0), FreeIbvCq);
+        if (!cq)
+        {
+            LOG_ERROR("ibv_create_cq failed error={}", strerror(errno));
+            close(serverFd);
+            return nullptr;
+        }
+
+        int rc = ibv_req_notify_cq(cq.get(), 0);
+        if (rc != 0)
+        {
+            LOG_ERROR("ibv_req_notify_cq failed error={},{}", rc, strerror(errno));
+            close(serverFd);
+            return nullptr;
+        }
+
+        struct ibv_qp_init_attr qpInitAttr;
+        memset(&qpInitAttr, 0, sizeof(struct ibv_qp_init_attr));
+
+        // We use same queue for send and receive requests
+        qpInitAttr.send_cq = cq.get();
+        qpInitAttr.recv_cq = cq.get();
+        qpInitAttr.srq = nullptr;
+
+        // Setup reliable communication
+        qpInitAttr.qp_type = IBV_QPT_RC;
+
+        // There is only one message outstanding at any given time on the connection
+        qpInitAttr.cap.max_send_wr = 1;
+        qpInitAttr.cap.max_recv_wr = 1;
+        qpInitAttr.cap.max_send_sge = 1;
+        qpInitAttr.cap.max_recv_sge = 1;
+
+        // Inline data limit (60 bytes) not sufficient for our use case so disabling it
+        qpInitAttr.cap.max_inline_data = 0;
+
+        // We need to track all notifications (send and receive acknowledgement)
+        qpInitAttr.sq_sig_all = 1;
+        unique_ibv_qp qp(ibv_create_qp(m_ibDevice.pd.get(), &qpInitAttr), FreeIbvQp);
+        if (!qp)
+        {
+            LOG_ERROR("ibv_create_qp failed error={}", strerror(errno));
+            close(serverFd);
+            return nullptr;
+        }
+
+        clientQpns->Add(qp->qp_num);
+        vectorQps.push_back(move(qp));
+        vectorCqs.push_back(move(cq));
+        vectorEventChannels.push_back(move(compChannel));
+    }
+
+    // serverFd will be auto-closed by socketConnection
+    unique_ptr<IConnection> socketConnection = make_unique<SocketConnection>(serverFd);
+    if (!AddAuthParams(request))
+    {
+        LOG_WARN("failed to create auth request");
+        return nullptr;
+    }
+
+    if (!SendMessageToRemoteFinal(socketConnection.get(), request))
+    {
+        LOG_WARN("couldn't send message to server");
+        return nullptr;
+    }
+
+    string requestMessage;
+    if (!ReadMessageFromRemote(socketConnection.get(), requestMessage))
+    {
+        LOG_WARN("couldn't read message from server");
+        return nullptr;
+    }
+
+    IBInitResponse response;
+    if (!response.ParseFromString(requestMessage))
+    {
+        LOG_WARN("Failed to parse protobuf message");
+        return nullptr;
+    }
+
+    if (response.result() != IBInitResponse::SUCCESS)
+    {
+        LOG_WARN("unexpected response={}", response.result());
+        return nullptr;
+    }
+
+    if (response.serverqpn_size() != IB_CONNECTIONS_PER_SERVER)
+    {
+        LOG_WARN("serverqpn size mismatch {}!={}", IB_CONNECTIONS_PER_SERVER, response.serverqpn_size());
+        return nullptr;
+    }
+
+    // Create one to one qp mapping for client-server communication
+    for (int qpn = 0; qpn < IB_CONNECTIONS_PER_SERVER; qpn++)
+    {
+        auto qp = move(vectorQps[qpn]);
+        bool bRet = SetupQPForSendAndReceive(
+            qp.get(),
+            m_ibDevice.port,
+
+            // Using minimum of server and client mtu to ensure both are configured with the same mtu value
+            (ibv_mtu)std::min((uint32_t)m_ibDevice.mtu, response.servermtu()),
+            response.serverqpn().Get(qpn),
+            response.serverlid(),
+            response.serveribport());
+        if (!bRet)
+        {
+            LOG_WARN("Failed to setup QP id={}", qp->qp_num);
+            return nullptr;
+        }
+
+        // Register an MR block
+        unique_ptr<char[]> mrBufferBlock(new char[IB_BUFFER_SIZE]);
+        unique_ibv_mr mr(ibv_reg_mr(m_ibDevice.pd.get(), mrBufferBlock.get(), IB_BUFFER_SIZE,
+            IBV_ACCESS_LOCAL_WRITE), FreeIbvMr);
+        if (!mr)
+        {
+            LOG_WARN("ibv_reg_mr failed error={}", strerror(errno));
+            return nullptr;
+        }
+
+        LOG_INFO("Created IB connection, qp={}", qp->qp_num);
+        if (qpn < IB_CONNECTIONS_PER_SERVER - 1)
+        {
+
+            // Add all but one connections to the re-use pool
+            ReleaseConnection(serverIndex, move(make_unique<IBConnection>(move(qp), move(vectorEventChannels[qpn]),
+                move(vectorCqs[qpn]), move(mr), move(mrBufferBlock))), false);
+        }
+        else
+        {
+            return move(make_unique<IBConnection>(move(qp), move(vectorEventChannels[qpn]), move(vectorCqs[qpn]),
+                move(mr), move(mrBufferBlock)));
+        }
+    }
+
+    return nullptr;
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::unique_ptr<IConnection> ConnectionManager::InitFreshConnection(int serverIndex)
 {
     // TODO: Retry on failures
-
-    int serverFd = socket(AF_INET, SOCK_STREAM, 0);
-    if (serverFd < 0)
-    {
-        LOG_CRITICAL("Error creating a socket fd at client: {}-{}", errno, strerror(errno));
-        return -1;
-    }
 
     struct addrinfo *structAddrInfo;
     int ret = getaddrinfo(m_vecCacheServers[serverIndex].c_str(), NULL, NULL, &structAddrInfo);
     if (ret != 0)
     {
-        LOG_CRITICAL("Couldn't resolve server address: {}", m_vecCacheServers[serverIndex]);
-        return -1;
+        LOG_CRITICAL("Couldn't resolve server address={} error={}", m_vecCacheServers[serverIndex], gai_strerror(ret));
+        return nullptr;
     }
 
-    sockaddr_in structSockAddr; 
-    structSockAddr.sin_addr = ((sockaddr_in *)structAddrInfo->ai_addr)->sin_addr; 
+    int serverFd = socket(AF_INET, SOCK_STREAM, 0);
+    if (serverFd < 0)
+    {
+        LOG_CRITICAL("Error creating a socket fd at client error={},{}", errno, strerror(errno));
+        return nullptr;
+    }
+
+    sockaddr_in structSockAddr;
+    structSockAddr.sin_addr = ((sockaddr_in *)structAddrInfo->ai_addr)->sin_addr;
     structSockAddr.sin_family = AF_INET;
     structSockAddr.sin_port = htons(m_ServerPort);
     freeaddrinfo(structAddrInfo);
 
     if (connect(serverFd, (sockaddr * ) &structSockAddr, sizeof(sockaddr)) < 0)
     {
-        LOG_CRITICAL("Error during socket connect: {}-{}", errno, strerror(errno));
+        LOG_CRITICAL("Error during socket connect error={},{}", errno, strerror(errno));
         StorageDlsymWrapper::close(serverFd);
-        return -1;
+        return nullptr;
     }
 
     int enable = 1;
     if (setsockopt(serverFd, SOL_TCP, TCP_NODELAY, &enable, sizeof(enable)) != 0)
     {
-        LOG_CRITICAL("Error setting TCP_NODELAY on client socket: {}-{}", errno, strerror(errno));
+        LOG_CRITICAL("Error setting TCP_NODELAY on client socket error={},{}", errno, strerror(errno));
         StorageDlsymWrapper::close(serverFd);
-        return -1;
+        return nullptr;
     }
 
-    LOG_INFO("Created new server connection, fd={}, serverIndex={}", serverFd, serverIndex);
-    return serverFd;
+    if (m_bUseInfiniband)
+    {
+        return SetupIBConnections(serverFd, serverIndex);
+    }
+
+    LOG_INFO("Created new server connection fd={} serverIndex={}", serverFd, serverIndex);
+    return move(make_unique<SocketConnection>(serverFd));
 }
 //---------------------------------------------------------------------------------------------------------------------
-int ConnectionManager::GetFd(int serverIndex)
+std::unique_ptr<IConnection> ConnectionManager::GetConnection(int serverIndex)
 {
     if (m_bReuseServerConnections)
     {
         // First check the connection pool for valid connections
         lock_guard queueLock(m_vecLocks[serverIndex]);
-        while (!m_vecFdQueue[serverIndex].empty())
+        while (!m_vecConnectionQueue[serverIndex].empty())
         {
-            int serverFd = m_vecFdQueue[serverIndex].front();
-            m_vecFdQueue[serverIndex].pop();
-            if (IsValidConnection(serverFd))
+            auto serverConnection = move(m_vecConnectionQueue[serverIndex].front());
+            m_vecConnectionQueue[serverIndex].pop();
+            if (serverConnection->IsValidConnection())
             {
-                LOG_DEBUG("Reusing server fd={}", serverFd);
-                return serverFd;
+                LOG_DEBUG("Reusing server connection id={}", serverConnection->GetId());
+                return move(serverConnection);
             }
-            
-            LOG_DEBUG("Close server fd={}", serverFd);
-            StorageDlsymWrapper::close(serverFd);
         }
     }
 
-    return InitFreshConnection(serverIndex); 
+    return move(InitFreshConnection(serverIndex));
 }
 //---------------------------------------------------------------------------------------------------------------------
-void ConnectionManager::ReleaseFd(int serverIndex, int serverFd, bool errorFd)
+void ConnectionManager::ReleaseConnection(int serverIndex, std::unique_ptr<IConnection> serverConnection, bool errorFd)
 {
-    if (m_bReuseServerConnections && !errorFd && IsValidConnection(serverFd))
+    if (m_bReuseServerConnections && !errorFd && serverConnection->IsValidConnection())
     {
         lock_guard queueLock(m_vecLocks[serverIndex]);
-        if (m_vecFdQueue[serverIndex].size() < m_nMaxConnsPerServer)
+        if (m_vecConnectionQueue[serverIndex].size() < m_nMaxConnsPerServer)
         {
-            LOG_DEBUG("Add to reuse pool, fd={}", serverFd);
-            m_vecFdQueue[serverIndex].push(serverFd);
-        }
-        else
-        {
-            LOG_DEBUG("Close server fd={}, reuse queue is full", serverFd);
-            StorageDlsymWrapper::close(serverFd);
+            LOG_DEBUG("Add connection to reuse pool id={}", serverConnection->GetId());
+            serverConnection->ResetConnection();
+            m_vecConnectionQueue[serverIndex].push(move(serverConnection));
         }
     }
-    else
-    {
-        LOG_DEBUG("Close server fd={}", serverFd);
-        StorageDlsymWrapper::close(serverFd);
-    }
-}
-//---------------------------------------------------------------------------------------------------------------------
-bool ConnectionManager::IsValidConnection(int connectionFd)
-{
-    if (recv(connectionFd, NULL, 1, MSG_PEEK | MSG_DONTWAIT) == 0)
-    {
-        LOG_DEBUG("Found stale fd={}", connectionFd);
-        return false;
-    }
-    return true;
 }
 //---------------------------------------------------------------------------------------------------------------------

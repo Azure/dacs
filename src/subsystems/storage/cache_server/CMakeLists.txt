@@ -11,11 +11,13 @@ message("Current CMAKE_REMOTE_PUBLISH_DIRECTORY ${CMAKE_REMOTE_PUBLISH_DIRECTORY
 
 include_directories(${CMAKE_SOURCE_DIR}/src/subsystems/common/native_lib/diagnostics
                     ${CMAKE_SOURCE_DIR}/src/subsystems/reliability/common/native
+                    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common
                     .
                     ./operations
                     ./proto
                     ./utils
                     ./state
+                    ./infiniband
                     /opt/protobufstatic-3.0.0/include
                     )
 
@@ -28,7 +30,8 @@ execute_process(
                 --cpp_out=${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/proto
                 ${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/proto/cache.proto)
 
-file(GLOB CACHE_SERVER_SOURCES *cpp ./operations/*cpp ./utils/*cpp ./state/*cpp ./proto/*cc)
+file(GLOB CACHE_SERVER_SOURCES *cpp ./operations/*cpp ./utils/*cpp ./state/*cpp ./infiniband/*cpp ./proto/*cc
+    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/*cpp)
 
 add_executable(${CACHE_SERVER_EXEC} ${CACHE_SERVER_SOURCES})
 
@@ -40,6 +43,7 @@ SET_TARGET_PROPERTIES(staticprotobuf PROPERTIES
 target_link_libraries(
     ${CACHE_SERVER_EXEC}
     pthread
+    ibverbs
     crypto
     diagnostics
     reliability_common

@@ -1,7 +1,7 @@
 ///--------------------------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
-#include "SocketUtils.h"
+#include "ConnectionUtils.h"
 #include "Constants.h"
 #include "Logger.h"
 #include <chrono>
@@ -10,7 +10,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
-uint64_t ConvertBytesToInt(char *data, int size)
+uint64_t ConvertBytesToInt(char* data, int size)
 {
     uint64_t result = 0;
     uint64_t mask = 255;
@@ -34,28 +34,28 @@ void ConvertIntToBytes(uint64_t source, char* destination, int index, int size)
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-int ReadBytesToArray(int clientFd, char* data, int size)
+int ReadBytesToArray(IConnection& clientConnection, char* data, int size)
 {
     int totalRead = 0;
     int tempRead;
 
     while (totalRead < size)
     {
-        if ((tempRead = read(clientFd, data + totalRead, size - totalRead)) > 0)
+        if ((tempRead = clientConnection.Read(data + totalRead, size - totalRead)) > 0)
         {
             totalRead += tempRead;
         }
         else 
         {
-            LOG_WARN("read client incomplete, fd: {}, errno: {}:{}, expected: {}, read: {}",
-                clientFd, errno, strerror(errno), size, totalRead);
+            LOG_WARN("read client incomplete, id: {}, errno: {}:{}, expected: {}, read: {}",
+                clientConnection.GetId(), errno, strerror(errno), size, totalRead);
             return totalRead;
         }
     }
     return totalRead;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool SendMessageToRemote(int clientFd, const ::google::protobuf::Message& message)
+bool SendMessageToRemote(IConnection& clientConnection, const ::google::protobuf::Message& message)
 {
     string protoBuffer;
     if (!message.SerializeToString(&protoBuffer))
@@ -66,12 +66,32 @@ bool SendMessageToRemote(int clientFd, const ::google::protobuf::Message& messag
 
     string outputBuffer(REQUEST_METADATA_SIZE, 0);
     ConvertIntToBytes(protoBuffer.size(), outputBuffer.data(), 0, REQUEST_METADATA_SIZE);
-    
     outputBuffer += protoBuffer;
-
-    if (write(clientFd, outputBuffer.data(), outputBuffer.size()) != outputBuffer.size())
+    if (clientConnection.Write(outputBuffer.data(), outputBuffer.size()) != outputBuffer.size())
     {
-        LOG_WARN("couldn't write response to client fd: {}, errno: {}:{}", clientFd, errno, strerror(errno));
+        LOG_WARN("couldn't write response to client id: {}, errno: {}:{}",
+            clientConnection.GetId(), errno, strerror(errno));
+        return false;
+    }
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool SendMessageToRemoteFinal(IConnection& clientConnection, const ::google::protobuf::Message& message)
+{
+    string protoBuffer;
+    if (!message.SerializeToString(&protoBuffer))
+    {
+        LOG_WARN("couldn't serialize message proto");
+        return false;
+    }
+
+    string outputBuffer(REQUEST_METADATA_SIZE, 0);
+    ConvertIntToBytes(protoBuffer.size(), outputBuffer.data(), 0, REQUEST_METADATA_SIZE);
+    outputBuffer += protoBuffer;
+    if (clientConnection.WriteFinal(outputBuffer.data(), outputBuffer.size()) != outputBuffer.size())
+    {
+        LOG_WARN("couldn't write response to client id: {}, errno: {}:{}",
+            clientConnection.GetId(), errno, strerror(errno));
         return false;
     }
     return true;

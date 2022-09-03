@@ -4,6 +4,7 @@
 #pragma once
 //---------------------------------------------------------------------------------------------------------------------
 #include "cache.pb.h"
+#include "IConnection.h"
 //---------------------------------------------------------------------------------------------------------------------
-bool HandleGetAttribute(int clientFd, const cache::GetAttributeRequest& getAttributeRequest);
+bool HandleGetAttribute(IConnection& clientConnection, const cache::GetAttributeRequest& getAttributeRequest);
 //---------------------------------------------------------------------------------------------------------------------
