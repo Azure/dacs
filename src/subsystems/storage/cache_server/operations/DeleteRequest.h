@@ -5,6 +5,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include <string>
 #include "cache.pb.h"
+#include "IConnection.h"
 //---------------------------------------------------------------------------------------------------------------------
-bool DeleteFile(int clientFd, const cache::DeleteRequest& deleteRequest);
+bool DeleteFile(IConnection& clientConnection, const cache::DeleteRequest& deleteRequest);
 //---------------------------------------------------------------------------------------------------------------------

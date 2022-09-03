@@ -4,6 +4,7 @@
 #pragma once
 #include "cache.pb.h"
 #include "FileReadData.h"
+#include "IConnection.h"
 #include <openssl/sha.h>
 #include <gtest/gtest.h>
 //---------------------------------------------------------------------------------------------------------------------
@@ -34,7 +35,7 @@ class EncryptionUtil
         */
         bool DoDecrypt(
             /*[in ]*/ const cache::DownloadResponse& response,
-            /*[in ]*/ int serverFd,
+            /*[in ]*/ IConnection* serverConnection,
             /*[out]*/ char* buffer,
             /*[out]*/ uint64_t& readLength);
 

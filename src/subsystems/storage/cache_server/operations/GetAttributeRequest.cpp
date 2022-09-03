@@ -4,7 +4,7 @@
 #include "UploadRequest.h"
 #include "AttributesManager.h"
 #include "Utils.h"
-#include "SocketUtils.h"
+#include "ConnectionUtils.h"
 #include "Constants.h"
 #include "Logger.h"
 #include <fstream>
@@ -69,7 +69,7 @@ void PopulateAttributesInResponse(GetAttributeResponse& getAttributeResponse,
     fileAttr->set_modifiedtime(cacheAttr.m_modifiedtime);
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool HandleGetAttribute(int clientFd, const GetAttributeRequest& getAttributeRequest)
+bool HandleGetAttribute(IConnection& clientConnection, const GetAttributeRequest& getAttributeRequest)
 {
     LOG_DEBUG("filename received: {}, lock: {}", getAttributeRequest.filename(), getAttributeRequest.enablelock());
 
@@ -78,7 +78,7 @@ bool HandleGetAttribute(int clientFd, const GetAttributeRequest& getAttributeReq
     {
         LOG_WARN("Failed to authenticate request");
         getAttributeResponse.set_result(GetAttributeResponse::AUTH_FAILED);
-        return SendMessageToRemote(clientFd, getAttributeResponse);
+        return SendMessageToRemoteFinal(clientConnection, getAttributeResponse);
     }
 
     if (getAttributeRequest.enablelock())
@@ -124,7 +124,7 @@ bool HandleGetAttribute(int clientFd, const GetAttributeRequest& getAttributeReq
         }
     }
 
-    if (!SendMessageToRemote(clientFd, getAttributeResponse))
+    if (!SendMessageToRemoteFinal(clientConnection, getAttributeResponse))
     {
         LOG_WARN("Error sending getAttributeRespone to client for entry: {}", getAttributeRequest.filename());
         return false;

@@ -3,10 +3,12 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "Constants.h"
 #include "Utils.h"
-#include "SocketUtils.h"
+#include "ConnectionUtils.h"
 #include "UploadRequest.h"
 #include "LockRequest.h"
 #include "DownloadRequest.h"
+#include "IBConstants.h"
+#include "IBUtils.h"
 #include "cache.pb.h"
 #include <iostream>
 #include <unistd.h>
@@ -31,10 +33,12 @@
 #include <atomic>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <infiniband/verbs.h>
 #include "cache.pb.cc"
 //---------------------------------------------------------------------------------------------------------------------
-using namespace std;
 using namespace cache;
+using namespace ibutils;
+using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
 string CacherServer  = "127.0.0.1";
 int ServerPort = 20000;
@@ -1419,8 +1423,336 @@ void TestExpiry()
     RUNTEST(TestDownloadAPI(file8, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
 }
 //---------------------------------------------------------------------------------------------------------------------
+struct IbDev
+{
+    uint64_t guid;
+    uint32_t lid;
+    uint8_t port;
+    uint8_t link;
+    enum ibv_mtu mtu;
+    ibv_context* context;
+    ibv_pd* pd;
+};
+IbDev m_ibDevice;
+
+bool IBInit()
+{
+    int rc = ibv_fork_init();
+    if (rc != 0)
+    {
+        cout << "ibv_fork_init" << endl;
+        return false;
+    }
+
+    struct ibv_device** devices;
+    int numIbDevices = -1;
+    devices = ibv_get_device_list(&numIbDevices);
+    if (devices == nullptr)
+    {
+        cout << "ibv_get_device_list" << endl;
+        return false;
+    }
+
+    bool bDeviceFound = false;
+    for(int deviceId = 0; deviceId < numIbDevices && !bDeviceFound; deviceId++)
+    {
+        struct ibv_context* context = ibv_open_device(devices[deviceId]);
+        if (context == nullptr)
+        {
+            cout << "ibv_open_device" << endl;
+            continue;
+        }
+
+        struct ibv_device_attr devAttr;
+        memset(&devAttr, 0, sizeof(devAttr));
+        rc = ibv_query_device(context, &devAttr);
+        if (rc != 0)
+        {
+            cout << "ibv_query_device" << endl;
+            ibv_close_device(context);
+            continue;
+        }
+
+        for(int port = 0; port <= devAttr.phys_port_cnt; port++)
+        {
+            struct ibv_port_attr portAttr;
+            rc = ibv_query_port(context, port, &portAttr);
+            if (rc != 0) 
+            {
+                cout << "ibv_query_port" << endl;
+                continue;
+            }
+
+            if (portAttr.state != IBV_PORT_ACTIVE)
+            {
+                cout << "port not active" << endl;
+                continue;
+            }
+
+            if (portAttr.link_layer != IBV_LINK_LAYER_INFINIBAND)
+            {
+                cout << "not ib" << endl;
+                continue;                        
+            };
+
+            m_ibDevice.mtu = portAttr.active_mtu;
+            m_ibDevice.lid = portAttr.lid;
+            m_ibDevice.guid = devAttr.sys_image_guid;
+            m_ibDevice.port = port;
+            m_ibDevice.link = portAttr.link_layer;
+            m_ibDevice.context = context;
+            m_ibDevice.pd = ibv_alloc_pd(context);
+            if (m_ibDevice.pd == nullptr)
+            {
+                cout << "ibv_alloc_pd" << endl;
+                continue;
+            }
+
+            bDeviceFound = true;
+        }
+
+        if (!bDeviceFound)
+        {
+            ibv_close_device(context);
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    ibv_free_device_list(devices);
+    if (!bDeviceFound)
+    {
+        cout << "no ib devices" << endl;
+        return false;
+    }
+
+    cout << "Done acquiring local IB device information" << endl;
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool TestIBAPI()
+{
+    int serverFd = GetConnection();
+    if (serverFd < 0)
+    { 
+        cout << "failed to get server connection" << endl;
+	    return false;
+    }
+
+    Request request;
+    IBInitRequest* ibRequest = request.mutable_ibinitrequest();
+    ibRequest->set_clientibport(m_ibDevice.port);
+    ibRequest->set_clientlid(m_ibDevice.lid);
+    ibRequest->set_clientmtu(m_ibDevice.mtu);
+    auto clientQpns = ibRequest->mutable_clientqpn();
+    clientQpns->Clear();
+    constexpr int numQPsPerConnection = 5;
+
+    auto compEventChannel = ibv_create_comp_channel(m_ibDevice.context);
+    if (compEventChannel == nullptr)
+    {
+        cout << "ibv_create_comp_channel" << endl;
+        return false;
+    }
+
+    auto cq = ibv_create_cq(m_ibDevice.context, MAX_REQUESTS, NULL, compEventChannel, 0);
+    if (cq == nullptr)
+    {
+        cout << "ibv_create_cq" << endl;
+        return false;
+    }
+
+    int rc = ibv_req_notify_cq(cq, 0);
+    if (rc != 0)
+    {
+        cout << "ibv_req_notify_cq" << endl;
+        return false;
+    }
+
+    vector<ibv_qp*> vectorQps;
+    for (int qpn = 0; qpn < numQPsPerConnection; qpn++)
+    {
+        struct ibv_qp_init_attr qpInitAttr;
+        memset(&qpInitAttr, 0, sizeof(struct ibv_qp_init_attr));
+        qpInitAttr.send_cq = cq;
+        qpInitAttr.recv_cq = cq;
+        qpInitAttr.srq = nullptr;
+        qpInitAttr.qp_type = IBV_QPT_RC;
+        qpInitAttr.cap.max_send_wr = 1;
+        qpInitAttr.cap.max_recv_wr = 1;
+        qpInitAttr.cap.max_send_sge = 1;
+        qpInitAttr.cap.max_recv_sge = 1;
+        qpInitAttr.cap.max_inline_data = 0;
+        ibv_qp *qp = ibv_create_qp(m_ibDevice.pd, &qpInitAttr);
+        if (qp == nullptr)
+        {
+            cout << "ibv_create_qp failed: " << strerror(errno) << endl;
+            return false;
+        }
+
+        // Transition to INIT state
+        struct ibv_qp_attr qpAttr;
+        memset(&qpAttr, 0, sizeof(struct ibv_qp_attr));
+        qpAttr.qp_state = IBV_QPS_INIT;
+        qpAttr.pkey_index = 0;
+        qpAttr.port_num = m_ibDevice.port;
+        qpAttr.qp_access_flags = 0;
+        rc = ibv_modify_qp(qp, &qpAttr, IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
+        if (rc != 0)
+        {
+            cout << "ibv_modify_qp failed: " << rc << ", " << strerror(errno) << endl;
+            return false;
+        }
+        clientQpns->Add(qp->qp_num);
+        vectorQps.push_back(qp);
+    }
+
+    if (!SendMessageToRemote(serverFd, request))
+    {
+        cout << "couldn't send message to server" << endl;
+        close(serverFd);
+        return false;
+    }
+
+    string requestMessage;
+    if (!ReadMessageFromRemote(serverFd, requestMessage))
+    {
+        cout << "couldn't read message from server" << endl;
+        close(serverFd);
+        return false;
+    }
+
+    IBInitResponse response;
+    if (!response.ParseFromString(requestMessage))
+    {
+        std::cout << "Failed to parse protobuf message" << endl;
+        close(serverFd);
+        return false;
+    }
+
+    if (response.result() != IBInitResponse::SUCCESS)
+    {
+        std::cout << "unexpected response: " << response.result() << endl;
+        close(serverFd);
+        return false;
+    }
+
+    if (response.serverqpn_size() != numQPsPerConnection)
+    {
+        std::cout << "serverqpn size mismatch: " << numQPsPerConnection << " != " << response.serverqpn_size() << endl;
+        close(serverFd);
+        return false;
+    }
+
+    close(serverFd);
+    for (int qpn = 0; qpn < numQPsPerConnection; qpn++)
+    {
+        // Transition to RTR
+        auto qp = vectorQps[qpn];
+        struct ibv_qp_attr qpAttr;
+        memset(&qpAttr, 0, sizeof(struct ibv_qp_attr));
+        qpAttr.qp_state = IBV_QPS_RTR;
+        qpAttr.path_mtu = m_ibDevice.mtu;
+        qpAttr.dest_qp_num = response.serverqpn().Get(qpn);
+        qpAttr.rq_psn = 0;
+        qpAttr.max_dest_rd_atomic = 1;
+        qpAttr.min_rnr_timer = IB_MIN_RNR_TIMER;
+        qpAttr.ah_attr.is_global = 0;
+        qpAttr.ah_attr.dlid = response.serverlid();
+        qpAttr.ah_attr.sl = 0;
+        qpAttr.ah_attr.src_path_bits = 0;
+        qpAttr.ah_attr.port_num = response.serveribport();
+        rc = ibv_modify_qp(qp, &qpAttr, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN
+            | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
+        if (rc != 0)
+        {
+            cout << "ibv_modify_qp failed: " << rc << ", " << strerror(errno) << endl;
+            return false;
+        }
+
+        // Transition to RTS
+        memset(&qpAttr, 0, sizeof(struct ibv_qp_attr));
+        qpAttr.qp_state = IBV_QPS_RTS;
+        qpAttr.timeout = IB_TIMEOUT;
+        qpAttr.retry_cnt = IB_RETRY_CNT;
+        qpAttr.rnr_retry = IB_RNR_RETRY;
+        qpAttr.sq_psn = 0;
+        qpAttr.max_rd_atomic = 1;
+        rc = ibv_modify_qp(qp, &qpAttr, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY
+            | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
+        if (rc != 0)
+        {
+            cout << "ibv_modify_qp failed: " << rc << ", " << strerror(errno) << endl;
+            return false;
+        }
+    }
+
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool TestIBAPIParallel()
+{
+    std::atomic_bool stop(false);
+    std::vector<std::thread *> threads;
+    std::atomic_uint_fast64_t totalSuccess(0);
+    int parallelism = 10;
+
+    for (int threadId = 0; threadId < parallelism; threadId++)
+    {
+        auto t = new std::thread([&totalSuccess, &stop]()
+        {
+            bool bRet = TestIBAPI();
+            if (bRet)
+            {
+                totalSuccess++;
+            }
+            else
+            {
+                cout << "TestIBAPI failed" << endl;
+            }
+        });
+        threads.push_back(t);
+    }
+
+    for (int i = 0; i < threads.size(); ++i)
+    {
+        auto t = threads[i];
+        t->join();
+        delete t;
+    }
+
+    if (parallelism != totalSuccess)
+    {
+        return false;
+    }
+
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+void TestIB()
+{
+    cout << "Test IB" << endl;
+    IBInit();
+    RUNTEST(TestIBAPI());
+    RUNTEST(TestIBAPIParallel());
+}
+//---------------------------------------------------------------------------------------------------------------------
 int main(int argc, char *argv[])
 {
+    char* cacheServerHost = std::getenv("TEST_CACHESERVER_ADDR_HOST");
+    if (cacheServerHost != nullptr)
+    {
+        CacherServer = cacheServerHost;
+    }
+
+    char* cacheServerPort = std::getenv("TEST_CACHESERVER_ADDR_PORT");
+    if (cacheServerPort != nullptr)
+    {
+        ServerPort = std::stoi(cacheServerPort);
+    }
+
     if (argc > 1)
     {
         return TestLimits();
@@ -1433,6 +1765,7 @@ int main(int argc, char *argv[])
     TestCacheMetadata();
     TestDeletes();
     TestExpiry();
+    TestIB();
 
     cout << endl << "Total established connections: " << totalConnections << endl;
     cout << "Test complete. Total tests: " << TotalTests << ". Failed: " << TestsFailed << endl;

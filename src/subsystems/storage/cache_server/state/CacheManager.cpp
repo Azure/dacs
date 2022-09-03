@@ -29,11 +29,7 @@ CacheManager::CacheManager()
 //---------------------------------------------------------------------------------------------------------------------
 CacheManager::~CacheManager()
 {
-    {
-        std::lock_guard<std::mutex> lock(m_mutexQueue);
-        m_stopCleanupThread = true;
-    }
-
+    m_stopCleanupThread = true;
     m_cvQueue.notify_all();
     m_cleanupThread->join();
 }

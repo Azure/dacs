@@ -89,39 +89,49 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
         }
     }
 
-    int serverFd = m_connectionManager.GetFd(uploadContext->m_serverIndex);
-    if (serverFd < 0)
+    auto serverConnection = move(m_connectionManager.GetConnection(uploadContext->m_serverIndex));
+    if (serverConnection.get() == nullptr)
     {
         LOG_WARN("couldn't get server connection, ignoring upload for file: {}", uploadContext->m_strCacheKey);
         m_uploadBufferMemory -= uploadContext->m_fileData->BufferSize;
         return false;
     }
 
-    if (!SendMessageToRemote(serverFd, request))
+    bool bRet = false;
+    if (bufferSizeToSend > 0)
+    {
+        bRet = SendMessageToRemote(serverConnection.get(), request);
+    }
+    else
+    {
+        bRet = SendMessageToRemoteFinal(serverConnection.get(), request);
+    }
+
+    if (!bRet)
     {
         LOG_WARN("couldn't send request, ignoring upload for file: {}", uploadContext->m_strCacheKey);
-        m_connectionManager.ReleaseFd(uploadContext->m_serverIndex, serverFd, true);
+        m_connectionManager.ReleaseConnection(uploadContext->m_serverIndex, move(serverConnection), true);
         m_uploadBufferMemory -= uploadContext->m_fileData->BufferSize;
         return false;
     }
 
     if (bufferSizeToSend > 0)
     {
-        bool bRet = cacheutils::WriteAll(serverFd, bufferToSend, bufferSizeToSend);
+        bool bRet = cacheutils::WriteAllFinal(serverConnection.get(), bufferToSend, bufferSizeToSend);
         if (!bRet)
         {
             LOG_WARN("couldn't complete write to server, file: {}", uploadContext->m_strCacheKey);
-            m_connectionManager.ReleaseFd(uploadContext->m_serverIndex, serverFd, true);
+            m_connectionManager.ReleaseConnection(uploadContext->m_serverIndex, move(serverConnection), true);
             m_uploadBufferMemory -= uploadContext->m_fileData->BufferSize;
             return false;
         }
     }
 
     string strResponse;
-    if (!ReadMessageFromRemote(serverFd, strResponse))
+    if (!ReadMessageFromRemote(serverConnection.get(), strResponse))
     {
         LOG_WARN("couldn't read response from server. file: {}", uploadContext->m_strCacheKey);
-        m_connectionManager.ReleaseFd(uploadContext->m_serverIndex, serverFd, true);
+        m_connectionManager.ReleaseConnection(uploadContext->m_serverIndex, move(serverConnection), true);
         m_uploadBufferMemory -= uploadContext->m_fileData->BufferSize;
         return false;
     }
@@ -130,7 +140,7 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
     if (!response.ParseFromString(strResponse))
     {
         LOG_WARN("couldn't parse response from server. file: {}", uploadContext->m_strCacheKey);
-        m_connectionManager.ReleaseFd(uploadContext->m_serverIndex, serverFd, true);
+        m_connectionManager.ReleaseConnection(uploadContext->m_serverIndex, move(serverConnection), true);
         m_uploadBufferMemory -= uploadContext->m_fileData->BufferSize;
         return false;
     }
@@ -145,7 +155,7 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
     {
         LOG_WARN("Upload to server failed. file: {}, error: {}", uploadContext->m_strCacheKey, response.result());
     }
-    m_connectionManager.ReleaseFd(uploadContext->m_serverIndex, serverFd, false);
+    m_connectionManager.ReleaseConnection(uploadContext->m_serverIndex, move(serverConnection), false);
     m_uploadBufferMemory -= uploadContext->m_fileData->BufferSize;
     return status;
 }

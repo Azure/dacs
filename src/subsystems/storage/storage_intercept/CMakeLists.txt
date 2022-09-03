@@ -20,6 +20,7 @@ execute_process(
 
 include_directories(
         ${CMAKE_SOURCE_DIR}/src/subsystems/common/native_lib/diagnostics
+        ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common
         ${DEP_INSTALL_DIR}/include
         ./common
         ./remote_client
@@ -30,7 +31,7 @@ include_directories(
 
 file(GLOB STORAGE_INTERCEPT_SOURCES ./common/*cpp ./remote_client/*cpp ./remote_client/adls/*cpp
         ./remote_client/blob/*cpp ./remote_client/mock/*cpp ./handlers/*cpp ./interceptors/*cpp
-        ./remote_client/cache/*)
+        ./remote_client/cache/* ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/*cpp)
 
 # StorageIntercept Lib
 add_library(StorageIntercept SHARED ${STORAGE_INTERCEPT_SOURCES})
@@ -42,7 +43,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--exclude-libs,ALL")
 ADD_LIBRARY(staticprotobuf STATIC IMPORTED)
 SET_TARGET_PROPERTIES(staticprotobuf PROPERTIES
         IMPORTED_LOCATION /opt/protobufstatic-3.0.0/lib/libprotobuf.a)
-target_link_libraries(StorageIntercept diagnostics azure-storage-lite curl jsoncpp dl staticprotobuf)
+target_link_libraries(StorageIntercept diagnostics azure-storage-lite curl jsoncpp dl staticprotobuf ibverbs)
 
 # Also copy the blob library to output folder
 add_custom_command(
@@ -55,7 +56,8 @@ add_custom_command(
 enable_testing()
 
 file(GLOB STORAGE_INTERCEPT_SOURCES_TEST ./common/*cpp ./remote_client/*cpp ./remote_client/adls/*cpp
-        ./remote_client/blob/*cpp ./remote_client/mock/*cpp ./handlers/*cpp ./remote_client/cache/* ./tests/*cpp)
+        ./remote_client/blob/*cpp ./remote_client/mock/*cpp ./handlers/*cpp ./remote_client/cache/* ./tests/*cpp
+        ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/*cpp)
 
 add_executable(StorageInterceptUnitTests ${STORAGE_INTERCEPT_SOURCES_TEST})
 
@@ -67,7 +69,8 @@ target_include_directories(StorageInterceptUnitTests PRIVATE
         ./remote_client/blob
         ./remote_client/mock
         ./remote_client/cache
-        ./handlers)
+        ./handlers
+        ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common)
 
 add_dependencies(StorageInterceptUnitTests
         diagnostics
@@ -78,7 +81,7 @@ add_dependencies(StorageInterceptUnitTests
         )
 
 target_link_libraries(StorageInterceptUnitTests
-        diagnostics curl azure-storage-lite jsoncpp dl uuid crypto staticprotobuf
+        diagnostics curl azure-storage-lite jsoncpp dl uuid crypto staticprotobuf ibverbs
         ${GMOCK_LIBRARY}
         ${GMOCK_MAIN_LIBRARY}
         ${GTEST_LIBRARY}

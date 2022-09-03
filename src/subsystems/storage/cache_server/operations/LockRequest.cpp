@@ -4,7 +4,7 @@
 #include "LockRequest.h"
 #include "LockManager.h"
 #include "Utils.h"
-#include "SocketUtils.h"
+#include "ConnectionUtils.h"
 #include "Logger.h"
 #include <iostream>
 #include <string>
@@ -44,7 +44,7 @@ bool AuthenticateRequest(const LockFileRequest& request)
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool LockFile(int clientFd, const LockFileRequest& lockRequest)
+bool LockFile(IConnection& clientConnection, const LockFileRequest& lockRequest)
 {
     LOG_DEBUG("filename received: {}", lockRequest.filename());
 
@@ -53,7 +53,7 @@ bool LockFile(int clientFd, const LockFileRequest& lockRequest)
     {
         LOG_WARN("Failed to authenticate request");
         lockResponse.set_result(LockFileResponse::AUTH_FAILED);
-        return SendMessageToRemote(clientFd, lockResponse);
+        return SendMessageToRemoteFinal(clientConnection, lockResponse);
     }
 
     if (LockManager::GetInstance().GetLockForUpload(lockRequest.filename()))
@@ -67,7 +67,7 @@ bool LockFile(int clientFd, const LockFileRequest& lockRequest)
         lockResponse.set_result(LockFileResponse::ALREADY_LOCKED);
     }
 
-    if (!SendMessageToRemote(clientFd, lockResponse))
+    if (!SendMessageToRemoteFinal(clientConnection, lockResponse))
     {
         LOG_WARN("Error sending lock response to client for file: {}", lockRequest.filename());
         return false;

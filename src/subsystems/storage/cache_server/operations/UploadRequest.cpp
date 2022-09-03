@@ -4,7 +4,7 @@
 #include "UploadRequest.h"
 #include "CacheManager.h"
 #include "Utils.h"
-#include "SocketUtils.h"
+#include "ConnectionUtils.h"
 #include "Constants.h"
 #include "Logger.h"
 #include <fstream>
@@ -62,7 +62,7 @@ bool AuthenticateRequest(const UploadRequest& request)
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool UploadFile(int clientFd, const UploadRequest& uploadRequest)
+bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadRequest)
 {
     LOG_DEBUG("filename received: {}", uploadRequest.filename());
 
@@ -71,7 +71,7 @@ bool UploadFile(int clientFd, const UploadRequest& uploadRequest)
     {
         LOG_WARN("Failed to authenticate request");
         uploadResponse.set_result(UploadResponse::AUTH_FAILED);
-        return SendMessageToRemote(clientFd, uploadResponse);
+        return SendMessageToRemoteFinal(clientConnection, uploadResponse);
     }
 
     // Set limit on filename length
@@ -134,7 +134,7 @@ bool UploadFile(int clientFd, const UploadRequest& uploadRequest)
             int bufferPos = 0;
             while (true)
             {
-                int temp = read(clientFd, buffer + bufferPos, writeBufferSize - bufferPos);
+                int temp = clientConnection.Read(buffer + bufferPos, writeBufferSize - bufferPos);
                 if (temp <= 0)
                 {
                     LOG_WARN("read failed for file: {}. errno: {}:{}, Bytes expected: {}, read: {}",
@@ -212,7 +212,7 @@ bool UploadFile(int clientFd, const UploadRequest& uploadRequest)
         }
     }
 
-    if (!SendMessageToRemote(clientFd, uploadResponse))
+    if (!SendMessageToRemoteFinal(clientConnection, uploadResponse))
     {
         LOG_WARN("Error sending response to client for file: {}", uploadRequest.filename());
         return false;

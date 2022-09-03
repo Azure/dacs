@@ -49,6 +49,20 @@ package cache;
  * The server will respond with a 4 byte buffer containing the proto message length and
  *         then followed by the GetAttributeResponse proto message. 
  *
+ * Delete API
+ *
+ * Client has to first send a 4 byte buffer containing the proto message length,
+ *         then followed by the "Request" proto message with the appropriate DeleteRequest fields populated.
+ * The server will respond with a 4 byte buffer containing the proto message length and
+ *         then followed by the DeleteResponse proto message. 
+ *
+ * Infiniband Init API
+ *
+ * Client has to first send a 4 byte buffer containing the proto message length,
+ *         then followed by the "Request" proto message with the appropriate IBInitRequest fields populated.
+ * The server will respond with a 4 byte buffer containing the proto message length and
+ *         then followed by the IBInitResponse proto message. 
+ *
  */
 //---------------------------------------------------------------------------------------------------------------------
 // Authentication params
@@ -230,6 +244,48 @@ message PutAttributeResponse
     Result result = 1;
 }
 //---------------------------------------------------------------------------------------------------------------------
+message IBInitRequest
+{
+
+    // Unique IB device identifier within the infiniband fabric
+    uint32 clientlid = 1;
+
+    // Unique port which is used within the device
+    uint32 clientibport = 2;
+
+    // client packet mtu, needed to synchronize client and server mtu in case they are different
+    uint32 clientmtu = 3;
+
+    // The client created qp identifiers to establish one-one connections with server
+    repeated uint32 clientqpn = 4;
+
+    AuthParams authparams = 5;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message IBInitResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        AUTH_FAILED = 1;
+        IB_NOT_SUPPORTED = 2;
+        INTERNAL_ERROR = 3;
+    }
+    Result result = 1;
+
+    // Unique server IB identifier
+    uint32 serverlid = 2;
+
+    // ib port of the server being used
+    uint32 serveribport = 3;
+
+    // Server supported packet mtu size
+    uint32 servermtu = 4;
+
+    // The server created qp identifiers which is connected to the client qps in the order it was sent in the request
+    repeated uint32 serverqpn = 5;
+}
+//---------------------------------------------------------------------------------------------------------------------
 message Request
 {
     oneof type
@@ -240,6 +296,7 @@ message Request
         GetAttributeRequest getattributerequest = 4;
         PutAttributeRequest putattributerequest = 5;
         DeleteRequest deleterequest = 6;
+        IBInitRequest ibinitrequest = 7;
     }
 }
 //---------------------------------------------------------------------------------------------------------------------

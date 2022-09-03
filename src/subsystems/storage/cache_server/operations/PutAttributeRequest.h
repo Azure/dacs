@@ -4,6 +4,7 @@
 #pragma once
 //---------------------------------------------------------------------------------------------------------------------
 #include "cache.pb.h"
+#include "IConnection.h"
 //---------------------------------------------------------------------------------------------------------------------
-bool HandlePutAttribute(int clientFd, const cache::PutAttributeRequest& putAttributeRequest);
+bool HandlePutAttribute(IConnection& clientConnection, const cache::PutAttributeRequest& putAttributeRequest);
 //---------------------------------------------------------------------------------------------------------------------

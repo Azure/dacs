@@ -42,6 +42,7 @@ namespace StorageInterceptConstants
     const char* const ConfigNameCacheAuthAccountKey = "cacheAuthAccountKey";
     const char* const ConfigNameCacheEncryptionEnabled = "cacheEncryptionEnabled";
     const char* const ConfigNameCacheEncryptionKey = "cacheEncryptionKey";
+    const char* const ConfigNameCacheIBEnabled = "cacheIBEnabled";
 
     // Config for Attributes cache
     const char* const ConfigNameAttributesCacheEnable = "attributesCacheEnable";

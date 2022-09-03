@@ -82,6 +82,9 @@ class StorageInterceptConfig
         bool GetEnableLargePrefetch();
         uint64_t GetPrefetchWindowSizeInMB();
 
+        // Getters for infiniband
+        bool GetCacheIBEnabled();
+
     private:
         // Constructor
         StorageInterceptConfig();

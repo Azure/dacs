@@ -5,6 +5,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include <string>
 #include "cache.pb.h"
+#include "IConnection.h"
 //---------------------------------------------------------------------------------------------------------------------
-bool UploadFile(int clientFd, const cache::UploadRequest& uploadRequest);
+bool UploadFile(IConnection& clientConnection, const cache::UploadRequest& uploadRequest);
 //---------------------------------------------------------------------------------------------------------------------

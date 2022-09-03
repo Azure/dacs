@@ -71,7 +71,7 @@ ICacheClient::CacheStatus RemoteCacheClient::DownloadSync(
     const std::string& cacheKey,
     uint64_t startOffset,
     uint64_t length,
-    char *buffer,
+    char* buffer,
     uint64_t& readLength)
 {
     ICacheClient::CacheStatus cacheStatus = ICacheClient::INTERNAL_ERROR;
@@ -102,25 +102,25 @@ ICacheClient::CacheStatus RemoteCacheClient::DownloadSync(
     }
 
     int serverIndex = GetServerIndex(cacheKey, m_numServerNodes);
-    int serverFd = m_spConnectionManager->GetFd(serverIndex);
-    if (serverFd < 0)
+    auto serverConnection = move(m_spConnectionManager->GetConnection(serverIndex));
+    if (!serverConnection.get())
     {
         LOG_WARN("couldn't get server connection, key: {}", cacheKey);
         return cacheStatus;
     }
 
-    if (!SendMessageToRemote(serverFd, request))
+    if (!SendMessageToRemoteFinal(serverConnection.get(), request))
     {
         LOG_WARN("couldn't send message to server, key: {}", cacheKey);
-        m_spConnectionManager->ReleaseFd(serverIndex, serverFd, true);
+        m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
         return cacheStatus;
     }
 
     string responseMessage;
-    if (!ReadMessageFromRemote(serverFd, responseMessage))
+    if (!ReadMessageFromRemote(serverConnection.get(), responseMessage))
     {
         LOG_WARN("couldn't read message from server, key: {}", cacheKey);
-        m_spConnectionManager->ReleaseFd(serverIndex, serverFd, true);
+        m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
         return cacheStatus;
     }
 
@@ -128,7 +128,7 @@ ICacheClient::CacheStatus RemoteCacheClient::DownloadSync(
     if (!response.ParseFromString(responseMessage))
     {
         LOG_WARN("error: Failed to parse protobuf message, key: {}", cacheKey);
-        m_spConnectionManager->ReleaseFd(serverIndex, serverFd, true);
+        m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
         return cacheStatus;
     }
 
@@ -141,17 +141,17 @@ ICacheClient::CacheStatus RemoteCacheClient::DownloadSync(
         {
             LOG_WARN("Received invalid length from server, key: {}, got: {}, expected: {}",
                 cacheKey, readLength, length);
-            m_spConnectionManager->ReleaseFd(serverIndex, serverFd, true);
+            m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
             return cacheStatus;
         }
 
         if (readLength > 0)
         {
-            bool bRet = m_encryptionUtil.DoDecrypt(response, serverFd, buffer, readLength);
+            bool bRet = m_encryptionUtil.DoDecrypt(response, serverConnection.get(), buffer, readLength);
             if (!bRet)
             {
                 LOG_WARN("Failed to complete read from server, key: {}", cacheKey);
-                m_spConnectionManager->ReleaseFd(serverIndex, serverFd, true);
+                m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
                 return cacheStatus;
             }
         }
@@ -177,7 +177,7 @@ ICacheClient::CacheStatus RemoteCacheClient::DownloadSync(
         cacheStatus = ICacheClient::INTERNAL_ERROR;
     }
 
-    m_spConnectionManager->ReleaseFd(serverIndex, serverFd, false);
+    m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), false);
     return cacheStatus;
 }
 //---------------------------------------------------------------------------------------------------------------------

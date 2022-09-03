@@ -434,6 +434,14 @@ std::string StorageInterceptConfig::GetCacheEncryptionKey()
         "");
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::GetCacheIBEnabled()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheIBEnabled,
+        false);
+}
+//---------------------------------------------------------------------------------------------------------------------
 std::string StorageInterceptConfig::GetStorageAccountName()
 {
     return StorageInterceptConfig::GetConfigStr(

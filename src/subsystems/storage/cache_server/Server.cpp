@@ -3,15 +3,12 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "Constants.h"
 #include "Utils.h"
-#include "SocketUtils.h"
-#include "UploadRequest.h"
-#include "LockRequest.h"
-#include "DownloadRequest.h"
-#include "PutAttributeRequest.h"
-#include "GetAttributeRequest.h"
-#include "DeleteRequest.h"
+#include "ConnectionUtils.h"
+#include "HandleRequest.h"
 #include "CacheManager.h"
+#include "SocketConnection.h"
 #include "AttributesManager.h"
+#include "IBManager.h"
 #include "cache.pb.h"
 #include "Logger.h"
 #include <iostream>
@@ -78,67 +75,8 @@ void HandleSocket(int epollFd)
 
         // TODO: read with a timeout
         // Get the request protobuf size
-        char metaData[REQUEST_METADATA_SIZE];
-        int res = ReadBytesToArray(clientFd, metaData, REQUEST_METADATA_SIZE);
-        if (res != REQUEST_METADATA_SIZE)
-        {
-            LOG_WARN("Failed to read request metadata from client, fd={}", clientFd);
-            close(clientFd);
-            continue;
-        }
-
-        uint32_t protoSize = ConvertBytesToInt(metaData, REQUEST_METADATA_SIZE);
-        LOG_DEBUG("Cache server protobuf size: {}", protoSize);
-
-        string requestMessage(protoSize, 0);
-        res = ReadBytesToArray(clientFd, requestMessage.data(), protoSize);
-        if (res != protoSize)
-        {
-            LOG_WARN("Failed to read protobuf message, fd={}", clientFd);
-            close(clientFd);
-            continue;
-        }
-
-        Request request;
-        if (!request.ParseFromString(requestMessage))
-        {
-            LOG_WARN("Failed to parse protobuf message, fd={}", clientFd);
-            close(clientFd);
-            continue;
-        }
-
-        bool bReuse = false;
-        if (request.type_case() == Request::kDownloadrequest)
-        {
-            bReuse = DownloadFile(clientFd, request.downloadrequest());
-        }
-        else if (request.type_case() == Request::kUploadrequest)
-        {
-            bReuse = UploadFile(clientFd, request.uploadrequest());
-        } 
-        else if (request.type_case() == Request::kLockrequest)
-        {
-            bReuse = LockFile(clientFd, request.lockrequest());
-        }
-        else if (request.type_case() == Request::kGetattributerequest)
-        {
-            bReuse = HandleGetAttribute(clientFd, request.getattributerequest());
-        }
-        else if (request.type_case() == Request::kPutattributerequest)
-        {
-            bReuse = HandlePutAttribute(clientFd, request.putattributerequest());
-        }
-        else if (request.type_case() == Request::kDeleterequest)
-        {
-            bReuse = DeleteFile(clientFd, request.deleterequest());
-        }
-        else
-        {
-            LOG_ERROR("unkown req type: {}, close fd={}", request.type_case(), clientFd);
-            close(clientFd);
-            continue;
-        }
-
+        SocketConnection socketConnection(clientFd);
+        bool bReuse = HandleRequest(socketConnection);
         if (bReuse)
         {
             // To re-use the client connection, put it back into the epoll list
@@ -182,14 +120,14 @@ void StartServer(int port)
     server_adderss.sin_addr.s_addr = INADDR_ANY;
     if (bind(server_socket_fd, (struct sockaddr *)&server_adderss, sizeof(server_adderss)) != 0)
     {
-        LOG_CRITICAL("Failed to bind to given port, errno: {}:{}", errno, strerror(errno));
+        LOG_CRITICAL("Failed to bind to given port: {}, errno: {}:{}", port, errno, strerror(errno));
         close(server_socket_fd);
         exit(-1);
     }
     
     if (listen(server_socket_fd, TCP_BACKLOG_SIZE) != 0)
     {
-        LOG_CRITICAL("Failed to listen on server port, errno: {}:{}", errno, strerror(errno));
+        LOG_CRITICAL("Failed to listen on server port: {}, errno: {}:{}", port, errno, strerror(errno));
         close(server_socket_fd);
         exit(-1);
     }
@@ -216,7 +154,7 @@ void StartServer(int port)
         threads.push_back(thread);
     }
 
-    LOG_INFO("Started server on port {}", port);
+    LOG_INFO("Started server on port: {}", port);
 
     // main loop accepting connections 
     while (true)
@@ -284,6 +222,11 @@ int main(int argc, char *argv[])
     }
 
     Initialize();
+
+    if (!IBManager::GetInstance().Init())
+    {
+        LOG_WARN("Failed to initialize infiniband, will proceed without IB support");
+    }
 
     // ignore signal when write to socket fails, this is handled by -1 return value of the write call
     signal(SIGPIPE, SIG_IGN); 

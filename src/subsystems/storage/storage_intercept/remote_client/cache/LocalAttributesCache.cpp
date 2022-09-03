@@ -44,25 +44,25 @@ IAttributesCache::CacheStatus LocalAttributesCache::Get(const std::string& path,
     getAttributeRequest->set_filename(path);
     getAttributeRequest->set_enablelock(true);
 
-    int serverFd = m_spConnectionManager->GetFd(0);
-    if (serverFd < 0)
+    auto serverConnection = move(m_spConnectionManager->GetConnection(0));
+    if (serverConnection.get() == nullptr)
     {
         LOG_WARN("couldn't get server connection");
         return cacheStatus;
     }
 
-    if (!SendMessageToRemote(serverFd, request))
+    if (!SendMessageToRemoteFinal(serverConnection.get(), request))
     {
         LOG_WARN("couldn't send message to server");
-        m_spConnectionManager->ReleaseFd(0, serverFd, true);
+        m_spConnectionManager->ReleaseConnection(0, move(serverConnection), true);
         return cacheStatus;
     }
 
     string responseMessage;
-    if (!ReadMessageFromRemote(serverFd, responseMessage))
+    if (!ReadMessageFromRemote(serverConnection.get(), responseMessage))
     {
         LOG_WARN("couldn't read message from server");
-        m_spConnectionManager->ReleaseFd(0, serverFd, true);
+        m_spConnectionManager->ReleaseConnection(0, move(serverConnection), true);
         return cacheStatus;
     }
 
@@ -70,7 +70,7 @@ IAttributesCache::CacheStatus LocalAttributesCache::Get(const std::string& path,
     if (!response.ParseFromString(responseMessage))
     {
         LOG_WARN("error: Failed to parse protobuf message");
-        m_spConnectionManager->ReleaseFd(0, serverFd, true);
+        m_spConnectionManager->ReleaseConnection(0, move(serverConnection), true);
         return cacheStatus;
     }
 
@@ -104,7 +104,7 @@ IAttributesCache::CacheStatus LocalAttributesCache::Get(const std::string& path,
         cacheStatus = IAttributesCache::INTERNAL_ERROR;
     }
 
-    m_spConnectionManager->ReleaseFd(0, serverFd, false);
+    m_spConnectionManager->ReleaseConnection(0, move(serverConnection), false);
     return cacheStatus;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -205,26 +205,26 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
         attr->set_modifiedtime(queueEntry->m_fileAttributes.mTime.tv_sec);
     }
 
-    int serverFd = m_spConnectionManager->GetFd(0);
-    if (serverFd < 0)
+    auto serverConnection = move(m_spConnectionManager->GetConnection(0));
+    if (serverConnection.get() == nullptr)
     {
         LOG_WARN("couldn't get server connection, ignoring upload");
         return false;
     }
 
-    if (!SendMessageToRemote(serverFd, request))
+    if (!SendMessageToRemoteFinal(serverConnection.get(), request))
     {
         LOG_WARN("couldn't send request, ignoring upload");
-        m_spConnectionManager->ReleaseFd(0, serverFd, true);
+        m_spConnectionManager->ReleaseConnection(0, move(serverConnection), true);
         return false;
     }
 
     LOG_DEBUG("PutAttributeRequest request sent to server");
     string strResponse;
-    if (!ReadMessageFromRemote(serverFd, strResponse))
+    if (!ReadMessageFromRemote(serverConnection.get(), strResponse))
     {
         LOG_WARN("couldn't read response from server");
-        m_spConnectionManager->ReleaseFd(0, serverFd, true);
+        m_spConnectionManager->ReleaseConnection(0, move(serverConnection), true);
         return false;
     }
 
@@ -232,7 +232,7 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
     if (!response.ParseFromString(strResponse))
     {
         LOG_WARN("couldn't parse GetAttributeResponse from server");
-        m_spConnectionManager->ReleaseFd(0, serverFd, true);
+        m_spConnectionManager->ReleaseConnection(0, move(serverConnection), true);
         return false;
     }
 
@@ -245,7 +245,7 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
         LOG_WARN("Upload attributes to server failed, result: {}", response.result());
         // TODO: log entries which failed
     }
-    m_spConnectionManager->ReleaseFd(0, serverFd, false);
+    m_spConnectionManager->ReleaseConnection(0, move(serverConnection), false);
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------

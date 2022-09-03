@@ -204,11 +204,12 @@ bool EncryptionUtil::DoEncrypt(UploadRequest* uploadRequest, std::shared_ptr<con
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool EncryptionUtil::DoDecrypt(const DownloadResponse& response, int serverFd, char* buffer, uint64_t& readLength)
+bool EncryptionUtil::DoDecrypt(const DownloadResponse& response, IConnection* serverConnection, char* buffer,
+    uint64_t& readLength)
 {
     if (!m_encryptionEnabled)
     {
-        return cacheutils::ReadAll(serverFd, buffer, readLength);
+        return cacheutils::ReadAll(serverConnection, buffer, readLength);
     }
 
     // fetch encryption params from response
@@ -249,10 +250,10 @@ bool EncryptionUtil::DoDecrypt(const DownloadResponse& response, int serverFd, c
     }
 
     std::unique_ptr<char[]> encBuffer(new char[origLen]);
-    bool bRet = cacheutils::ReadAll(serverFd, encBuffer.get(), origLen);
+    bool bRet = cacheutils::ReadAll(serverConnection, encBuffer.get(), origLen);
     if (!bRet)
     {
-        LOG_WARN("Failed to read complete message from server, fd: {}", serverFd);
+        LOG_WARN("Failed to read complete message from server, id: {}", serverConnection->GetId());
         return false;
     }
 

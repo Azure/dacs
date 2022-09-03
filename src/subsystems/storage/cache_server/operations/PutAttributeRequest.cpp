@@ -4,7 +4,7 @@
 #include "UploadRequest.h"
 #include "AttributesManager.h"
 #include "Utils.h"
-#include "SocketUtils.h"
+#include "ConnectionUtils.h"
 #include "Constants.h"
 #include "Logger.h"
 #include <fstream>
@@ -63,7 +63,7 @@ bool AuthenticateRequest(const PutAttributeRequest& request)
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool HandlePutAttribute(int clientFd, const PutAttributeRequest& putAttributeRequest)
+bool HandlePutAttribute(IConnection& clientConnection, const PutAttributeRequest& putAttributeRequest)
 {
     LOG_DEBUG("Num entries received: {}, first entry: {}",
         putAttributeRequest.fileattributes_size(), putAttributeRequest.fileattributes(0).filename());
@@ -73,7 +73,7 @@ bool HandlePutAttribute(int clientFd, const PutAttributeRequest& putAttributeReq
     {
         LOG_WARN("Failed to authenticate request");
         putAttributeResponse.set_result(PutAttributeResponse::AUTH_FAILED);
-        return SendMessageToRemote(clientFd, putAttributeResponse);
+        return SendMessageToRemoteFinal(clientConnection, putAttributeResponse);
     }
 
     bool bRet = AttributesManager::GetInstance().PutAttributes(putAttributeRequest);
@@ -88,7 +88,7 @@ bool HandlePutAttribute(int clientFd, const PutAttributeRequest& putAttributeReq
         putAttributeResponse.set_result(PutAttributeResponse::INTERNAL_ERROR);
     }
 
-    if (!SendMessageToRemote(clientFd, putAttributeResponse))
+    if (!SendMessageToRemoteFinal(clientConnection, putAttributeResponse))
     {
         LOG_WARN("Error sending putAttributeResponse to client for entries: {}",
             putAttributeRequest.fileattributes_size());

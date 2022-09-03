@@ -18,7 +18,7 @@ class RemoteCacheClient : public ICacheClient
             /*[in] */ const std::string& cacheKey,
             /*[in] */ uint64_t startOffset,
             /*[in] */ uint64_t length,
-            /*[out]*/ char *buffer,
+            /*[out]*/ char* buffer,
             /*[out]*/ uint64_t& readLength) override;
 
         bool UploadAsync(
