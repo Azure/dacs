@@ -41,6 +41,7 @@
 #include "FileLogger.h"
 #include "StandardLogger.h"
 #define INVALID_PID -1
+#define INVALID_TID -1
 #define gettid() syscall(SYS_gettid)
 #define GET_TIME std::chrono::duration_cast<std::chrono::nanoseconds>\
 (std::chrono::high_resolution_clock::now().time_since_epoch()).count()
@@ -124,6 +125,7 @@ private:
     static int m_nOwnerId;
 
     static pid_t m_nCachedPid;
+    static thread_local pid_t m_nCachedTidTLS;
     static std::atomic<bool> m_bForkFlag;
 
     static std::shared_ptr<ILogger> m_upLogger;
@@ -138,13 +140,14 @@ private:
         return fmt::format(message, 
             GET_TIME,
             LoggingApi::Getpid(),
-            gettid(),
+            LoggingApi::Gettid(),
             "",
             m_nOwnerId,
             std::forward<_TArgs>(Fargs)...);
     }
 
     static pid_t Getpid();
+    static pid_t Gettid();
 };
 //-------------------------------------------------------------------------------------------------------------------------------------------
 template<size_t N>
@@ -184,7 +187,7 @@ auto parseFileName(const char(&file)[N])
 #define CX_LOG_ERROR(message, args...) \
     LoggingApi::LogMessage<LogLevel::Error>("CX_RAW:ERROR" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 #define LOG_STACK(message, args...) \
-    std::cerr << fmt::format("DACS_CTR:ERROR" FORMAT_BASE message, GET_TIME, ::getpid(), gettid(), ##args) <<  std::endl;
+    std::cerr << fmt::format("DACS_CTR:ERROR" FORMAT_BASE message, GET_TIME, ::getpid(), ::gettid(), ##args) <<  std::endl;
 //-------------------------------------------------------------------------------------------------------------------------------------------
 #define LOG_CRITICAL(message, args...) \
     LoggingApi::LogMessage<LogLevel::Critical>("DACS_CTR:CRITICAL" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);

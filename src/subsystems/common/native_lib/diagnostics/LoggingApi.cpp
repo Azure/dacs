@@ -10,6 +10,7 @@ thread_local std::string AutoOperationIdTLS::OperationIdTLS{};
 //--------------------------------------------------------------------------------------------------------------------------------------------
 int LoggingApi::m_nOwnerId{-1};
 pid_t LoggingApi::m_nCachedPid{INVALID_PID};
+thread_local pid_t LoggingApi::m_nCachedTidTLS{INVALID_TID};
 std::atomic<bool> LoggingApi::m_bForkFlag{false};
 std::shared_ptr<ILogger> LoggingApi::m_upLogger;
 std::atomic<bool> LoggingApi::m_bIsInitialized{false};
@@ -91,6 +92,7 @@ void LoggingApi::Prepare()
 {
     m_bForkFlag = true;
     m_nCachedPid = INVALID_PID;
+    m_nCachedTidTLS = INVALID_TID;
 }
 //-------------------------------------------------------------------------------------------------------------------------------------------
 void LoggingApi::Parent()
@@ -123,6 +125,16 @@ pid_t LoggingApi::Getpid()
     }
 
     return ret;
+}
+//-------------------------------------------------------------------------------------------------------------------------------------------
+pid_t LoggingApi::Gettid()
+{
+    if(m_nCachedTidTLS == INVALID_TID)
+    {
+        m_nCachedTidTLS = ::gettid();
+    }
+
+    return m_nCachedTidTLS;
 }
 //-------------------------------------------------------------------------------------------------------------------------------------------
 void LoggingApi::FlushCachedLog()
