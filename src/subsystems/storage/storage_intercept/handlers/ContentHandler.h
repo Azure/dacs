@@ -127,6 +127,122 @@ class ContentHandler
             /*[out]*/ char* list,
             /*[in]*/ size_t size);
 
+        void Handleclearerr(
+            /*[in]*/ void* stream);
+
+        int Handlefeof(
+            /*[in]*/ void* stream);
+
+        int Handleferror(
+            /*[in]*/ void* stream);
+
+        int Handlefflush(
+            /*[in]*/ void* stream);
+
+        int Handlefgetc(
+            /*[in]*/ void* stream);
+
+        int Handlefgetpos(
+            /*[in]*/ void* stream,
+            /*[out]*/ void* pos,
+            /*[in]*/ bool is64Bit);
+
+        char* Handlefgets(
+            /*[out]*/ char* s,
+            /*[in]*/ int size,
+            /*[in]*/ void* stream);
+
+        int Handlefpurge(
+            /*[in]*/ void* stream);
+
+        int Handlefputc(
+            /*[in]*/ int c,
+            /*[in]*/ void* stream);
+
+        int Handlefputs(
+            /*[in]*/ const char* s,
+            /*[in]*/ void* stream);
+
+        size_t Handlefread(
+            /*[out]*/ void* ptr,
+            /*[in]*/ size_t size,
+            /*[in]*/ size_t nmemb,
+            /*[in]*/ void* stream);
+
+        void* Handlefreopen(
+            /*[in]*/ const char* pathname,
+            /*[in]*/ const char* mode,
+            /*[in]*/ void* stream,
+            /*[in]*/ bool is64Bit);
+
+        int Handlefseek(
+            /*[in]*/ void* stream,
+            /*[in]*/ long offset,
+            /*[in]*/ int whence);
+
+        int Handlefsetpos(
+            /*[in]*/ void* stream,
+            /*[in]*/ const void* pos,
+            /*[in]*/ bool is64Bit);
+
+        long Handleftell(
+            /*[in]*/ void* stream);
+
+        size_t Handlefwrite(
+            /*[in]*/ const void* ptr,
+            /*[in]*/ size_t size,
+            /*[in]*/ size_t nmemb,
+            /*[in]*/ void* stream);
+
+        int Handlegetc(
+            /*[in]*/ void* stream);
+
+        int Handlegetw(
+            /*[in]*/ void* stream);
+
+        int Handleputc(
+            /*[in]*/ int c,
+            /*[in]*/ void* stream);
+
+        int Handleputw(
+            /*[in]*/ int w,
+            /*[in]*/ void* stream);
+
+        void Handlerewind(
+            /*[in]*/ void* stream);
+
+        void Handlesetbuf(
+            /*[in]*/ void* stream,
+            /*[in]*/ char* buf);
+
+        void Handlesetbuffer(
+            /*[in]*/ void* stream,
+            /*[in]*/ char* buf,
+            /*[in]*/ size_t size);
+
+        void Handlesetlinebuf(
+            /*[in]*/ void* stream);
+
+        int Handlesetvbuf(
+            /*[in]*/ void* stream,
+            /*[in]*/ char* buf,
+            /*[in]*/ int mode,
+            /*[in]*/ size_t size);
+
+        int Handleungetc(
+            /*[in]*/ int c,
+            /*[in]*/ void* stream);
+
+        int Handlevfprintf(
+            /*[in]*/ void* stream,
+            /*[in]*/ const char* format,
+            /*[in]*/ va_list ap);
+
+        int Handlevfscanf(
+            /*[in]*/ void* stream,
+            /*[in]*/ const char* format,
+            /*[out]*/ va_list ap);
+
     private:
         ContentHandler();
 
@@ -161,6 +277,9 @@ class ContentHandler
         void CopyStat64ToStat(
             /*[in] */ const struct stat64* stat64buf,
             /*[out]*/ struct stat* statbuf);
+
+        // Get FD value if the stream was managed by us, if not return -1
+        int GetFdFromStream(/*[in]*/ void* stream);
 
     private:
         // file fd allocated range (min/max) we use internally

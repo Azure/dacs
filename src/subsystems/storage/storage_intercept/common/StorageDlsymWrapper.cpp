@@ -169,3 +169,209 @@ ssize_t StorageDlsymWrapper::listxattr(const char* path, char* list, size_t size
     return m_OriginalListxattr(path, list, size);
 }
 //---------------------------------------------------------------------------------------------------------------------
+void StorageDlsymWrapper::clearerr(void* stream)
+{
+    Original_clearerr m_Originalclearerr = (Original_clearerr)dlsym(RTLD_NEXT, "clearerr");
+    return m_Originalclearerr(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::feof(void* stream)
+{
+    Original_feof m_Originalfeof = (Original_feof)dlsym(RTLD_NEXT, "feof");
+    return m_Originalfeof(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::ferror(void* stream)
+{
+    Original_ferror m_Originalferror = (Original_ferror)dlsym(RTLD_NEXT, "ferror");
+    return m_Originalferror(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::fflush(void* stream)
+{
+    Original_fflush m_Originalfflush = (Original_fflush)dlsym(RTLD_NEXT, "fflush");
+    return m_Originalfflush(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::fgetc(void* stream)
+{
+    Original_fgetc m_Originalfgetc = (Original_fgetc)dlsym(RTLD_NEXT, "fgetc");
+    return m_Originalfgetc(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::fgetpos(void* stream, void* pos)
+{
+    Original_fgetpos m_Originalfgetpos = (Original_fgetpos)dlsym(RTLD_NEXT, "fgetpos");
+    return m_Originalfgetpos(stream, pos);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::fgetpos64(void* stream, void* pos)
+{
+    Original_fgetpos64 m_Originalfgetpos64 = (Original_fgetpos64)dlsym(RTLD_NEXT, "fgetpos64");
+    return m_Originalfgetpos64(stream, pos);
+}
+//---------------------------------------------------------------------------------------------------------------------
+char* StorageDlsymWrapper::fgets(char* s, int size, void* stream)
+{
+    Original_fgets m_Originalfgets = (Original_fgets)dlsym(RTLD_NEXT, "fgets");
+    return m_Originalfgets(s, size, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::fprintf(void* stream, const char* format, ...)
+{
+    Original_vfprintf m_Originalvfprintf = (Original_vfprintf)dlsym(RTLD_NEXT, "vfprintf");
+    va_list args;
+    va_start(args, format);
+    int ret = m_Originalvfprintf(stream, format, args);
+    va_end(args);
+    return ret;
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::fpurge(void* stream)
+{
+    Original_fpurge m_Originalfpurge = (Original_fpurge)dlsym(RTLD_NEXT, "fpurge");
+    return m_Originalfpurge(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::fputc(int c, void* stream)
+{
+    Original_fputc m_Originalfputc = (Original_fputc)dlsym(RTLD_NEXT, "fputc");
+    return m_Originalfputc(c, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::fputs(const char* s, void* stream)
+{
+    Original_fputs m_Originalfputs = (Original_fputs)dlsym(RTLD_NEXT, "fputs");
+    return m_Originalfputs(s, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+size_t StorageDlsymWrapper::fread(void* ptr, size_t size, size_t nmemb, void* stream)
+{
+    Original_fread m_Originalfread = (Original_fread)dlsym(RTLD_NEXT, "fread");
+    return m_Originalfread(ptr, size, nmemb, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void* StorageDlsymWrapper::freopen(const char* pathname, const char* mode, void* stream)
+{
+    Original_freopen m_Originalfreopen = (Original_freopen)dlsym(RTLD_NEXT, "freopen");
+    return m_Originalfreopen(pathname, mode, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void* StorageDlsymWrapper::freopen64(const char* pathname, const char* mode, void* stream)
+{
+    Original_freopen64 m_Originalfreopen64 = (Original_freopen64)dlsym(RTLD_NEXT, "freopen64");
+    return m_Originalfreopen64(pathname, mode, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::fscanf(void* stream, const char* format, ...)
+{
+    Original_vfscanf m_Originalvfscanf = (Original_vfscanf)dlsym(RTLD_NEXT, "vfscanf");
+    va_list args;
+    va_start(args, format);
+    int ret = m_Originalvfscanf(stream, format, args);
+    va_end(args);
+    return ret;
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::fseek(void* stream, long offset, int whence)
+{
+    Original_fseek m_Originalfseek = (Original_fseek)dlsym(RTLD_NEXT, "fseek");
+    return m_Originalfseek(stream, offset, whence);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::fsetpos(void* stream, const void* pos)
+{
+    Original_fsetpos m_Originalfsetpos = (Original_fsetpos)dlsym(RTLD_NEXT, "fsetpos");
+    return m_Originalfsetpos(stream, pos);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::fsetpos64(void* stream, const void* pos)
+{
+    Original_fsetpos64 m_Originalfsetpos64 = (Original_fsetpos64)dlsym(RTLD_NEXT, "fsetpos64");
+    return m_Originalfsetpos64(stream, pos);
+}
+//---------------------------------------------------------------------------------------------------------------------
+long StorageDlsymWrapper::ftell(void* stream)
+{
+    Original_ftell m_Originalftell = (Original_ftell)dlsym(RTLD_NEXT, "ftell");
+    return m_Originalftell(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+size_t StorageDlsymWrapper::fwrite(const void* ptr, size_t size, size_t nmemb, void* stream)
+{
+    Original_fwrite m_Originalfwrite = (Original_fwrite)dlsym(RTLD_NEXT, "fwrite");
+    return m_Originalfwrite(ptr, size, nmemb, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::getc(void* stream)
+{
+    Original_getc m_Originalgetc = (Original_getc)dlsym(RTLD_NEXT, "getc");
+    return m_Originalgetc(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::getw(void* stream)
+{
+    Original_getw m_Originalgetw = (Original_getw)dlsym(RTLD_NEXT, "getw");
+    return m_Originalgetw(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::putc(int c, void* stream)
+{
+    Original_putc m_Originalputc = (Original_putc)dlsym(RTLD_NEXT, "putc");
+    return m_Originalputc(c, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::putw(int w, void* stream)
+{
+    Original_putw m_Originalputw = (Original_putw)dlsym(RTLD_NEXT, "putw");
+    return m_Originalputw(w, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void StorageDlsymWrapper::rewind(void* stream)
+{
+    Original_rewind m_Originalrewind = (Original_rewind)dlsym(RTLD_NEXT, "rewind");
+    return m_Originalrewind(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void StorageDlsymWrapper::setbuf(void* stream, char* buf)
+{
+    Original_setbuf m_Originalsetbuf = (Original_setbuf)dlsym(RTLD_NEXT, "setbuf");
+    return m_Originalsetbuf(stream, buf);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void StorageDlsymWrapper::setbuffer(void* stream, char* buf, size_t size)
+{
+    Original_setbuffer m_Originalsetbuffer = (Original_setbuffer)dlsym(RTLD_NEXT, "setbuffer");
+    return m_Originalsetbuffer(stream, buf, size);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void StorageDlsymWrapper::setlinebuf(void* stream)
+{
+    Original_setlinebuf m_Originalsetlinebuf = (Original_setlinebuf)dlsym(RTLD_NEXT, "setlinebuf");
+    return m_Originalsetlinebuf(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::setvbuf(void* stream, char* buf, int mode, size_t size)
+{
+    Original_setvbuf m_Originalsetvbuf = (Original_setvbuf)dlsym(RTLD_NEXT, "setvbuf");
+    return m_Originalsetvbuf(stream, buf, mode, size);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::ungetc(int c, void* stream)
+{
+    Original_ungetc m_Originalungetc = (Original_ungetc)dlsym(RTLD_NEXT, "ungetc");
+    return m_Originalungetc(c, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::vfprintf(void* stream, const char* format, va_list ap)
+{
+    Original_vfprintf m_Originalvfprintf = (Original_vfprintf)dlsym(RTLD_NEXT, "vfprintf");
+    return m_Originalvfprintf(stream, format, ap);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::vfscanf(void* stream, const char* format, va_list ap)
+{
+    Original_vfscanf m_Originalvfscanf = (Original_vfscanf)dlsym(RTLD_NEXT, "vfscanf");
+    return m_Originalvfscanf(stream, format, ap);
+}
+//---------------------------------------------------------------------------------------------------------------------

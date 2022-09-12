@@ -27,7 +27,300 @@
 
 #define TIMED_EXEC(stmt, timer)       { auto tS = TIME_NOW;  stmt; auto tE = TIME_NOW; timer = NANO_INTERVAL(tS, tE); }
 //---------------------------------------------------------------------------------------------------------------------
-void TestFileRead(
+using namespace std;
+//---------------------------------------------------------------------------------------------------------------------
+void TestFileReadWithSeek()
+{
+  std::string remoteFilePath = "/mnt/quiverfs/imagenet_data/train/n01494475/n01494475_10008.JPEG";
+  int expectedFileSize = 324089;
+
+  int fd = ::open(remoteFilePath.c_str(), O_RDONLY, 0777);
+
+  std::unique_ptr<char[]> writeAddr(new char[expectedFileSize]);
+  size_t readSize = 0;
+  for(int j = 0; j < 4; j ++)
+  {
+    readSize += ::read(fd, writeAddr.get() + readSize, 4096);
+  }
+  ::lseek64(fd, 0, SEEK_SET);
+
+  readSize = 0;
+  while (readSize < expectedFileSize)
+  {
+    const size_t toRead = expectedFileSize - readSize;
+    ssize_t nBytesReadNow = ::read(fd, writeAddr.get(), toRead);
+    if (nBytesReadNow > 0)
+    {
+      readSize += nBytesReadNow;
+    }
+    else if (nBytesReadNow < 0)
+    {
+      std::cout << "ERROR: failed to read() err: " << fd << "," << nBytesReadNow << "," << toRead
+        << "," << strerror(errno) << std::endl;
+      throw "failed to read file";
+    }
+    else
+    {
+      break;
+    }
+  }
+  ::close(fd);
+
+  if (expectedFileSize != readSize)
+  {
+    std::cout << "ERROR: read bytes mismatch expected: " << expectedFileSize << ", read: " << readSize << std::endl;
+    throw "read file incomplete";
+  }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void TestInterceptionFallback()
+{
+  char tmpFileName[] = "/tmp/interception_XXXXXX";
+  int fd = mkstemp(tmpFileName);
+  if (fd < 0)
+  {
+    std::cout << "mkstemp failed: "<< strerror(errno) <<endl;
+    throw "mkstemp failed";
+  }
+
+  int ret = close(fd);
+  if (ret < 0)
+  {
+    cout << "close failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "close failed";
+  }
+
+  FILE* tempFile = fopen64(tmpFileName, "w+");
+  if (!tempFile)
+  {
+    std::cout << "fopen64 failed: "<< strerror(errno) <<endl;
+    throw "fopen64 failed";
+  }
+
+  ret = setvbuf(tempFile, nullptr, _IONBF, 100);
+  if (ret != 0)
+  {
+    cout << "setvbuf failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "setvbuf failed";
+  }
+
+  ret = fclose(tempFile);
+  if (ret != 0)
+  {
+    cout << "fclose failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fclose failed";
+  }
+
+  tempFile = fopen(tmpFileName, "r");
+  if (!tempFile)
+  {
+    std::cout << "fopen failed: "<< strerror(errno) <<endl;
+    throw "fopen failed";
+  }
+
+  char buffer[100];
+  setbuf(tempFile, buffer);
+  setbuffer(tempFile, buffer, 50);
+
+  tempFile = freopen(nullptr, "w+", tempFile);
+  if (!tempFile)
+  {
+    std::cout << "freopen failed: "<< strerror(errno) <<endl;
+    throw "freopen failed";
+  }
+
+  setlinebuf(tempFile);
+
+  ret = fprintf(tempFile, "test string: %s\n", "test");
+  if (ret < 0)
+  {
+    cout << "fprintf failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fprintf failed";
+  }
+
+  ret = fseek(tempFile, 0, SEEK_SET);
+  if (ret != 0)
+  {
+    cout << "fseek failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fseek failed";
+  }
+
+  char testStr[100] = {};
+  ret = fscanf(tempFile, "test string: %s", testStr);
+  if (ret != 1 || strcmp(testStr, "test") != 0)
+  {
+    cout << "fscanf failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fscanf failed";
+  }
+
+  ret = ftell(tempFile);
+  if (ret < 0)
+  {
+    cout << "ftell failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "ftell failed";
+  }
+
+  ret = fputs("another line", tempFile);
+  if (ret < 0)
+  {
+    cout << "fputs failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fputs failed";
+  }
+
+  fpos_t pos{};
+  pos.__pos = 17;
+  ret = fsetpos(tempFile, &pos);
+  if (ret != 0)
+  {
+    cout << "fsetpos failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fsetpos failed";
+  }
+
+  pos.__pos = 0;
+  ret = fgetpos(tempFile, &pos);
+  if (ret != 0 || pos.__pos != 17)
+  {
+    cout << "fgetpos failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fgetpos failed";
+  }
+
+  char* retStr = fgets(testStr, 8, tempFile);
+  if (retStr == nullptr || strcmp(testStr, "another") != 0)
+  {
+    cout << "fgets failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fgets failed";
+  }
+
+  fpos64_t pos64{};
+  pos64.__pos = 17;
+  ret = fsetpos64(tempFile, &pos64);
+  if (ret != 0)
+  {
+    cout << "fsetpos64 failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fsetpos64 failed";
+  }
+
+  pos64.__pos = 0;
+  ret = fgetpos64(tempFile, &pos64);
+  if (ret != 0 || pos64.__pos != 17)
+  {
+    cout << "fgetpos64 failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fgetpos64 failed";
+  }
+
+  retStr = fgets(testStr, 8, tempFile);
+  if (retStr == nullptr || strcmp(testStr, "another") != 0)
+  {
+    cout << "fgets failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fgets failed";
+  }
+
+  rewind(tempFile);
+  retStr = fgets(testStr, 5, tempFile);
+  if (retStr == nullptr || strcmp(testStr, "test") != 0)
+  {
+    cout << "fgets failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fgets failed";
+  }
+
+  rewind(tempFile);
+  ret = fputc('s', tempFile);
+  if (ret != 's')
+  {
+    cout << "fputc failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fputc failed";
+  }
+
+  rewind(tempFile);
+  ret = fgetc(tempFile);
+  if (ret != 's')
+  {
+    cout << "fgetc failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fgetc failed";
+  }
+
+  ret = ungetc('s', tempFile);
+  if (ret != 's')
+  {
+    cout << "ungetc failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "ungetc failed";
+  }
+
+  ret = fgetc(tempFile);
+  if (ret != 's')
+  {
+    cout << "fgetc failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fgetc failed";
+  }
+
+  rewind(tempFile);
+  size_t retSize = fwrite("new", 3, 1, tempFile);
+  if (retSize != 1)
+  {
+    cout << "fwrite failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fwrite failed";
+  }
+
+  rewind(tempFile);
+  retSize = fread(testStr, 3, 1, tempFile);
+  if (retSize != 1 || strncmp(testStr, "new", 3) != 0)
+  {
+    cout << "fread failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fread failed";
+  }
+
+  ret = fileno(tempFile);
+  if (ret < 0)
+  {
+    cout << "fileno failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fileno failed";
+  }
+
+  ret = fflush(tempFile);
+  if (ret != 0)
+  {
+    cout << "fflush failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fflush failed";
+  }
+
+  ret = ferror(tempFile);
+  if (ret != 0)
+  {
+    cout << "ferror failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "ferror failed";
+  }
+
+  ret = feof(tempFile);
+  if (ret != 0)
+  {
+    cout << "feof failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "feof failed";
+  }
+
+  clearerr(tempFile);
+  ret = ferror(tempFile);
+  if (ret != 0)
+  {
+    cout << "ferror failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "ferror failed";
+  }
+
+  ret = fclose(tempFile);
+  if (ret != 0)
+  {
+    cout << "fclose failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "fclose failed";
+  }
+
+  ret = unlink(tmpFileName);
+  if (ret != 0)
+  {
+    cout << "unlink failed ret=" << ret << "err=" << strerror(errno) << endl;
+    throw "unlink failed";
+  }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void TestFileReadPerf(
   const std::string& path,
   size_t size,
   std::atomic_uint_fast64_t &filesVisited,
@@ -37,13 +330,6 @@ void TestFileRead(
 
   static constexpr size_t bufferSize = 64 * 1024 * 1024;
   static thread_local std::unique_ptr<char[]> writeAddr(new char[bufferSize]);
-
-  // for(int j = 0; j < 4; j ++)
-  // {
-  //   readSize += ::read(fd, writeAddr + readSize, 4096);
-  // }
-  //::lseek64(fd, 0, SEEK_SET);
-
   size_t readSize = 0;
   while (readSize < size)
   {
@@ -167,6 +453,12 @@ int main(int argc, char** argv)
   TestIfStreamInterception();
   std::cout << "Test using std::ifstream done." << std::endl;
 
+  TestFileReadWithSeek();
+  std::cout << "Test read with seek done." << std::endl;
+
+  TestInterceptionFallback();
+  std::cout << "Test APIs with fallback done." << std::endl;
+
   if (argc < 3)
   {
     std::cout << "Too few arguments provided, terminating" << std::endl;
@@ -190,7 +482,7 @@ int main(int argc, char** argv)
     samples.push_back(make_pair(fileData.substr(0, commaIdx), fileSize));
   }
   
-  std::cout << "Number of samples in the file : " << samples.size() << std::endl;  
+  std::cout << "Number of samples loaded from file : " << samples.size() << std::endl;
   ifil.close();
 
   std::cout << "Testing the file open / read / close calls" << std::endl;
@@ -210,7 +502,7 @@ int main(int argc, char** argv)
 
       jobPool->post([path, size, &filesVisited, &numBytesRead]()
       {
-        TestFileRead(path, size, filesVisited, numBytesRead);
+        TestFileReadPerf(path, size, filesVisited, numBytesRead);
       });
     }
   }, fileOpsTimer);
