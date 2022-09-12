@@ -101,25 +101,13 @@ void* ContentHandler::HandleFopen(const char* path, const char* mode, bool isOpe
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::HandleFileNo(void* stream)
 {
-    // Extract the fd and check if we manage this, if not fallback to libc wrapper
-    // If stream is valid and _fileno is set to -1, we know that this is managed by us and extract the fd from _flags.
-    FILE* fileStreamPtr = static_cast<FILE*>(stream);
-    if (fileStreamPtr == nullptr || fileStreamPtr->_fileno != -1 || !IsFdInRange(fileStreamPtr->_flags))
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
     {
         return StorageDlsymWrapper::fileno(stream);
     }
 
-    int fd = fileStreamPtr->_flags;
-    std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
-    auto fdIt = m_mapOpenHandles.find(fd);
-    if (fdIt == m_mapOpenHandles.end())
-    {
-        openHandlesLock.unlock();
-        return StorageDlsymWrapper::fileno(stream);
-    }
-
-    openHandlesLock.unlock();
-    LOG_DEBUG("Intercepted the fileno system call fd={}, fileno={}", fd, fdIt->second->FileStream->_fileno);
+    LOG_DEBUG("Intercepted the fileno system call fd={}", fd);
     return fd;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -784,6 +772,375 @@ int ContentHandler::HandleFlock(int fd, int operation)
     //       We would need to implement locking here if we encounter use cases where an exclusive lock is taken.
     return 0;
 }
+//---------------------------------------------------------------------------------------------------------------------
+void ContentHandler::Handleclearerr(void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::clearerr(stream);
+    }
+
+    LOG_ERROR("clearerr interception not yet supported, fd={}", fd);
+    throw "clearerr interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::Handlefeof(void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::feof(stream);
+    }
+
+    LOG_ERROR("feof interception not yet supported, fd={}", fd);
+    throw "feof interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::Handleferror(void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::ferror(stream);
+    }
+
+    LOG_ERROR("ferror interception not yet supported, fd={}", fd);
+    throw "ferror interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::Handlefflush(void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::fflush(stream);
+    }
+
+    LOG_ERROR("fflush interception not yet supported, fd={}", fd);
+    throw "fflush interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::Handlefgetc(void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::fgetc(stream);
+    }
+
+    LOG_ERROR("fgetc interception not yet supported, fd={}", fd);
+    throw "fgetc interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::Handlefgetpos(void* stream, void* pos, bool is64Bit)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        if (is64Bit)
+        {
+            return StorageDlsymWrapper::fgetpos64(stream, pos);
+        }
+        return StorageDlsymWrapper::fgetpos(stream, pos);
+    }
+
+    LOG_ERROR("fgetpos{} interception not yet supported, fd={}", is64Bit ? "64" : "", fd);
+    throw "fgetpos[64] interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+char* ContentHandler::Handlefgets(char* s, int size, void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::fgets(s, size, stream);
+    }
+
+    LOG_ERROR("fgets interception not yet supported, fd={}", fd);
+    throw "fgets interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::Handlefpurge(void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::fpurge(stream);
+    }
+
+    LOG_ERROR("fpurge interception not yet supported, fd={}", fd);
+    throw "fpurge interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::Handlefputc(int c, void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::fputc(c, stream);
+    }
+
+    LOG_ERROR("fputc interception not yet supported, fd={}", fd);
+    throw "fputc interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::Handlefputs(const char* s, void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::fputs(s, stream);
+    }
+
+    LOG_ERROR("fputs interception not yet supported, fd={}", fd);
+    throw "fputs interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+size_t ContentHandler::Handlefread(void* ptr, size_t size, size_t nmemb, void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::fread(ptr, size, nmemb, stream);
+    }
+
+    LOG_ERROR("fread interception not yet supported, fd={}", fd);
+    throw "fread interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+void* ContentHandler::Handlefreopen(const char* pathname, const char* mode, void* stream, bool is64Bit)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        if (is64Bit)
+        {
+            return StorageDlsymWrapper::freopen64(pathname, mode, stream);
+        }
+        return StorageDlsymWrapper::freopen(pathname, mode, stream);
+    }
+
+    LOG_ERROR("freopen{} interception not yet supported, fd={}", is64Bit ? "64" : "", fd);
+    throw "freopen[64] interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::Handlefseek(void* stream, long offset, int whence)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::fseek(stream, offset, whence);
+    }
+
+    LOG_ERROR("fseek interception not yet supported, fd={}", fd);
+    throw "fseek interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::Handlefsetpos(void* stream, const void* pos, bool is64Bit)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        if (is64Bit)
+        {
+            return StorageDlsymWrapper::fsetpos64(stream, pos);
+        }
+        return StorageDlsymWrapper::fsetpos(stream, pos);
+    }
+
+    LOG_ERROR("fsetpos{} interception not yet supported, fd={}", is64Bit ? "64" : "", fd);
+    throw "fsetpos[64] interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+long ContentHandler::Handleftell(void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::ftell(stream);
+    }
+
+    LOG_ERROR("ftell interception not yet supported, fd={}", fd);
+    throw "ftell interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+size_t ContentHandler::Handlefwrite(const void* ptr, size_t size, size_t nmemb, void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::fwrite(ptr, size, nmemb, stream);
+    }
+
+    LOG_ERROR("fwrite interception not yet supported, fd={}", fd);
+    throw "fwrite interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::Handlegetc(void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::getc(stream);
+    }
+
+    LOG_ERROR("getc interception not yet supported, fd={}", fd);
+    throw "getc interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::Handlegetw(void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::getw(stream);
+    }
+
+    LOG_ERROR("getw interception not yet supported, fd={}", fd);
+    throw "getw interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::Handleputc(int c, void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::putc(c, stream);
+    }
+
+    LOG_ERROR("putc interception not yet supported, fd={}", fd);
+    throw "putc interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::Handleputw(int w, void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::putw(w, stream);
+    }
+
+    LOG_ERROR("putw interception not yet supported, fd={}", fd);
+    throw "putw interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+void ContentHandler::Handlerewind(void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::rewind(stream);
+    }
+
+    LOG_ERROR("rewind interception not yet supported, fd={}", fd);
+    throw "rewind interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+void ContentHandler::Handlesetbuf(void* stream, char* buf)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::setbuf(stream, buf);
+    }
+
+    LOG_ERROR("setbuf interception not yet supported, fd={}", fd);
+    throw "setbuf interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+void ContentHandler::Handlesetbuffer(void* stream, char* buf, size_t size)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::setbuffer(stream, buf, size);
+    }
+
+    LOG_ERROR("setbuffer interception not yet supported, fd={}", fd);
+    throw "setbuffer interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+void ContentHandler::Handlesetlinebuf(void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::setlinebuf(stream);
+    }
+
+    LOG_ERROR("setlinebuf interception not yet supported, fd={}", fd);
+    throw "setlinebuf interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::Handlesetvbuf(void* stream, char* buf, int mode, size_t size)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::setvbuf(stream, buf, mode, size);
+    }
+
+    LOG_ERROR("setvbuf interception not yet supported, fd={}", fd);
+    throw "setvbuf interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::Handleungetc(int c, void* stream)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::ungetc(c, stream);
+    }
+
+    LOG_ERROR("ungetc interception not yet supported, fd={}", fd);
+    throw "ungetc interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::Handlevfprintf(void* stream, const char* format, va_list ap)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::vfprintf(stream, format, ap);
+    }
+
+    LOG_ERROR("vfprintf interception not yet supported, fd={}", fd);
+    throw "vfprintf interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::Handlevfscanf(void* stream, const char* format, va_list ap)
+{
+    int fd = GetFdFromStream(stream);
+    if (fd < 0)
+    {
+        return StorageDlsymWrapper::vfscanf(stream, format, ap);
+    }
+
+    LOG_ERROR("vfscanf interception not yet supported, fd={}", fd);
+    throw "vfscanf interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::GetFdFromStream(void* stream)
+{
+    // If stream is valid and _fileno is set to -1, we know that this is managed by us and extract the fd from _flags.
+    FILE* fileStreamPtr = static_cast<FILE*>(stream);
+    if (fileStreamPtr == nullptr || fileStreamPtr->_fileno != -1 || !IsFdInRange(fileStreamPtr->_flags))
+    {
+        return -1;
+    }
+
+    int fd = fileStreamPtr->_flags;
+    std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
+    auto fdIt = m_mapOpenHandles.find(fd);
+    if (fdIt == m_mapOpenHandles.end())
+    {
+        return -1;
+    }
+
+    return fd;
+}
+
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::AllotNewFd(std::unique_ptr<FileDescriptor> fd)
 {

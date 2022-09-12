@@ -150,3 +150,176 @@ extern "C" ssize_t listxattr(const char* path, char* list, size_t size)
     return StorageInterceptorImpl::listxattr(path, list, size);
 }
 //---------------------------------------------------------------------------------------------------------------------
+extern "C" void clearerr(void* stream)
+{
+    return StorageInterceptorImpl::clearerr(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int feof(void* stream)
+{
+    return StorageInterceptorImpl::feof(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int ferror(void* stream)
+{
+    return StorageInterceptorImpl::ferror(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int fflush(void* stream)
+{
+    return StorageInterceptorImpl::fflush(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int fgetc(void* stream)
+{
+    return StorageInterceptorImpl::fgetc(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int fgetpos(void* stream, void* pos)
+{
+    return StorageInterceptorImpl::fgetpos(stream, pos);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int fgetpos64(void* stream, void* pos)
+{
+    return StorageInterceptorImpl::fgetpos64(stream, pos);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" char* fgets(char* s, int size, void* stream)
+{
+    return StorageInterceptorImpl::fgets(s, size, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int fprintf(void* stream, const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    int ret = StorageInterceptorImpl::vfprintf(stream, format, args);
+    va_end(args);
+    return ret;
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int fpurge(void* stream)
+{
+    return StorageInterceptorImpl::fpurge(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int fputc(int c, void* stream)
+{
+    return StorageInterceptorImpl::fputc(c, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int fputs(const char* s, void* stream)
+{
+    return StorageInterceptorImpl::fputs(s, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" size_t fread(void* ptr, size_t size, size_t nmemb, void* stream)
+{
+    return StorageInterceptorImpl::fread(ptr, size, nmemb, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" void* freopen(const char* pathname, const char* mode, void* stream)
+{
+    return StorageInterceptorImpl::freopen(pathname, mode, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" void* freopen64(const char* pathname, const char* mode, void* stream)
+{
+    return StorageInterceptorImpl::freopen64(pathname, mode, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int fscanf(void* stream, const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    int ret = StorageInterceptorImpl::vfscanf(stream, format, args);
+    va_end(args);
+    return ret;
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int fseek(void* stream, long offset, int whence)
+{
+    return StorageInterceptorImpl::fseek(stream, offset, whence);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int fsetpos(void* stream, const void* pos)
+{
+    return StorageInterceptorImpl::fsetpos(stream, pos);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int fsetpos64(void* stream, const void* pos)
+{
+    return StorageInterceptorImpl::fsetpos64(stream, pos);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" long ftell(void* stream)
+{
+    return StorageInterceptorImpl::ftell(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" size_t fwrite(const void* ptr, size_t size, size_t nmemb, void* stream)
+{
+    return StorageInterceptorImpl::fwrite(ptr, size, nmemb, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int getc(void* stream)
+{
+    return StorageInterceptorImpl::getc(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int getw(void* stream)
+{
+    return StorageInterceptorImpl::getw(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int putc(int c, void* stream)
+{
+    return StorageInterceptorImpl::putc(c, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int putw(int w, void* stream)
+{
+    return StorageInterceptorImpl::putw(w, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" void rewind(void* stream)
+{
+    return StorageInterceptorImpl::rewind(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" void setbuf(void* stream, char* buf)
+{
+    return StorageInterceptorImpl::setbuf(stream, buf);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" void setbuffer(void* stream, char* buf, size_t size)
+{
+    return StorageInterceptorImpl::setbuffer(stream,buf, size);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" void setlinebuf(void* stream)
+{
+    return StorageInterceptorImpl::setlinebuf(stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int setvbuf(void* stream, char* buf, int mode, size_t size)
+{
+    return StorageInterceptorImpl::setvbuf(stream, buf, mode, size);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int ungetc(int c, void* stream)
+{
+    return StorageInterceptorImpl::ungetc(c, stream);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int vfprintf(void* stream, const char* format, va_list ap)
+{
+    return StorageInterceptorImpl::vfprintf(stream, format, ap);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int vfscanf(void* stream, const char* format, va_list ap)
+{
+    return StorageInterceptorImpl::vfscanf(stream, format, ap);
+}
+//---------------------------------------------------------------------------------------------------------------------
