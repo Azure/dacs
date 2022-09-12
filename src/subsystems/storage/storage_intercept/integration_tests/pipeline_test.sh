@@ -6,6 +6,12 @@ SCRIPT_DIR="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 SCRIPT_NAME="$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")"
 REPOSITORY_ROOT="$(readlink -f ${SCRIPT_DIR}/../../../../../)"
 
+CACHE_SERVER_PORT_RANGE_START=20100
+CACHE_SERVER_PORT_RANGE_LENGTH=10000
+CACHE_SERVER_PORT=${CACHE_SERVER_PORT_RANGE_START}
+CACHE_SERVER_PID=-1
+CACHE_SERVER_PATH=/tmp/_cache
+
 if [ -z "$1" ]
 then
   BUILD_CONFIGURATION=Debug
@@ -33,6 +39,66 @@ function add_interception_config_blob() {
     echo "Created the storage interception config file"
 }
 
+function add_interception_config_blob_with_cache() {
+    add_interception_config_blob $1
+
+    STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
+    echo "cacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "attributesCacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "attributesCacheUseLocalServer true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "attributesCacheServerPort ${CACHE_SERVER_PORT}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "cacheServerPort ${CACHE_SERVER_PORT}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "cacheEnableRemote false" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+
+    echo "Created the storage interception config file with cache enabled"
+}
+
+function add_interception_config_blob_with_cache_encryption() {
+    add_interception_config_blob_with_cache $1
+
+    STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
+    echo "cacheEncryptionEnabled true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "cacheEncryptionKey somedummykey" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+
+    echo "Created the storage interception config file with encryption enabled"
+}
+
+function start_cache_server() {
+
+  # ensure cache storage path is present
+  mkdir ${CACHE_SERVER_PATH}
+
+  # Loop and find free port to listen
+  isfree=$(netstat -taln | grep $CACHE_SERVER_PORT)
+  while [[ -n "$isfree" ]]; do
+      CACHE_SERVER_PORT=$(($CACHE_SERVER_PORT_RANGE_START + $RANDOM % $CACHE_SERVER_PORT_RANGE_LENGTH))
+      isfree=$(netstat -taln | grep $CACHE_SERVER_PORT)
+  done
+  
+  # Start cache server in the background and save pid
+  CACHE_SERVER_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/CacheServer"
+  CacheServerCommand="${CACHE_SERVER_EXE} ${CACHE_SERVER_PORT} ${CACHE_SERVER_PATH} 100000000000 10000000 1"
+  echo "Starting CacheServer using command: ${CacheServerCommand}"
+  eval ${CacheServerCommand} &
+  CACHE_SERVER_PID=$!
+
+  echo "Started CacheServer in the background, pid: ${CACHE_SERVER_PID}"
+}
+
+function stop_cache_server() {
+  echo "Stopping CacheServer"
+  eval "kill -9 ${CACHE_SERVER_PID}"
+
+  if [[ -d ${CACHE_SERVER_PATH} ]]; then
+    rm -rf ${CACHE_SERVER_PATH}
+  fi
+
+  echo "Stopped CacheServer"
+}
+
+# Start cache server in the background
+start_cache_server
+
 echo "Running unit tests against blob"
 add_interception_config_blob /mnt/dataPathIntcpt
 export STORAGE_INTERCEPT_USE_EXISITNG_CONFIG=true
@@ -48,13 +114,57 @@ echo ""
 echo "Running integration test against blob"
 pip3 install h5py
 add_interception_config_blob /mnt/quiverfs
-eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large -n 20 -p 4"
+eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large -s -n 20 -p 4"
 if [ $? -ne 0 ]
 then
     echo "Blob Integration test failed"
     exit 1
 fi
 echo ""
+
+echo "Running unit tests against blob with cache enabled"
+add_interception_config_blob_with_cache /mnt/dataPathIntcpt
+cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
+eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
+if [ $? -ne 0 ]
+then
+    echo "Unit tests against blob with cache failed"
+    exit 1
+fi
+echo ""
+
+echo "Running integration test against blob with cache"
+add_interception_config_blob_with_cache /mnt/quiverfs
+eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large -s -n 20 -p 4"
+if [ $? -ne 0 ]
+then
+    echo "Blob Integration test with cache failed"
+    exit 1
+fi
+echo ""
+
+echo "Running unit tests against blob with cache and encryption enabled"
+add_interception_config_blob_with_cache_encryption /mnt/dataPathIntcpt
+cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
+eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
+if [ $? -ne 0 ]
+then
+    echo "Unit tests against blob with cache and encryption failed"
+    exit 1
+fi
+echo ""
+
+echo "Running integration test against blob with cache and encryption"
+add_interception_config_blob_with_cache_encryption /mnt/quiverfs
+eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large -s -n 20 -p 4"
+if [ $? -ne 0 ]
+then
+    echo "Blob Integration test with cache and encryption failed"
+    exit 1
+fi
+echo ""
+
+stop_cache_server
 
 # TODO: add tests for adls
 echo "All Storage interception integration tests completed"
