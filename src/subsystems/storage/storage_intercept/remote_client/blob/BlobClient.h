@@ -52,8 +52,11 @@ class BlobClient : public IRemoteClient
     private:
         void GetConfigProperties();
 
-        bool IsIgnorableError(
-            /*[in] */ HttpStatus statusCode);
+        bool IsIgnorableError(/*[in] */ HttpStatus statusCode);
+
+        std::vector<azBlobItem_t> ListOneBlob(
+            /*[in] */ const std::string& containerName,
+            /*[in] */ const std::string& queryPrefix);
 
         void MakeDirectoryAttr(/*[out]*/ FileAttributes& attr);
 

@@ -195,54 +195,8 @@ std::string BlobClient::ReadDirectory(
 //---------------------------------------------------------------------------------------------------------------------
 int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& attr)
 {
-    std::string emptyContinuationToken;
-    /* We are only interested in getting one response */
-    const int MAX_RESULTS = 1;
-
     const std::string blobPath = GetBlobName(remotePath);
-    std::string listBlobsQueryPrefix = (blobPath.size() == 0) ? ""
-        : blobPath.back() == DIRECTORY_DELIMITER.back()
-            ? blobPath.substr(0, blobPath.size() - 1)
-            : blobPath;
-
-    const auto blobOutcome =
-        m_spClient->list_blobs_segmented(
-            GetContainerName(remotePath),
-            DIRECTORY_DELIMITER,
-            emptyContinuationToken,
-            listBlobsQueryPrefix,
-            MAX_RESULTS).get();
-
-    if (!blobOutcome.success())
-    {
-        LOG_ERROR(
-            "Unable to get blobs for path={}, container={}, blobPath={} status-code={}, code-name={}, error-msg={}",
-            remotePath,
-            GetContainerName(remotePath),
-            blobPath,
-            blobOutcome.error().code,
-            blobOutcome.error().code_name,
-            blobOutcome.error().message);
-        
-        if (blobOutcome.error().code_name == "ContainerNotFound")
-        {
-            LOG_WARN("Container not found in GetProperties. remotePath={}", remotePath);
-            errno = ENOENT;
-            return -1;
-        }
-
-        throw BlobClientException(blobOutcome.error().message);
-    }
-
-    if (blobOutcome.response().blobs.size() == 0)
-    {
-        LOG_WARN("Blob not found in GetProperties. remotePath={}, blobPath={}, queryPrefix={}",
-            remotePath,
-            blobPath,
-            listBlobsQueryPrefix);
-        errno = ENOENT;
-        return -1;
-    }
+    const std::string containerName = GetContainerName(remotePath);
 
     /* Case of root directory */
     if (blobPath.length() == 0)
@@ -251,50 +205,55 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
         return 0;
     }
 
-    /* The response blobs list is ordered lexicographically (based on its name),
-     * so an exact match with request path (if exists), would always occur first in the list
-     */
-    const auto& blobResponse = blobOutcome.response().blobs[0];
+    std::vector<azBlobItem_t> listBlobResult = ListOneBlob(containerName, blobPath);
+
     if (blobPath.back() == DIRECTORY_DELIMITER.back())
     {
-        if (blobResponse.name.compare(blobPath) == 0)
+        if (listBlobResult.size() > 0)
         {
+            // Directory exists as we got non-empty result for list blobs with queryPrefix with trailing delimiter.
             MakeDirectoryAttr(attr);
         }
         else
         {
-            LOG_WARN("Invalid blob path provided {}, response path {}", blobPath, blobResponse.name);
-            if (listBlobsQueryPrefix == blobResponse.name)
+            LOG_WARN("No directory found for container={} blobPath={}. Checking if a file exists with same name.",
+                containerName,
+                blobPath);
+            const std::string blobPathWithoutTrailingDelimiter = blobPath.substr(0, blobPath.size() - 1);
+            auto secondListBlobResult = ListOneBlob(containerName, blobPathWithoutTrailingDelimiter);
+            if (secondListBlobResult.size() > 0 && secondListBlobResult[0].name == blobPathWithoutTrailingDelimiter)
             {
-                /*
-                 * Case where remotePath is (valid-file-path + DIRECTORY_DELIMITER). It is still an invalid request,
-                 * since a typical linux stat call also fails in such a scenario.
-                 */
+                LOG_WARN("File found instead of directory blobPath={}", blobPath);
                 errno = ENOTDIR;
+                return -1;
             }
             else
             {
-                /*
-                 * Case where remotePath is a prefix to a valid path,
-                 * but the sub-directory name after the last DIRECTORY_DELIMITER
-                 * is not completely formed. eg: /mnt/DACS/dataplane/ a valid path
-                 * and the requested path is /mnt/DACS/data/ ( ending '/' is removed before sending blob request).
-                 * blobResponse for the above request is: /mnt/DACS/dataplane/
-                 */
+                LOG_WARN("No file/dir found at blobPath={}", blobPathWithoutTrailingDelimiter);
                 errno = ENOENT;
+                return -1;
             }
-
-            return -1;
         }
     }
     else
     {
-        if (blobResponse.name.compare(blobPath) == 0)
+        if (listBlobResult.size() == 0)
+        {
+            // No file\dir exists as we got empty response for list blobs with no trailing slash in query prefix.
+            LOG_WARN("Blob not found in GetProperties. remotePath={}, blobPath={}",
+                remotePath,
+                blobPath);
+            errno = ENOENT;
+            return -1;
+        }
+
+        const auto& blobResponse = listBlobResult[0];
+        if (blobResponse.name == blobPath)
         {
             /* blobPath corresponded to a file */
             MakeFileAttr(blobResponse, attr);
         }
-        else if (blobResponse.name.compare(blobPath + DIRECTORY_DELIMITER) == 0)
+        else if (blobResponse.name == (blobPath + DIRECTORY_DELIMITER))
         {
             /* blobPath corresponds to a valid directory */
             MakeDirectoryAttr(attr);
@@ -303,20 +262,89 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
         {
             if (blobResponse.name.rfind(blobPath, 0) != 0)
             {
-                LOG_ERROR("Possible memory corruption. List blobs response={}, query={}",
+                LOG_ERROR(
+                    "Possible memory corruption. List blob response items not matching query. response={}, query={}",
                     blobResponse.name,
                     blobPath);
                 throw BlobClientException("Invalid blob path received in response");
             }
 
-            /* strict prefix of a valid path */
-            LOG_WARN("Invalid blob path provided {}, response path {}", blobPath, blobResponse.name);
-            errno = ENOENT;
-            return -1;
+            const std::string blobPathWithTrailingDelimiter = blobPath + DIRECTORY_DELIMITER;
+            bool directoryExists = false;
+            if (blobResponse.name < blobPathWithTrailingDelimiter)
+            { 
+                // No file was found at blobPath but there may be a directory present over there alongwith some files
+                // which have prefix blobPath but are lexicographically smaller than (blobPath + '/')
+                LOG_WARN("No file found for container={} blobPath={}, Checking if a dir exists with same name.",
+                    containerName,
+                    blobPath);
+                const std::string blobPathWithTrailingDelimiter = blobPath + DIRECTORY_DELIMITER;
+                auto secondListBlobResult = ListOneBlob(containerName, blobPathWithTrailingDelimiter);
+                if (secondListBlobResult.size() > 0)
+                {
+                    // Directory exists as we got non-empty result
+                    directoryExists = true;
+                }
+            }
+
+            if (directoryExists)
+            {
+                MakeDirectoryAttr(attr);
+            }
+            else
+            {
+                LOG_WARN("No file/dir found at blobPath={}, response path={}", blobPath, blobResponse.name);
+                errno = ENOENT;
+                return -1;
+            }
         }
     }
-    LOG_DEBUG("Get properties API response received for path={}, isDirectory={}, size={}", remotePath, attr.isDir, attr.size);
+
+    LOG_DEBUG("Get properties API response received for path={}, isDirectory={}, size={}",
+      remotePath,
+      attr.isDir,
+      attr.size);
     return 0;
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::vector<BlobClient::azBlobItem_t> BlobClient::ListOneBlob(
+    const std::string& containerName,
+    const std::string& queryPrefix)
+{
+    const auto blobOutcome = m_spClient->list_blobs_segmented(
+        containerName,
+        DIRECTORY_DELIMITER,
+        "" /* continuation token */,
+        queryPrefix,
+        1 /* max results */).get();
+
+    if (!blobOutcome.success())
+    {
+        LOG_ERROR(
+            "Error during list one blob for container={} queryPrefix={} "
+            "status-code={}, code-name={}, error-msg={}",
+            containerName,
+            queryPrefix,
+            blobOutcome.error().code,
+            blobOutcome.error().code_name,
+            blobOutcome.error().message);
+        
+        if (blobOutcome.error().code_name == "ContainerNotFound")
+        {
+            LOG_WARN("Container not found in GetProperties. queryPrefix={}", queryPrefix);
+            std::vector<azBlobItem_t> emptyBlobList;
+            return emptyBlobList;
+        }
+
+        throw BlobClientException(blobOutcome.error().message);
+    }
+
+    LOG_DEBUG("List one blob result for container={}, queryPrefix={}, nBlobs={}, blobName={}",
+        containerName,
+        queryPrefix,
+        blobOutcome.response().blobs.size(),
+        (blobOutcome.response().blobs.size() > 0) ? blobOutcome.response().blobs[0].name : "");
+    return blobOutcome.response().blobs;
 }
 //---------------------------------------------------------------------------------------------------------------------
 void BlobClient::MakeFileAttr(const azBlobItem_t& blobItem, FileAttributes& attr)
@@ -327,9 +355,7 @@ void BlobClient::MakeFileAttr(const azBlobItem_t& blobItem, FileAttributes& attr
     strptime(blobItem.last_modified.c_str(), "%a, %d %b %Y %H:%M:%S", &mTime);
     attr.mTime.tv_sec = timegm(&mTime);
 
-    /* Response from blob only contains mTime,
-    * hence populating the unknown attributes in this manner
-    */
+    // Response from blob only contains mTime, setting aTime/cTime to mTime
     attr.aTime = attr.cTime = attr.mTime;
 }
 //---------------------------------------------------------------------------------------------------------------------
