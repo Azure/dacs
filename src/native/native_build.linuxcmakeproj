@@ -25,6 +25,7 @@
     <_StorageIntercept>src/subsystems/storage/storage_intercept/</_StorageIntercept>
     <_CacheServer>src/subsystems/storage/cache_server/</_CacheServer>
     <_StorageCommonNative>src/subsystems/storage/common/</_StorageCommonNative>
+    <_DynamicPatches>src/subsystems/reliability/dynamic_patches/</_DynamicPatches>
 
     <_SrcSyncDirs>$(RepositoryRootPath)/$(_NativeBuild)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_CudaBuild)</_SrcSyncDirs>
@@ -41,6 +42,7 @@
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_StorageIntercept)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_CacheServer)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_StorageCommonNative)</_SrcSyncDirs>
+    <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_DynamicPatches)</_SrcSyncDirs>
   </PropertyGroup>
 
   <ItemGroup>
@@ -61,5 +63,6 @@
     <NativeInputFiles Include="$(RepositoryRootPath)$(_NodeResourceManagerDeviceManagement)**" />
     <NativeInputFiles Include="$(RepositoryRootPath)$(_ReliabilityCommonNative)**" />
     <NativeInputFiles Include="$(RepositoryRootPath)$(_CacheServer)**" />
+    <NativeInputFiles Include="$(RepositoryRootPath)$(_DynamicPatches)**" />
   </ItemGroup>
 </Project>
