@@ -82,6 +82,7 @@ add_subdirectory(src/subsystems/common/native_lib/diagnostics)
 add_subdirectory(src/subsystems/common/native_lib/diagnostics.tests)
 add_subdirectory(src/subsystems/reliability/common/native/)
 add_subdirectory(src/subsystems/reliability/callstack_utils/)
+
 message("CUDA_VERSION: ${CUDA_VERSION}")
 
 if(NOT CUDA_VERSION OR NOT ("${CUDA_VERSION}" MATCHES "non_cuda"))
@@ -98,4 +99,8 @@ if(NOT CUDA_VERSION OR "${CUDA_VERSION}" MATCHES "non_cuda")
     add_subdirectory(src/subsystems/reliability/amd_nccl_intercept/)
     add_subdirectory(src/subsystems/storage/cache_server/)
     add_subdirectory(src/subsystems/storage/storage_intercept/)
+
+    set(CMAKE_DYNAMIC_PATCHES_PATH "${CMAKE_SOURCE_DIR}/src/subsystems/reliability/dynamic_patches/")
+    add_custom_target(copy_dynamic_patches ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_DYNAMIC_PATCHES_PATH} ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/dynamic_patches)
 endif()
