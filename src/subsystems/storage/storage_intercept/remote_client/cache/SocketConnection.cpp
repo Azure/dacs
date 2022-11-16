@@ -3,7 +3,6 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "SocketConnection.h"
 #include "StorageInterceptLogger.h"
-#include "StorageInterceptConfig.h"
 #include "StorageDlsymWrapper.h"
 #include "poll.h"
 #include <sys/socket.h>

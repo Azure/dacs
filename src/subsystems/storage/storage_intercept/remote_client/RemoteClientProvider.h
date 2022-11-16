@@ -8,6 +8,6 @@
 class RemoteClientProvider
 {
     public:
-        static std::shared_ptr<IRemoteClient> GetRemoteClient();
+        static std::shared_ptr<IRemoteClient> GetRemoteClient(const std::string& mountName);
 };
 //---------------------------------------------------------------------------------------------------------------------

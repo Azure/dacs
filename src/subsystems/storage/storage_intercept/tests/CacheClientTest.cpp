@@ -2,8 +2,8 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "CacheClientTest.h"
+#include "LocalFSCacheClient.h"
 #include "RemoteCacheClient.h"
-#include "CacheClientFactory.h"
 #include "StorageInterceptConfig.h"
 #include <algorithm>
 #include <vector>
@@ -22,9 +22,16 @@ CacheClientTest::CacheClientTest()
     char testId[37];
     uuid_unparse(out, testId);
     m_strTestId = testId;
-    if (StorageInterceptConfig::GetInstance().GetCacheEnable())
+    if (StorageInterceptConfig::GetInstance().GetCacheEnable(""))
     {
-        m_cacheClient = std::move(CacheClientFactory::GetCacheClient());
+        if(StorageInterceptConfig::GetInstance().GetCacheUseLocalFS())
+        {
+            m_cacheClient = std::make_shared<LocalFSCacheClient>();
+        }
+        else
+        {
+            m_cacheClient = std::make_shared<RemoteCacheClient>();
+        }
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -60,36 +67,36 @@ TEST_F(CacheClientTest, SimpleUploadDownloadTest)
     // Test 4MB file
     std::vector<char> outBuffer(1024*1024*4);
     string strFileName = GetRandFilename();
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND_LOCKED);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND);
 
     // repeat not found
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND);
 
     auto dataBuffer = GetRandDataBuffer(1024*1024*4);
-    bRetVal = m_cacheClient->UploadAsync(strFileName, dataBuffer);
+    bRetVal = m_cacheClient->UploadAsync("", strFileName, dataBuffer);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
     // TODO: make this deterministic
     sleep(1);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::SUCCESS);
     ASSERT_EQ(dataRead, 1024*1024*4);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
     // repeat download
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::SUCCESS);
     ASSERT_EQ(dataRead, 1024*1024*4);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, 0, outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::SUCCESS);
     ASSERT_EQ(dataRead, 1024*1024*4);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
@@ -109,21 +116,21 @@ TEST_F(CacheClientTest, DifferentFileSizesUploadDownloadTest)
     // 1 byte file test
     std::vector<char> outBuffer(1);
     string strFileName = GetRandFilename();
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND_LOCKED);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND);
 
     auto dataBuffer = GetRandDataBuffer(1);
-    bRetVal = m_cacheClient->UploadAsync(strFileName, dataBuffer);
+    bRetVal = m_cacheClient->UploadAsync("", strFileName, dataBuffer);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
     // TODO: make this deterministic
     sleep(1);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::SUCCESS);
     ASSERT_EQ(dataRead, 1);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
@@ -131,21 +138,21 @@ TEST_F(CacheClientTest, DifferentFileSizesUploadDownloadTest)
     // 4MB - 1 byte file test
     outBuffer.resize(1024*1024*4 - 1);
     strFileName = GetRandFilename();
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND_LOCKED);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND);
 
     dataBuffer = GetRandDataBuffer(1024*1024*4 - 1);
-    bRetVal = m_cacheClient->UploadAsync(strFileName, dataBuffer);
+    bRetVal = m_cacheClient->UploadAsync("", strFileName, dataBuffer);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
     // TODO: make this deterministic
     sleep(1);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::SUCCESS);
     ASSERT_EQ(dataRead, 1024*1024*4 - 1);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
@@ -153,21 +160,21 @@ TEST_F(CacheClientTest, DifferentFileSizesUploadDownloadTest)
     // 4MB + 1 byte file test
     outBuffer.resize(1024*1024*4 + 1);
     strFileName = GetRandFilename();
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND_LOCKED);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND);
 
     dataBuffer = GetRandDataBuffer(1024*1024*4 + 1);
-    bRetVal = m_cacheClient->UploadAsync(strFileName, dataBuffer);
+    bRetVal = m_cacheClient->UploadAsync("", strFileName, dataBuffer);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
     // TODO: make this deterministic
     sleep(1);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::SUCCESS);
     ASSERT_EQ(dataRead, 1024*1024*4 + 1);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
@@ -178,21 +185,21 @@ TEST_F(CacheClientTest, DifferentFileSizesUploadDownloadTest)
     {
         outBuffer.resize(1024*1024*10);
         strFileName = GetRandFilename();
-        cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+        cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
         ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND_LOCKED);
 
-        cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+        cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
         ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND);
 
         dataBuffer = GetRandDataBuffer(1024*1024*10);
-        bRetVal = m_cacheClient->UploadAsync(strFileName, dataBuffer);
+        bRetVal = m_cacheClient->UploadAsync("", strFileName, dataBuffer);
         ASSERT_EQ(bRetVal, true);
 
         // wait for async upload to complete 
         // TODO: make this deterministic
         sleep(1);
 
-        cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+        cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
         ASSERT_EQ(cacheStatus, ICacheClient::SUCCESS);
         ASSERT_EQ(dataRead, 1024*1024*10);
         AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
@@ -212,21 +219,21 @@ TEST_F(CacheClientTest, ZeroSizeUploadDownloadTest)
     std::vector<char> outBuffer(100);
     
     string strFileName = GetRandFilename();
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND_LOCKED);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND);
 
     auto dataBuffer = GetRandDataBuffer(0);
-    bRetVal = m_cacheClient->UploadAsync(strFileName, dataBuffer);
+    bRetVal = m_cacheClient->UploadAsync("", strFileName, dataBuffer);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
     // TODO: make this deterministic
     sleep(1);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::SUCCESS);
     ASSERT_EQ(dataRead, 0);
 }
@@ -234,7 +241,7 @@ TEST_F(CacheClientTest, ZeroSizeUploadDownloadTest)
 TEST_F(CacheClientTest, PartialDownloadTest)
 {
     // Partial downloads are not supported with encryption enabled.
-    if (this->m_cacheClient == nullptr || StorageInterceptConfig::GetInstance().GetCacheEncryptionEnabled())
+    if (this->m_cacheClient == nullptr || StorageInterceptConfig::GetInstance().GetCacheEncryptionEnabled(""))
     {
         GTEST_SKIP();
     }
@@ -245,36 +252,37 @@ TEST_F(CacheClientTest, PartialDownloadTest)
     std::vector<char> outBuffer(1024*1024*4);
 
     string strFileName = GetRandFilename();
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND_LOCKED);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND);
 
     auto dataBuffer = GetRandDataBuffer(1024*1024*4);
-    bRetVal = m_cacheClient->UploadAsync(strFileName, dataBuffer);
+    bRetVal = m_cacheClient->UploadAsync("", strFileName, dataBuffer);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
     // TODO: make this deterministic
     sleep(1);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::SUCCESS);
     ASSERT_EQ(dataRead, 1024*1024*4);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 0, 5, outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 5, outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::SUCCESS);
     ASSERT_EQ(dataRead, 5);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 5, 25, outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 5, 25, outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::SUCCESS);
     ASSERT_EQ(dataRead, 25);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get() + 5, dataRead);
 
     cacheStatus = m_cacheClient->DownloadSync(
+        "",
         strFileName,
         1024*1024*4 - 1,
         outBuffer.size(),
@@ -284,11 +292,11 @@ TEST_F(CacheClientTest, PartialDownloadTest)
     ASSERT_EQ(dataRead, 1);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get() + 1024*1024*4 - 1, dataRead);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 1024*1024*4, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 1024*1024*4, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::SUCCESS);
     ASSERT_EQ(dataRead, 0);
 
-    cacheStatus = m_cacheClient->DownloadSync(strFileName, 999, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 999, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, ICacheClient::SUCCESS);
     ASSERT_EQ(dataRead, 1024*1024*4 - 999);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get() + 999, dataRead);
@@ -326,7 +334,7 @@ TEST_F(CacheClientTest, ParallelUploadDownloadTest)
         auto t = make_unique<thread>([i, &outBuffer, &fileNames, this]() {
             uint64_t dataRead = 0;
             auto cacheStatus =
-                this->m_cacheClient->DownloadSync(fileNames[i], 0, outBuffer[i].size(), outBuffer[i].data(), dataRead);
+                this->m_cacheClient->DownloadSync("", fileNames[i], 0, outBuffer[i].size(), outBuffer[i].data(), dataRead);
             ASSERT_EQ(cacheStatus, ICacheClient::NOTFOUND_LOCKED);
         });
         testThreads.push_back(move(t));
@@ -341,7 +349,7 @@ TEST_F(CacheClientTest, ParallelUploadDownloadTest)
     for (int i = 0; i < numFiles; ++i)
     {
         auto t = make_unique<thread>([i, &dataBuffer, &fileNames, this]() {
-            bool bRetVal = this->m_cacheClient->UploadAsync(fileNames[i], dataBuffer[i]);
+            bool bRetVal = this->m_cacheClient->UploadAsync("", fileNames[i], dataBuffer[i]);
             ASSERT_EQ(bRetVal, true);
         });
         testThreads.push_back(move(t));
@@ -362,7 +370,7 @@ TEST_F(CacheClientTest, ParallelUploadDownloadTest)
         auto t = make_unique<thread>([i, &dataBuffer, &outBuffer, &fileNames, this]() {
             uint64_t dataRead = 0;
             auto cacheStatus =
-                this->m_cacheClient->DownloadSync(fileNames[i], 0, outBuffer[i].size(), outBuffer[i].data(), dataRead);
+                this->m_cacheClient->DownloadSync("", fileNames[i], 0, outBuffer[i].size(), outBuffer[i].data(), dataRead);
             ASSERT_EQ(cacheStatus, ICacheClient::SUCCESS);
             ASSERT_EQ(dataRead, dataBuffer[i]->BufferSize);
             AssertEqArray<char>(outBuffer[i].data(), dataBuffer[i]->Buffer.get(), dataRead);

@@ -10,19 +10,19 @@
 //---------------------------------------------------------------------------------------------------------------------
 #define RETURN_IF(condition, x, ...)                               if (condition) { LOG_ERROR(__VA_ARGS__); return x; }
 //---------------------------------------------------------------------------------------------------------------------
-AdlsClient::AdlsClient()
+AdlsClient::AdlsClient(const std::string& mountName)
 {
-  GetConfig();
+  GetConfig(mountName);
   LOG_DEBUG("Initalized Adls Client succesfully");
 }
 //---------------------------------------------------------------------------------------------------------------------
-void AdlsClient::GetConfig()
+void AdlsClient::GetConfig(const std::string& mountName)
 {
   m_HostContext = {
-    StorageInterceptConfig::GetInstance().GetAdlsHostName(),
-    StorageInterceptConfig::GetInstance().GetAdlsClientId(),
-    StorageInterceptConfig::GetInstance().GetAdlsClientSecret(),
-    StorageInterceptConfig::GetInstance().GetAdlsAuthTokenUrl(),
+    StorageInterceptConfig::GetInstance().GetAdlsHostName(mountName),
+    StorageInterceptConfig::GetInstance().GetAdlsClientId(mountName),
+    StorageInterceptConfig::GetInstance().GetAdlsClientSecret(mountName),
+    StorageInterceptConfig::GetInstance().GetAdlsAuthTokenUrl(mountName),
   };
 }
 //---------------------------------------------------------------------------------------------------------------------

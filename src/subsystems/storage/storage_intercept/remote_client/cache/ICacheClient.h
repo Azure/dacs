@@ -13,6 +13,7 @@ class ICacheClient
         enum CacheStatus {SUCCESS, NOTFOUND, NOTFOUND_LOCKED, AUTH_FAILED, INTERNAL_ERROR};
 
         virtual CacheStatus DownloadSync(
+            /*[in] */ const std::string& mountName,
             /*[in] */ const std::string& cacheKey,
             /*[in] */ uint64_t startOffset,
             /*[in] */ uint64_t length,
@@ -20,6 +21,7 @@ class ICacheClient
             /*[out]*/ uint64_t& readLength) = 0;
 
         virtual bool UploadAsync(
+            /*[in] */ const std::string& mountName,
             /*[in] */ const std::string& cacheKey,
             /*[in] */ std::shared_ptr<const FileReadData> fileData) = 0;
 

@@ -27,6 +27,11 @@ EncryptionUtil::~EncryptionUtil()
 {
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool EncryptionUtil::IsEncryptionEnabled() const
+{
+    return m_encryptionEnabled;
+}
+//---------------------------------------------------------------------------------------------------------------------
 int EncryptionUtil::GcmEncrypt(unsigned char *plaintext, int plaintextLen,
                 const std::string& iv,
                 unsigned char *ciphertext,

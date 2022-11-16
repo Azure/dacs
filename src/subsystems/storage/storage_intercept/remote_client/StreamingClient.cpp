@@ -3,14 +3,13 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "StreamingClient.h"
 #include "RemoteClientProvider.h"
-#include "CacheClientFactory.h"
 #include "CacheUtils.h"
-#include "AttributesCacheFactory.h"
 #include "InMemoryAttributesCache.h"
 #include "PrefetchCache.h"
 #include "StorageInterceptConfig.h"
 #include "StorageInterceptLogger.h"
 #include "StorageInterceptConstants.h"
+#include "StorageInterceptUtils.h"
 #include <cstring>
 #include <algorithm>
 #include <pthread.h>
@@ -35,13 +34,17 @@ struct AsyncReadChunkInfo
     }
 };
 //---------------------------------------------------------------------------------------------------------------------
-StreamingClient::StreamingClient()
-    : m_spRemoteClient(std::move(RemoteClientProvider::GetRemoteClient()))
+StreamingClient::StreamingClient(
+    const std::string& mountName,
+    std::shared_ptr<ICacheClient> cacheClient,
+    std::shared_ptr<IAttributesCache> attributesCache)
+    : m_strMountName(mountName)
+    , m_strRemotePathPrefix(StorageInterceptUtils::GetRemotePathPrefix(mountName))
     , m_nChunkSize(StorageInterceptConfig::GetInstance().GetStreamingChunkSize())
-    , m_bEnableReadChunkParallelism(StorageInterceptConfig::GetInstance().GetChunkDownloadParallelismEnabled())
-    , m_nMaxReadChunkConcurrency(StorageInterceptConfig::GetInstance().GetChunkDownloadMaxConcurrency())
-    , m_bEnableLargePrefetch(StorageInterceptConfig::GetInstance().GetEnableLargePrefetch())
-    , m_nPrefetchWindowSize(StorageInterceptConfig::GetInstance().GetPrefetchWindowSizeInMB() * (1*1024*1024))
+    , m_bEnableReadChunkParallelism(StorageInterceptConfig::GetInstance().GetChunkDownloadParallelismEnabled(mountName))
+    , m_nMaxReadChunkConcurrency(StorageInterceptConfig::GetInstance().GetChunkDownloadMaxConcurrency(mountName))
+    , m_bEnableLargePrefetch(StorageInterceptConfig::GetInstance().GetEnableLargePrefetch(mountName))
+    , m_nPrefetchWindowSize(StorageInterceptConfig::GetInstance().GetPrefetchWindowSizeInMB(mountName) * (1*1024*1024))
     , m_nReadChunksInProgress(0)
     , m_nReadChunksTotal(0)
     , m_nReadChunksPrefetchCache(0)
@@ -51,22 +54,7 @@ StreamingClient::StreamingClient()
     , m_nGetPropertiesCache(0)
     , m_nGetPropertiesRemoteClient(0)
 {
-    // Register handlers to handle process fork
-    if (pthread_atfork(StreamingClient::ForkHandlerPrepare,
-        StreamingClient::ForkHandlerParent,
-        StreamingClient::ForkHandlerChild) != 0)
-    {
-        LOG_WARN("Error setting pthread_atfork handlers");
-    }
-
-    if (StorageInterceptConfig::GetInstance().GetCacheEnable())
-    {
-        m_spCacheClient = std::move(CacheClientFactory::GetCacheClient());
-    }
-    if (StorageInterceptConfig::GetInstance().GetAttributesCacheEnable())
-    {
-        m_spAttributesCache = std::move(AttributesCacheFactory::GetAttributesCache());
-    }
+    SetClients(cacheClient, attributesCache);
 
     // Sanitize prefetch window size
     const size_t maxPrefetchWindowSize = (size_t)m_nChunkSize * (PrefetchCache::GetInstance().MAX_ENTRIES_PER_FILE / 2);
@@ -88,9 +76,11 @@ StreamingClient::StreamingClient()
         m_nPrefetchWindowSize = newPrefetchWindowSize;
     }
 
-    LOG_INFO("StreamingClient initialized. ChunkSize={}, chunk cache: {}, attribute cache: {}"
-             " readChunkParallelism={}, maxReadChunkConcurrency={},"
+    LOG_INFO("StreamingClient initialized. MountName={}, RemotePathPrefix={} ChunkSize={}, chunk cache: {}, "
+             " attribute cache: {} readChunkParallelism={}, maxReadChunkConcurrency={},"
              " enableLargePrefetch: {}, prefetchWindowSizeInBytes: {}",
+        mountName,
+        m_strRemotePathPrefix,
         m_nChunkSize,
         (m_spCacheClient ? "enabled" : "disabled"),
         (m_spAttributesCache ? "enabled" : "disabled"),
@@ -99,61 +89,60 @@ StreamingClient::StreamingClient()
         m_bEnableLargePrefetch,
         m_nPrefetchWindowSize);
 }
+//---------------------------------------------------------------------------------------------------------------------
 StreamingClient::~StreamingClient()
 {
     LogStats(true);
 }
 //---------------------------------------------------------------------------------------------------------------------
-StreamingClient& StreamingClient::GetInstance()
-{
-  static StreamingClient s_instance;
-  return s_instance;
-}
-//---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::ForkHandlerPrepare()
 {
-    GetInstance().ClearClient();
+    ClearClients();
 }
 //---------------------------------------------------------------------------------------------------------------------
-void StreamingClient::ForkHandlerParent()
+void StreamingClient::ForkHandlerParent(
+    std::shared_ptr<ICacheClient> cacheClient,
+    std::shared_ptr<IAttributesCache> attributesCache)
 {
-    GetInstance().SetClient();
+    SetClients(cacheClient, attributesCache);
 }
 //---------------------------------------------------------------------------------------------------------------------
-void StreamingClient::ForkHandlerChild()
+void StreamingClient::ForkHandlerChild(
+    std::shared_ptr<ICacheClient> cacheClient,
+    std::shared_ptr<IAttributesCache> attributesCache)
 {
-    GetInstance().SetClient();
+    SetClients(cacheClient, attributesCache);
 }
 //---------------------------------------------------------------------------------------------------------------------
-void StreamingClient::SetClient()
+void StreamingClient::SetClients(
+    std::shared_ptr<ICacheClient> cacheClient,
+    std::shared_ptr<IAttributesCache> attributesCache)
 {
     // Recreate the network clients so no connections gets duplicated across parent and child forked process.
     // TODO: We can let the parent use the original client and recreate clients only for the child forked process, 
     //       but there are a few corner cases which needs to be handled.
     LOG_INFO("Resetting clients after a process fork");
-    std::atomic_store(&m_spRemoteClient, RemoteClientProvider::GetRemoteClient());
-    if (StorageInterceptConfig::GetInstance().GetCacheEnable())
+    std::atomic_store(&m_spRemoteClient, RemoteClientProvider::GetRemoteClient(m_strMountName));
+    if (StorageInterceptConfig::GetInstance().GetCacheEnable(m_strMountName))
     {
-        std::atomic_store(&m_spCacheClient, CacheClientFactory::GetCacheClient());
+        std::atomic_store(&m_spCacheClient, cacheClient);
     }
-    if (StorageInterceptConfig::GetInstance().GetAttributesCacheEnable() &&
-        StorageInterceptConfig::GetInstance().GetAttributesCacheUseLocalServer())
+    if (StorageInterceptConfig::GetInstance().GetAttributesCacheEnable(m_strMountName))
     {
-        std::atomic_store(&m_spAttributesCache, AttributesCacheFactory::GetAttributesCache());
+        std::atomic_store(&m_spAttributesCache, attributesCache);
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-void StreamingClient::ClearClient()
+void StreamingClient::ClearClients()
 {
     // Remove all stored connections and upload threads so they don't get duplicated after the fork.
     LOG_INFO("Clearing clients before a process fork");
-    if (StorageInterceptConfig::GetInstance().GetCacheEnable())
+    if (StorageInterceptConfig::GetInstance().GetCacheEnable(m_strMountName))
     {
         const std::shared_ptr<ICacheClient> emptyCacheClient;
         std::atomic_store(&m_spCacheClient, emptyCacheClient);
     }
-    if (StorageInterceptConfig::GetInstance().GetAttributesCacheEnable() &&
-        StorageInterceptConfig::GetInstance().GetAttributesCacheUseLocalServer())
+    if (StorageInterceptConfig::GetInstance().GetAttributesCacheEnable(m_strMountName))
     {
         const std::shared_ptr<IAttributesCache> emptyAttributesCache;
         std::atomic_store(&m_spAttributesCache, emptyAttributesCache);
@@ -330,7 +319,10 @@ std::string StreamingClient::ReadDirectory(
     auto attributesCache = std::atomic_load(&m_spAttributesCache);
     if (attributesCache && dirEntries.size() > numInitialEntries)
     {
-        attributesCache->PutAll(remotePath, dirEntries, numInitialEntries);
+        attributesCache->PutAll(
+            m_strRemotePathPrefix + remotePath,
+            dirEntries,
+            numInitialEntries);
     }
     return strReturnVal;
 }
@@ -341,14 +333,17 @@ int StreamingClient::GetProperties(
 {
     m_nGetPropertiesTotal++;
 
+    std::string cacheKey = m_strRemotePathPrefix + remotePath;
+
     // First check attributes cache
     IAttributesCache::CacheStatus cacheStatus;
     auto attributesCache = std::atomic_load(&m_spAttributesCache);
     if (attributesCache && 
-        (cacheStatus = attributesCache->Get(remotePath, attributes)) == IAttributesCache::SUCCESS)
+        (cacheStatus = attributesCache->Get(cacheKey, attributes)) == IAttributesCache::SUCCESS)
     {
         LOG_DEBUG("Found atrributes in cache for file: {}", remotePath);
         m_nGetPropertiesCache++;
+        LogGetPropertiesStats();
         return 0;
     }
 
@@ -359,9 +354,10 @@ int StreamingClient::GetProperties(
     if (result >= 0 && attributesCache && cacheStatus == IAttributesCache::NOTFOUND_LOCKED)
     {
         // Update cache on success
-        attributesCache->Put(remotePath, attributes);
+        attributesCache->Put(cacheKey, attributes);
     }
 
+    LogGetPropertiesStats();
     return result;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -419,6 +415,7 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunk(
     m_nReadChunksInProgress--;
     m_cvReadChunk.notify_one();
 
+    LogReadChunkStats();
     return result;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -427,7 +424,6 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
     off64_t chunkOffset)
 {
     m_nReadChunksTotal++;
-    LogStats();
 
     if ((chunkOffset % m_nChunkSize) != 0)
     {
@@ -436,8 +432,9 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
     }
 
     // Try fetch from prefetch cache
+    std::string prefetchCacheKey = m_strRemotePathPrefix + remotePath;
     std::shared_ptr<const FileReadData> prefetchLookupResult =
-        PrefetchCache::GetInstance().Get(remotePath, chunkOffset);
+        PrefetchCache::GetInstance().Get(prefetchCacheKey, chunkOffset);
     if (prefetchLookupResult)
     {
         LOG_DEBUG("Read file: {}, offset: {}, length: {} from prefetch cache",
@@ -454,10 +451,11 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
     auto cacheClient = std::atomic_load(&m_spCacheClient);
     if (cacheClient)
     {
-        strCacheKey = cacheutils::GetCacheKey(remotePath, chunkOffset);
+        strCacheKey = cacheutils::GetCacheKey(m_strMountName, remotePath, chunkOffset);
         LOG_DEBUG("Using cache key: {} for file: {}, offset: {}", strCacheKey, remotePath, chunkOffset);
         uint64_t readLength = 0;
         cacheStatus = cacheClient->DownloadSync(
+            m_strMountName,
             strCacheKey,
             0,
             m_nChunkSize,
@@ -501,7 +499,7 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
     // upload to cache server if this client owns the cache key
     if (cacheClient && cacheStatus == ICacheClient::NOTFOUND_LOCKED)
     {
-        bool bRet = cacheClient->UploadAsync(strCacheKey, remoteReadData);
+        bool bRet = cacheClient->UploadAsync(m_strMountName, strCacheKey, remoteReadData);
         if (!bRet)
         {
             LOG_WARN("Failed to upload file: {}, offset: {} to cache", remotePath, chunkOffset);
@@ -510,7 +508,7 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
     }
     
     // Put to pre-fetch cache
-    PrefetchCache::GetInstance().Put(remotePath, remoteReadData);
+    PrefetchCache::GetInstance().Put(prefetchCacheKey, remoteReadData);
 
     return remoteReadData;
 }
@@ -519,12 +517,13 @@ void StreamingClient::EnsurePrefetchCacheWindowPopulated(
     const std::string& remotePath,
     size_t readSize,
     off64_t readOffset)
-{
+{    
+    std::string prefetchCacheKey = m_strRemotePathPrefix + remotePath;
     off64_t startWindowOffset = readOffset - (readOffset % m_nPrefetchWindowSize);
     off64_t endOffset = readOffset + readSize;
     off64_t endWindowOffset = endOffset - (endOffset % m_nPrefetchWindowSize);
 
-    const std::set<off64_t> cachedOffsets = PrefetchCache::GetInstance().GetCachedOffsets(remotePath);
+    const std::set<off64_t> cachedOffsets = PrefetchCache::GetInstance().GetCachedOffsets(prefetchCacheKey);
 
     // check cached offsets to see how much of prefetch window(s) is already in cache
     off64_t prefetchStart = startWindowOffset;
@@ -562,7 +561,7 @@ void StreamingClient::EnsurePrefetchCacheWindowPopulated(
             if (nPurged >= nPurgeNeeded) break;
         }
 
-        PrefetchCache::GetInstance().PurgeOffsets(remotePath, offsetsToPurge);
+        PrefetchCache::GetInstance().PurgeOffsets(prefetchCacheKey, offsetsToPurge);
     }
 
     // Download the uncached chunks parallely in order to populate into pre-fetch cache
@@ -635,19 +634,42 @@ void StreamingClient::PreReadChunkCheck()
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::LogStats(bool forceLog)
 {
+    LogReadChunkStats(forceLog);
+    LogGetPropertiesStats(forceLog);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void StreamingClient::LogReadChunkStats(bool forceLog)
+{
     // TODO: To get these logs for low QPS cases, log at fixed inervals (every 2 minutes for e.g).
-    if (forceLog || m_nReadChunksTotal % 200 == 0)
-    {
-        LOG_INFO("GetProperties stats: Total={} CacheHit={} CacheMiss={}",
-            m_nGetPropertiesTotal,
-            m_nGetPropertiesCache,
-            m_nGetPropertiesRemoteClient);
-        
-        LOG_INFO("ReadChunk stats. Total={} PrefetchCache={} RemoteCache={} RemoteClient={}",
+    const int totalReadChunks = m_nReadChunksTotal;
+    if (forceLog || 
+        (totalReadChunks < 10) || 
+        (totalReadChunks < 200 && totalReadChunks % 10 == 0) ||
+        totalReadChunks % 200 == 0)
+    {        
+        LOG_INFO("ReadChunk stats: MountName={} Total={} PrefetchCache={} RemoteCache={} RemoteClient={}",
+            m_strMountName,
             m_nReadChunksTotal,
             m_nReadChunksPrefetchCache,
             m_nReadChunksRemoteCache,
             m_nReadChunksRemoteClient);
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void StreamingClient::LogGetPropertiesStats(bool forceLog)
+{
+    // TODO: To get these logs for low QPS cases, log at fixed inervals (every 2 minutes for e.g).
+    const int totalGetProperties = m_nGetPropertiesTotal;
+    if (forceLog ||
+        (totalGetProperties < 10) || 
+        (totalGetProperties < 200 && totalGetProperties % 10 == 0) ||
+        totalGetProperties % 200 == 0)
+    {        
+        LOG_INFO("GetProperties stats: MountName={} Total={} CacheHit={} CacheMiss={}",
+            m_strMountName,
+            m_nGetPropertiesTotal,
+            m_nGetPropertiesCache,
+            m_nGetPropertiesRemoteClient);
     }
 }
 //---------------------------------------------------------------------------------------------------------------------

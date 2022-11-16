@@ -31,7 +31,7 @@ class BlobClient : public IRemoteClient
     typedef azure::storage_lite::list_blobs_segmented_item azBlobItem_t;
 
     public:
-        BlobClient();
+        BlobClient(const std::string& mountName);
 
     public:
         ssize_t ReadChunkSync(
@@ -69,6 +69,7 @@ class BlobClient : public IRemoteClient
         std::string GetBlobName(/*[in] */ const std::string& remotePath) const;
 
     private:
+        const std::string                                           m_strMountName;
         std::unique_ptr<azBlobClient_t>                             m_spClient;
         AzStorageAccountContext                                     m_storageAccountContext;
         AzStorageAuthContext                                        m_storageAuthContext;

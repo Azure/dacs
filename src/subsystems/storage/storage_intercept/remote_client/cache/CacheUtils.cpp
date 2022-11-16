@@ -5,6 +5,7 @@
 #include "StorageInterceptConfig.h"
 #include "StorageInterceptConstants.h"
 #include "StorageInterceptLogger.h"
+#include "StorageInterceptUtils.h"
 #include "StorageDlsymWrapper.h"
 #include "IConnection.h"
 #include <sys/socket.h>
@@ -13,6 +14,7 @@
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
 #include <mutex>
+#include <map>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cache;
 using namespace std;
@@ -194,11 +196,13 @@ namespace cacheutils
 //---------------------------------------------------------------------------------------------------------------------
     bool AddAuthParams(Request& request)
     {
+        LOG_DEBUG("Enter AddAuthParams.");
         if (!StorageInterceptConfig::GetInstance().GetCacheAuthEnabled())
         {
             return true;
         }
 
+        LOG_INFO("AddAuthParams cache auth enabled")
         static const std::string& accountName = StorageInterceptConfig::GetInstance().GetCacheAuthAccountName();
         static const std::string& accountKey = StorageInterceptConfig::GetInstance().GetCacheAuthAccountKey();
 
@@ -299,40 +303,30 @@ namespace cacheutils
         return ss.str();
     }
 //---------------------------------------------------------------------------------------------------------------------
-    std::string GetCacheKey(const std::string& remotePath, off64_t chunkOffset)
+    std::string GetCacheKey(const std::string& mountName, const std::string& remotePath, off64_t chunkOffset)
     {
         // To uniquely identify a chunk within a cluster we need 
         // <account name>/<container name>/<filepath within the container>:<file offset>
-        static string strCachePrefix;
-        static std::once_flag onceFlag;
-        std::call_once(onceFlag, [](){
-            if (StorageInterceptConfig::GetInstance().GetRemoteStoreType() ==
-                StorageInterceptConstants::ConfigValRemoteTypeBlob)
-            {
-                const bool isDynamicContainer = StorageInterceptConfig::GetInstance().IsDynamicContainerMount();
-                strCachePrefix = StorageInterceptConfig::GetInstance().GetStorageAccountName() + "/";
+        static map<string, string> strCachePrefixMap;
+        static mutex lockCachePrefixMap;
 
-                if (!isDynamicContainer)
-                {
-                    strCachePrefix += StorageInterceptConfig::GetInstance().GetBlobContainerName() + "/";
-                }
-            }
-            else if (StorageInterceptConfig::GetInstance().GetRemoteStoreType() ==
-                StorageInterceptConstants::ConfigValRemoteTypeAdls)
-            {
-                strCachePrefix = StorageInterceptConfig::GetInstance().GetAdlsHostName() + "/" +
-                    StorageInterceptConfig::GetInstance().GetAdlsClientId() + "/";
-            }
+        unique_lock<mutex> lock(lockCachePrefixMap); // Lock so that there aren't concurrent updates to map
+        
+        if (strCachePrefixMap[mountName] == "")
+        {
+            std::string strCachePrefix = StorageInterceptUtils::GetRemotePathPrefix(mountName);
 
-            if (StorageInterceptConfig::GetInstance().GetCacheEncryptionEnabled())
+            if (StorageInterceptConfig::GetInstance().GetCacheEncryptionEnabled(mountName))
             {
                 // If encryption is enabled then the file contents will be different depending on the encryption
                 // key used by the client, hence treating the same file if encryted using different keys as different.
-                strCachePrefix += StorageInterceptConfig::GetInstance().GetCacheEncryptionKey() + "/";
+                strCachePrefix += StorageInterceptConfig::GetInstance().GetCacheEncryptionKey(mountName) + "/";
             }
-        });
 
-        return GetSHA256Hex(strCachePrefix + remotePath + ":" + std::to_string(chunkOffset));
+            strCachePrefixMap[mountName] = strCachePrefix;
+        };
+
+        return GetSHA256Hex(strCachePrefixMap[mountName] + remotePath + ":" + std::to_string(chunkOffset));
     }
 //---------------------------------------------------------------------------------------------------------------------
 }

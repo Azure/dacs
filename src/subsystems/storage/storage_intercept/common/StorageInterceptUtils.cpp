@@ -3,6 +3,8 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "StorageInterceptUtils.h"
 #include "StorageInterceptLogger.h"
+#include "StorageInterceptConstants.h"
+#include "StorageInterceptConfig.h"
 #include <cstring>
 //---------------------------------------------------------------------------------------------------------------------
 std::string StorageInterceptUtils::CombinePath(
@@ -111,5 +113,29 @@ std::string StorageInterceptUtils::RemoveFirstComponentFromPath(/*[in] */ const 
     }
 
     return path.substr(firstComponentEnd + 1);
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptUtils::GetRemotePathPrefix(const std::string& mountName)
+{
+    std::string remotePathPrefix = "";
+    if (StorageInterceptConfig::GetInstance().GetRemoteStoreType(mountName) ==
+        StorageInterceptConstants::ConfigValRemoteTypeBlob)
+    {
+        const bool isDynamicContainer = StorageInterceptConfig::GetInstance().IsDynamicContainerMount(mountName);
+        remotePathPrefix = StorageInterceptConfig::GetInstance().GetStorageAccountName(mountName) + "/";
+
+        if (!isDynamicContainer)
+        {
+            remotePathPrefix += StorageInterceptConfig::GetInstance().GetBlobContainerName(mountName) + "/";
+        }
+    }
+    else if (StorageInterceptConfig::GetInstance().GetRemoteStoreType(mountName) ==
+        StorageInterceptConstants::ConfigValRemoteTypeAdls)
+    {
+        remotePathPrefix = StorageInterceptConfig::GetInstance().GetAdlsHostName(mountName) + "/" +
+            StorageInterceptConfig::GetInstance().GetAdlsClientId(mountName) + "/";
+    }
+
+    return remotePathPrefix;
 }
 //---------------------------------------------------------------------------------------------------------------------

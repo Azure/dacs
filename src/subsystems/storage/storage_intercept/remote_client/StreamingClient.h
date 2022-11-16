@@ -16,8 +16,13 @@
 //---------------------------------------------------------------------------------------------------------------------
 class StreamingClient
 {
-    public:
-        static StreamingClient& GetInstance();
+    public:        
+        StreamingClient(
+            /*[in] */ const std::string& mountName,
+            /*[in] */ std::shared_ptr<ICacheClient> cacheClient,
+            /*[in] */ std::shared_ptr<IAttributesCache> attributesCache);
+
+        ~StreamingClient();
 
         void OpenFile(/*[in] */ const std::string& remotePath);
 
@@ -38,17 +43,28 @@ class StreamingClient
 
         void Close(/*[in] */ const std::string& remotePath);
 
-        // APIs to handle shared state when a process is forked.
+        // APIs to handle shared state when a process is forked (invoked by ContentHandler)
         // Processes which are forked share the system state including memory and open file descriptors.
         // We need to ensure network connections (sockets) are not shared across multiple processes.
-        static void ForkHandlerPrepare();
-        static void ForkHandlerParent();
-        static void ForkHandlerChild();
+        void ForkHandlerPrepare();
+        void ForkHandlerParent(
+            /*[in] */ std::shared_ptr<ICacheClient> cacheClient,
+            /*[in] */ std::shared_ptr<IAttributesCache> attributesCache);
+        void ForkHandlerChild(
+            /*[in] */ std::shared_ptr<ICacheClient> cacheClient,
+            /*[in] */ std::shared_ptr<IAttributesCache> attributesCache);
+
+        /*
+         * APIs to reset\clear clients on a process fork
+         */
+        void SetClients(
+            /*[in] */ std::shared_ptr<ICacheClient> cacheClient,
+            /*[in] */ std::shared_ptr<IAttributesCache> attributesCache);
+        void ClearClients();
 
     private:
-        StreamingClient();
-
-        ~StreamingClient();
+        const std::string                  m_strMountName;
+        const std::string                  m_strRemotePathPrefix;
 
         // The following shared_ptrs are updated/reset on a process fork,
         // so ensure all access to this is synchronized via atomic APIs 
@@ -129,13 +145,9 @@ class StreamingClient
         // max concurrency limit.
         void PreReadChunkCheck();
 
-        /*
-         * APIs to reset cached state, used to clear old state on a process fork
-         */
-        void SetClient();
-        void ClearClient();
-
-        // Helper funtion to log stats 
+        // Helper funtions to log stats
         void LogStats(bool forceLog = false);
+        void LogReadChunkStats(bool forceLog = false);
+        void LogGetPropertiesStats(bool forceLog = false);
 };
 //---------------------------------------------------------------------------------------------------------------------

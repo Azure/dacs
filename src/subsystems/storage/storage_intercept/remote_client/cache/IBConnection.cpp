@@ -3,7 +3,6 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "IBConnection.h"
 #include "StorageInterceptLogger.h"
-#include "StorageInterceptConfig.h"
 #include "StorageDlsymWrapper.h"
 //---------------------------------------------------------------------------------------------------------------------
 using namespace ibutils;

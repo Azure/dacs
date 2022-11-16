@@ -14,9 +14,6 @@ using namespace cacheutils;
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
 RemoteCacheClient::RemoteCacheClient()
-: m_encryptionUtil(StorageInterceptConfig::GetInstance().GetCacheEncryptionEnabled(),
-        StorageInterceptConfig::GetInstance().GetCacheEncryptionKey()),
-    m_encryptionEnabled(StorageInterceptConfig::GetInstance().GetCacheEncryptionEnabled())
 {
     int serverPort = StorageInterceptConfig::GetInstance().GetCacheServerPort();
     bool enableRemoteCache = StorageInterceptConfig::GetInstance().GetCacheEnableRemote();
@@ -55,12 +52,17 @@ RemoteCacheClient::RemoteCacheClient()
     m_spConnectionManager = make_unique<ConnectionManager>(serverPort, !enableRemoteCache, vsServerNodes);
     m_spUploadManager = make_unique<CacheUploadManager>(
         *(m_spConnectionManager.get()),
-        m_encryptionUtil,
         numUploadThreads,
         maxUploadBufferSizePerProcess);
 
-    LOG_INFO("Configured RemoteCacheClient. encryption: {}, numServers: {}, uploadThreads: {}, buffersize: {} bytes",
-        m_encryptionEnabled ? "enabled":"disabled", m_numServerNodes, numUploadThreads, maxUploadBufferSizePerProcess);
+    LoadEncryptionConfig();
+
+    LOG_INFO("Configured RemoteCacheClient. numMounts: {}, numServers: {}, uploadThreads: {},"
+        " buffersize: {} bytes",
+        m_mapEncryptionUtil.size(),
+        m_numServerNodes,
+        numUploadThreads,
+        maxUploadBufferSizePerProcess);
 }
 //---------------------------------------------------------------------------------------------------------------------
 RemoteCacheClient::~RemoteCacheClient()
@@ -68,6 +70,7 @@ RemoteCacheClient::~RemoteCacheClient()
 }
 //---------------------------------------------------------------------------------------------------------------------
 ICacheClient::CacheStatus RemoteCacheClient::DownloadSync(
+    const std::string& mountName,
     const std::string& cacheKey,
     uint64_t startOffset,
     uint64_t length,
@@ -75,8 +78,9 @@ ICacheClient::CacheStatus RemoteCacheClient::DownloadSync(
     uint64_t& readLength)
 {
     ICacheClient::CacheStatus cacheStatus = ICacheClient::INTERNAL_ERROR;
+    EncryptionUtil& encryptionUtil = GetEncryptionUtilForMount(mountName);
 
-    if (m_encryptionEnabled)
+    if (encryptionUtil.IsEncryptionEnabled())
     {
         if (startOffset != 0)
         {
@@ -147,7 +151,7 @@ ICacheClient::CacheStatus RemoteCacheClient::DownloadSync(
 
         if (readLength > 0)
         {
-            bool bRet = m_encryptionUtil.DoDecrypt(response, serverConnection.get(), buffer, readLength);
+            bool bRet = encryptionUtil.DoDecrypt(response, serverConnection.get(), buffer, readLength);
             if (!bRet)
             {
                 LOG_WARN("Failed to complete read from server, key: {}", cacheKey);
@@ -182,10 +186,57 @@ ICacheClient::CacheStatus RemoteCacheClient::DownloadSync(
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool RemoteCacheClient::UploadAsync(
+    const std::string& mountName,
     const std::string& cacheKey,
     std::shared_ptr<const FileReadData> fileData)
 {
     int serverIndex = GetServerIndex(cacheKey, m_numServerNodes);
-    return m_spUploadManager->Upload(serverIndex, cacheKey, fileData);
+    return m_spUploadManager->Upload(
+        mountName,
+        serverIndex,
+        cacheKey,
+        fileData,
+        GetEncryptionUtilForMount(mountName));
+}
+//---------------------------------------------------------------------------------------------------------------------
+void RemoteCacheClient::LoadEncryptionConfig()
+{
+    m_mapEncryptionUtil.clear();
+
+    if (StorageInterceptConfig::GetInstance().GetMultipleMountEnabled())
+    {
+        std::vector<std::string> mountNames = StorageInterceptConfig::GetInstance().GetMountNames();
+        for (const std::string& mountName : mountNames)
+        {
+            m_mapEncryptionUtil.emplace(
+                std::piecewise_construct,
+                std::forward_as_tuple(mountName),
+                std::forward_as_tuple(
+                    StorageInterceptConfig::GetInstance().GetCacheEncryptionEnabled(mountName),
+                    StorageInterceptConfig::GetInstance().GetCacheEncryptionKey(mountName)));
+        }
+    }
+    else
+    {
+        m_mapEncryptionUtil.emplace(
+            std::piecewise_construct,
+            std::forward_as_tuple(""),
+            std::forward_as_tuple(
+                StorageInterceptConfig::GetInstance().GetCacheEncryptionEnabled(""),
+                StorageInterceptConfig::GetInstance().GetCacheEncryptionKey("")));
+    }
+
+    // Log the loaded config
+    for (auto const& mountEncryptionUtil : m_mapEncryptionUtil)
+    {
+        LOG_INFO("Mount {} has encryption enabled={}",
+            mountEncryptionUtil.first,
+            mountEncryptionUtil.second.IsEncryptionEnabled());
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+EncryptionUtil& RemoteCacheClient::GetEncryptionUtilForMount(/*[in] */ const std::string& mountName)
+{
+    return m_mapEncryptionUtil.at(mountName);
 }
 //---------------------------------------------------------------------------------------------------------------------

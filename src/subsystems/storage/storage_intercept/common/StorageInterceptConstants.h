@@ -11,6 +11,9 @@ namespace StorageInterceptConstants
 
     const char* const ConfigNameStoragePath = "storagePath";
 
+    const char* const ConfigNameMultiMountEnabled = "multiMountEnabled";
+    const char* const ConfigNamePrefixMountName = "mountName";
+
     const char* const ConfigNameRemoteType = "type";
     const char* const ConfigValRemoteTypeBlob = "blob";
     const char* const ConfigValRemoteTypeAdls = "adls";

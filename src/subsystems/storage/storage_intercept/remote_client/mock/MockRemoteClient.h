@@ -8,7 +8,7 @@
 class MockRemoteClient : public IRemoteClient
 {
   public:
-    MockRemoteClient();
+    MockRemoteClient(const std::string& mountName);
   
   public:
     ssize_t ReadChunkSync(

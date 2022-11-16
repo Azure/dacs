@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "TestBase.h"
+#include "StreamingClient.h"
 //---------------------------------------------------------------------------------------------------------------------
 class StreamingClientTest : public TestBase
 {
@@ -19,6 +20,7 @@ class StreamingClientTest : public TestBase
             /*[in]*/ size_t nStartIdxSecond,
             /*[in]*/ size_t nSize);
 
-        std::vector<char>       m_vecBuffer;
+        std::vector<char>                   m_vecBuffer;
+        std::shared_ptr<StreamingClient>    m_spStreamingClient;
 };
 //---------------------------------------------------------------------------------------------------------------------

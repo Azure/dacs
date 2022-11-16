@@ -5,11 +5,13 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include <memory>
 #include <string>
+#include <vector>
 #include <map>
 #include <mutex>
 #include "DirectoryStream.h"
 #include "FileAttributes.h"
 #include "FileDescriptor.h"
+#include "StreamingClient.h"
 //---------------------------------------------------------------------------------------------------------------------
 class ContentHandler
 {
@@ -242,13 +244,50 @@ class ContentHandler
             /*[in]*/ void* stream,
             /*[in]*/ const char* format,
             /*[out]*/ va_list ap);
+        
+        // APIs to handle shared state when a process is forked.
+        // Processes which are forked share the system state including memory and open file descriptors.
+        // We need to ensure network connections (sockets) are not shared across multiple processes.
+        static void ForkHandlerPrepare();
+        static void ForkHandlerParent();
+        static void ForkHandlerChild();
 
     private:
         ContentHandler();
+    
+    private:
+        // Per-mount information
+        struct MountInfo
+        {
+            MountInfo(const std::string& name, const std::string& path)
+                : MountName(name)
+                , MountPath(path)
+            {}
+
+            const std::string MountName;
+            const std::string MountPath;
+
+            std::unique_ptr<StreamingClient> StreamingClientPtr;
+            std::mutex                       LockStreamingClient;
+        };
 
     private:
+        void LoadMountInfoConfig();
+
+        MountInfo* CheckInterceptionForPath(
+            /*[in] */ const char* path,
+            /*[out]*/ std::string& outRelativePath);
+        
+        MountInfo& GetMountInfo(/*[in] */ const std::string& mountName);
+
+        StreamingClient& GetStreamingClient(/*[in]*/ MountInfo& mountInfo);
+
+        void ClearCacheClients();
+        void SetCacheClients();
+
         int OpenValidatedPathInternal(
-            /*[in]*/ const char* relativePath,
+            /*[in]*/ MountInfo& mountInfo,
+            /*[in]*/ const std::string& relativePath,
             /*[in]*/ int flags,
             /*[in]*/ std::unique_ptr<FILE> fileStream = nullptr);
 
@@ -266,6 +305,7 @@ class ContentHandler
         bool IsFdInRange(/*[in]*/ uint64_t fd);
 
         int GetPropertiesInternal(
+            /*[in]*/ MountInfo& mountInfo,
             /*[in]*/ const std::string& relPath,
             /*[in]*/ const char* interceptedCall,
             /*[out]*/ struct stat64* statbuf);
@@ -286,7 +326,15 @@ class ContentHandler
         static constexpr uint32_t                                    FD_VALUE_START = 90000;
         static constexpr uint32_t                                    FD_VALUE_RANGE = 100000;
 
-        const std::string                                            m_strStorageRoot;
+        bool                                                         m_bForkHandlersSetup;
+
+        std::vector<std::unique_ptr<MountInfo>>                      m_vecMountInfo;
+
+        // Cache clients
+        std::shared_ptr<ICacheClient>                                m_spCacheClient;
+        std::shared_ptr<IAttributesCache>                            m_spAttributesCache;
+        bool                                                         m_bCacheClientsInitialized;
+        std::mutex                                                   m_lockCacheClients;
 
         std::map<int, std::unique_ptr<FileDescriptor>>               m_mapOpenHandles;
         std::mutex                                                   m_lockOpenHandles;

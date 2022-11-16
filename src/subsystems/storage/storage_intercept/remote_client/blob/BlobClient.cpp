@@ -10,8 +10,9 @@
 #include <sstream>
 #include <mstream.h>
 //---------------------------------------------------------------------------------------------------------------------
-BlobClient::BlobClient()
-    : m_bIsDynamic(StorageInterceptConfig::GetInstance().IsDynamicContainerMount())
+BlobClient::BlobClient(const std::string& mountName)
+    : m_strMountName(mountName)
+    , m_bIsDynamic(StorageInterceptConfig::GetInstance().IsDynamicContainerMount(mountName))
 {
     GetConfigProperties();
     m_spClient = std::make_unique<azBlobClient_t>(
@@ -25,8 +26,9 @@ BlobClient::BlobClient()
     );
 
     LOG_INFO(
-        "Initialized blob client with accountName={}, maxConnections={},"
+        "Initialized blob client with mountName={} accountName={}, maxConnections={},"
         " isDynamicMount={} and authType={} successfully",
+        mountName,
         m_storageAccountContext.accountName,
         m_nMaxConnections,
         m_bIsDynamic,
@@ -44,27 +46,27 @@ const std::string BlobClient::DIRECTORY_DELIMITER="/";
 void BlobClient::GetConfigProperties()
 {
     m_storageAccountContext = AzStorageAccountContext(
-        StorageInterceptConfig::GetInstance().GetStorageAccountName(),
-        StorageInterceptConfig::GetInstance().GetStorageEndpointUrl()
+        StorageInterceptConfig::GetInstance().GetStorageAccountName(m_strMountName),
+        StorageInterceptConfig::GetInstance().GetStorageEndpointUrl(m_strMountName)
     );
     
-    if (StorageInterceptConfig::GetInstance().GetStorageAccountKey().length() != 0)
+    if (StorageInterceptConfig::GetInstance().GetStorageAccountKey(m_strMountName).length() != 0)
     {
         m_storageAuthContext = AzStorageAuthContext(
-            StorageInterceptConfig::GetInstance().GetStorageAccountName(),
-            StorageInterceptConfig::GetInstance().GetStorageAccountKey());
+            StorageInterceptConfig::GetInstance().GetStorageAccountName(m_strMountName),
+            StorageInterceptConfig::GetInstance().GetStorageAccountKey(m_strMountName));
     }
-    else if (StorageInterceptConfig::GetInstance().GetStorageSASToken().length() != 0)
+    else if (StorageInterceptConfig::GetInstance().GetStorageSASToken(m_strMountName).length() != 0)
     {
         m_storageAuthContext = AzStorageAuthContext(
             AzStorageAuthType::SASToken,
-            StorageInterceptConfig::GetInstance().GetStorageSASToken());
+            StorageInterceptConfig::GetInstance().GetStorageSASToken(m_strMountName));
     }
-    else if (StorageInterceptConfig::GetInstance().GetBlobAccessToken().length() != 0)
+    else if (StorageInterceptConfig::GetInstance().GetBlobAccessToken(m_strMountName).length() != 0)
     {
         m_storageAuthContext = AzStorageAuthContext(
             AzStorageAuthType::AccessToken,
-            StorageInterceptConfig::GetInstance().GetBlobAccessToken());
+            StorageInterceptConfig::GetInstance().GetBlobAccessToken(m_strMountName));
         // TODO: add support for taking in managed identity params and fetch+renew access tokens.
     }
     else
@@ -74,10 +76,11 @@ void BlobClient::GetConfigProperties()
 
     if (!m_bIsDynamic)
     {
-        m_strContainerName = StorageInterceptConfig::GetInstance().GetBlobContainerName();
+        m_strContainerName = StorageInterceptConfig::GetInstance().GetBlobContainerName(m_strMountName);
     }
 
-    m_nMaxConnections = static_cast<size_t>(StorageInterceptConfig::GetInstance().GetMaxBlobConnectionsPerClient());
+    m_nMaxConnections =
+        static_cast<size_t>(StorageInterceptConfig::GetInstance().GetMaxBlobConnectionsPerClient(m_strMountName));
 }
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t BlobClient::ReadChunkSync(const std::string& remotePath, void* buf, size_t size, off_t offset)

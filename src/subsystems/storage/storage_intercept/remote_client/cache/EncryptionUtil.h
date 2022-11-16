@@ -19,6 +19,8 @@ class EncryptionUtil
         ~EncryptionUtil();
 
     public:
+        bool IsEncryptionEnabled() const;
+
         /*
         * Check if encrytion is enabled and create a new buffer with encrypted data.
         * encLen will not be updated if encryption is disabled and client should continue to use the original buffer.

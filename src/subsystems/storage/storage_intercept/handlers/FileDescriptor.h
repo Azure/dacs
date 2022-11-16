@@ -25,6 +25,9 @@ struct FileDescriptor
     int ParentDirFd;
     int OpenFlags;
 
+    // Mount name
+    std::string MountName;
+
     // Remote path of the file opened    
     std::string RemotePath;
 
