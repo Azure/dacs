@@ -93,6 +93,32 @@ prefetchCacheTotalSizeInMB [Max in-memory data cache size]
 prefetchCachePerFileSizeInMB [Max in-memory data cache size per file]
 ```
 
+### Config for running interception on multiple mounts
+For running interception with multiple mounts, use this sample `/tmp/storageIntercept.config`
+```
+multiMountEnabled true
+mountName0 data
+datastoragePath /mnt/dataMount
+datatype blob
+dataazBlobStorageAccountName <account1Name>
+dataazBlobSASToken ${DATA_CONTAINER_SAS_TOKEN}
+dataazBlobStorageEndpoint https://<account1Name>.blob.core.windows.net
+dataazBlobContainerName dataContainer
+datamaxConnsPerBlobClient 30
+datacacheEnable true
+mountName1 code
+codestoragePath /mnt/codeMount
+codetype blob
+codeazBlobStorageAccountName <account2Name>
+codeazBlobSASToken ${CODE_CONTAINER_SAS_TOKEN2}
+codeazBlobStorageEndpoint https://<account2Name>.blob.core.windows.net
+codeazBlobContainerName codeContainer
+codemaxConnsPerBlobClient 10
+codecacheEnable false
+cacheServerList node-0#node-1#node-3
+cacheServerPort 9065
+```
+
 ### Run Unit test with cache enabled
 1. Start cache_server at port 20000 in the same container as the client
 2. Set the STORAGE_INTERCEPT_USE_EXISITNG_CONFIG to true

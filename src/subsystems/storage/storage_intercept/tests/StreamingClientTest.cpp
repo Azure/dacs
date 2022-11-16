@@ -3,6 +3,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "StreamingClientTest.h"
 #include "StreamingClient.h"
+#include "InMemoryAttributesCache.h"
 #include <atomic>
 #include <vector>
 #include <mutex>
@@ -17,6 +18,7 @@ StreamingClientTest::StreamingClientTest()
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClientTest::SetUp()
 {
+    m_spStreamingClient = std::make_shared<StreamingClient>("", nullptr, std::make_shared<InMemoryAttributesCache>());
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StreamingClientTest::BufferEqualsInRange(
@@ -59,7 +61,7 @@ TEST_F(StreamingClientTest, ReadFilePartialTest)
 {
     std::vector<char> readBuf(REMOTE_FILE_SIZE / 2);
 
-    ssize_t nBytesRead = StreamingClient::GetInstance().ReadFile(
+    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
         m_strRemoteFilePath,
         readBuf.data(),
         readBuf.size(),
@@ -73,7 +75,7 @@ TEST_F(StreamingClientTest, ReadFilePartialTest)
 TEST_F(StreamingClientTest, ReadChunkFullFileTest)
 {
     std::vector<char> readBuf(REMOTE_FILE_SIZE);
-    ssize_t nBytesRead = StreamingClient::GetInstance().ReadFile(
+    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
         m_strRemoteFilePath,
         readBuf.data(),
         readBuf.size(),
@@ -89,7 +91,7 @@ TEST_F(StreamingClientTest, ReadFileTinyReadsTest)
     std::vector<char> readBuf(50);
 
     // Read first 50 bytes.
-    ssize_t nBytesRead = StreamingClient::GetInstance().ReadFile(
+    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
         m_strRemoteFilePath,
         readBuf.data(),
         readBuf.size(),
@@ -100,7 +102,7 @@ TEST_F(StreamingClientTest, ReadFileTinyReadsTest)
     ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 0, 0, 50)));
 
     // Read next 50 bytes.
-    nBytesRead = StreamingClient::GetInstance().ReadFile(
+    nBytesRead = m_spStreamingClient->ReadFile(
         m_strRemoteFilePath,
         readBuf.data(),
         readBuf.size(),
@@ -111,7 +113,7 @@ TEST_F(StreamingClientTest, ReadFileTinyReadsTest)
     ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 50, 0, 50)));
 
     // Read next 50 bytes.
-    nBytesRead = StreamingClient::GetInstance().ReadFile(
+    nBytesRead = m_spStreamingClient->ReadFile(
         m_strRemoteFilePath,
         readBuf.data(),
         readBuf.size(),
@@ -126,7 +128,7 @@ TEST_F(StreamingClientTest, ReadSizeLargerThanFileSizeTest)
 {
     std::vector<char> readBuf(2 * REMOTE_FILE_SIZE);
 
-    ssize_t nBytesRead = StreamingClient::GetInstance().ReadFile(
+    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
         m_strRemoteFilePath,
         readBuf.data(),
         readBuf.size(),
@@ -144,7 +146,7 @@ TEST_F(StreamingClientTest, RootDirPathTest)
     std::vector<DirectoryEntry> dirEntries;
 
     /* Tests if ReadDirectory call on root path works correctly */
-    continuationToken = StreamingClient::GetInstance().ReadDirectory(
+    continuationToken = m_spStreamingClient->ReadDirectory(
         rootDirPath,
         continuationToken,
         dirEntries /* [out] dirents */
@@ -153,7 +155,7 @@ TEST_F(StreamingClientTest, RootDirPathTest)
 
     /* Tests if GetProperties call on root path, identifies it as a valid directory */
     FileAttributes attr;
-    int nResult = StreamingClient::GetInstance().GetProperties(
+    int nResult = m_spStreamingClient->GetProperties(
         rootDirPath,
         attr
     );

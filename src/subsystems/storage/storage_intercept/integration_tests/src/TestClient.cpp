@@ -29,9 +29,9 @@
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
-void TestFileReadWithSeek()
+void TestFileReadWithSeek(const std::string& mountPath)
 {
-  std::string remoteFilePath = "/mnt/quiverfs/imagenet_data/train/n01494475/n01494475_10008.JPEG";
+  std::string remoteFilePath = mountPath + "/imagenet_data/train/n01494475/n01494475_10008.JPEG";
   int expectedFileSize = 324089;
 
   int fd = ::open(remoteFilePath.c_str(), O_RDONLY, 0777);
@@ -414,9 +414,9 @@ void TestReaddir(
   std::cout << "========================================================" << std::endl;
 }
 //---------------------------------------------------------------------------------------------------------------------
-void TestIfStreamInterception()
+void TestIfStreamInterception(const std::string& mountPath)
 {
-  std::string remoteFilePath = "/mnt/quiverfs/imagenet_data/train/n01494475/n01494475_10008.JPEG";
+  std::string remoteFilePath = mountPath + "/imagenet_data/train/n01494475/n01494475_10008.JPEG";
   int expectedFileSize = 324089;
 
   std::ifstream in(remoteFilePath, std::ios::in | std::ios::binary);
@@ -444,26 +444,28 @@ void TestIfStreamInterception()
 //---------------------------------------------------------------------------------------------------------------------
 int main(int argc, char** argv)
 {
-  std::cout << "Testing the list directory calls" << std::endl;
-  TestReaddir("/mnt/quiverfs/imagenet_data/", 4, 0);
-  TestReaddir("/mnt/quiverfs/imagenet_data/train", 102, 0);
-  TestReaddir("/mnt/quiverfs/imagenet_data/train/n01494475", 2, 1300);
-  std::cout << "Tests for list directory calls done." << std::endl;
-
-  TestIfStreamInterception();
-  std::cout << "Test using std::ifstream done." << std::endl;
-
-  TestFileReadWithSeek();
-  std::cout << "Test read with seek done." << std::endl;
-
-  TestInterceptionFallback();
-  std::cout << "Test APIs with fallback done." << std::endl;
-
-  if (argc < 3)
+  if (argc < 4)
   {
     std::cout << "Too few arguments provided, terminating" << std::endl;
     exit(0);
   }
+
+  std::string mountPath = argv[1];
+
+  std::cout << "Testing the list directory calls" << std::endl;
+  TestReaddir(mountPath + "/imagenet_data/", 4, 0);
+  TestReaddir(mountPath + "/imagenet_data/train", 102, 0);
+  TestReaddir(mountPath + "/imagenet_data/train/n01494475", 2, 1300);
+  std::cout << "Tests for list directory calls done." << std::endl;
+
+  TestIfStreamInterception(mountPath);
+  std::cout << "Test using std::ifstream done." << std::endl;
+
+  TestFileReadWithSeek(mountPath);
+  std::cout << "Test read with seek done." << std::endl;
+
+  TestInterceptionFallback();
+  std::cout << "Test APIs with fallback done." << std::endl;
 
   std::ifstream ifil(getenv("STORAGE_INTEG_TESTCASE_FILE"), std::ios::in);
   std::string numFiles;
@@ -471,7 +473,7 @@ int main(int argc, char** argv)
   uint64_t numFilesInt = ::atoi(numFiles.c_str());
   std::vector<std::pair<std::string, size_t>> samples;
 
-  uint64_t numIterations = ::atoi(argv[1]);
+  uint64_t numIterations = ::atoi(argv[2]);
   for(uint64_t lineNo = 1; lineNo <= std::min(numIterations, numFilesInt); lineNo++)
   {
     std::string fileData;
@@ -486,7 +488,7 @@ int main(int argc, char** argv)
   ifil.close();
 
   std::cout << "Testing the file open / read / close calls" << std::endl;
-  int parallelism = ::atoi(argv[2]);
+  int parallelism = ::atoi(argv[3]);
 
   std::atomic_uint_least64_t filesVisited(0);
   std::atomic_uint_fast64_t numBytesRead(0);

@@ -51,9 +51,10 @@ _test_runner()
     _IO_TEST_TAR_PATH=${_IO_TEST_ARGS["compressed_tar_path"]}
     _IO_TEST_ZIP_PATH=${_IO_TEST_ARGS["compressed_zip_path"]}
 
-    _SAMPLES_DIR=$3
-    _NUM_FILES=$4
-    _PARALLELISM=$5
+    _MOUNT_PATH=$3
+    _SAMPLES_DIR=$4
+    _NUM_FILES=$5
+    _PARALLELISM=$6
 
     if [ ${_STACKING} = true ]
     then
@@ -76,7 +77,7 @@ _test_runner()
     echo
 
     export STORAGE_INTEG_TESTCASE_FILE=$_SAMPLES_DIR
-    runTestCmd="${STORAGE_INTERCEPT_LD_PRELOAD} ${EXE_TEST} ${_NUM_FILES} ${_PARALLELISM}"
+    runTestCmd="${STORAGE_INTERCEPT_LD_PRELOAD} ${EXE_TEST} ${_MOUNT_PATH} ${_NUM_FILES} ${_PARALLELISM}"
     eval $runTestCmd
     if [ $? -ne 0 ]
     then
@@ -94,6 +95,7 @@ _test_runner()
 # ==================================================
 enable_stacking=false
 dataset="small"
+mount_path="/mnt/quiverfs"
 num_files_to_test=100
 parallelism=4
 build_configuration=Debug
@@ -123,6 +125,14 @@ then
         [folder_path]="/mnt/quiverfs/imagenet_data/train/n01443537"
         [compressed_tar_path]="/mnt/quiverfs/n01443537.tar.gz"
         [compressed_zip_path]="/mnt/quiverfs/n01443537.zip")
+elif [ "$dataset" = "largeMultiMountDynamic" ]
+then
+    mount_path="/mnt/quiverfs/dataset"
+    samples_file="${SCRIPT_DIR}/large_dataset_testcases_multi_account_dynamic_container.txt"
+    declare -A io_test_args=(
+        [folder_path]="/mnt/quiverfs/dataset/books_wiki_en_corpus"
+        [compressed_tar_path]="/mnt/quiverfs/dataset/books_wiki_en_corpus.tar.gz"
+        [compressed_zip_path]="/mnt/quiverfs/dataset/books_wiki_en_corpus.zip")
 else
     samples_file="${SCRIPT_DIR}/large_dataset_testcases.txt"
     declare -A io_test_args=(
@@ -142,7 +152,7 @@ echo "$(readlink -f ${EXE_TEST})"
 # Call the test runner
 echo "Starting the integration test"
 ioTestArgs="declare -p io_test_args"
-_test_runner $enable_stacking "$($ioTestArgs)" $samples_file $num_files_to_test $parallelism
+_test_runner $enable_stacking "$($ioTestArgs)" $mount_path $samples_file $num_files_to_test $parallelism
 if [ $? -ne 0 ]
 then
     echo "Integration test failed"

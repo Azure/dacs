@@ -15,6 +15,9 @@ struct DirectoryStream
         , AllEntriesFetched(false)
     {}
 
+    // Mount name
+    std::string MountName;
+
     // Remote path of the directory
     std::string RemotePath;
 

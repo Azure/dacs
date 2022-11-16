@@ -7,6 +7,10 @@
 #include "StreamingClient.h"
 #include "StorageDlsymWrapper.h"
 #include "StorageInterceptLogger.h"
+#include "LocalFSCacheClient.h"
+#include "RemoteCacheClient.h"
+#include "LocalAttributesCache.h"
+#include "InMemoryAttributesCache.h"
 #include <dirent.h>
 #include <time.h>
 #include <fcntl.h>
@@ -20,9 +24,24 @@ __attribute__((constructor)) void LoggingInit(void) {
 }
 //---------------------------------------------------------------------------------------------------------------------
 ContentHandler::ContentHandler()
-    : m_strStorageRoot(StorageInterceptConfig::GetInstance().GetStoragePath())
+  : m_spCacheClient(nullptr)
+  , m_spAttributesCache(nullptr)
+  , m_bCacheClientsInitialized(false)
 {
+    // Register handlers to handle process fork
+    if (pthread_atfork(ContentHandler::ForkHandlerPrepare,
+        ContentHandler::ForkHandlerParent,
+        ContentHandler::ForkHandlerChild) == 0)
+    {
+        m_bForkHandlersSetup = true;
+    }
+    else
+    {
+        m_bForkHandlersSetup = false;
+    }
+
     // There should be no logging from this constructor to prevent deadlock with LFS interceptor.
+    LoadMountInfoConfig();
     srand(time(NULL));
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -30,6 +49,203 @@ ContentHandler& ContentHandler::GetInstance()
 {
     static ContentHandler s_instance;
     return s_instance;
+}
+//---------------------------------------------------------------------------------------------------------------------
+void ContentHandler::LoadMountInfoConfig()
+{
+    if (StorageInterceptConfig::GetInstance().GetMultipleMountEnabled())
+    {
+        std::vector<std::string> mountNames = StorageInterceptConfig::GetInstance().GetMountNames();
+        for (const std::string& mountName : mountNames)
+        {
+            if (mountName != "")
+            {
+                std::string mountPath = StorageInterceptConfig::GetInstance().GetStoragePath(mountName);
+                m_vecMountInfo.push_back(std::make_unique<MountInfo>(mountName, mountPath));
+            }
+        }
+
+        if (m_vecMountInfo.size() == 0)
+        {
+            throw "There must be at least one mount specified";
+        }
+
+        // TODO: Validate that no mount path is a subdirectory of other
+    }
+    else
+    {
+        m_vecMountInfo.push_back(std::make_unique<MountInfo>(
+            "" /* mountName */,
+            StorageInterceptConfig::GetInstance().GetStoragePath("")));
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+ContentHandler::MountInfo* ContentHandler::CheckInterceptionForPath(
+    const char* path,
+    std::string& outRelativePath)
+{
+    for (const std::unique_ptr<MountInfo>& mountInfo : m_vecMountInfo)
+    {
+        const bool isRelative = StorageInterceptUtils::GetRelativePath(mountInfo->MountPath, path, outRelativePath);
+        if (isRelative) return mountInfo.get();
+    }
+
+    return nullptr;
+}
+//---------------------------------------------------------------------------------------------------------------------
+ContentHandler::MountInfo& ContentHandler::GetMountInfo(const std::string& mountName)
+{
+    for (const std::unique_ptr<MountInfo>& mountInfo : m_vecMountInfo)
+    {
+        if (mountName == mountInfo->MountName) return *mountInfo;
+    }
+
+    LOG_ERROR("MountInfo not found for mountName=", mountName);
+    throw "MountInfo not found";
+}
+//---------------------------------------------------------------------------------------------------------------------
+StreamingClient& ContentHandler::GetStreamingClient(MountInfo& mountInfo)
+{
+    std::unique_lock<std::mutex> lock(mountInfo.LockStreamingClient);
+    if (mountInfo.StreamingClientPtr == nullptr)
+    {
+        std::unique_lock<std::mutex> cacheClientsLock(m_lockCacheClients);
+        if (!m_bCacheClientsInitialized)
+        {
+            LOG_INFO("Initializing cache clients for first time in ContentHandler")
+            SetCacheClients();
+        }
+
+        mountInfo.StreamingClientPtr = std::make_unique<StreamingClient>(
+            mountInfo.MountName,
+            std::atomic_load(&m_spCacheClient),
+            std::atomic_load(&m_spAttributesCache));
+    }
+
+    return *(mountInfo.StreamingClientPtr);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void ContentHandler::ForkHandlerPrepare()
+{
+    GetInstance().ClearCacheClients();
+    for (auto& mountInfo : GetInstance().m_vecMountInfo)
+    {
+        if (mountInfo->StreamingClientPtr != nullptr)
+        {
+            mountInfo->StreamingClientPtr->ForkHandlerPrepare();
+        }
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void ContentHandler::ForkHandlerParent()
+{
+    LOG_INFO("Initializing cache clients for parent after fork")
+    GetInstance().SetCacheClients();
+    for (auto& mountInfo : GetInstance().m_vecMountInfo)
+    {
+        if (mountInfo->StreamingClientPtr != nullptr)
+        {
+            mountInfo->StreamingClientPtr->ForkHandlerParent(
+                std::atomic_load(&GetInstance().m_spCacheClient),
+                std::atomic_load(&GetInstance().m_spAttributesCache));
+        }
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void ContentHandler::ForkHandlerChild()
+{
+    LOG_INFO("Initializing cache clients for child after fork")
+    GetInstance().SetCacheClients();
+    for (auto& mountInfo : GetInstance().m_vecMountInfo)
+    {
+        if (mountInfo->StreamingClientPtr != nullptr)
+        {
+            mountInfo->StreamingClientPtr->ForkHandlerChild(
+                std::atomic_load(&GetInstance().m_spCacheClient),
+                std::atomic_load(&GetInstance().m_spAttributesCache));
+        }
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void ContentHandler::ClearCacheClients()
+{
+    const std::shared_ptr<ICacheClient> emptyCacheClient;
+    std::atomic_store(&m_spCacheClient, emptyCacheClient);
+
+    const std::shared_ptr<IAttributesCache> emptyAttributesCache;
+    std::atomic_store(&m_spAttributesCache, emptyAttributesCache);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void ContentHandler::SetCacheClients()
+{
+    // Check if data cache enabled for at least one mount.
+    bool dataCacheEnabled = false;
+    for (const auto& mountInfo : m_vecMountInfo)
+    {
+        if (StorageInterceptConfig::GetInstance().GetCacheEnable(mountInfo->MountName))
+        {
+            dataCacheEnabled = true;
+            break;
+        }
+    }
+
+    if (dataCacheEnabled)
+    {
+        if(StorageInterceptConfig::GetInstance().GetCacheUseLocalFS())
+        {
+            // Should be used only for test and not in production as this is not a robust implementation
+            std::atomic_store(&m_spCacheClient, std::shared_ptr<ICacheClient>(std::make_shared<LocalFSCacheClient>()));
+            LOG_INFO("Initialized LocalFS cache client in ContentHandler")
+        }
+        else
+        {
+            std::atomic_store(&m_spCacheClient, std::shared_ptr<ICacheClient>(std::make_shared<RemoteCacheClient>()));
+            LOG_INFO("Initialized remote cache client in ContentHandler")
+        }
+    }
+    else
+    {
+        const std::shared_ptr<ICacheClient> emptyCacheClient;
+        std::atomic_store(&m_spCacheClient, emptyCacheClient);
+        LOG_INFO("Initialized empty cache client in ContentHandler")
+    }
+
+    // Check if attr cache enabled for at least one mount.
+    bool attrCacheEnabled = false;
+    for (const auto& mountInfo : m_vecMountInfo)
+    {
+        if (StorageInterceptConfig::GetInstance().GetAttributesCacheEnable(mountInfo->MountName))
+        {
+            attrCacheEnabled = true;
+            break;
+        }
+    }
+
+    if (attrCacheEnabled)
+    {
+        if (StorageInterceptConfig::GetInstance().GetAttributesCacheUseLocalServer())
+        {
+            std::atomic_store(
+                &m_spAttributesCache,
+                std::shared_ptr<IAttributesCache>(std::make_shared<LocalAttributesCache>()));
+            LOG_INFO("Initialized Local attributes cache client in ContentHandler")
+        }
+        else
+        {
+            std::atomic_store(
+                &m_spAttributesCache,
+                std::shared_ptr<IAttributesCache>(std::make_shared<InMemoryAttributesCache>()));
+            LOG_INFO("Initialized InMemory attributes cache client in ContentHandler")
+        }
+    }
+    else
+    {
+        const std::shared_ptr<IAttributesCache> emptyAttributesCache;
+        std::atomic_store(&m_spAttributesCache, emptyAttributesCache);
+        LOG_INFO("Initialized empty attributes cache client in ContentHandler")
+    }
+
+    m_bCacheClientsInitialized = true;
 }
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::HandleOpen(const char* path, int flags)
@@ -59,10 +275,11 @@ void* ContentHandler::HandleFopen(const char* path, const char* mode, bool isOpe
     // Check for binary and readonly flags "rb"
     const bool isReadonlyOpen = (strcmp(mode, "rb") == 0);
     std::string relPath;
-    const bool isRelative = StorageInterceptUtils::GetRelativePath(m_strStorageRoot, path, relPath);
+    MountInfo* mountInfo = CheckInterceptionForPath(path, relPath);
+    const bool isRelative = (mountInfo != nullptr);
     if (isRelative && !isReadonlyOpen)
     {
-        LOG_ERROR(
+        LOG_WARN(
             "Skipped intercepting non-readonly {} for path={} with mode={}",
             isOpen64 ? "fopen64" : "fopen",
             path,
@@ -82,17 +299,18 @@ void* ContentHandler::HandleFopen(const char* path, const char* mode, bool isOpe
     void* fileStreamPtr = fileStream.get();
     memset(fileStreamPtr, 0, sizeof(FILE));
 
-    int fd = OpenValidatedPathInternal(relPath.c_str(), O_RDONLY, std::move(fileStream));
+    int fd = OpenValidatedPathInternal(*mountInfo, relPath, O_RDONLY, std::move(fileStream));
     LOG_DEBUG(
-        "Intercepted the {} system call at path={} mode={} fd={}",
+        "Intercepted the {} system call at path={} mountName={} mode={} fd={}",
         isOpen64 ? "fopen64" : "fopen",
         path,
+        mountInfo->MountName,
         mode,
         fd);
 
     if (fd < 0)
     {
-        LOG_WARN("Failed to open and alloc fd for path={}", path);
+        LOG_WARN("Failed to open and alloc fd for mountName={} path={}", mountInfo->MountName, path);
         return nullptr;
     }
 
@@ -131,12 +349,16 @@ int ContentHandler::HandleFClose(void* stream)
     }
 
     const std::string remotePath = fdIt->second->RemotePath;
+    MountInfo& mountInfo = GetMountInfo(fdIt->second->MountName);
     m_mapOpenHandles.erase(fdIt);
     openHandlesLock.unlock();
 
-    StreamingClient::GetInstance().Close(remotePath);
+    GetStreamingClient(mountInfo).Close(remotePath);
 
-    LOG_DEBUG("Intercepted the fclose system call at fd={} path={}", fd, remotePath);
+    LOG_DEBUG("Intercepted the fclose system call at fd={} path={} mountName={}",
+        fd,
+        remotePath,
+        mountInfo.MountName);
     return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -149,12 +371,14 @@ int ContentHandler::HandleOpenAt(int dirfd, const char* path, int flags, mode_t 
     {
         const bool isReadonlyOpen = ((flags & O_RDONLY) == O_RDONLY);
         std::string relPath;
-        const bool isRelative = StorageInterceptUtils::GetRelativePath(m_strStorageRoot, path, relPath);
+        MountInfo* mountInfo = CheckInterceptionForPath(path, relPath);
+        const bool isRelative = (mountInfo != nullptr);
         if (isRelative && !isReadonlyOpen)
         {
             LOG_WARN(
-                "Skipped intercepting non-readonly {} for path={} with flags={}",
+                "Skipped intercepting non-readonly {} for mountName={} path={} with flags={}",
                 isOpen64 ? "openat64" : "openat",
+                mountInfo->MountName,
                 path,
                 flags)
         }
@@ -169,12 +393,13 @@ int ContentHandler::HandleOpenAt(int dirfd, const char* path, int flags, mode_t 
         }
 
         LOG_DEBUG(
-            "Intercepted the {} system call at path={} dirfd={} flags={}",
+            "Intercepted the {} system call at mountName={} path={} dirfd={} flags={}",
             isOpen64 ? "openat64" : "openat",
+            mountInfo->MountName,
             path,
             dirfd,
             flags);
-        return OpenValidatedPathInternal(relPath.c_str(), flags);
+        return OpenValidatedPathInternal(*mountInfo, relPath, flags);
     }
     else
     {        
@@ -208,26 +433,34 @@ int ContentHandler::HandleOpenAt(int dirfd, const char* path, int flags, mode_t 
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-int ContentHandler::OpenValidatedPathInternal(const char* relativePath, int flags, std::unique_ptr<FILE> fileStream)
+int ContentHandler::OpenValidatedPathInternal(
+    MountInfo& mountInfo,
+    const std::string& relativePath,
+    int flags,
+    std::unique_ptr<FILE> fileStream)
 {
     std::unique_ptr<FileDescriptor> fullFd = std::make_unique<FileDescriptor>();
+    fullFd->MountName = mountInfo.MountName;
     fullFd->RemotePath = relativePath;
     fullFd->OpenFlags = flags;
     fullFd->FileStream = move(fileStream);
 
-    int getPropertiesResult = StreamingClient::GetInstance().GetProperties(relativePath, fullFd->Attributes);
+    int getPropertiesResult = GetStreamingClient(mountInfo).GetProperties(relativePath, fullFd->Attributes);
     if (getPropertiesResult < 0)
     {
-        LOG_ERROR("Error in getProperties during open for remote path {}, errno={}", relativePath, strerror(errno));
+        LOG_WARN("Error in getProperties during open for remote mountName={} path={}, errno={}",
+            mountInfo.MountName,
+            relativePath,
+            strerror(errno));
         return -1;
     }
 
-    StreamingClient::GetInstance().OpenFile(relativePath);
+    GetStreamingClient(mountInfo).OpenFile(relativePath);
 
     int fd = AllotNewFd(move(fullFd));
     if (fd == -1)
     {
-        LOG_ERROR("Could not allot new fd for relative path {}", relativePath);
+        LOG_ERROR("Could not allot new fd for mountName={} relative path={}", mountInfo.MountName, relativePath);
         return -1;
     }
 
@@ -239,12 +472,14 @@ int ContentHandler::OpenInternal(const char* path, int flags, mode_t mode, bool 
     const bool isReadonlyOpen = ((flags & O_RDONLY) == O_RDONLY);
 
     std::string relPath;
-    const bool isRelative = StorageInterceptUtils::GetRelativePath(m_strStorageRoot, path, relPath);
+    MountInfo* mountInfo = CheckInterceptionForPath(path, relPath);
+    const bool isRelative = (mountInfo != nullptr);
     if (isRelative && !isReadonlyOpen)
     {
         LOG_WARN(
-            "Skipped intercepting non-readonly {} for path={} with flags={}",
+            "Skipped intercepting non-readonly {} for mountName={} path={} with flags={}",
             isOpen64 ? "open64" : "open",
+            mountInfo->MountName,
             path,
             flags)
     }
@@ -259,11 +494,12 @@ int ContentHandler::OpenInternal(const char* path, int flags, mode_t mode, bool 
     }
 
     LOG_DEBUG(
-        "Intercepted the {} system call at path={} flags={}",
+        "Intercepted the {} system call at mountName={} path={} flags={}",
         isOpen64 ? "open64" : "open",
+        mountInfo->MountName,
         path,
         flags);
-    return OpenValidatedPathInternal(relPath.c_str(), flags);
+    return OpenValidatedPathInternal(*mountInfo, relPath, flags);
 }
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t ContentHandler::HandleRead(int fd, void *buf, size_t nBytes)
@@ -283,19 +519,22 @@ ssize_t ContentHandler::HandleRead(int fd, void *buf, size_t nBytes)
 
     const off64_t readOffset = fdIt->second->FileOffset;
     const std::string path = fdIt->second->RemotePath;
+    MountInfo& mountInfo = GetMountInfo(fdIt->second->MountName);
     openHandlesLock.unlock();
 
-    LOG_DEBUG("Intercepting the read system call at fd={} path={} nBytes={} readOffset={}",
+    LOG_DEBUG("Intercepting the read system call at fd={} mountName={} path={} nBytes={} readOffset={}",
         fd,
+        mountInfo.MountName,
         path,
         nBytes,
         readOffset);
 
-    ssize_t result = StreamingClient::GetInstance().ReadFile(path, buf, nBytes, readOffset);
+    ssize_t result = GetStreamingClient(mountInfo).ReadFile(path, buf, nBytes, readOffset);
     if (result < 0)
     {
-        LOG_ERROR("StreamingClient read returned error for fd={} path={} nBytes={} readOffset={}",
+        LOG_ERROR("StreamingClient read returned error for fd={} mountName={} path={} nBytes={} readOffset={}",
             fd,
+            mountInfo.MountName,
             path,
             nBytes,
             readOffset);
@@ -312,8 +551,10 @@ ssize_t ContentHandler::HandleRead(int fd, void *buf, size_t nBytes)
         }
         else
         {
-            LOG_WARN("File descriptor not found post read(), skipped updating the file offset. fd={} path={}",
+            LOG_WARN("File descriptor not found post read(), skipped updating the file offset. fd={} "
+                "mountName={} path={}",
                 fd,
+                mountInfo.MountName,
                 path)
         }
 
@@ -339,15 +580,22 @@ ssize_t ContentHandler::HandlePRead(int fd, void *buf, size_t nBytes, off64_t of
     }
 
     const std::string path = fdIt->second->RemotePath;
+    MountInfo& mountInfo = GetMountInfo(fdIt->second->MountName);
     openHandlesLock.unlock();
 
-    LOG_DEBUG("Intercepting the pread system call at fd={} path={} nBytes={} offset={}", fd, path, nBytes, offset);
+    LOG_DEBUG("Intercepting the pread system call at fd={} mountName={} path={} nBytes={} offset={}",
+        fd,
+        mountInfo.MountName,
+        path,
+        nBytes,
+        offset);
 
-    ssize_t result = StreamingClient::GetInstance().ReadFile(path, buf, nBytes, offset);
+    ssize_t result = GetStreamingClient(mountInfo).ReadFile(path, buf, nBytes, offset);
     if (result < 0)
     {
-        LOG_ERROR("StreamingClient read returned error for fd={} path={} nBytes={} offset={}",
+        LOG_ERROR("StreamingClient read returned error for fd={} mountName={} path={} nBytes={} offset={}",
             fd,
+            mountInfo.MountName,
             path,
             nBytes,
             offset);
@@ -373,6 +621,7 @@ off64_t ContentHandler::HandleLseek(int fd, off64_t offset, int whence)
         return StorageDlsymWrapper::lseek64(fd, offset, whence);
     }
 
+    MountInfo& mountInfo = GetMountInfo(fdIt->second->MountName);
     off64_t nextOffset = fdIt->second->FileOffset;
     int isModified = 0;
     switch(whence)
@@ -395,8 +644,10 @@ off64_t ContentHandler::HandleLseek(int fd, off64_t offset, int whence)
             if (offset > 0)
             {
                 LOG_ERROR(
-                    "Lseek request to an offset beyond file size encountered. path={}, requestedOffset={}, fileSize={}",
+                    "Lseek request to an offset beyond file size encountered. path={}, mountName={},"
+                    " requestedOffset={}, fileSize={}",
                     path,
+                    mountInfo.MountName,
                     fileSize + offset,
                     fileSize);
                 nextOffset = -1;
@@ -416,8 +667,10 @@ off64_t ContentHandler::HandleLseek(int fd, off64_t offset, int whence)
     fdIt->second->FileOffset = nextOffset;
     openHandlesLock.unlock();
 
-    LOG_DEBUG("Intercepted the lseek system call and updated offset. fd={} offset={} whence={} nextOffset={}",
+    LOG_DEBUG("Intercepted the lseek system call and updated offset. fd={} mountName={}"
+        " offset={} whence={} nextOffset={}",
         fd,
+        mountInfo.MountName,
         offset,
         whence,
         nextOffset);
@@ -440,28 +693,34 @@ int ContentHandler::HandleClose(int fd)
     }
 
     const std::string remotePath = fdIt->second->RemotePath;
+    MountInfo& mountInfo = GetMountInfo(fdIt->second->MountName);
     m_mapOpenHandles.erase(fdIt);
     openHandlesLock.unlock();
 
-    StreamingClient::GetInstance().Close(remotePath);
+    GetStreamingClient(mountInfo).Close(remotePath);
 
-    LOG_DEBUG("Intercepted the close system call at fd={} path={}", fd, remotePath);
+    LOG_DEBUG("Intercepted the close system call at fd={} mountName={} path={}",
+        fd,
+        mountInfo.MountName,
+        remotePath);
     return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
 void* ContentHandler::HandleOpendir(const char* path)
 {
     std::string relPath;
-    const bool isRelative = StorageInterceptUtils::GetRelativePath(m_strStorageRoot, path, relPath);
+    MountInfo* mountInfo = CheckInterceptionForPath(path, relPath);
+    const bool isRelative = (mountInfo != nullptr);
 
     if (!isRelative)
     {
         return StorageDlsymWrapper::opendir(path);
     }
 
-    LOG_DEBUG("Intercepting the opendir system call for {}", path);
+    LOG_DEBUG("Intercepting the opendir system call for path={} mountName={}", path, mountInfo->MountName);
 
     std::unique_ptr<DirectoryStream> dirStream = std::make_unique<DirectoryStream>();
+    dirStream->MountName = mountInfo->MountName;
     dirStream->RemotePath = relPath;
 
     DirectoryStream* dirStreamPtr = dirStream.get();
@@ -502,7 +761,11 @@ void* ContentHandler::HandleReaddir(void* dirp, bool isRead64)
     dirStreamLock.unlock();
 
     DirectoryStream& dirStream = *(static_cast<DirectoryStream *>(dirp));
-    LOG_DEBUG("Intercepting the {} system call for {}", isRead64 ? "readdir64" : "readdir", dirStream.RemotePath);
+    MountInfo& mountInfo = GetMountInfo(dirStream.MountName);
+    LOG_DEBUG("Intercepting the {} system call for path={} mountName={}",
+        isRead64 ? "readdir64" : "readdir",
+        dirStream.RemotePath,
+        mountInfo.MountName);
 
     if (static_cast<size_t>(dirStream.Offset) < dirStream.Entries.size())
     {
@@ -515,7 +778,7 @@ void* ContentHandler::HandleReaddir(void* dirp, bool isRead64)
     {
         // Entry not yet fetched from backend.
         std::string newContinuationToken;
-        newContinuationToken = StreamingClient::GetInstance().ReadDirectory(
+        newContinuationToken = GetStreamingClient(mountInfo).ReadDirectory(
             dirStream.RemotePath,
             dirStream.ContinuationToken,
             dirStream.Entries);
@@ -546,7 +809,9 @@ int ContentHandler::HandleClosedir(void* dirp)
         return StorageDlsymWrapper::closedir(dirp);
     }
 
-    LOG_DEBUG("Intercepting the closedir system call for {}", (((DirectoryStream *)dirp)->RemotePath));
+    LOG_DEBUG("Intercepting the closedir system call for path={} mountName={}",
+        (((DirectoryStream *)dirp)->RemotePath),
+        (((DirectoryStream *)dirp)->MountName));
     m_mapDirectoryStreams.erase(dirIter);
     return 0;
 }
@@ -554,37 +819,39 @@ int ContentHandler::HandleClosedir(void* dirp)
 int ContentHandler::HandleAccess(const char* pathname, int mode)
 {
     std::string relPath;
-    const bool isRelative = StorageInterceptUtils::GetRelativePath(m_strStorageRoot, pathname, relPath);
+    MountInfo* mountInfo = CheckInterceptionForPath(pathname, relPath);
+    const bool isRelative = (mountInfo != nullptr);
     if (!isRelative)
     {
         return StorageDlsymWrapper::access(pathname, mode);
     }
 
-    LOG_DEBUG("Intercepted access call for path: {}", pathname);
+    LOG_DEBUG("Intercepted access call for path={} mountName={}", pathname, mountInfo->MountName);
     if ((mode & W_OK) == W_OK)
     {
         // We don't allow write access
-        LOG_ERROR("Write access not permitted for file: {}", pathname);
+        LOG_ERROR("Write access not permitted for file={} mountName={}", pathname, mountInfo->MountName);
         errno = EACCES;
         return -1;
     }
 
     // Check if file exists and return status
     struct stat64 stat64buf;
-    return GetPropertiesInternal(relPath, "access", &stat64buf);
+    return GetPropertiesInternal(*mountInfo, relPath, "access", &stat64buf);
 }
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::HandleXstat(int __ver, const char* pathname, struct stat* statbuf)
 {
     std::string relPath;
-    const bool isRelative = StorageInterceptUtils::GetRelativePath(m_strStorageRoot, pathname, relPath);
+    MountInfo* mountInfo = CheckInterceptionForPath(pathname, relPath);
+    const bool isRelative = (mountInfo != nullptr);
     if (!isRelative)
     {
         return StorageDlsymWrapper::xstat(__ver, pathname, statbuf);
     }
 
     struct stat64 stat64buf;
-    int result = GetPropertiesInternal(relPath, "xstat", &stat64buf);
+    int result = GetPropertiesInternal(*mountInfo, relPath, "xstat", &stat64buf);
     if (result == 0)
     {
         CopyStat64ToStat(&stat64buf, statbuf);
@@ -596,13 +863,14 @@ int ContentHandler::HandleXstat(int __ver, const char* pathname, struct stat* st
 int ContentHandler::HandleXstat64(int __ver, const char* pathname, struct stat64* statbuf)
 {
     std::string relPath;
-    const bool isRelative = StorageInterceptUtils::GetRelativePath(m_strStorageRoot, pathname, relPath);
+    MountInfo* mountInfo = CheckInterceptionForPath(pathname, relPath);
+    const bool isRelative = (mountInfo != nullptr);
     if (!isRelative)
     {
         return StorageDlsymWrapper::xstat64(__ver, pathname, statbuf);
     }
 
-    return GetPropertiesInternal(relPath, "xstat64", statbuf);
+    return GetPropertiesInternal(*mountInfo, relPath, "xstat64", statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::HandleFxstat(int __ver, int fd, struct stat* statbuf)
@@ -652,14 +920,15 @@ int ContentHandler::HandleFxstat64(int __ver, int fd, struct stat64* statbuf)
 int ContentHandler::HandleLxstat(int __ver, const char* pathname, struct stat* statbuf)
 {
     std::string relPath;
-    const bool isRelative = StorageInterceptUtils::GetRelativePath(m_strStorageRoot, pathname, relPath);
+    MountInfo* mountInfo = CheckInterceptionForPath(pathname, relPath);
+    const bool isRelative = (mountInfo != nullptr);
     if (!isRelative)
     {
         return StorageDlsymWrapper::lxstat(__ver, pathname, statbuf);
     }
 
     struct stat64 stat64buf;
-    int result = GetPropertiesInternal(relPath, "lxstat", &stat64buf);
+    int result = GetPropertiesInternal(*mountInfo, relPath, "lxstat", &stat64buf);
     if (result == 0)
     {
         CopyStat64ToStat(&stat64buf, statbuf);
@@ -671,27 +940,33 @@ int ContentHandler::HandleLxstat(int __ver, const char* pathname, struct stat* s
 int ContentHandler::HandleLxstat64(int __ver, const char* pathname, struct stat64* statbuf)
 {
     std::string relPath;
-    const bool isRelative = StorageInterceptUtils::GetRelativePath(m_strStorageRoot, pathname, relPath);
+    MountInfo* mountInfo = CheckInterceptionForPath(pathname, relPath);
+    const bool isRelative = (mountInfo != nullptr);
     if (!isRelative)
     {
         return StorageDlsymWrapper::lxstat64(__ver, pathname, statbuf);
     }
 
-    return GetPropertiesInternal(relPath, "lxstat64", statbuf);
+    return GetPropertiesInternal(*mountInfo, relPath, "lxstat64", statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::GetPropertiesInternal(
+    MountInfo& mountInfo,
     const std::string& relPath,
     const char* interceptedCall,
     struct stat64* statbuf)
 {
-    LOG_DEBUG("Intercepting {} call for remote path {}", interceptedCall, relPath);
+    LOG_DEBUG("Intercepting {} call for remote path={} mountName={}", interceptedCall, relPath, mountInfo.MountName);
 
     FileAttributes attributes;
-    int result = StreamingClient::GetInstance().GetProperties(relPath, attributes);
+    int result = GetStreamingClient(mountInfo).GetProperties(relPath, attributes);
     if (result < 0)
     {
-        LOG_ERROR("Error in {} call for remote path {}, errno={}", interceptedCall, relPath, strerror(errno));
+        LOG_ERROR("Error in {} call for remote path={}, mountName={}, errno={}",
+            interceptedCall,
+            relPath,
+            mountInfo.MountName,
+            strerror(errno));
         result = -1;
         return result;
     }
@@ -715,7 +990,11 @@ int ContentHandler::HandleIoctl(int fd, unsigned long request, void* argp)
         return StorageDlsymWrapper::ioctl(fd, request, argp);
     }
 
-    LOG_DEBUG("Intercepting the ioctl call for fd={} request={} path={}", fd, request, fdIt->second->RemotePath);
+    LOG_INFO("Intercepting the ioctl call for fd={} request={} path={} mountName={}",
+        fd,
+        request,
+        fdIt->second->RemotePath,
+        fdIt->second->MountName);
 
     // Note: ioctl() is called by python's pathlib module during file open with request as FIOCLEX, which is a no-op
     //       for us.
@@ -738,7 +1017,10 @@ int ContentHandler::HandleIsatty(int fd)
         return StorageDlsymWrapper::isatty(fd);
     }
 
-    LOG_DEBUG("Intercepting the isatty call for fd={} path={}", fd, fdIt->second->RemotePath);
+    LOG_DEBUG("Intercepting the isatty call for fd={} path={} mountName={}",
+        fd,
+        fdIt->second->RemotePath,
+        fdIt->second->MountName);
 
     // isatty() is supposed to return 1 if fd refers to a terminal and 0 otherwise (which is the case here).
     return 0;
@@ -760,9 +1042,10 @@ int ContentHandler::HandleFlock(int fd, int operation)
     }
 
     LOG_DEBUG(
-        "Intercepting the flock call for fd={} path={} operation={} LOCK_SH={} LOCK_EX={} LOCK_NB={}",
+        "Intercepting the flock call for fd={} path={} mountName={} operation={} LOCK_SH={} LOCK_EX={} LOCK_NB={}",
         fd,
         fdIt->second->RemotePath,
+        fdIt->second->MountName,
         operation,
         (operation & LOCK_SH),
         (operation & LOCK_EX),
@@ -1218,13 +1501,15 @@ void ContentHandler::CopyStat64ToStat(const struct stat64* stat64buf, struct sta
 ssize_t ContentHandler::HandleListxattr(const char* path, char* list, size_t size)
 {
     std::string relPath;
-    const bool isRelative = StorageInterceptUtils::GetRelativePath(m_strStorageRoot, path, relPath);
+    MountInfo* mountInfo = CheckInterceptionForPath(path, relPath);
+    const bool isRelative = (mountInfo != nullptr);
 
     if (isRelative)
     {
         /* Listxattr and other extended attributes related calls' interception is currently not implemented */
         LOG_INFO(
-            "Listxattr called at path: {} is not intercepted, falling back to it's original implementation",
+            "Listxattr called at mountName: {}, path: {} is not intercepted, falling back to it's original implementation",
+            mountInfo->MountName,
             path);
     }
     return StorageDlsymWrapper::listxattr(path, list, size);

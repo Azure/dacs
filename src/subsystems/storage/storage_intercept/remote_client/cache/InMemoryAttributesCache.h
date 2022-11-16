@@ -18,7 +18,7 @@ class InMemoryAttributesCache : public IAttributesCache
 {
     public:
         InMemoryAttributesCache();
-        InMemoryAttributesCache(const uint64_t maxCacheEntries);        
+        InMemoryAttributesCache(uint64_t maxCacheEntries);        
         ~InMemoryAttributesCache();
 
         CacheStatus Get(

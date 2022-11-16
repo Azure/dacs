@@ -7,6 +7,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include <string>
 #include <map>
+#include <vector>
 //---------------------------------------------------------------------------------------------------------------------
 class StorageInterceptConfig
 {
@@ -15,26 +16,28 @@ class StorageInterceptConfig
         static StorageInterceptConfig& GetInstance();
 
         // Getters for various config values.
-        std::string GetStoragePath();
+        bool GetMultipleMountEnabled();
 
-        std::string GetRemoteStoreType();
+        std::vector<std::string> GetMountNames();
 
-        std::string GetAdlsHostName();
+        std::string GetStoragePath(const std::string& mountName);
 
-        std::string GetAdlsClientId();
+        std::string GetRemoteStoreType(const std::string& mountName);
 
-        std::string GetAdlsClientSecret();
+        // Getters for ADLS config
+        std::string GetAdlsHostName(const std::string& mountName);
+        std::string GetAdlsClientId(const std::string& mountName);
+        std::string GetAdlsClientSecret(const std::string& mountName);
+        std::string GetAdlsAuthTokenUrl(const std::string& mountName);
 
-        std::string GetAdlsAuthTokenUrl();
-
-        std::string GetMockClientRoot();
+        std::string GetMockClientRoot(const std::string& mountName);
 
         uint32_t GetStreamingChunkSize();
 
         uint32_t GetIoBlockSize();
 
         // Getters for cache config
-        bool GetCacheEnable();
+        bool GetCacheEnable(const std::string& mountName);
         uint64_t GetCacheServerPort();
         bool GetCacheEnableRemote();
         bool GetCacheUseLocalFS();
@@ -46,7 +49,7 @@ class StorageInterceptConfig
         uint64_t GetCacheReuseServerConnections();
 
         // Getters for attribute cache
-        bool GetAttributesCacheEnable();
+        bool GetAttributesCacheEnable(const std::string& mountName);
         uint64_t GetAttributesCacheServerPort();
         uint64_t GetAttributesCacheMaxEntries();
         bool GetAttributesCacheUseLocalServer();
@@ -57,33 +60,33 @@ class StorageInterceptConfig
         std::string GetCacheAuthAccountKey();
 
         // Getters for encryption
-        bool GetCacheEncryptionEnabled();
-        std::string GetCacheEncryptionKey();
+        bool GetCacheEncryptionEnabled(const std::string& mountName);
+        std::string GetCacheEncryptionKey(const std::string& mountName);
+
+        // Getters for infiniband
+        bool GetCacheIBEnabled();
 
         // Getters for blob config
-        std::string GetStorageAccountName();
-        std::string GetStorageAccountKey();
-        std::string GetStorageSASToken();
-        std::string GetBlobAccessToken();
-        std::string GetStorageEndpointUrl();
-        std::string GetBlobContainerName();
-        bool IsDynamicContainerMount();
-        uint64_t GetMaxBlobConnectionsPerClient();
+        std::string GetStorageAccountName(const std::string& mountName);
+        std::string GetStorageAccountKey(const std::string& mountName);
+        std::string GetStorageSASToken(const std::string& mountName);
+        std::string GetBlobAccessToken(const std::string& mountName);
+        std::string GetStorageEndpointUrl(const std::string& mountName);
+        std::string GetBlobContainerName(const std::string& mountName);
+        bool IsDynamicContainerMount(const std::string& mountName);
+        uint64_t GetMaxBlobConnectionsPerClient(const std::string& mountName);
 
         // Getters for chunk download parallelism
-        bool GetChunkDownloadParallelismEnabled();
-        uint64_t GetChunkDownloadMaxConcurrency();
+        bool GetChunkDownloadParallelismEnabled(const std::string& mountName);
+        uint64_t GetChunkDownloadMaxConcurrency(const std::string& mountName);
 
         // Getters for prefetch cache
         uint64_t GetPrefetchCacheTotalSizeInMB();
         uint64_t GetPrefetchCachePerFileSizeInMB();
 
         // Getters for large prefetch        
-        bool GetEnableLargePrefetch();
-        uint64_t GetPrefetchWindowSizeInMB();
-
-        // Getters for infiniband
-        bool GetCacheIBEnabled();
+        bool GetEnableLargePrefetch(const std::string& mountName);
+        uint64_t GetPrefetchWindowSizeInMB(const std::string& mountName);
 
     private:
         // Constructor
@@ -96,10 +99,23 @@ class StorageInterceptConfig
         std::string GetConfigStr(
             /*[in]*/ const std::map<std::string, std::string>& config,
             /*[in]*/ const char* configName);
+        
+        // Private helper function to get config string value for a mount
+        std::string GetConfigStr(
+            /*[in]*/ const std::map<std::string, std::string>& config,
+            /*[in]*/ const std::string& mountName,
+            /*[in]*/ const char* configName);
 
         // Private helper function to get config string value using default.
         std::string GetOptionalConfigStr(
             /*[in]*/ const std::map<std::string, std::string>& config,
+            /*[in]*/ const char* configName,
+            /*[in]*/ const std::string& defaultValue);
+
+        // Private helper function to get config string value using default for a mount
+        std::string GetOptionalConfigStr(
+            /*[in]*/ const std::map<std::string, std::string>& config,
+            /*[in]*/ const std::string& mountName,
             /*[in]*/ const char* configName,
             /*[in]*/ const std::string& defaultValue);
 
@@ -125,6 +141,13 @@ class StorageInterceptConfig
             /*[in]*/ const char* configName,
             /*[in]*/ uint64_t defaultValue);
 
+        // Private helper function to get config uint64 value using default.
+        uint64_t GetOptionalConfigUint64(
+            /*[in]*/ const std::map<std::string, std::string>& config,
+            /*[in]*/ const std::string& mountName,
+            /*[in]*/ const char* configName,
+            /*[in]*/ uint64_t defaultValue);
+
         // Private helper function to get config uint32 value.
         uint32_t GetConfigUint32(
             /*[in]*/ const std::map<std::string, std::string>& config,
@@ -144,6 +167,13 @@ class StorageInterceptConfig
         // Private helper function to get config boolean value using default.
         bool GetOptionalConfigBoolean(
             /*[in]*/ const std::map<std::string, std::string>& config,
+            /*[in]*/ const char* configName,
+            /*[in]*/ bool defaultValue);
+
+        // Private helper function to get config boolean value using default.
+        bool GetOptionalConfigBoolean(
+            /*[in]*/ const std::map<std::string, std::string>& config,
+            /*[in]*/ const std::string& mountName,
             /*[in]*/ const char* configName,
             /*[in]*/ bool defaultValue);
 

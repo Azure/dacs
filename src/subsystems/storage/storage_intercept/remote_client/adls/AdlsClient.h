@@ -16,7 +16,7 @@
 class AdlsClient : public IRemoteClient
 {
   public:
-    AdlsClient();
+    AdlsClient(const std::string& mountName);
 
     ssize_t ReadChunkSync(
       /*[in] */ const std::string& remotePath,
@@ -34,7 +34,7 @@ class AdlsClient : public IRemoteClient
       /*[out]*/ FileAttributes& attr) override;
 
   private:
-    void GetConfig();
+    void GetConfig(const std::string& mountName);
 
   private:
     AdlsHostContext                         m_HostContext;

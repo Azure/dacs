@@ -27,11 +27,14 @@ using namespace cacheutils;
 using namespace ibutils;
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
-ConnectionManager::ConnectionManager(int serverPort, bool useLocalServer, const std::vector<std::string>& cacheServers)
-    : m_ServerPort(serverPort),
-      m_bReuseServerConnections(StorageInterceptConfig::GetInstance().GetCacheReuseServerConnections()),
-      m_bUseInfiniband(StorageInterceptConfig::GetInstance().GetCacheIBEnabled()),
-      m_ibDevice{0}
+ConnectionManager::ConnectionManager(
+    int serverPort,
+    bool useLocalServer,
+    const std::vector<std::string>& cacheServers)
+    :  m_ServerPort(serverPort)
+    ,  m_bReuseServerConnections(StorageInterceptConfig::GetInstance().GetCacheReuseServerConnections())
+    ,  m_bUseInfiniband(StorageInterceptConfig::GetInstance().GetCacheIBEnabled())
+    ,  m_ibDevice{0}
 {
     if (useLocalServer)
     {
@@ -72,14 +75,13 @@ ConnectionManager::ConnectionManager(int serverPort, bool useLocalServer, const 
     }
 
     this->m_nMaxConnsPerServer = (MAX_CONNECTIONS_REUSE_SIZE + m_numServerNodes - 1) / m_numServerNodes;
-    LOG_INFO("Initialized Cache ConnectionManager. serverPort={} m_numServerNodes={} m_nMaxConnsPerServer={}"
-        " m_bReuseServerConnections={} m_bUseInfiniband={}",
+    LOG_INFO("Initialized Cache ConnectionManager. serverPort={} m_numServerNodes={}"
+        " m_nMaxConnsPerServer={} m_bReuseServerConnections={} m_bUseInfiniband={}",
         serverPort,
         m_numServerNodes,
         m_nMaxConnsPerServer,
         m_bReuseServerConnections ? "true" : "false",
-        m_bUseInfiniband ? "true" : "false"
-        );
+        m_bUseInfiniband ? "true" : "false");
 }
 //---------------------------------------------------------------------------------------------------------------------
 ConnectionManager::~ConnectionManager()

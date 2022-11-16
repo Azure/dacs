@@ -2,7 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "LocalAttributesCacheTest.h"
-#include "AttributesCacheFactory.h"
+#include "LocalAttributesCache.h"
 #include "StorageInterceptConfig.h"
 #include <algorithm>
 #include <vector>
@@ -20,10 +20,10 @@ LocalAttributesCacheTest::LocalAttributesCacheTest()
     char testId[37];
     uuid_unparse(out, testId);
     m_strTestId = testId;
-    if (StorageInterceptConfig::GetInstance().GetAttributesCacheEnable() &&
+    if (StorageInterceptConfig::GetInstance().GetAttributesCacheEnable("") &&
         StorageInterceptConfig::GetInstance().GetAttributesCacheUseLocalServer())
     {
-        m_attributesCacheClient = std::move(AttributesCacheFactory::GetAttributesCache());
+        m_attributesCacheClient = std::make_shared<LocalAttributesCache>();
     }
 }
 //---------------------------------------------------------------------------------------------------------------------

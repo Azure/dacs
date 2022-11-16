@@ -14,7 +14,7 @@ RemoteClientTest::RemoteClientTest()
 //---------------------------------------------------------------------------------------------------------------------
 void RemoteClientTest::SetUp()
 {
-    m_RemoteClient = std::move(RemoteClientProvider::GetRemoteClient());
+    m_RemoteClient = std::move(RemoteClientProvider::GetRemoteClient(""));
 }
 //---------------------------------------------------------------------------------------------------------------------
 template<typename Base, typename T>

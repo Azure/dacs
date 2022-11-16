@@ -2,15 +2,17 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "StorageInterceptConfig.h"
+#include "StorageInterceptLogger.h"
 #include "StorageInterceptUtils.h"
 #include "MockRemoteClient.h"
 #include "MockReadChunkApi.h"
 #include "MockReadDirectoryApi.h"
 #include "MockGetPropertiesApi.h"
 //---------------------------------------------------------------------------------------------------------------------
-MockRemoteClient::MockRemoteClient()
-    : m_strFsRoot(StorageInterceptConfig::GetInstance().GetMockClientRoot())
+MockRemoteClient::MockRemoteClient(const std::string& mountName)
+    : m_strFsRoot(StorageInterceptConfig::GetInstance().GetMockClientRoot(mountName))
 {
+    LOG_INFO("Initialized mock remote of client name={} mockFsRoot={}", mountName, m_strFsRoot);
 }
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t MockRemoteClient::ReadChunkSync(

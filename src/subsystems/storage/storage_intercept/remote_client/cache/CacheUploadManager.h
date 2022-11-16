@@ -18,26 +18,44 @@
 class CacheUploadManager
 {
     public:
-        CacheUploadManager(ConnectionManager& connectionManager, EncryptionUtil& encryptionUtil, int numUploadThreads,
+        CacheUploadManager(
+            ConnectionManager& connectionManager,
+            int numUploadThreads,
             uint64_t maxTotalBufferSize);
         ~CacheUploadManager();
 
     public:
 
         /* Submit an upload job */
-        bool Upload(int serverIndex, const std::string& cacheKey, std::shared_ptr<const FileReadData> fileData);
+        bool Upload(
+            const std::string& mountName,
+            int serverIndex,
+            const std::string& cacheKey,
+            std::shared_ptr<const FileReadData> fileData,
+            EncryptionUtil& encryptionUtil);
 
     private:
         struct UploadContext
         {
-            UploadContext(int serverIndex, const std::string& cacheKey, std::shared_ptr<const FileReadData> fileData)
-            : m_serverIndex(serverIndex), m_strCacheKey(cacheKey), m_fileData(fileData)
+            UploadContext(
+                const std::string& mountName,
+                int serverIndex,
+                const std::string& cacheKey,
+                std::shared_ptr<const FileReadData> fileData,
+                EncryptionUtil& encryptionUtil)
+            : m_strMountName(mountName)
+            , m_serverIndex(serverIndex)
+            , m_strCacheKey(cacheKey)
+            , m_fileData(fileData)
+            , m_encryptionUtil(encryptionUtil)
             {                
             }
 
-            int                                 m_serverIndex;
-            std::string                         m_strCacheKey;
+            const std::string                   m_strMountName;
+            const int                           m_serverIndex;
+            const std::string                   m_strCacheKey;
             std::shared_ptr<const FileReadData> m_fileData;
+            EncryptionUtil&                     m_encryptionUtil;
         };
 
         std::atomic_uint64_t                           m_uploadBufferMemory;
@@ -53,7 +71,6 @@ class CacheUploadManager
         std::atomic_bool                               m_stop;
 
         ConnectionManager&                             m_connectionManager;
-        EncryptionUtil&                                m_encryptionUtil;
 
         void UploadWorker();
         bool StartUpload(std::unique_ptr<UploadContext> uploadContext);

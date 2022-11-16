@@ -26,7 +26,8 @@ LocalAttributesCache::LocalAttributesCache()
         this->UploadWorker();
     });
 
-    LOG_INFO("Using LocalAttributesCache for caching remote file properties. server port: {}", serverPort);
+    LOG_INFO("Using LocalAttributesCache for caching remote file properties. server port={}",
+        serverPort);
 }
 //---------------------------------------------------------------------------------------------------------------------
 LocalAttributesCache::~LocalAttributesCache()

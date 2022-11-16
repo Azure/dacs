@@ -29,6 +29,7 @@ LocalFSCacheClient::~LocalFSCacheClient()
 }
 //---------------------------------------------------------------------------------------------------------------------
 ICacheClient::CacheStatus LocalFSCacheClient::DownloadSync(
+    const std::string& mountName,
     const std::string& cacheKey,
     uint64_t startOffset,
     uint64_t length,
@@ -99,6 +100,7 @@ ICacheClient::CacheStatus LocalFSCacheClient::DownloadSync(
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool LocalFSCacheClient::UploadAsync(
+    const std::string& mountName,
     const std::string& cacheKey,
     std::shared_ptr<const FileReadData> fileData)
 {

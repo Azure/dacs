@@ -19,28 +19,57 @@ else
   BUILD_CONFIGURATION=$1
 fi
 
+function append_interception_config_blob_prefix() {
+    STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
+    MOUNT_PATH=$1
+    ACCOUNT_NAME=$2
+    MOUNT_PREFIX=$3
+    MOUNT_SAS_TOKEN_NAME=$4
+    IS_DYNAMIC=$5
+
+    echo "${MOUNT_PREFIX}storagePath ${MOUNT_PATH}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "${MOUNT_PREFIX}type blob" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "${MOUNT_PREFIX}azBlobStorageAccountName ${ACCOUNT_NAME}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "${MOUNT_PREFIX}azBlobSASToken \${${MOUNT_SAS_TOKEN_NAME}}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "${MOUNT_PREFIX}azBlobStorageEndpoint https://${ACCOUNT_NAME}.blob.core.windows.net" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "${MOUNT_PREFIX}azBlobContainerName dataset" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "${MOUNT_PREFIX}maxConnsPerBlobClient 30" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+
+    if [ "$IS_DYNAMIC" = true ]
+    then
+      echo "${MOUNT_PREFIX}azBlobDynamicContainer true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    fi
+}
+
 function add_interception_config_blob() {
     STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
     STORAGE_INTERCEPT_PATH=$1
+    TEST_MULTI_MOUNT=${2:false}
 
     rm ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
     # Note: STORAGE_INTERCEPT_SAS_TOKEN is set as a user-defined secret variable in the pipeline.
     # See https://docs.microsoft.com/en-us/azure/devops/pipelines/process/variables?view=azure-devops&tabs=yaml%2Cbatch
 
-    echo "storagePath ${STORAGE_INTERCEPT_PATH}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "type blob" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "azBlobStorageAccountName surkriseastus" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "azBlobSASToken \${STORAGE_INTCPT_SAS_TOKEN}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "azBlobStorageEndpoint https://surkriseastus.blob.core.windows.net" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "azBlobContainerName dataset" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "maxConnsPerBlobClient 30" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    
+    if [ "$TEST_MULTI_MOUNT" = true ]
+    then
+      echo "multiMountEnabled true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+      echo "mountName0 mount1" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+      append_interception_config_blob_prefix ${STORAGE_INTERCEPT_PATH} surkriseastus "mount1" STORAGE_INTCPT_SAS_TOKEN true
 
-    echo "Created the storage interception config file"
+      echo "mountName1 mount2" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+      append_interception_config_blob_prefix "${STORAGE_INTERCEPT_PATH}2" surkriseastus2 "mount2" STORAGE_INTCPT_SAS_TOKEN2 true
+    else
+      append_interception_config_blob_prefix ${STORAGE_INTERCEPT_PATH} surkriseastus "" STORAGE_INTCPT_SAS_TOKEN false
+    fi
+
+    echo "Created the storage interception config file. Its contents are =>"
+    eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
 }
 
 function add_interception_config_blob_with_cache() {
-    add_interception_config_blob $1
+    add_interception_config_blob $1 $2
 
     STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
     echo "cacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
@@ -54,7 +83,7 @@ function add_interception_config_blob_with_cache() {
 }
 
 function add_interception_config_blob_with_cache_encryption() {
-    add_interception_config_blob_with_cache $1
+    add_interception_config_blob_with_cache $1 $2
 
     STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
     echo "cacheEncryptionEnabled true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
@@ -96,9 +125,6 @@ function stop_cache_server() {
   echo "Stopped CacheServer"
 }
 
-# Start cache server in the background
-start_cache_server
-
 echo "Running unit tests against blob"
 add_interception_config_blob /mnt/dataPathIntcpt
 export STORAGE_INTERCEPT_USE_EXISITNG_CONFIG=true
@@ -113,14 +139,20 @@ echo ""
 
 echo "Running integration test against blob"
 pip3 install h5py
-add_interception_config_blob /mnt/quiverfs
-eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large -s -n 20 -p 4"
+add_interception_config_blob /mnt/quiverfs true
+eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d largeMultiMountDynamic -s -n 20 -p 4"
 if [ $? -ne 0 ]
 then
     echo "Blob Integration test failed"
     exit 1
 fi
 echo ""
+
+# Start cache server in the background
+start_cache_server
+echo "Sleeping 60 secs to allow cache server to start and initialize"
+echo ""
+sleep 60
 
 echo "Running unit tests against blob with cache enabled"
 add_interception_config_blob_with_cache /mnt/dataPathIntcpt
@@ -155,8 +187,8 @@ fi
 echo ""
 
 echo "Running integration test against blob with cache and encryption"
-add_interception_config_blob_with_cache_encryption /mnt/quiverfs
-eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large -s -n 20 -p 4"
+add_interception_config_blob_with_cache_encryption /mnt/quiverfs true
+eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d largeMultiMountDynamic -s -n 20 -p 4"
 if [ $? -ne 0 ]
 then
     echo "Blob Integration test with cache and encryption failed"

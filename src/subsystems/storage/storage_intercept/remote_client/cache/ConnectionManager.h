@@ -15,7 +15,10 @@
 class ConnectionManager
 {
     public:
-        ConnectionManager(int serverPort, bool useLocalServer, const std::vector<std::string>& cacheServers);
+        ConnectionManager(
+            /*[in]*/ int serverPort,
+            /*[in]*/ bool useLocalServer,
+            /*[in]*/ const std::vector<std::string>& cacheServers);
         ~ConnectionManager();
 
     public:

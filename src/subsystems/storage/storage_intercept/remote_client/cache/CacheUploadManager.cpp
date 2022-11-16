@@ -13,13 +13,11 @@ using namespace cacheutils;
 //---------------------------------------------------------------------------------------------------------------------
 CacheUploadManager::CacheUploadManager(
     ConnectionManager& connectionManager,
-    EncryptionUtil& encryptionUtil,
     int numUploadThreads,
     uint64_t maxTotalBufferSize)
     : m_stop(false),
       m_uploadBufferMemory(0),
       m_connectionManager(connectionManager),
-      m_encryptionUtil(encryptionUtil),
       m_numUploadThreads(numUploadThreads),
       m_maxBufferMemory(maxTotalBufferSize)
 {
@@ -50,8 +48,10 @@ CacheUploadManager::~CacheUploadManager()
 bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
 {
     // TODO: Implement retries on failure
-    LOG_DEBUG("Uploading file: {}, length: {}",
-        uploadContext->m_strCacheKey, uploadContext->m_fileData->BufferSize);
+    LOG_DEBUG("Uploading mountName: {}, file: {}, length: {}",
+        uploadContext->m_strMountName,
+        uploadContext->m_strCacheKey,
+        uploadContext->m_fileData->BufferSize);
 
     char* bufferToSend = uploadContext->m_fileData->Buffer.get();
     size_t bufferSizeToSend = uploadContext->m_fileData->BufferSize;
@@ -73,7 +73,7 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
     int64_t encLen = -1;
     if (bufferSizeToSend > 0)
     {
-        bool bRet = m_encryptionUtil.DoEncrypt(uploadRequest, uploadContext->m_fileData, encBuffer, encLen);
+        bool bRet = uploadContext->m_encryptionUtil.DoEncrypt(uploadRequest, uploadContext->m_fileData, encBuffer, encLen);
         if (!bRet)
         {
             LOG_WARN("couldn't encrypt data to send to server, file: {}", uploadContext->m_strCacheKey);
@@ -191,9 +191,11 @@ void CacheUploadManager::UploadWorker()
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool CacheUploadManager::Upload(
+    const std::string& mountName,
     int serverIndex,
     const std::string& cacheKey,
-    std::shared_ptr<const FileReadData> fileData)
+    std::shared_ptr<const FileReadData> fileData,
+    EncryptionUtil& encryptionUtil)
 {
     {
         lock_guard lock(m_mutexQueue);
@@ -205,7 +207,7 @@ bool CacheUploadManager::Upload(
         }
 
         m_uploadBufferMemory += fileData->BufferSize;
-        auto uploadContext = make_unique<UploadContext>(serverIndex, cacheKey, fileData);
+        auto uploadContext = make_unique<UploadContext>(mountName, serverIndex, cacheKey, fileData, encryptionUtil);
         m_uploadQueue.push(move(uploadContext));
     }
 

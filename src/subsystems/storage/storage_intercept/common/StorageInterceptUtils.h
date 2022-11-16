@@ -33,6 +33,15 @@ class StorageInterceptUtils
 
         static std::string RemoveFirstComponentFromPath(/*[in] */ const std::string& path);
 
+            
+       /**
+        * Get the prefix needed to convert a partial remote path to fully qualified remote path which would
+        * make it unique across mounts. Example: prefix <accountName>/<containerName>/ to blobName
+        *
+        * Note: The prefix returned will have trailing slash.
+        */
+        static std::string GetRemotePathPrefix(const std::string& mountName);
+
     private:
         static const char SEPARATOR_CHAR = '/';
 };

@@ -147,6 +147,16 @@ std::string StorageInterceptConfig::GetConfigStr(
     throw ("Config not present. configName=" + std::string(configName));
 }
 //---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::GetConfigStr(
+    const std::map<std::string, std::string>& config,
+    const std::string& mountName,
+    const char* configName)
+{
+    return StorageInterceptConfig::GetConfigStr(
+        config,
+        (mountName + configName).c_str());
+}
+//---------------------------------------------------------------------------------------------------------------------
 std::string StorageInterceptConfig::GetOptionalConfigStr(
     const std::map<std::string, std::string>& config,
     const char* configName,
@@ -164,6 +174,18 @@ std::string StorageInterceptConfig::GetOptionalConfigStr(
     }
 
     return defaultValue;
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::GetOptionalConfigStr(
+    const std::map<std::string, std::string>& config,
+    const std::string& mountName,
+    const char* configName,
+    const std::string& defaultValue)
+{
+    return GetOptionalConfigStr(
+        config,
+        (mountName + configName).c_str(),
+        defaultValue);
 }
 //---------------------------------------------------------------------------------------------------------------------
 int StorageInterceptConfig::GetConfigInteger(
@@ -206,6 +228,18 @@ uint64_t StorageInterceptConfig::GetOptionalConfigUint64(
         return defaultValue;
     }
     return stoull(strConfig);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint64_t StorageInterceptConfig::GetOptionalConfigUint64(
+    const std::map<std::string, std::string>& config,
+    const std::string& mountName,
+    const char* configName,
+    uint64_t defaultValue)
+{
+    return GetOptionalConfigUint64(
+        config,
+        (mountName + configName).c_str(),
+        defaultValue);
 }
 //---------------------------------------------------------------------------------------------------------------------
 uint32_t StorageInterceptConfig::GetConfigUint32(
@@ -252,10 +286,54 @@ bool StorageInterceptConfig::GetOptionalConfigBoolean(
     return (strConfig == "true" || strConfig == "1");
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::string StorageInterceptConfig::GetStoragePath()
+bool StorageInterceptConfig::GetOptionalConfigBoolean(
+    const std::map<std::string, std::string>& config,
+    const std::string& mountName,
+    const char* configName,
+    bool defaultValue)
+{
+    return GetOptionalConfigBoolean(
+        config,
+        (mountName + configName).c_str(),
+        defaultValue);
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::GetMultipleMountEnabled()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameMultiMountEnabled,
+        false);
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::vector<std::string> StorageInterceptConfig::GetMountNames()
+{
+    std::vector<std::string> mountNames;
+    for (int mountIdx = 0; mountIdx < 10; mountIdx++)
+    {
+        std::string mountName = StorageInterceptConfig::GetOptionalConfigStr(
+            m_ConfigProps,
+            (StorageInterceptConstants::ConfigNamePrefixMountName + std::to_string(mountIdx)).c_str(),
+            "");
+        
+        if (mountName != "")
+        {
+            mountNames.push_back(mountName);
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return mountNames;
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::GetStoragePath(const std::string& mountName)
 {
     std::string storagePath = StorageInterceptConfig::GetConfigStr(
         m_ConfigProps,
+        mountName,
         StorageInterceptConstants::ConfigNameStoragePath);
 
     // Remove trailing '/' from the storage path
@@ -264,34 +342,52 @@ std::string StorageInterceptConfig::GetStoragePath()
     return storagePath;
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::string StorageInterceptConfig::GetRemoteStoreType()
+std::string StorageInterceptConfig::GetRemoteStoreType(const std::string& mountName)
 {
-    return StorageInterceptConfig::GetConfigStr(m_ConfigProps, StorageInterceptConstants::ConfigNameRemoteType);
+    return StorageInterceptConfig::GetConfigStr(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameRemoteType);
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::string StorageInterceptConfig::GetMockClientRoot()
+std::string StorageInterceptConfig::GetMockClientRoot(const std::string& mountName)
 {
-    return StorageInterceptConfig::GetConfigStr(m_ConfigProps, StorageInterceptConstants::ConfigNameMockClientRoot);
+    return StorageInterceptConfig::GetConfigStr(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameMockClientRoot);
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::string StorageInterceptConfig::GetAdlsHostName()
+std::string StorageInterceptConfig::GetAdlsHostName(const std::string& mountName)
 {
-    return StorageInterceptConfig::GetConfigStr(m_ConfigProps, StorageInterceptConstants::ConfigNameAdlsHostName);
+    return StorageInterceptConfig::GetConfigStr(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameAdlsHostName);
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::string StorageInterceptConfig::GetAdlsClientId()
+std::string StorageInterceptConfig::GetAdlsClientId(const std::string& mountName)
 {
-    return StorageInterceptConfig::GetConfigStr(m_ConfigProps, StorageInterceptConstants::ConfigNameAdlsClientId);
+    return StorageInterceptConfig::GetConfigStr(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameAdlsClientId);
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::string StorageInterceptConfig::GetAdlsClientSecret()
+std::string StorageInterceptConfig::GetAdlsClientSecret(const std::string& mountName)
 {
-    return StorageInterceptConfig::GetConfigStr(m_ConfigProps, StorageInterceptConstants::ConfigNameAdlsClientSecret);
+    return StorageInterceptConfig::GetConfigStr(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameAdlsClientSecret);
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::string StorageInterceptConfig::GetAdlsAuthTokenUrl()
+std::string StorageInterceptConfig::GetAdlsAuthTokenUrl(const std::string& mountName)
 {
-    return StorageInterceptConfig::GetConfigStr(m_ConfigProps, StorageInterceptConstants::ConfigNameAdlsAuthTokenUrl);
+    return StorageInterceptConfig::GetConfigStr(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameAdlsAuthTokenUrl);
 }
 //---------------------------------------------------------------------------------------------------------------------
 uint32_t StorageInterceptConfig::GetStreamingChunkSize()
@@ -306,41 +402,50 @@ uint32_t StorageInterceptConfig::GetIoBlockSize()
         m_ConfigProps, StorageInterceptConstants::ConfigNameIoBlockSize, 4 * 1024 * 1024);
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool StorageInterceptConfig::GetCacheEnable()
+bool StorageInterceptConfig::GetCacheEnable(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(
-        m_ConfigProps, StorageInterceptConstants::ConfigNameCacheEnable, false);
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameCacheEnable,
+        false);
 }
 //---------------------------------------------------------------------------------------------------------------------
 uint64_t StorageInterceptConfig::GetCacheServerPort()
 {
-    return StorageInterceptConfig::GetOptionalConfigUint64(m_ConfigProps,
+    return StorageInterceptConfig::GetOptionalConfigUint64(
+        m_ConfigProps,
         StorageInterceptConstants::ConfigNameCacheServerPort,
         20000);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetCacheEnableRemote()
 {
-    return StorageInterceptConfig::GetOptionalConfigBoolean(m_ConfigProps,
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
         StorageInterceptConstants::ConfigNameCacheEnableRemote,
         false);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetCacheUseLocalFS()
 {
-    return StorageInterceptConfig::GetOptionalConfigBoolean(m_ConfigProps,
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
         StorageInterceptConstants::ConfigNameCacheUseLocalFS,
         false);
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::string StorageInterceptConfig::GetCacheLocalFSCachePath()
 {
-    return StorageInterceptConfig::GetConfigStr(m_ConfigProps, StorageInterceptConstants::ConfigNameLocalFSCachePath);
+    return StorageInterceptConfig::GetConfigStr(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameLocalFSCachePath);
 }
 //---------------------------------------------------------------------------------------------------------------------
 uint64_t StorageInterceptConfig::GetCacheNumServers()
 {
-    return StorageInterceptConfig::GetOptionalConfigUint64(m_ConfigProps,
+    return StorageInterceptConfig::GetOptionalConfigUint64(
+        m_ConfigProps,
         StorageInterceptConstants::ConfigNameCacheNumRemoteServers,
         1);
 }
@@ -355,29 +460,35 @@ std::string StorageInterceptConfig::GetCacheServerList()
 //---------------------------------------------------------------------------------------------------------------------
 uint64_t StorageInterceptConfig::GetCacheNumUploadThreadsPerProcess()
 {
-    return StorageInterceptConfig::GetOptionalConfigUint64(m_ConfigProps,
+    return StorageInterceptConfig::GetOptionalConfigUint64(
+        m_ConfigProps,
         StorageInterceptConstants::ConfigNameCacheUploaderThreadsPerProcess,
         2);
 }
 //---------------------------------------------------------------------------------------------------------------------
 uint64_t StorageInterceptConfig::GetCacheMaxUploadBufferSizePerProcess()
 {
-    return StorageInterceptConfig::GetOptionalConfigUint64(m_ConfigProps,
+    return StorageInterceptConfig::GetOptionalConfigUint64(
+        m_ConfigProps,
         StorageInterceptConstants::ConfigNameCacheUploaderMaxBufferSizePerProcess,
         1073741824 /* 1GB */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 uint64_t StorageInterceptConfig::GetCacheReuseServerConnections()
 {
-    return StorageInterceptConfig::GetOptionalConfigBoolean(m_ConfigProps,
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
         StorageInterceptConstants::ConfigNameCacheReuseServerConnections,
         true);
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool StorageInterceptConfig::GetAttributesCacheEnable()
+bool StorageInterceptConfig::GetAttributesCacheEnable(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(
-        m_ConfigProps, StorageInterceptConstants::ConfigNameAttributesCacheEnable, true);
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameAttributesCacheEnable,
+        true);
 }
 //---------------------------------------------------------------------------------------------------------------------
 uint64_t StorageInterceptConfig::GetAttributesCacheServerPort()
@@ -391,19 +502,25 @@ uint64_t StorageInterceptConfig::GetAttributesCacheServerPort()
 uint64_t StorageInterceptConfig::GetAttributesCacheMaxEntries()
 {
     return StorageInterceptConfig::GetOptionalConfigUint64(
-        m_ConfigProps, StorageInterceptConstants::ConfigNameAttributesCacheMaxEntries, 1000000);
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameAttributesCacheMaxEntries,
+        1000000);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetAttributesCacheUseLocalServer()
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(
-        m_ConfigProps, StorageInterceptConstants::ConfigNameAttributesCacheUseLocalServer, false);
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameAttributesCacheUseLocalServer,
+        false);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetCacheAuthEnabled()
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(
-        m_ConfigProps, StorageInterceptConstants::ConfigNameCacheAuthEnabled, false);
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheAuthEnabled,
+        false);
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::string StorageInterceptConfig::GetCacheAuthAccountName()
@@ -420,16 +537,20 @@ std::string StorageInterceptConfig::GetCacheAuthAccountKey()
         StorageInterceptConstants::ConfigNameCacheAuthAccountKey);
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool StorageInterceptConfig::GetCacheEncryptionEnabled()
+bool StorageInterceptConfig::GetCacheEncryptionEnabled(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(
-        m_ConfigProps, StorageInterceptConstants::ConfigNameCacheEncryptionEnabled, false);
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameCacheEncryptionEnabled,
+        false);
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::string StorageInterceptConfig::GetCacheEncryptionKey()
+std::string StorageInterceptConfig::GetCacheEncryptionKey(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigStr(
         m_ConfigProps,
+        mountName,
         StorageInterceptConstants::ConfigNameCacheEncryptionKey,
         "");
 }
@@ -442,79 +563,91 @@ bool StorageInterceptConfig::GetCacheIBEnabled()
         false);
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::string StorageInterceptConfig::GetStorageAccountName()
+std::string StorageInterceptConfig::GetStorageAccountName(const std::string& mountName)
 {
     return StorageInterceptConfig::GetConfigStr(
         m_ConfigProps,
+        mountName,
         StorageInterceptConstants::ConfigNameAzBlobStorageAccName);
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::string StorageInterceptConfig::GetStorageAccountKey()
+std::string StorageInterceptConfig::GetStorageAccountKey(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigStr(
         m_ConfigProps,
+        mountName,
         StorageInterceptConstants::ConfigNameAzBlobStorageAccKey,
         "");
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::string StorageInterceptConfig::GetStorageSASToken()
+std::string StorageInterceptConfig::GetStorageSASToken(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigStr(
         m_ConfigProps,
+        mountName,
         StorageInterceptConstants::ConfigNameAzBlobSASToken,
         "");
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::string StorageInterceptConfig::GetBlobAccessToken()
+std::string StorageInterceptConfig::GetBlobAccessToken(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigStr(
         m_ConfigProps,
+        mountName,
         StorageInterceptConstants::ConfigNameAzBlobAccessToken,
         "");
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::string StorageInterceptConfig::GetBlobContainerName()
+std::string StorageInterceptConfig::GetBlobContainerName(const std::string& mountName)
 {
     return StorageInterceptConfig::GetConfigStr(
         m_ConfigProps,
+        mountName,
         StorageInterceptConstants::ConfigNameAzBlobContainerName);
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::string StorageInterceptConfig::GetStorageEndpointUrl()
+std::string StorageInterceptConfig::GetStorageEndpointUrl(const std::string& mountName)
 {
     return StorageInterceptConfig::GetConfigStr(
         m_ConfigProps,
+        mountName,
         StorageInterceptConstants::ConfigNameAzBlobStorageEndpointUrl);
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool StorageInterceptConfig::IsDynamicContainerMount()
+bool StorageInterceptConfig::IsDynamicContainerMount(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(
         m_ConfigProps,
+        mountName,
         StorageInterceptConstants::ConfigNameAzBlobDynamicContainer,
         false);
 }
 //---------------------------------------------------------------------------------------------------------------------
-uint64_t StorageInterceptConfig::GetMaxBlobConnectionsPerClient()
+uint64_t StorageInterceptConfig::GetMaxBlobConnectionsPerClient(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigUint64(
         m_ConfigProps,
+        mountName,
         StorageInterceptConstants::ConfigNameMaxConnsPerBlobClient,
         10);
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool StorageInterceptConfig::GetChunkDownloadParallelismEnabled()
+bool StorageInterceptConfig::GetChunkDownloadParallelismEnabled(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(
-        m_ConfigProps, StorageInterceptConstants::ConfigNameChunkDownloadParallelismEnabled, true);
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameChunkDownloadParallelismEnabled,
+        true);
 }
 //---------------------------------------------------------------------------------------------------------------------
-uint64_t StorageInterceptConfig::GetChunkDownloadMaxConcurrency()
+uint64_t StorageInterceptConfig::GetChunkDownloadMaxConcurrency(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigUint64(
         m_ConfigProps,
+        mountName,
         StorageInterceptConstants::ConfigNameChunkDownloadMaxConcurrency,
-        GetMaxBlobConnectionsPerClient());
+        GetMaxBlobConnectionsPerClient(mountName));
 }
 //---------------------------------------------------------------------------------------------------------------------
 uint64_t StorageInterceptConfig::GetPrefetchCacheTotalSizeInMB()
@@ -533,16 +666,20 @@ uint64_t StorageInterceptConfig::GetPrefetchCachePerFileSizeInMB()
         800);
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool StorageInterceptConfig::GetEnableLargePrefetch()
+bool StorageInterceptConfig::GetEnableLargePrefetch(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(
-        m_ConfigProps, StorageInterceptConstants::ConfigNameLargePrefetchEnabled, false);
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameLargePrefetchEnabled,
+        false);
 }
 //---------------------------------------------------------------------------------------------------------------------
-uint64_t StorageInterceptConfig::GetPrefetchWindowSizeInMB()
+uint64_t StorageInterceptConfig::GetPrefetchWindowSizeInMB(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigUint64(
         m_ConfigProps,
+        mountName,
         StorageInterceptConstants::ConfigNamePrefetchSizeInMB,
         100);
 }

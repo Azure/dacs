@@ -14,11 +14,11 @@ InMemoryAttributesCache::InMemoryAttributesCache()
 		    m_maxCacheEntries);
 }
 //---------------------------------------------------------------------------------------------------------------------
-InMemoryAttributesCache::InMemoryAttributesCache(const uint64_t maxCacheEntries)
+InMemoryAttributesCache::InMemoryAttributesCache(uint64_t maxCacheEntries)
 : m_maxCacheEntries(maxCacheEntries)
 {
     LOG_INFO("Using InMemoryAttributesCache for caching remote file properties. Max cache entries: {}",
-		   m_maxCacheEntries);
+       m_maxCacheEntries);
 }
 //---------------------------------------------------------------------------------------------------------------------
 InMemoryAttributesCache::~InMemoryAttributesCache()

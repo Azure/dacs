@@ -12,6 +12,7 @@ class LocalFSCacheClient : public ICacheClient
         ~LocalFSCacheClient();
 
         CacheStatus DownloadSync(
+            /*[in] */ const std::string& mountName,
             /*[in] */ const std::string& cacheKey,
             /*[in] */ uint64_t startOffset,
             /*[in] */ uint64_t length,
@@ -19,6 +20,7 @@ class LocalFSCacheClient : public ICacheClient
             /*[out]*/ uint64_t& readLength) override;
 
         bool UploadAsync(
+            /*[in] */ const std::string& mountName,
             /*[in] */ const std::string& cacheKey,
             /*[in] */ std::shared_ptr<const FileReadData> fileData) override;
 
