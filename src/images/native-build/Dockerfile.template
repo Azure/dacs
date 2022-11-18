@@ -111,14 +111,15 @@ RUN \
   useradd -m dacsuser && \
   find /dependency -type d | xargs chmod 777
 
-# Create cuda 10.1.243 conda environment, this is needed for CUPTI 10.1 library
+# GPU Profiler Dependencies
 RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
-  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-101 && \
-  . /opt/conda-cuda-101/bin/activate && \
-  conda install -y -c conda-forge cudatoolkit-dev=10.1.243 && \
+  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cupti && \
+  . /opt/conda-cupti/bin/activate && \
+  conda install -y -c conda-forge cudatoolkit=11.0.3 && \
   conda clean -a && \
   conda deactivate && \
-  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
+  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
+  ln -s /opt/conda-cupti/pkgs/cudatoolkit-11.0.3-h15472ef_8/lib/libcupti.so /usr/lib/libcuptiprofiler.so
 
 # Create cuda 11.0.221, nccl 2.7.8, cudnn 8.0.5 conda environment
 RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
