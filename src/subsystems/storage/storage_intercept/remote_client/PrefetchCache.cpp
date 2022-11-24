@@ -49,7 +49,7 @@ void PrefetchCache::Put(const std::string& path, std::shared_ptr<const FileReadD
 
     if (m_mapBuffers.size() >= MAX_ENTRIES_OVERALL)
     {
-        LOG_WARN("Too many entries in PrefetchCache. nEntries={}", m_mapBuffers.size());
+        LOG_INFO("Too many entries in PrefetchCache. nEntries={}", m_mapBuffers.size());
         return;
     }
 

@@ -9,6 +9,7 @@
 #include <condition_variable>
 #include <map>
 #include <vector>
+#include <array>
 #include "IRemoteClient.h"
 #include "FileReadData.h"
 #include "ICacheClient.h"
@@ -66,6 +67,9 @@ class StreamingClient
         const std::string                  m_strMountName;
         const std::string                  m_strRemotePathPrefix;
 
+        // Log every read on completion
+        const bool                         m_enableReadIOLogs;
+
         // The following shared_ptrs are updated/reset on a process fork,
         // so ensure all access to this is synchronized via atomic APIs 
         std::shared_ptr<IRemoteClient>     m_spRemoteClient;
@@ -93,6 +97,17 @@ class StreamingClient
         std::atomic_uint64_t               m_nGetPropertiesTotal;
         std::atomic_uint64_t               m_nGetPropertiesCache;
         std::atomic_uint64_t               m_nGetPropertiesRemoteClient;
+
+        // Stats for application requested/serviced reads
+        // Index 0 is for application requested reads and 1 is for final serviced reads
+        std::array<std::atomic_uint64_t, 2> m_nReadFileTotal;
+        std::array<std::atomic_uint64_t, 2> m_nReadTotalBytes;
+        std::array<std::atomic_uint64_t, 2> m_nRead128K;
+        std::array<std::atomic_uint64_t, 2> m_nRead4MB;
+        std::array<std::atomic_uint64_t, 2> m_nRead100MB;
+        std::array<std::atomic_uint64_t, 2> m_nRead1GB;
+        std::array<std::atomic_uint64_t, 2> m_nReadLarge;
+        std::array<std::atomic_uint64_t, 2> m_nReadMax;
 
         // Wrapper to call ReadChunkImpl() and update the counters tracking read chunk concurrency
         std::shared_ptr<const FileReadData> ReadChunk(
@@ -147,6 +162,19 @@ class StreamingClient
 
         // Helper funtions to log stats
         void LogStats(bool forceLog = false);
+
+        // Helper funtion to record read stats 
+        void UpdateReadStats(
+            /*[in] */ size_t readSize,
+            /*[in] */ bool finalRead);
+
+        // Check and log the read IO
+        void LogReadIO(
+            /*[in] */ const std::string& remotePath,
+            /*[in] */ off64_t readOffset,
+            /*[in] */ size_t requestedSize,
+            /*[in] */ ssize_t actualSize);
+
         void LogReadChunkStats(bool forceLog = false);
         void LogGetPropertiesStats(bool forceLog = false);
 };

@@ -22,16 +22,10 @@ CacheClientTest::CacheClientTest()
     char testId[37];
     uuid_unparse(out, testId);
     m_strTestId = testId;
-    if (StorageInterceptConfig::GetInstance().GetCacheEnable(""))
+    if (StorageInterceptConfig::GetInstance().GetCacheEnable("") && 
+        !StorageInterceptConfig::GetInstance().GetCacheUseLocalFS())
     {
-        if(StorageInterceptConfig::GetInstance().GetCacheUseLocalFS())
-        {
-            m_cacheClient = std::make_shared<LocalFSCacheClient>();
-        }
-        else
-        {
-            m_cacheClient = std::make_shared<RemoteCacheClient>();
-        }
+        m_cacheClient = make_shared<RemoteCacheClient>();
     }
 }
 //---------------------------------------------------------------------------------------------------------------------

@@ -11,6 +11,7 @@ CACHE_SERVER_PORT_RANGE_LENGTH=10000
 CACHE_SERVER_PORT=${CACHE_SERVER_PORT_RANGE_START}
 CACHE_SERVER_PID=-1
 CACHE_SERVER_PATH=/tmp/_cache
+CACHE_LOCAL_SSD_PATH=/tmp/_localcache
 
 if [ -z "$1" ]
 then
@@ -92,6 +93,18 @@ function add_interception_config_blob_with_cache_encryption() {
     echo "Created the storage interception config file with encryption enabled"
 }
 
+function add_interception_config_blob_with_localssdcache() {
+    add_interception_config_blob $1
+
+    STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
+    echo "cacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "cacheUseLocalFS true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "cacheLocalFSCachePath ${CACHE_LOCAL_SSD_PATH}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "cacheLocalFSCacheStagingPath ${CACHE_LOCAL_SSD_PATH}/_temp" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+
+    echo "Created the storage interception config file with local ssd cache enabled"
+}
+
 function start_cache_server() {
 
   # ensure cache storage path is present
@@ -125,6 +138,15 @@ function stop_cache_server() {
   echo "Stopped CacheServer"
 }
 
+function reset_local_ssd_cache() {
+  echo "Clearing local ssd cache"
+  if [[ -d ${CACHE_LOCAL_SSD_PATH} ]]; then
+    rm -rf ${CACHE_LOCAL_SSD_PATH}
+  fi
+
+  echo "Cleared local ssd cache"
+}
+
 echo "Running unit tests against blob"
 add_interception_config_blob /mnt/dataPathIntcpt
 export STORAGE_INTERCEPT_USE_EXISITNG_CONFIG=true
@@ -150,9 +172,9 @@ echo ""
 
 # Start cache server in the background
 start_cache_server
-echo "Sleeping 60 secs to allow cache server to start and initialize"
+echo "Sleeping 30 secs to allow cache server to start and initialize"
 echo ""
-sleep 60
+sleep 30
 
 echo "Running unit tests against blob with cache enabled"
 add_interception_config_blob_with_cache /mnt/dataPathIntcpt
@@ -196,6 +218,30 @@ then
 fi
 echo ""
 
+echo "Running unit tests against blob with local ssd cache"
+reset_local_ssd_cache
+add_interception_config_blob_with_localssdcache /mnt/dataPathIntcpt
+cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
+eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
+if [ $? -ne 0 ]
+then
+    echo "Unit tests against blob with local ssd cache failed"
+    exit 1
+fi
+echo ""
+
+echo "Running integration test against blob with local ssd cache"
+reset_local_ssd_cache
+add_interception_config_blob_with_localssdcache /mnt/quiverfs
+eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large -s -n 20 -p 4"
+if [ $? -ne 0 ]
+then
+    echo "Blob Integration test with local ssd cache failed"
+    exit 1
+fi
+echo ""
+
+reset_local_ssd_cache
 stop_cache_server
 
 # TODO: add tests for adls

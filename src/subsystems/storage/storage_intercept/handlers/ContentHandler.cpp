@@ -518,6 +518,7 @@ ssize_t ContentHandler::HandleRead(int fd, void *buf, size_t nBytes)
     }
 
     const off64_t readOffset = fdIt->second->FileOffset;
+    const off64_t fileSize = fdIt->second->Attributes.size;
     const std::string path = fdIt->second->RemotePath;
     MountInfo& mountInfo = GetMountInfo(fdIt->second->MountName);
     openHandlesLock.unlock();
@@ -528,6 +529,19 @@ ssize_t ContentHandler::HandleRead(int fd, void *buf, size_t nBytes)
         path,
         nBytes,
         readOffset);
+
+    if (readOffset >= fileSize)
+    {
+        LOG_DEBUG("Reading beyond end of file, returning 0 bytes, fd={} mountName={} path={} offset={} fileSize={}",
+            fd, mountInfo.MountName, path, readOffset, fileSize);
+        return 0;
+    }
+
+    if (readOffset + nBytes > fileSize)
+    {
+        // re-adjust nBytes to ensure we don't unnecessarily attempt to read beyond file size
+        nBytes = fileSize - readOffset;
+    }
 
     ssize_t result = GetStreamingClient(mountInfo).ReadFile(path, buf, nBytes, readOffset);
     if (result < 0)

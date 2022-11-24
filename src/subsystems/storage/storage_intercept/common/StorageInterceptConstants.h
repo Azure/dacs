@@ -28,6 +28,7 @@ namespace StorageInterceptConstants
 
     const char* const ConfigNameStreamingChunkSize = "streamingChunkSize";
     const char* const ConfigNameIoBlockSize = "ioBlockSize";
+    const char* const ConfigNameEnableReadIOLogs = "enableReadIOLogs";
 
     // Config constants for caching
     const char* const ConfigNameCacheEnable = "cacheEnable";
@@ -35,10 +36,13 @@ namespace StorageInterceptConstants
     const char* const ConfigNameCacheEnableRemote = "cacheEnableRemote";
     const char* const ConfigNameCacheUseLocalFS = "cacheUseLocalFS";
     const char* const ConfigNameLocalFSCachePath = "cacheLocalFSCachePath";
+    const char* const ConfigNameLocalFSCacheStagingPath = "cacheLocalFSCacheStagingPath";
+    const char* const ConfigNameLocalFSCacheEnableIODirect = "cacheLocalFSEnableIODirect";
+    const char* const ConfigNameLocalFSCacheMemoryWarnThresholdGB = "cacheLocalFSMemoryWarnThresholdGB";
     const char* const ConfigNameCacheNumRemoteServers = "cacheNumServers";
     const char* const ConfigNameCacheServerList = "cacheServerList";
     const char* const ConfigNameCacheUploaderThreadsPerProcess = "cacheNumUploadThreadsPerProcess";
-    const char* const ConfigNameCacheUploaderMaxBufferSizePerProcess = "cacheMaxUploadBufferSizePerProcess";
+    const char* const ConfigNameCacheUploaderMaxBufferSizePerProcessGB = "cacheMaxUploadBufferSizePerProcessGB";
     const char* const ConfigNameCacheReuseServerConnections = "cacheReuseServerConnections";
     const char* const ConfigNameCacheAuthEnabled = "cacheAuthEnabled";
     const char* const ConfigNameCacheAuthAccountName = "cacheAuthAccountName";

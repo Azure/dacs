@@ -40,6 +40,7 @@ StreamingClient::StreamingClient(
     std::shared_ptr<IAttributesCache> attributesCache)
     : m_strMountName(mountName)
     , m_strRemotePathPrefix(StorageInterceptUtils::GetRemotePathPrefix(mountName))
+    , m_enableReadIOLogs(StorageInterceptConfig::GetInstance().GetEnableReadIOLogs())
     , m_nChunkSize(StorageInterceptConfig::GetInstance().GetStreamingChunkSize())
     , m_bEnableReadChunkParallelism(StorageInterceptConfig::GetInstance().GetChunkDownloadParallelismEnabled(mountName))
     , m_nMaxReadChunkConcurrency(StorageInterceptConfig::GetInstance().GetChunkDownloadMaxConcurrency(mountName))
@@ -53,11 +54,20 @@ StreamingClient::StreamingClient(
     , m_nGetPropertiesTotal(0)
     , m_nGetPropertiesCache(0)
     , m_nGetPropertiesRemoteClient(0)
+    , m_nReadFileTotal({0, 0})
+    , m_nReadTotalBytes({0, 0})
+    , m_nRead128K({0, 0})
+    , m_nRead4MB({0, 0})
+    , m_nRead100MB({0, 0})
+    , m_nRead1GB({0, 0})
+    , m_nReadLarge({0, 0})
+    , m_nReadMax({0, 0})
 {
     SetClients(cacheClient, attributesCache);
 
     // Sanitize prefetch window size
-    const size_t maxPrefetchWindowSize = (size_t)m_nChunkSize * (PrefetchCache::GetInstance().MAX_ENTRIES_PER_FILE / 2);
+    const size_t maxPrefetchWindowSize = (size_t)m_nChunkSize *
+        (PrefetchCache::GetInstance().MAX_ENTRIES_PER_FILE / 2);
     if (m_nPrefetchWindowSize > maxPrefetchWindowSize)
     {
         LOG_INFO(
@@ -160,6 +170,8 @@ ssize_t StreamingClient::ReadFile(
     size_t readSize,
     off64_t readOffset)
 {
+    UpdateReadStats(readSize, false);
+
     // If large prefetch is enabled and read size less than prefetch window size,
     // prefetch the window first and then read and return.
     //
@@ -171,17 +183,26 @@ ssize_t StreamingClient::ReadFile(
 
         // All data for this read is now in prefetchCache,
         // reading chunks parallely won't speed-up as there won't be remote store calls.
-        return ReadChunksSequential(remotePath, buf, readSize, readOffset);
+        ssize_t readBytes = ReadChunksSequential(remotePath, buf, readSize, readOffset);
+        UpdateReadStats(readBytes, true);
+        LogReadIO(remotePath, readOffset, readSize, readBytes);
+        return readBytes;
     }
 
     // If parallel chunk downloads are enabled and readSize is larger than chunk size,
     // read required chunks in parallel.
     if (m_bEnableReadChunkParallelism && readSize > m_nChunkSize)
     {
-        return ReadChunksParallel(remotePath, buf, readSize, readOffset);
+        ssize_t readBytes = ReadChunksParallel(remotePath, buf, readSize, readOffset);
+        UpdateReadStats(readBytes, true);
+        LogReadIO(remotePath, readOffset, readSize, readBytes);
+        return readBytes;
     }
 
-    return ReadChunksSequential(remotePath, buf, readSize, readOffset);
+    ssize_t readBytes = ReadChunksSequential(remotePath, buf, readSize, readOffset);
+    UpdateReadStats(readBytes, true);
+    LogReadIO(remotePath, readOffset, readSize, readBytes);
+    return readBytes;
 }
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t StreamingClient::ReadChunksSequential(
@@ -502,7 +523,8 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
         bool bRet = cacheClient->UploadAsync(m_strMountName, strCacheKey, remoteReadData);
         if (!bRet)
         {
-            LOG_WARN("Failed to upload file: {}, offset: {} to cache", remotePath, chunkOffset);
+            // Logging as INFO as this is a best effort service
+            LOG_INFO("Failed to upload file: {}, offset: {} to cache", remotePath, chunkOffset);
             // TODO: can we retry this?
         }
     }
@@ -542,7 +564,8 @@ void StreamingClient::EnsurePrefetchCacheWindowPopulated(
     // Purge some offsets if we are near the per-file limit of PrefetchCache.
     if (cachedOffsets.size() + uncachedOffsets.size() > PrefetchCache::GetInstance().MAX_ENTRIES_PER_FILE)
     {
-        uint32_t nPurgeNeeded = PrefetchCache::GetInstance().MAX_ENTRIES_PER_FILE - (cachedOffsets.size() + uncachedOffsets.size());
+        uint32_t nPurgeNeeded = PrefetchCache::GetInstance().MAX_ENTRIES_PER_FILE -
+            (cachedOffsets.size() + uncachedOffsets.size());
         uint32_t nPurged = 0;
 
         // Pick the offsets to purge.
@@ -632,6 +655,61 @@ void StreamingClient::PreReadChunkCheck()
     LOG_DEBUG("Exit PreReadChunkCheck. m_nReadChunksInProgress={}", m_nReadChunksInProgress);
 }
 //---------------------------------------------------------------------------------------------------------------------
+void StreamingClient::UpdateReadStats(size_t readSize, bool finalRead)
+{
+    if (readSize <= 0)
+    {
+        return;
+    }
+
+    const int readIndex = finalRead ? 1 : 0;
+    m_nReadFileTotal[readIndex]++;
+    m_nReadTotalBytes[readIndex] += readSize;
+
+    if (readSize <= 128 * 1024)
+    {
+        m_nRead128K[readIndex]++;
+    }
+    else if (readSize <= 4 * 1024 * 1024)
+    {
+        m_nRead4MB[readIndex]++;
+    }
+    else if (readSize <= 100 * 1024 * 1024)
+    {
+        m_nRead100MB[readIndex]++;
+    }
+    else if (readSize <= 1024 * 1024 * 1024)
+    {
+        m_nRead1GB[readIndex]++;
+    }
+    else
+    {
+        m_nReadLarge[readIndex]++;
+    }
+
+    // Loop to guard against concurrent update to m_nReadMax. 
+    // This should go upto a few iterations only in rare scenarios so while(true) shouldn't be alarming
+    uint64_t currentMax = 0;
+    do
+    {
+        currentMax = m_nReadMax[readIndex];
+    }
+    while (readSize > currentMax && !m_nReadMax[readIndex].compare_exchange_strong(currentMax, readSize));
+}
+//---------------------------------------------------------------------------------------------------------------------
+void StreamingClient::LogReadIO(
+    const std::string& remotePath,
+    off64_t readOffset,
+    size_t requestedSize,
+    ssize_t actualSize)
+{
+    if (m_enableReadIOLogs)
+    {
+        LOG_INFO("ReadIO mountName={} path={} offset={} readSize={} actualSize={}",
+            m_strMountName, remotePath, readOffset, requestedSize, actualSize);
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::LogStats(bool forceLog)
 {
     LogReadChunkStats(forceLog);
@@ -640,7 +718,7 @@ void StreamingClient::LogStats(bool forceLog)
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::LogReadChunkStats(bool forceLog)
 {
-    // TODO: To get these logs for low QPS cases, log at fixed inervals (every 2 minutes for e.g).
+    // TODO: To get these logs for low QPS cases, log at fixed intervals (every 2 minutes for e.g).
     const int totalReadChunks = m_nReadChunksTotal;
     if (forceLog || 
         (totalReadChunks < 10) || 
@@ -653,6 +731,28 @@ void StreamingClient::LogReadChunkStats(bool forceLog)
             m_nReadChunksPrefetchCache,
             m_nReadChunksRemoteCache,
             m_nReadChunksRemoteClient);
+
+        LOG_INFO("ReadFile requested stats. TotalReads={} 128k={} 4MB={}, 100MB={} 1GB={} >1GB={} TotalBytes={} "
+            "MaxReadBytes={}",
+            m_nReadFileTotal[0],
+            m_nRead128K[0],
+            m_nRead4MB[0],
+            m_nRead100MB[0],
+            m_nRead1GB[0],
+            m_nReadLarge[0],
+            m_nReadTotalBytes[0],
+            m_nReadMax[0]);
+
+        LOG_INFO("ReadFile serviced stats. TotalReads={} 128k={} 4MB={}, 100MB={} 1GB={} >1GB={} TotalBytes={} "
+            "MaxReadBytes={}",
+            m_nReadFileTotal[1],
+            m_nRead128K[1],
+            m_nRead4MB[1],
+            m_nRead100MB[1],
+            m_nRead1GB[1],
+            m_nReadLarge[1],
+            m_nReadTotalBytes[1],
+            m_nReadMax[1]);
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
