@@ -18,8 +18,15 @@ RemoteCacheClient::RemoteCacheClient()
     int serverPort = StorageInterceptConfig::GetInstance().GetCacheServerPort();
     bool enableRemoteCache = StorageInterceptConfig::GetInstance().GetCacheEnableRemote();
     int numUploadThreads = StorageInterceptConfig::GetInstance().GetCacheNumUploadThreadsPerProcess();
+
     uint64_t maxUploadBufferSizePerProcess =
-        StorageInterceptConfig::GetInstance().GetCacheMaxUploadBufferSizePerProcess();
+        StorageInterceptConfig::GetInstance().GetCacheMaxUploadBufferSizePerProcessGB() * 1024ULL * 1024 * 1024;
+
+    // max size of 0 means unlimited
+    if (maxUploadBufferSizePerProcess == 0)
+    {
+        maxUploadBufferSizePerProcess = std::numeric_limits<uint64_t>::max();
+    }
 
     vector<string> vsServerNodes;
     if (enableRemoteCache)

@@ -36,16 +36,21 @@ class StorageInterceptConfig
 
         uint32_t GetIoBlockSize();
 
+        bool GetEnableReadIOLogs();
+
         // Getters for cache config
         bool GetCacheEnable(const std::string& mountName);
         uint64_t GetCacheServerPort();
         bool GetCacheEnableRemote();
         bool GetCacheUseLocalFS();
         std::string GetCacheLocalFSCachePath();
+        std::string GetCacheLocalFSCacheStagingPath();
+        bool GetCacheLocalFSEnableIODirect();
+        uint64_t GetCacheLocalFSMemoryWarnThresholdGB();
         uint64_t GetCacheNumServers();
         std::string GetCacheServerList();
         uint64_t GetCacheNumUploadThreadsPerProcess();
-        uint64_t GetCacheMaxUploadBufferSizePerProcess();
+        uint64_t GetCacheMaxUploadBufferSizePerProcessGB();
         uint64_t GetCacheReuseServerConnections();
 
         // Getters for attribute cache

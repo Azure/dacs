@@ -78,10 +78,18 @@ azBlobAccessToken <token>
 ### Other config settings
 Other config settings you can experiment with in `/tmp/storageIntercept.config`
 ```
+enableReadIOLogs [true or false - Whether to log (INFO) every completed read request from the application]
 chunkDownloadParallelismEnabled [true or false]
 chunkDownloadMaxConcurrency [eg. 40, should ideally be same as maxConnsPerBlobClient]
 enableLargePrefetch [true or false]
 prefetchWindowSizeInMB [eg. 100]
+cacheEnable [true or false - Enable data cache. default -false]
+cacheServerPort [remote cache server port. default - 20000]
+cacheUseLocalFS [true or false - Enable local ssd cache. default - false (use remote cache server)]
+cacheLocalFSCachePath [local path (use ssd or tmpfs) where the cache chunks have to be stored]
+cacheLocalFSCacheStagingPath [local path (use ssd or tmpfs) used for staging data currently being uploaded]
+cacheLocalFSMemoryWarnThresholdGB [when local fs cache is enabled we will trigger warning messages when local writes are slow and memory back pressure exceeds this threshold]
+cacheMaxUploadBufferSizePerProcessGB [limit upload buffer usage to this value. default - 0, unlimited]
 cacheServerList [If cache is enabled remote cache servers to use for this client, eg. node-0#node-1#node-3]
 cacheEncryptionEnabled [true or false - Enable end to end encryption for data stored in cache]
 cacheEncryptionKey [Key to use if encryption is enabled]
@@ -127,7 +135,7 @@ cacheServerPort 9065
 cacheEnable true
 cacheServerPort 20000
 cacheNumUploadThreadsPerProcess 2
-cacheMaxUploadBufferSizePerProcess 1073741824
+cacheMaxUploadBufferSizePerProcessGB 1
 cacheEnableRemote false
 cacheUseLocalFS false
 cacheLocalFSCachePath /tmp/_cache

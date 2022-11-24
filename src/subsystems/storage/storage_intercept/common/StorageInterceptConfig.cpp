@@ -402,6 +402,12 @@ uint32_t StorageInterceptConfig::GetIoBlockSize()
         m_ConfigProps, StorageInterceptConstants::ConfigNameIoBlockSize, 4 * 1024 * 1024);
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::GetEnableReadIOLogs()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps, StorageInterceptConstants::ConfigNameEnableReadIOLogs, false);
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetCacheEnable(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(
@@ -442,6 +448,28 @@ std::string StorageInterceptConfig::GetCacheLocalFSCachePath()
         StorageInterceptConstants::ConfigNameLocalFSCachePath);
 }
 //---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::GetCacheLocalFSCacheStagingPath()
+{
+    return StorageInterceptConfig::GetConfigStr(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameLocalFSCacheStagingPath);
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::GetCacheLocalFSEnableIODirect()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameLocalFSCacheEnableIODirect,
+        true);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint64_t StorageInterceptConfig::GetCacheLocalFSMemoryWarnThresholdGB()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint64(m_ConfigProps,
+        StorageInterceptConstants::ConfigNameLocalFSCacheMemoryWarnThresholdGB,
+        2);
+}
+//---------------------------------------------------------------------------------------------------------------------
 uint64_t StorageInterceptConfig::GetCacheNumServers()
 {
     return StorageInterceptConfig::GetOptionalConfigUint64(
@@ -463,15 +491,15 @@ uint64_t StorageInterceptConfig::GetCacheNumUploadThreadsPerProcess()
     return StorageInterceptConfig::GetOptionalConfigUint64(
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameCacheUploaderThreadsPerProcess,
-        2);
+        4);
 }
 //---------------------------------------------------------------------------------------------------------------------
-uint64_t StorageInterceptConfig::GetCacheMaxUploadBufferSizePerProcess()
+uint64_t StorageInterceptConfig::GetCacheMaxUploadBufferSizePerProcessGB()
 {
     return StorageInterceptConfig::GetOptionalConfigUint64(
         m_ConfigProps,
-        StorageInterceptConstants::ConfigNameCacheUploaderMaxBufferSizePerProcess,
-        1073741824 /* 1GB */);
+        StorageInterceptConstants::ConfigNameCacheUploaderMaxBufferSizePerProcessGB,
+        10);
 }
 //---------------------------------------------------------------------------------------------------------------------
 uint64_t StorageInterceptConfig::GetCacheReuseServerConnections()

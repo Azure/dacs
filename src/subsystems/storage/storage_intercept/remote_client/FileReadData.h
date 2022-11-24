@@ -4,24 +4,30 @@
 #pragma once
 //---------------------------------------------------------------------------------------------------------------------
 #include <memory>
+#include <functional>
 #include <sys/types.h>
+#include <stdlib.h>
 //---------------------------------------------------------------------------------------------------------------------
 /*
  * Represents a portion of data read from a file.
  */
-struct FileReadData
+using unique_aligned_buffer = std::unique_ptr<char, std::function<void(char*)>>;
+class FileReadData
 {
-    FileReadData(off64_t offset, size_t bufSize)
-        : Offset(offset)
-        , Buffer(new char[bufSize])
-        , BufferSize(bufSize)
-    {}
+    public:
+    FileReadData(off64_t offset, size_t bufSize);
+    ~FileReadData() = default;
 
     // The offset at which data was read from.
     const off64_t       Offset;
 
     // The data bytes read.
-    std::unique_ptr<char[]>     Buffer;
+    unique_aligned_buffer       Buffer;
     size_t                      BufferSize;
+
+    // Set alignment size to filesytem's logical block size to enable IO optimizations
+    static constexpr size_t     BufferAlignmentSize = 512;
+
+    static void FreeAlignedBuffer(char* buffer);
 };
 //---------------------------------------------------------------------------------------------------------------------
