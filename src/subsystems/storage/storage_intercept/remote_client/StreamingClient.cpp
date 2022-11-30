@@ -384,7 +384,8 @@ int StreamingClient::GetProperties(
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::Close(const std::string& remotePath)
 {
-    return PrefetchCache::GetInstance().PurgeAll(remotePath);
+    const std::string prefetchCacheKey = m_strRemotePathPrefix + remotePath;
+    return PrefetchCache::GetInstance().PurgeAll(prefetchCacheKey);
 }
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t StreamingClient::ReadChunkAndCopyToBuffer(
