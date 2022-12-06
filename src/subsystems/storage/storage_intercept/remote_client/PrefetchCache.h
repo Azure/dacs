@@ -10,6 +10,7 @@
 #include <set>
 #include <shared_mutex>
 #include "FileReadData.h"
+#include <gtest/gtest.h>
 //---------------------------------------------------------------------------------------------------------------------
 /*
  * Cache to store the downloaded chunks of a file in memory.
@@ -17,8 +18,12 @@
  * Note: To keep the total cache size in check, limits are enforced on number of entries per file and the total number
  *       of entries.
  */
+class PrefetchCacheTest;
 class PrefetchCache
 {
+    // Friends for testing
+    FRIEND_TEST(PrefetchCacheTest, PrefetchCachePutGetPurgeTest);
+
     public:
 
         /* Singleton */
@@ -45,6 +50,7 @@ class PrefetchCache
         const uint32_t    MAX_ENTRIES_OVERALL;
     private:
         PrefetchCache();
+        PrefetchCache(/*[in]*/ uint32_t maxEntriesPerFile, /*[in]*/ uint32_t maxEntriesOverall);
 
         static uint32_t CalculateNumEntries(/*[in]*/ uint64_t cacheSizeInMB);
 

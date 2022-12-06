@@ -5,13 +5,20 @@
 #include "StorageInterceptLogger.h"
 #include "StorageInterceptConfig.h"
 //---------------------------------------------------------------------------------------------------------------------
-PrefetchCache::PrefetchCache()
-  : MAX_ENTRIES_PER_FILE(CalculateNumEntries(StorageInterceptConfig::GetInstance().GetPrefetchCachePerFileSizeInMB()))
-  , MAX_ENTRIES_OVERALL(CalculateNumEntries(StorageInterceptConfig::GetInstance().GetPrefetchCacheTotalSizeInMB()))
+PrefetchCache::PrefetchCache(uint32_t maxEntriesPerFile, uint32_t maxEntriesOverall)
+  : MAX_ENTRIES_PER_FILE(maxEntriesPerFile)
+  , MAX_ENTRIES_OVERALL(maxEntriesOverall)
 {
     LOG_INFO("PrefetchCache initialized. MaxEntriesOverall={} MaxEntriesPerFile={}",
         MAX_ENTRIES_OVERALL,
         MAX_ENTRIES_PER_FILE);
+}
+//---------------------------------------------------------------------------------------------------------------------
+PrefetchCache::PrefetchCache()
+  : PrefetchCache(
+      CalculateNumEntries(StorageInterceptConfig::GetInstance().GetPrefetchCachePerFileSizeInMB()),
+      CalculateNumEntries(StorageInterceptConfig::GetInstance().GetPrefetchCacheTotalSizeInMB()))
+{
 }
 //---------------------------------------------------------------------------------------------------------------------
 PrefetchCache& PrefetchCache::GetInstance()
@@ -62,6 +69,7 @@ void PrefetchCache::Put(const std::string& path, std::shared_ptr<const FileReadD
         if (*offsetToPurge == 0)   ++offsetToPurge;
 
         off64_t purgedOffset = *offsetToPurge;
+        m_mapBuffers.erase(GetCacheKey(path, purgedOffset));
         offsetIt->second.erase(offsetToPurge);
         LOG_DEBUG("Too many entries in PrefetchCache for file={}. nEntries={} putOffset={} purgedOffset={}",
             path,

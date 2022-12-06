@@ -139,6 +139,9 @@ void ContentHandler::ForkHandlerPrepare()
 //---------------------------------------------------------------------------------------------------------------------
 void ContentHandler::ForkHandlerParent()
 {
+    std::unique_lock<std::mutex> cacheClientsLock(GetInstance().m_lockCacheClients);
+    if (!GetInstance().m_bCacheClientsInitialized) return;
+
     LOG_INFO("Initializing cache clients for parent after fork")
     GetInstance().SetCacheClients();
     for (auto& mountInfo : GetInstance().m_vecMountInfo)
@@ -154,6 +157,9 @@ void ContentHandler::ForkHandlerParent()
 //---------------------------------------------------------------------------------------------------------------------
 void ContentHandler::ForkHandlerChild()
 {
+    std::unique_lock<std::mutex> cacheClientsLock(GetInstance().m_lockCacheClients);
+    if (!GetInstance().m_bCacheClientsInitialized) return;
+
     LOG_INFO("Initializing cache clients for child after fork")
     GetInstance().SetCacheClients();
     for (auto& mountInfo : GetInstance().m_vecMountInfo)
