@@ -71,16 +71,24 @@ function add_interception_config_blob() {
 
 function add_interception_config_blob_with_cache() {
     add_interception_config_blob $1 $2
+    TEST_MULTI_MOUNT=${2:false}
 
     STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
-    echo "cacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "attributesCacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    if [ "$TEST_MULTI_MOUNT" = true ]
+    then
+      echo "mount1cacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+      echo "mount1attributesCacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    else
+      echo "cacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+      echo "attributesCacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    fi
     echo "attributesCacheUseLocalServer true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "attributesCacheServerPort ${CACHE_SERVER_PORT}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "cacheServerPort ${CACHE_SERVER_PORT}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "cacheEnableRemote false" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
-    echo "Created the storage interception config file with cache enabled"
+    echo "Created the storage interception config file with cache enabled. Its contents are =>"
+    eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
 }
 
 function add_interception_config_blob_with_cache_encryption() {
@@ -90,7 +98,8 @@ function add_interception_config_blob_with_cache_encryption() {
     echo "cacheEncryptionEnabled true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "cacheEncryptionKey somedummykey" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
-    echo "Created the storage interception config file with encryption enabled"
+    echo "Created the storage interception config file with encryption enabled. Its contents are =>"
+    eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
 }
 
 function add_interception_config_blob_with_localssdcache() {
@@ -102,7 +111,8 @@ function add_interception_config_blob_with_localssdcache() {
     echo "cacheLocalFSCachePath ${CACHE_LOCAL_SSD_PATH}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "cacheLocalFSCacheStagingPath ${CACHE_LOCAL_SSD_PATH}/_temp" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
-    echo "Created the storage interception config file with local ssd cache enabled"
+    echo "Created the storage interception config file with local ssd cache enabled. Its contents are =>"
+    eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
 }
 
 function start_cache_server() {
