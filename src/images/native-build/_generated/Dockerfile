@@ -98,6 +98,9 @@ RUN \
   apt-get install libgoogle-perftools-dev -y && \
   sudo ln -s /usr/lib/x86_64-linux-gnu/libprofiler.so /usr/lib/libprofiler.so && \
   apt-get install ninja-build -y && \
+  add-apt-repository ppa:deadsnakes/ppa -y && \
+  apt-get update -y && \
+  apt-get install python3.9 python3.9-dev python3.9-venv -y && \
 # Dependencies for storage
   apt-get update && apt-get install -y --no-install-recommends \
   libssl-dev libcurl4-openssl-dev curl libjsoncpp-dev uuid-dev && \
@@ -155,6 +158,16 @@ RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86
   . /opt/conda-cuda-113/bin/activate && \
   conda install -y -c conda-forge cudatoolkit-dev=11.3.1 && \
   conda install -y --no-deps -c conda-forge cudnn=8.2.1 nccl=2.9.9 && \
+  conda clean -a && \
+  conda deactivate && \
+  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
+
+# Create cuda 11.4, nccl 2.11.4 cudnn 8.2.1 conda environment
+RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
+  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-114 && \
+  . /opt/conda-cuda-114/bin/activate && \
+  conda install -y -c conda-forge cudatoolkit-dev=11.4 && \
+  conda install -y --no-deps -c conda-forge cudnn=8.2.1.32=h86fa8c9_0 nccl=2.11.4.1=h5c60f85_2 && \
   conda clean -a && \
   conda deactivate && \
   rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh

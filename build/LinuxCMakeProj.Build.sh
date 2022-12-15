@@ -79,7 +79,7 @@ if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
   if [[ ! -z "$BUILD_CUDA_VERSION" ]]; then
     cleanup_build "$BUILD_CUDA_VERSION"
   else
-    for cudaVersion in "11_0" "11_1" "11_3"; do
+    for cudaVersion in "11_0" "11_1" "11_3" "11_4"; do
       cleanup_build "cuda_$cudaVersion"
     done
   fi
@@ -112,16 +112,18 @@ fi
 if [[ ! -z "$BUILD_PYTHON_VERSION" ]]; then
   execute_build "non_cuda" "$BUILD_PYTHON_VERSION"
 else
-  for pythonVersion in "3.6" "3.7" "3.8"; do
+  for pythonVersion in "3.6" "3.7" "3.8" "3.9"; do
     execute_build "non_cuda" "$pythonVersion"
   done
 fi
 
 if [[ ! -z "$BUILD_CUDA_VERSION" ]]; then
-  execute_build "$BUILD_CUDA_VERSION" "3.6"
+  pythonVersion="3.6"
+  execute_build "$BUILD_CUDA_VERSION" $pythonVersion
 else
-  for cudaVersion in "11_0" "11_1" "11_3"; do
-    execute_build "cuda_$cudaVersion" "3.6"
+  for cudaVersion in "11_0" "11_1" "11_3" "11_4"; do
+    pythonVersion="3.6"
+    execute_build "cuda_$cudaVersion" $pythonVersion
   done
 fi
 
