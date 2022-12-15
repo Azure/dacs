@@ -1,5 +1,14 @@
 # Globally available cuda variables
-if(${CUDA_VERSION} MATCHES "cuda_11_3")
+if(${CUDA_VERSION} MATCHES "cuda_11_4")
+    message("Set Variables for cuda 11_4 ${CMAKE_SOURCE_DIR}")
+    set(DEVICE_PROXY_NCCL_VERSION "2.11.4")
+    set(DEVICE_PROXY_CUDA_VERSION "11.4")
+    set(ENV{CUDA_ROOT} "/opt/conda-cuda-114/pkgs/cuda-toolkit/")
+    set(ENV{NCCL_ROOT} "/opt/conda-cuda-114/pkgs/nccl-2.11.4.1-h5c60f85_2/")
+    set(ENV{CUDNN_ROOT} "/opt/conda-cuda-114/pkgs/cudnn-8.2.1.32-h86fa8c9_0/")
+
+    link_directories("$ENV{CUDA_ROOT}/targets/x86_64-linux/lib/stubs")
+elseif(${CUDA_VERSION} MATCHES "cuda_11_3")
     message("Set Variables for cuda 11_3 ${CMAKE_SOURCE_DIR}")
     set(DEVICE_PROXY_NCCL_VERSION "2.9.9")
     set(DEVICE_PROXY_CUDA_VERSION "11.3.109")
