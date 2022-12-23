@@ -163,6 +163,16 @@ RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86
   conda clean -a && \
   conda deactivate && \
   rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
+  
+# Create cuda 11.5, nccl 2.12.12 cudnn 8.3.2 conda environment
+  RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
+  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-115 && \
+  . /opt/conda-cuda-115/bin/activate && \
+  conda install -y -c conda-forge cudatoolkit-dev=11.5.0 && \
+  conda install -y --no-deps -c conda-forge cudnn=8.3.2.44=hed8a83a_1 nccl=2.12.12.1=h12f7317_0 && \
+  conda clean -a && \
+  conda deactivate && \
+  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
 
 # Install az module for powershell
 RUN pwsh -c "Install-Module -Name Az -Scope AllUsers -Repository PSGallery -Force"
