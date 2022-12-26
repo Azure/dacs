@@ -3,6 +3,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #pragma once
 #include "FileReadData.h"
+#include "CacheUtils.h"
 #include <string>
 #include <unistd.h>
 #include <memory>
@@ -10,11 +11,10 @@
 class ICacheClient
 {
     public:
-        enum CacheStatus {SUCCESS, NOTFOUND, NOTFOUND_LOCKED, AUTH_FAILED, INTERNAL_ERROR};
-
-        virtual CacheStatus DownloadSync(
+        virtual cacheutils::CacheStatus DownloadSync(
             /*[in] */ const std::string& mountName,
-            /*[in] */ const std::string& cacheKey,
+            /*[in] */ const std::string& filePath,
+            /*[in] */ off64_t fileOffset,
             /*[in] */ uint64_t startOffset,
             /*[in] */ uint64_t length,
             /*[out]*/ char *buffer,
@@ -22,7 +22,8 @@ class ICacheClient
 
         virtual bool UploadAsync(
             /*[in] */ const std::string& mountName,
-            /*[in] */ const std::string& cacheKey,
+            /*[in] */ const std::string& filePath,
+            /*[in] */ off64_t fileOffset,
             /*[in] */ std::shared_ptr<const FileReadData> fileData) = 0;
 
         virtual ~ICacheClient() {};

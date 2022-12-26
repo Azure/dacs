@@ -58,6 +58,7 @@ class StorageInterceptConfig
         uint64_t GetAttributesCacheServerPort();
         uint64_t GetAttributesCacheMaxEntries();
         bool GetAttributesCacheUseLocalServer();
+        bool GetAttributesCacheUseRemoteServer();
 
         // Getters for authentication
         bool GetCacheAuthEnabled();

@@ -56,6 +56,7 @@ namespace StorageInterceptConstants
     const char* const ConfigNameAttributesCacheServerPort = "attributesCacheServerPort";
     const char* const ConfigNameAttributesCacheMaxEntries = "attributesCacheMaxEntries";
     const char* const ConfigNameAttributesCacheUseLocalServer = "attributesCacheUseLocalServer";
+    const char* const ConfigNameAttributesCacheUseRemoteServer = "attributesCacheUseRemoteServer";
 
     // Config constants for blob client
     const char* const ConfigNameAzBlobStorageAccName = "azBlobStorageAccountName";

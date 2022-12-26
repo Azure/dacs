@@ -5,6 +5,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include <string>
 #include <vector>
+#include "CacheUtils.h"
 #include "FileAttributes.h"
 #include "DirectoryEntry.h"
 //---------------------------------------------------------------------------------------------------------------------
@@ -14,9 +15,7 @@
 class IAttributesCache
 {
     public:
-        enum CacheStatus {SUCCESS, NOTFOUND, NOTFOUND_LOCKED, AUTH_FAILED, INTERNAL_ERROR};
-
-        virtual CacheStatus Get(
+        virtual cacheutils::CacheStatus Get(
             /*[in] */ const std::string& path,
             /*[out]*/ FileAttributes& fileAttributes) = 0;
 

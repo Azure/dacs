@@ -8,10 +8,10 @@
 #include <atomic>
 #include <memory>
 //---------------------------------------------------------------------------------------------------------------------
-class LocalAttributesCacheTest : public TestBase
+class AttributesCacheTest : public TestBase
 {
     protected:
-        LocalAttributesCacheTest();
+        AttributesCacheTest();
         void SetUp() override;
 
         std::shared_ptr<IAttributesCache>       m_attributesCacheClient;

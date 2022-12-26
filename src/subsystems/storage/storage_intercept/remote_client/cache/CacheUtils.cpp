@@ -303,31 +303,5 @@ namespace cacheutils
         return ss.str();
     }
 //---------------------------------------------------------------------------------------------------------------------
-    std::string GetCacheKey(const std::string& mountName, const std::string& remotePath, off64_t chunkOffset)
-    {
-        // To uniquely identify a chunk within a cluster we need 
-        // <account name>/<container name>/<filepath within the container>:<file offset>
-        static map<string, string> strCachePrefixMap;
-        static mutex lockCachePrefixMap;
-
-        unique_lock<mutex> lock(lockCachePrefixMap); // Lock so that there aren't concurrent updates to map
-        
-        if (strCachePrefixMap[mountName] == "")
-        {
-            std::string strCachePrefix = StorageInterceptUtils::GetRemotePathPrefix(mountName);
-
-            if (StorageInterceptConfig::GetInstance().GetCacheEncryptionEnabled(mountName))
-            {
-                // If encryption is enabled then the file contents will be different depending on the encryption
-                // key used by the client, hence treating the same file if encryted using different keys as different.
-                strCachePrefix += StorageInterceptConfig::GetInstance().GetCacheEncryptionKey(mountName) + "/";
-            }
-
-            strCachePrefixMap[mountName] = strCachePrefix;
-        };
-
-        return GetSHA256Hex(strCachePrefixMap[mountName] + remotePath + ":" + std::to_string(chunkOffset));
-    }
-//---------------------------------------------------------------------------------------------------------------------
 }
 //---------------------------------------------------------------------------------------------------------------------

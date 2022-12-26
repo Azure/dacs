@@ -15,6 +15,9 @@
 #include <pthread.h>
 #include <future>
 //---------------------------------------------------------------------------------------------------------------------
+using namespace cacheutils;
+using namespace std;
+//---------------------------------------------------------------------------------------------------------------------
 // Helper struct used for tracking async chunk reads
 struct AsyncReadChunkInfo
 {
@@ -42,7 +45,8 @@ StreamingClient::StreamingClient(
     , m_strRemotePathPrefix(StorageInterceptUtils::GetRemotePathPrefix(mountName))
     , m_enableReadIOLogs(StorageInterceptConfig::GetInstance().GetEnableReadIOLogs())
     , m_nChunkSize(StorageInterceptConfig::GetInstance().GetStreamingChunkSize())
-    , m_bEnableReadChunkParallelism(StorageInterceptConfig::GetInstance().GetChunkDownloadParallelismEnabled(mountName))
+    , m_bEnableReadChunkParallelism(
+        StorageInterceptConfig::GetInstance().GetChunkDownloadParallelismEnabled(mountName))
     , m_nMaxReadChunkConcurrency(StorageInterceptConfig::GetInstance().GetChunkDownloadMaxConcurrency(mountName))
     , m_bEnableLargePrefetch(StorageInterceptConfig::GetInstance().GetEnableLargePrefetch(mountName))
     , m_nPrefetchWindowSize(StorageInterceptConfig::GetInstance().GetPrefetchWindowSizeInMB(mountName) * (1*1024*1024))
@@ -76,6 +80,7 @@ StreamingClient::StreamingClient(
             m_nPrefetchWindowSize);
         m_nPrefetchWindowSize = maxPrefetchWindowSize;
     }
+
     if (m_nPrefetchWindowSize % m_nChunkSize != 0)
     {
         size_t newPrefetchWindowSize = m_nPrefetchWindowSize - (m_nPrefetchWindowSize % m_nChunkSize);
@@ -86,9 +91,9 @@ StreamingClient::StreamingClient(
         m_nPrefetchWindowSize = newPrefetchWindowSize;
     }
 
-    LOG_INFO("StreamingClient initialized. MountName={}, RemotePathPrefix={} ChunkSize={}, chunk cache: {}, "
-             " attribute cache: {} readChunkParallelism={}, maxReadChunkConcurrency={},"
-             " enableLargePrefetch: {}, prefetchWindowSizeInBytes: {}",
+    LOG_INFO("StreamingClient initialized. MountName={}, RemotePathPrefix={} ChunkSize={}, chunk cache={},"
+             " attribute cache={} readChunkParallelism={}, maxReadChunkConcurrency={},"
+             " enableLargePrefetch={}, prefetchWindowSizeInBytes={}",
         mountName,
         m_strRemotePathPrefix,
         m_nChunkSize,
@@ -137,6 +142,7 @@ void StreamingClient::SetClients(
     {
         std::atomic_store(&m_spCacheClient, cacheClient);
     }
+
     if (StorageInterceptConfig::GetInstance().GetAttributesCacheEnable(m_strMountName))
     {
         std::atomic_store(&m_spAttributesCache, attributesCache);
@@ -152,6 +158,7 @@ void StreamingClient::ClearClients()
         const std::shared_ptr<ICacheClient> emptyCacheClient;
         std::atomic_store(&m_spCacheClient, emptyCacheClient);
     }
+    
     if (StorageInterceptConfig::GetInstance().GetAttributesCacheEnable(m_strMountName))
     {
         const std::shared_ptr<IAttributesCache> emptyAttributesCache;
@@ -341,7 +348,7 @@ std::string StreamingClient::ReadDirectory(
     if (attributesCache && dirEntries.size() > numInitialEntries)
     {
         attributesCache->PutAll(
-            m_strRemotePathPrefix + remotePath,
+            GetCacheFilePath(remotePath),
             dirEntries,
             numInitialEntries);
     }
@@ -354,13 +361,13 @@ int StreamingClient::GetProperties(
 {
     m_nGetPropertiesTotal++;
 
-    std::string cacheKey = m_strRemotePathPrefix + remotePath;
+    const std::string cacheFilePath = GetCacheFilePath(remotePath);
 
     // First check attributes cache
-    IAttributesCache::CacheStatus cacheStatus;
+    CacheStatus cacheStatus;
     auto attributesCache = std::atomic_load(&m_spAttributesCache);
     if (attributesCache && 
-        (cacheStatus = attributesCache->Get(cacheKey, attributes)) == IAttributesCache::SUCCESS)
+        (cacheStatus = attributesCache->Get(cacheFilePath, attributes)) == CacheStatus::SUCCESS)
     {
         LOG_DEBUG("Found atrributes in cache for file: {}", remotePath);
         m_nGetPropertiesCache++;
@@ -372,10 +379,10 @@ int StreamingClient::GetProperties(
         remotePath,
         attributes);
     m_nGetPropertiesRemoteClient++;
-    if (result >= 0 && attributesCache && cacheStatus == IAttributesCache::NOTFOUND_LOCKED)
+    if (result >= 0 && attributesCache && cacheStatus == CacheStatus::NOTFOUND_LOCKED)
     {
         // Update cache on success
-        attributesCache->Put(cacheKey, attributes);
+        attributesCache->Put(cacheFilePath, attributes);
     }
 
     LogGetPropertiesStats();
@@ -384,8 +391,7 @@ int StreamingClient::GetProperties(
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::Close(const std::string& remotePath)
 {
-    const std::string prefetchCacheKey = m_strRemotePathPrefix + remotePath;
-    return PrefetchCache::GetInstance().PurgeAll(prefetchCacheKey);
+    return PrefetchCache::GetInstance().PurgeAll(GetCacheFilePath(remotePath));
 }
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t StreamingClient::ReadChunkAndCopyToBuffer(
@@ -454,9 +460,9 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
     }
 
     // Try fetch from prefetch cache
-    std::string prefetchCacheKey = m_strRemotePathPrefix + remotePath;
+    const std::string cacheFilePath = GetCacheFilePath(remotePath);
     std::shared_ptr<const FileReadData> prefetchLookupResult =
-        PrefetchCache::GetInstance().Get(prefetchCacheKey, chunkOffset);
+        PrefetchCache::GetInstance().Get(cacheFilePath, chunkOffset);
     if (prefetchLookupResult)
     {
         LOG_DEBUG("Read file: {}, offset: {}, length: {} from prefetch cache",
@@ -468,34 +474,32 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
     std::shared_ptr<FileReadData> remoteReadData = std::make_shared<FileReadData>(chunkOffset, m_nChunkSize);
 
     // Try fetching from cache service
-    std::string strCacheKey;
-    ICacheClient::CacheStatus cacheStatus = ICacheClient::NOTFOUND;
+    CacheStatus cacheStatus = CacheStatus::NOTFOUND;
     auto cacheClient = std::atomic_load(&m_spCacheClient);
     if (cacheClient)
     {
-        strCacheKey = cacheutils::GetCacheKey(m_strMountName, remotePath, chunkOffset);
-        LOG_DEBUG("Using cache key: {} for file: {}, offset: {}", strCacheKey, remotePath, chunkOffset);
         uint64_t readLength = 0;
         cacheStatus = cacheClient->DownloadSync(
             m_strMountName,
-            strCacheKey,
+            cacheFilePath,
+            chunkOffset,
             0,
             m_nChunkSize,
             remoteReadData->Buffer.get(),
             readLength);
-        if (cacheStatus == ICacheClient::SUCCESS)
+        if (cacheStatus == CacheStatus::SUCCESS)
         {
             LOG_DEBUG("Read file: {}, offset: {}, length: {} from cache", remotePath, chunkOffset, readLength);
             remoteReadData->BufferSize = readLength;
             m_nReadChunksRemoteCache++;
         }
-        else if (cacheStatus == ICacheClient::INTERNAL_ERROR)
+        else if (cacheStatus == CacheStatus::INTERNAL_ERROR)
         {
-            LOG_WARN("Got server internal error for cache key: {}, ignore and continue blob download", strCacheKey);
+            LOG_WARN("Got server internal error for cache key: {}, ignore and continue blob download", cacheFilePath);
         }
     }
 
-    if (cacheStatus != ICacheClient::SUCCESS)
+    if (cacheStatus != CacheStatus::SUCCESS)
     {
         // Fetch from remote storage   
         ssize_t nBytesFromRemote = std::atomic_load(&m_spRemoteClient)->ReadChunkSync(
@@ -519,19 +523,18 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
     }
 
     // upload to cache server if this client owns the cache key
-    if (cacheClient && cacheStatus == ICacheClient::NOTFOUND_LOCKED)
+    if (cacheClient && cacheStatus == CacheStatus::NOTFOUND_LOCKED)
     {
-        bool bRet = cacheClient->UploadAsync(m_strMountName, strCacheKey, remoteReadData);
+        bool bRet = cacheClient->UploadAsync(m_strMountName, cacheFilePath, chunkOffset, remoteReadData);
         if (!bRet)
         {
             // Logging as INFO as this is a best effort service
             LOG_INFO("Failed to upload file: {}, offset: {} to cache", remotePath, chunkOffset);
-            // TODO: can we retry this?
         }
     }
     
     // Put to pre-fetch cache
-    PrefetchCache::GetInstance().Put(prefetchCacheKey, remoteReadData);
+    PrefetchCache::GetInstance().Put(cacheFilePath, remoteReadData);
 
     return remoteReadData;
 }
@@ -541,12 +544,12 @@ void StreamingClient::EnsurePrefetchCacheWindowPopulated(
     size_t readSize,
     off64_t readOffset)
 {    
-    std::string prefetchCacheKey = m_strRemotePathPrefix + remotePath;
+    const std::string cacheFilePath = GetCacheFilePath(remotePath);
     off64_t startWindowOffset = readOffset - (readOffset % m_nPrefetchWindowSize);
     off64_t endOffset = readOffset + readSize;
     off64_t endWindowOffset = endOffset - (endOffset % m_nPrefetchWindowSize);
 
-    const std::set<off64_t> cachedOffsets = PrefetchCache::GetInstance().GetCachedOffsets(prefetchCacheKey);
+    const std::set<off64_t> cachedOffsets = PrefetchCache::GetInstance().GetCachedOffsets(cacheFilePath);
 
     // check cached offsets to see how much of prefetch window(s) is already in cache
     off64_t prefetchStart = startWindowOffset;
@@ -585,7 +588,7 @@ void StreamingClient::EnsurePrefetchCacheWindowPopulated(
             if (nPurged >= nPurgeNeeded) break;
         }
 
-        PrefetchCache::GetInstance().PurgeOffsets(prefetchCacheKey, offsetsToPurge);
+        PrefetchCache::GetInstance().PurgeOffsets(cacheFilePath, offsetsToPurge);
     }
 
     // Download the uncached chunks parallely in order to populate into pre-fetch cache
@@ -772,5 +775,10 @@ void StreamingClient::LogGetPropertiesStats(bool forceLog)
             m_nGetPropertiesCache,
             m_nGetPropertiesRemoteClient);
     }
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string StreamingClient::GetCacheFilePath(const std::string& path) const
+{
+    return m_strRemotePathPrefix + path;
 }
 //---------------------------------------------------------------------------------------------------------------------

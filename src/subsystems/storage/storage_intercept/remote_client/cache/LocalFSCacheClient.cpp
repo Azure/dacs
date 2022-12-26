@@ -5,12 +5,14 @@
 #include "StorageInterceptLogger.h"
 #include "StorageDlsymWrapper.h"
 #include "StorageInterceptConfig.h"
+#include "CacheUtils.h"
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
+using namespace cacheutils;
 //---------------------------------------------------------------------------------------------------------------------
 LocalFSCacheClient::LocalFSCacheClient()
 : m_strLocalCachePath(StorageInterceptConfig::GetInstance().GetCacheLocalFSCachePath()),
@@ -53,8 +55,12 @@ LocalFSCacheClient::LocalFSCacheClient()
         m_maxUploadBufferMemory = std::numeric_limits<uint64_t>::max();
     }
 
-    LOG_INFO("Configured LocalFSCacheClient path={}, Temp path={}, Num Uploaders={}, Mem warn threshold bytes={}",
-        m_strLocalCachePath, m_strLocalCacheTempPath, m_numUploadThreads, m_uploadBufferMemoryWarnThreshold);
+    LOG_INFO("Configured LocalFSCacheClient path={}, Temp={}, Uploaders={}, MemWarn bytes={} MemLimit bytes={}",
+        m_strLocalCachePath,
+        m_strLocalCacheTempPath,
+        m_numUploadThreads,
+        m_uploadBufferMemoryWarnThreshold,
+        m_maxUploadBufferMemory);
 }
 //---------------------------------------------------------------------------------------------------------------------
 LocalFSCacheClient::~LocalFSCacheClient()
@@ -68,25 +74,27 @@ LocalFSCacheClient::~LocalFSCacheClient()
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-ICacheClient::CacheStatus LocalFSCacheClient::DownloadSync(
+CacheStatus LocalFSCacheClient::DownloadSync(
     const std::string& mountName,
-    const std::string& cacheKey,
+    const std::string& filePath,
+    off64_t fileOffset,
     uint64_t startOffset,
     uint64_t length,
     char *buffer,
     uint64_t& readLength)
 {
-    ICacheClient::CacheStatus cacheStatus = ICacheClient::INTERNAL_ERROR;
-    const string filePath = m_strLocalCachePath + "/" + cacheKey;
+    CacheStatus cacheStatus = CacheStatus::INTERNAL_ERROR;
+    const std::string cacheKey = GetCacheKey(filePath, fileOffset);
+    const string localFilePath = m_strLocalCachePath + "/" + cacheKey;
 
     if (startOffset > 0)
     {
         LOG_CRITICAL("non zero offset not supported, mountName={}, file={}, offset={}",
-            mountName, filePath, startOffset);
+            mountName, localFilePath, startOffset);
         throw "non zero offset not supported";
     }
 
-    const int fileFD = StorageDlsymWrapper::open(filePath.c_str(), O_RDONLY, 0777);
+    const int fileFD = StorageDlsymWrapper::open(localFilePath.c_str(), O_RDONLY, 0777);
     if (fileFD >= 0)
     {
         uint64_t totalRead = 0;
@@ -99,13 +107,13 @@ ICacheClient::CacheStatus LocalFSCacheClient::DownloadSync(
             }
             else if (tempRead == 0)
             {
-                LOG_DEBUG("Reached EOF for mountName={}, file={}", mountName, filePath);
+                LOG_DEBUG("Reached EOF for mountName={}, file={}", mountName, localFilePath);
                 break;
             }
             else
             {
                 LOG_WARN("Failed to read() from mountName={}, file={}, errno={}:{}",
-                    mountName, filePath, errno, strerror(errno))
+                    mountName, localFilePath, errno, strerror(errno))
                 StorageDlsymWrapper::close(fileFD);
                 return cacheStatus;
             }
@@ -113,14 +121,14 @@ ICacheClient::CacheStatus LocalFSCacheClient::DownloadSync(
 
         readLength = totalRead;
         StorageDlsymWrapper::close(fileFD);
-        cacheStatus = ICacheClient::SUCCESS;
+        cacheStatus = CacheStatus::SUCCESS;
     }
     else
     {
         // Return locked status so clients are notified to trigger an upload.
         // Multiple clients might attempt to upload same file, its guarded in upload path to prevent any side effects
-        LOG_DEBUG("File not found in cache mountName={}, file={}", mountName, filePath);
-        cacheStatus = ICacheClient::NOTFOUND_LOCKED;
+        LOG_DEBUG("File not found in cache mountName={}, file={}", mountName, localFilePath);
+        cacheStatus = CacheStatus::NOTFOUND_LOCKED;
     }
 
     return cacheStatus;
@@ -132,7 +140,8 @@ bool LocalFSCacheClient::UploadSync(std::unique_ptr<UploadContext> uploadContext
 
     // Using O_EXCL to prevent parallel uploads to same file
     int openFlags = O_WRONLY | O_CREAT | O_EXCL;
-    if (m_useODirectFlag && uploadContext->m_fileData->BufferSize % uploadContext->m_fileData->BufferAlignmentSize == 0)
+    if (m_useODirectFlag &&
+        uploadContext->m_fileData->BufferSize % uploadContext->m_fileData->BufferAlignmentSize == 0)
     {
         // We can use O_DIRECT only if buffer size is aligned to filesystem's logical block size
         openFlags |= O_DIRECT;
@@ -248,12 +257,14 @@ void LocalFSCacheClient::CheckBufferMemory()
 //---------------------------------------------------------------------------------------------------------------------
 bool LocalFSCacheClient::UploadAsync(
     const std::string& mountName,
-    const std::string& cacheKey,
+    const std::string& filePath,
+    off64_t fileOffset,
     std::shared_ptr<const FileReadData> fileData)
 {
     {
         CheckBufferMemory();
 
+        const std::string cacheKey = GetCacheKey(filePath, fileOffset);
         lock_guard lock(m_mutexQueue);
         if ((m_uploadBufferMemory + fileData->BufferSize) > m_maxUploadBufferMemory)
         {
@@ -268,5 +279,10 @@ bool LocalFSCacheClient::UploadAsync(
 
     m_cvQueue.notify_one();
     return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string LocalFSCacheClient::GetCacheKey(const std::string& filePath, off64_t fileOffset)
+{
+    return GetSHA256Hex(filePath + ":" + std::to_string(fileOffset));
 }
 //---------------------------------------------------------------------------------------------------------------------

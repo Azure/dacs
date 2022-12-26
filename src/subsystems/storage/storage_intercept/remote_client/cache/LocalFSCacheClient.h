@@ -17,9 +17,10 @@ class LocalFSCacheClient : public ICacheClient
         LocalFSCacheClient();
         ~LocalFSCacheClient();
 
-        CacheStatus DownloadSync(
+        cacheutils::CacheStatus DownloadSync(
             /*[in] */ const std::string& mountName,
-            /*[in] */ const std::string& cacheKey,
+            /*[in] */ const std::string& filePath,
+            /*[in] */ off64_t fileOffset,
             /*[in] */ uint64_t startOffset,
             /*[in] */ uint64_t length,
             /*[out]*/ char *buffer,
@@ -27,7 +28,8 @@ class LocalFSCacheClient : public ICacheClient
 
         bool UploadAsync(
             /*[in] */ const std::string& mountName,
-            /*[in] */ const std::string& cacheKey,
+            /*[in] */ const std::string& filePath,
+            /*[in] */ off64_t fileOffset,
             /*[in] */ std::shared_ptr<const FileReadData> fileData) override;
 
     private:
@@ -86,5 +88,7 @@ class LocalFSCacheClient : public ICacheClient
 
         // Check memory usage and log warnings
         void CheckBufferMemory();
+
+        std::string GetCacheKey(/*[in] */ const std::string& filePath, /*[in] */ off64_t fileOffset);
 };
 //---------------------------------------------------------------------------------------------------------------------

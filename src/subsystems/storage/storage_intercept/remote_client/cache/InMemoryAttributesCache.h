@@ -21,7 +21,7 @@ class InMemoryAttributesCache : public IAttributesCache
         InMemoryAttributesCache(uint64_t maxCacheEntries);        
         ~InMemoryAttributesCache();
 
-        CacheStatus Get(
+        cacheutils::CacheStatus Get(
             /*[in] */ const std::string& path,
             /*[out]*/ FileAttributes& fileAttributes) override;
 

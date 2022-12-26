@@ -195,17 +195,18 @@ void ContentHandler::SetCacheClients()
         }
     }
 
+    std::shared_ptr<RemoteCacheClient> remoteCacheClient;
     if (dataCacheEnabled)
     {
         if(StorageInterceptConfig::GetInstance().GetCacheUseLocalFS())
         {
-            // Should be used only for test and not in production as this is not a robust implementation
             std::atomic_store(&m_spCacheClient, std::shared_ptr<ICacheClient>(std::make_shared<LocalFSCacheClient>()));
             LOG_INFO("Initialized LocalFS cache client in ContentHandler")
         }
         else
         {
-            std::atomic_store(&m_spCacheClient, std::shared_ptr<ICacheClient>(std::make_shared<RemoteCacheClient>()));
+            remoteCacheClient = std::make_shared<RemoteCacheClient>();
+            std::atomic_store(&m_spCacheClient, std::shared_ptr<ICacheClient>(remoteCacheClient));
             LOG_INFO("Initialized remote cache client in ContentHandler")
         }
     }
@@ -234,7 +235,20 @@ void ContentHandler::SetCacheClients()
             std::atomic_store(
                 &m_spAttributesCache,
                 std::shared_ptr<IAttributesCache>(std::make_shared<LocalAttributesCache>()));
-            LOG_INFO("Initialized Local attributes cache client in ContentHandler")
+            LOG_INFO("Initialized Local server attributes cache client in ContentHandler")
+        }
+        else if (StorageInterceptConfig::GetInstance().GetAttributesCacheUseRemoteServer())
+        {
+            // reuse RemoteCacheClient if its already instantiated
+            if (!remoteCacheClient.get())
+            {
+                remoteCacheClient = std::make_shared<RemoteCacheClient>();
+            }
+
+            std::atomic_store(
+                &m_spAttributesCache,
+                std::shared_ptr<IAttributesCache>(remoteCacheClient));
+            LOG_INFO("Initialized Remote attributes cache client in ContentHandler")
         }
         else
         {

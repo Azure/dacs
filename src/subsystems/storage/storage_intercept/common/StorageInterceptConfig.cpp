@@ -524,7 +524,7 @@ uint64_t StorageInterceptConfig::GetAttributesCacheServerPort()
     return StorageInterceptConfig::GetOptionalConfigUint64(
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameAttributesCacheServerPort,
-        20000);
+        GetCacheServerPort());
 }
 //---------------------------------------------------------------------------------------------------------------------
 uint64_t StorageInterceptConfig::GetAttributesCacheMaxEntries()
@@ -541,6 +541,12 @@ bool StorageInterceptConfig::GetAttributesCacheUseLocalServer()
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameAttributesCacheUseLocalServer,
         false);
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::GetAttributesCacheUseRemoteServer()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps, StorageInterceptConstants::ConfigNameAttributesCacheUseRemoteServer, false);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetCacheAuthEnabled()

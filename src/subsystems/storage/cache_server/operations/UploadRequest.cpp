@@ -71,13 +71,16 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
     {
         LOG_WARN("Failed to authenticate request");
         uploadResponse.set_result(UploadResponse::AUTH_FAILED);
-        return SendMessageToRemoteFinal(clientConnection, uploadResponse);
+        SendMessageToRemoteFinal(clientConnection, uploadResponse);
+        return false;
     }
 
     // Set limit on filename length
     if (uploadRequest.filename().size() > UPLOAD_FILENAME_LIMIT)
     {
         LOG_WARN("filename too large, size: {}", uploadRequest.filename().size());
+        uploadResponse.set_result(UploadResponse::BAD_REQUEST);
+        SendMessageToRemoteFinal(clientConnection, uploadResponse);
         return false;
     }
 
@@ -85,6 +88,8 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
     if (cacheInfo.m_status == CacheManager::COMPLETED)
     {
         LOG_WARN("file already uploaded {}", uploadRequest.filename());
+        uploadResponse.set_result(UploadResponse::FILE_EXISTS);
+        SendMessageToRemoteFinal(clientConnection, uploadResponse);
         return false;
     }
 
@@ -97,6 +102,8 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
     if (uploadRequest.filesize() > UPLOAD_FILESIZE_LIMIT)
     {
         LOG_WARN("filesize too large: {}", uploadRequest.filesize());
+        uploadResponse.set_result(UploadResponse::BAD_REQUEST);
+        SendMessageToRemoteFinal(clientConnection, uploadResponse);
         return false;
     }
 
@@ -104,6 +111,8 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
         uploadRequest.filesize()))
     {
         LOG_WARN("error starting upload for: {}", uploadRequest.filename());
+        uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
+        SendMessageToRemoteFinal(clientConnection, uploadResponse);
         return false;
     }
 
@@ -116,6 +125,8 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
         {
             LOG_WARN("Couldn't create a temp file for uploading: {}", uploadRequest.filename());
             CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
+            uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
+            SendMessageToRemoteFinal(clientConnection, uploadResponse);
             return false;
         }
 
@@ -146,6 +157,8 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
                     fileOutput.close();
                     remove(tempFilename.c_str());
                     CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
+                    uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
+                    SendMessageToRemoteFinal(clientConnection, uploadResponse);
                     return false;
                 }
                 bufferPos += temp;
@@ -168,6 +181,8 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
                 totalRead);
             remove(tempFilename.c_str());
             CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
+            uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
+            SendMessageToRemoteFinal(clientConnection, uploadResponse);
             return false;
         }
 

@@ -37,9 +37,9 @@ LocalAttributesCache::~LocalAttributesCache()
     m_uploadThread->join();
 }
 //---------------------------------------------------------------------------------------------------------------------
-IAttributesCache::CacheStatus LocalAttributesCache::Get(const std::string& path, FileAttributes& fileAttributes)
+CacheStatus LocalAttributesCache::Get(const std::string& path, FileAttributes& fileAttributes)
 {
-    IAttributesCache::CacheStatus cacheStatus(INTERNAL_ERROR);
+    CacheStatus cacheStatus(CacheStatus::INTERNAL_ERROR);
     cache::Request request;
     cache::GetAttributeRequest* getAttributeRequest = request.mutable_getattributerequest();
     getAttributeRequest->set_filename(path);
@@ -84,25 +84,25 @@ IAttributesCache::CacheStatus LocalAttributesCache::Get(const std::string& path,
         fileAttributes.aTime.tv_sec = response.fileattribute().accessedtime();
         fileAttributes.mTime.tv_sec = response.fileattribute().modifiedtime();
         fileAttributes.cTime.tv_sec = response.fileattribute().modifiedtime();
-        cacheStatus = IAttributesCache::SUCCESS;
+        cacheStatus = CacheStatus::SUCCESS;
     }
     else if (response.result() == cache::GetAttributeResponse::NOT_FOUND_GOT_LOCK)
     {
-        cacheStatus = IAttributesCache::NOTFOUND_LOCKED;
+        cacheStatus = CacheStatus::NOTFOUND_LOCKED;
     }
     else if (response.result() == cache::GetAttributeResponse::NOT_FOUND)
     {
-        cacheStatus = IAttributesCache::NOTFOUND;
+        cacheStatus = CacheStatus::NOTFOUND;
     }
     else if (response.result() == cache::GetAttributeResponse::AUTH_FAILED)
     {
         LOG_WARN("Server returned auth failure for key: {}", path);
-        cacheStatus = IAttributesCache::AUTH_FAILED;
+        cacheStatus = CacheStatus::AUTH_FAILED;
     }
     else
     {
         LOG_WARN("Server returned internal failure for key: {}", path);
-        cacheStatus = IAttributesCache::INTERNAL_ERROR;
+        cacheStatus = CacheStatus::INTERNAL_ERROR;
     }
 
     m_spConnectionManager->ReleaseConnection(0, move(serverConnection), false);
@@ -137,7 +137,7 @@ void LocalAttributesCache::PutAll(
         lock_guard lock(m_mutexQueue);
 
         // Update the new entries to latest value
-        for (size_t index = startIndex; index < numEntries; index++)
+        for (size_t index = startIndex; index < dirEntries.size(); index++)
         {
             const DirectoryEntry& dirEntry = dirEntries[index];
             FileAttributes fileAttributes;

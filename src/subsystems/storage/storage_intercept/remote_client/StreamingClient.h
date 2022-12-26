@@ -177,5 +177,8 @@ class StreamingClient
 
         void LogReadChunkStats(bool forceLog = false);
         void LogGetPropertiesStats(bool forceLog = false);
+
+        // Given a relative remote path, construct a unique locally addressable path
+        std::string GetCacheFilePath(/*[in] */ const std::string& path) const;
 };
 //---------------------------------------------------------------------------------------------------------------------
