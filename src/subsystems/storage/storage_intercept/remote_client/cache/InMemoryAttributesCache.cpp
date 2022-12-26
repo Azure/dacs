@@ -7,6 +7,8 @@
 #include "StorageInterceptUtils.h"
 #include <dirent.h>
 //---------------------------------------------------------------------------------------------------------------------
+using namespace cacheutils;
+//---------------------------------------------------------------------------------------------------------------------
 InMemoryAttributesCache::InMemoryAttributesCache()
 : m_maxCacheEntries(StorageInterceptConfig::GetInstance().GetAttributesCacheMaxEntries())
 {
@@ -25,16 +27,16 @@ InMemoryAttributesCache::~InMemoryAttributesCache()
 {
 }
 //---------------------------------------------------------------------------------------------------------------------
-IAttributesCache::CacheStatus InMemoryAttributesCache::Get(const std::string& path, FileAttributes& fileAttributes)
+CacheStatus InMemoryAttributesCache::Get(const std::string& path, FileAttributes& fileAttributes)
 {
     std::lock_guard<std::mutex> lock(m_mutexAttributes);
     auto cacheEntry = m_mapAttributes.find(path);
     if (cacheEntry == m_mapAttributes.end())
     {
-        return IAttributesCache::NOTFOUND_LOCKED;
+        return CacheStatus::NOTFOUND_LOCKED;
     }
     fileAttributes = cacheEntry->second;
-    return IAttributesCache::SUCCESS;
+    return CacheStatus::SUCCESS;
 }
 //---------------------------------------------------------------------------------------------------------------------
 void InMemoryAttributesCache::Put(const std::string& path, const FileAttributes& fileAttributes)
@@ -64,12 +66,12 @@ void InMemoryAttributesCache::PutAll(
     std::lock_guard<std::mutex> lock(m_mutexAttributes);
     if ((numEntries + m_mapAttributes.size()) > m_maxCacheEntries)
     {
-        LOG_WARN("Reached max atrributes cache value, ignoring extra entries");
+        LOG_WARN("Reached max attributes cache value, ignoring extra entries");
         numEntries = m_maxCacheEntries - m_mapAttributes.size();
     }
 
     LOG_DEBUG("Adding {} entries to attribute cache", numEntries);
-    for (size_t index = startIndex; index < numEntries; index++)
+    for (size_t index = startIndex; index < startIndex + numEntries; index++)
     {
         const DirectoryEntry& dirEntry = dirEntries[index];
         FileAttributes fileAttributes;

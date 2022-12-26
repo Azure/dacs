@@ -102,6 +102,20 @@ function add_interception_config_blob_with_cache_encryption() {
     eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
 }
 
+function add_interception_config_blob_with_remote_cache() {
+    add_interception_config_blob $1
+
+    STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
+    echo "cacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "attributesCacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "attributesCacheUseRemoteServer true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "cacheServerPort ${CACHE_SERVER_PORT}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "cacheEnableRemote true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "cacheServerList 127.0.0.1" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+
+    echo "Created the storage interception config file with remote attribute and data cache enabled"
+}
+
 function add_interception_config_blob_with_localssdcache() {
     add_interception_config_blob $1
 
@@ -224,6 +238,27 @@ eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d largeM
 if [ $? -ne 0 ]
 then
     echo "Blob Integration test with cache and encryption failed"
+    exit 1
+fi
+echo ""
+
+echo "Running unit tests against blob with remote attribute and data cache enabled"
+add_interception_config_blob_with_remote_cache /mnt/dataPathIntcpt
+cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
+eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
+if [ $? -ne 0 ]
+then
+    echo "Unit tests against blob with remote attribute and data cache failed"
+    exit 1
+fi
+echo ""
+
+echo "Running integration test against blob with remote attribute and data cache enabled"
+add_interception_config_blob_with_remote_cache /mnt/quiverfs
+eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large -s -n 20 -p 4"
+if [ $? -ne 0 ]
+then
+    echo "Blob Integration test with remote attribute and data cache failed"
     exit 1
 fi
 echo ""

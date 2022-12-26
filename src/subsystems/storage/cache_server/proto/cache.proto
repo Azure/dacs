@@ -130,6 +130,7 @@ message UploadResponse
         FILE_EXISTS = 1;
         AUTH_FAILED = 2;
         INTERNAL_ERROR = 3;
+        BAD_REQUEST = 4;
     }
     Result result = 1;
 }

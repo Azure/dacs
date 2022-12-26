@@ -8,8 +8,8 @@
 #include "ICacheClient.h"
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cache;
-using namespace std;
 using namespace cacheutils;
+using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
 CacheUploadManager::CacheUploadManager(
     ConnectionManager& connectionManager,
@@ -48,24 +48,38 @@ CacheUploadManager::~CacheUploadManager()
 bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
 {
     // TODO: Implement retries on failure
-    LOG_DEBUG("Uploading mountName: {}, file: {}, length: {}",
+    LOG_DEBUG("Uploading mountName: {}, file: {}, length: {}, fileAttributes: {}",
         uploadContext->m_strMountName,
         uploadContext->m_strCacheKey,
-        uploadContext->m_fileData->BufferSize);
+        uploadContext->m_fileData.get() ? uploadContext->m_fileData->BufferSize : 0,
+        uploadContext->m_fileAttributes.get() ? "yes" : "no");
 
-    char* bufferToSend = uploadContext->m_fileData->Buffer.get();
-    size_t bufferSizeToSend = uploadContext->m_fileData->BufferSize;
+    char* bufferToSend = nullptr;
+    size_t bufferSizeToSend = 0;
+    if (uploadContext->m_fileData.get())
+    {
+        bufferToSend = uploadContext->m_fileData->Buffer.get();
+        bufferSizeToSend = uploadContext->m_fileData->BufferSize;
+    }
 
     Request request;
     UploadRequest* uploadRequest = request.mutable_uploadrequest();
     uploadRequest->set_filename(uploadContext->m_strCacheKey);
-    uploadRequest->set_filesize(uploadContext->m_fileData->BufferSize);
-    uploadRequest->set_ignorelock(false);
+    uploadRequest->set_filesize(bufferSizeToSend);
+    uploadRequest->set_ignorelock(true);
+
+    if (uploadContext->m_fileAttributes.get())
+    {
+        auto& fileMetadata = *(uploadRequest->mutable_metadata());
+        fileMetadata[CACHE_META_FILE_ISDIR] = uploadContext->m_fileAttributes->isDir ? "true" : "false";
+        fileMetadata[CACHE_META_FILE_SIZE] = std::to_string(uploadContext->m_fileAttributes->size);
+        fileMetadata[CACHE_META_FILE_ATIME] = std::to_string(uploadContext->m_fileAttributes->aTime.tv_sec);
+        fileMetadata[CACHE_META_FILE_MTIME] = std::to_string(uploadContext->m_fileAttributes->mTime.tv_sec);
+    }
 
     if (!AddAuthParams(request))
     {
         LOG_WARN("failed to create auth request for file: {}", uploadContext->m_strCacheKey);
-        m_uploadBufferMemory -= uploadContext->m_fileData->BufferSize;
         return false;
     }
 
@@ -73,11 +87,19 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
     int64_t encLen = -1;
     if (bufferSizeToSend > 0)
     {
-        bool bRet = uploadContext->m_encryptionUtil.DoEncrypt(uploadRequest, uploadContext->m_fileData, encBuffer, encLen);
+        if (!uploadContext->m_encryptionUtil)
+        {
+            // TODO: replace these with DACS ASSERT_WITH_TRACE_CRITICAL_AND_EXIT
+            LOG_CRITICAL("EncryptionUtil not configured for mount: {}, file: {}",
+                uploadContext->m_strMountName, uploadContext->m_strCacheKey);
+            throw "EncryptionUtil not configured";
+        }
+
+        bool bRet = uploadContext->m_encryptionUtil->DoEncrypt(
+            uploadRequest, uploadContext->m_fileData, encBuffer, encLen);
         if (!bRet)
         {
             LOG_WARN("couldn't encrypt data to send to server, file: {}", uploadContext->m_strCacheKey);
-            m_uploadBufferMemory -= uploadContext->m_fileData->BufferSize;
             return false;
         }
         
@@ -93,7 +115,6 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
     if (serverConnection.get() == nullptr)
     {
         LOG_WARN("couldn't get server connection, ignoring upload for file: {}", uploadContext->m_strCacheKey);
-        m_uploadBufferMemory -= uploadContext->m_fileData->BufferSize;
         return false;
     }
 
@@ -111,7 +132,6 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
     {
         LOG_WARN("couldn't send request, ignoring upload for file: {}", uploadContext->m_strCacheKey);
         m_connectionManager.ReleaseConnection(uploadContext->m_serverIndex, move(serverConnection), true);
-        m_uploadBufferMemory -= uploadContext->m_fileData->BufferSize;
         return false;
     }
 
@@ -122,7 +142,6 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
         {
             LOG_WARN("couldn't complete write to server, file: {}", uploadContext->m_strCacheKey);
             m_connectionManager.ReleaseConnection(uploadContext->m_serverIndex, move(serverConnection), true);
-            m_uploadBufferMemory -= uploadContext->m_fileData->BufferSize;
             return false;
         }
     }
@@ -132,7 +151,6 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
     {
         LOG_WARN("couldn't read response from server. file: {}", uploadContext->m_strCacheKey);
         m_connectionManager.ReleaseConnection(uploadContext->m_serverIndex, move(serverConnection), true);
-        m_uploadBufferMemory -= uploadContext->m_fileData->BufferSize;
         return false;
     }
 
@@ -141,7 +159,6 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
     {
         LOG_WARN("couldn't parse response from server. file: {}", uploadContext->m_strCacheKey);
         m_connectionManager.ReleaseConnection(uploadContext->m_serverIndex, move(serverConnection), true);
-        m_uploadBufferMemory -= uploadContext->m_fileData->BufferSize;
         return false;
     }
 
@@ -155,8 +172,8 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
     {
         LOG_WARN("Upload to server failed. file: {}, error: {}", uploadContext->m_strCacheKey, response.result());
     }
+
     m_connectionManager.ReleaseConnection(uploadContext->m_serverIndex, move(serverConnection), false);
-    m_uploadBufferMemory -= uploadContext->m_fileData->BufferSize;
     return status;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -177,37 +194,46 @@ void CacheUploadManager::UploadWorker()
         }
 
         unique_ptr<UploadContext> uploadContext;
-        if (m_uploadQueue.size() > 0) {
+        if (m_uploadQueue.size() > 0)
+        {
             uploadContext = move(m_uploadQueue.front());
             m_uploadQueue.pop();
         }
+
         lock.unlock();
 
-        if (uploadContext != nullptr) {
+        if (uploadContext != nullptr)
+        {
+            size_t bufferSizeToSend = uploadContext->m_fileData.get() ? uploadContext->m_fileData->BufferSize : 0;
             StartUpload(move(uploadContext));
+            m_uploadBufferMemory -= bufferSizeToSend;
         }
     }
+
     LOG_INFO("Shutdown UploadWorker");
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool CacheUploadManager::Upload(
+bool CacheUploadManager::UploadAsync(
     const std::string& mountName,
     int serverIndex,
     const std::string& cacheKey,
     std::shared_ptr<const FileReadData> fileData,
-    EncryptionUtil& encryptionUtil)
+    EncryptionUtil* encryptionUtil,
+    std::unique_ptr<::FileAttributes> fileAttributes)
 {
+    size_t bufferSizeToSend = fileData.get() ? fileData->BufferSize : 0;
     {
         lock_guard lock(m_mutexQueue);
-        if ((m_uploadBufferMemory + fileData->BufferSize) > m_maxBufferMemory)
+        if ((m_uploadBufferMemory + bufferSizeToSend) > m_maxBufferMemory)
         {
-            LOG_CRITICAL("Reached upload size limit. cacheKey: {}, size: {}, upload bytes pending: {}",
-                cacheKey, fileData->BufferSize, m_uploadBufferMemory);
+            LOG_WARN("Reached upload size limit. cacheKey: {}, size: {}, upload bytes pending: {}",
+                cacheKey, bufferSizeToSend, m_uploadBufferMemory);
             // TODO: need to reset upload lock and retry again on next cache miss, for now hoping for the best
         }
 
-        m_uploadBufferMemory += fileData->BufferSize;
-        auto uploadContext = make_unique<UploadContext>(mountName, serverIndex, cacheKey, fileData, encryptionUtil);
+        m_uploadBufferMemory += bufferSizeToSend;
+        auto uploadContext = make_unique<UploadContext>(mountName, serverIndex, cacheKey, fileData, encryptionUtil,
+            move(fileAttributes));
         m_uploadQueue.push(move(uploadContext));
     }
 

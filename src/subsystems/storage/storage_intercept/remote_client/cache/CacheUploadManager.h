@@ -5,6 +5,7 @@
 #include "ConnectionManager.h"
 #include "EncryptionUtil.h"
 #include "FileReadData.h"
+#include "FileAttributes.h"
 #include <vector>
 #include <queue>
 #include <string>
@@ -27,12 +28,13 @@ class CacheUploadManager
     public:
 
         /* Submit an upload job */
-        bool Upload(
+        bool UploadAsync(
             const std::string& mountName,
             int serverIndex,
             const std::string& cacheKey,
             std::shared_ptr<const FileReadData> fileData,
-            EncryptionUtil& encryptionUtil);
+            EncryptionUtil* encryptionUtil,
+            std::unique_ptr<FileAttributes> fileAttributes);
 
     private:
         struct UploadContext
@@ -42,12 +44,14 @@ class CacheUploadManager
                 int serverIndex,
                 const std::string& cacheKey,
                 std::shared_ptr<const FileReadData> fileData,
-                EncryptionUtil& encryptionUtil)
+                EncryptionUtil* encryptionUtil,
+                std::unique_ptr<FileAttributes> fileAttributes)
             : m_strMountName(mountName)
             , m_serverIndex(serverIndex)
             , m_strCacheKey(cacheKey)
             , m_fileData(fileData)
             , m_encryptionUtil(encryptionUtil)
+            , m_fileAttributes(std::move(fileAttributes))
             {                
             }
 
@@ -55,7 +59,8 @@ class CacheUploadManager
             const int                           m_serverIndex;
             const std::string                   m_strCacheKey;
             std::shared_ptr<const FileReadData> m_fileData;
-            EncryptionUtil&                     m_encryptionUtil;
+            EncryptionUtil*                     m_encryptionUtil;
+            std::unique_ptr<FileAttributes>     m_fileAttributes;
         };
 
         std::atomic_uint64_t                           m_uploadBufferMemory;

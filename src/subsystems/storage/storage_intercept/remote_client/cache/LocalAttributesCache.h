@@ -20,7 +20,7 @@ class LocalAttributesCache : public IAttributesCache
         LocalAttributesCache();
         ~LocalAttributesCache();
 
-        CacheStatus Get(
+        cacheutils::CacheStatus Get(
             /*[in] */ const std::string& path,
             /*[out]*/ FileAttributes& fileAttributes) override;
 
