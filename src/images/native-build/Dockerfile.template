@@ -173,6 +173,17 @@ RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86
   conda clean -a && \
   conda deactivate && \
   rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
+  
+# Create cuda 11.6, nccl 2.12.12 cudnn 8.4.0 conda environment
+  RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
+  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-116 && \
+  . /opt/conda-cuda-116/bin/activate && \
+  conda install -y -c conda-forge cudatoolkit-dev=11.6.0 && \
+  conda install -y --no-deps -c conda-forge cudnn=8.4.0.27=hed8a83a_1 nccl=2.12.12.1=h0800d71_0 && \
+  conda clean -a && \
+  conda deactivate && \
+  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
 
+#TODO: for pt1.11-cuda11.6 image, the requied cudnn and nccl versions are higher(8.6.0 and 2.15.5), need to check and add support for them
 # Install az module for powershell
 RUN pwsh -c "Install-Module -Name Az -Scope AllUsers -Repository PSGallery -Force"
