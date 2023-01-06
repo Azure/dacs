@@ -17,12 +17,13 @@ USER root
 # Pytorch version is tightly coupled to CUDA and cuDNN so it should be selected carefully
 ENV DEBIAN_FRONTEND=noninteractive \
   APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn \
-  PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH} \
-  LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64 \
+  PATH=/opt/rocm-5.2.3/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH} \
+  LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/opt/rocm-5.2.3/lib:/opt/rocm-5.2.3/roctracer/lib \
   NVIDIA_VISIBLE_DEVICES=all \
+  HIP_VISIVLE_DEVICES=all \
   NVIDIA_DRIVER_CAPABILITIES=compute,utility \
   NVIDIA_REQUIRE_CUDA="cuda>=10.1 brand=tesla,driver>=396,driver<397 brand=tesla,driver>=410,driver<411 brand=tesla,driver>=418,driver<419" \
-  LIBRARY_PATH=/usr/local/cuda/lib64/stubs \
+  LIBRARY_PATH=/usr/local/cuda/lib64/stubs:/opt/rocm-5.2.3/lib:/opt/rocm-5.2.3/roctracer/lib \
   NUGET_CREDENTIALPROVIDER_SESSIONTOKENCACHE_ENABLED=true \
   CMAKE_DEP_INSTALL_DIR=/dependency
 
@@ -195,4 +196,16 @@ RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86
 #TODO: for pt1.11-cuda11.6 image, the requied cudnn and nccl versions are higher(8.6.0 and 2.15.5), need to check and add support for them
 # Install az module for powershell
 RUN pwsh -c "Install-Module -Name Az -Scope AllUsers -Repository PSGallery -Force"
+
+# Instal AMD-sepcific common deps
+RUN sudo apt-get install -yq --no-install-recommends \
+  libdrm-amdgpu1 \
+  libdrm2
+
+# Install AMD rocm-5.2.3, includes rccl, miopen, roctracer etc.
+RUN echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/5.2.3 ubuntu main' | sudo tee -a /etc/apt/sources.list.d/rocm.list && \
+  wget https://repo.radeon.com/amdgpu-install/22.20.3/ubuntu/bionic/amdgpu-install_22.20.50203-1_all.deb -O /tmp/rocm_5.2.3_setup.deb && \
+  sudo apt-get install -y /tmp/rocm_5.2.3_setup.deb && \
+  sudo apt update && \
+  sudo amdgpu-install -y --usecase=hiplibsdk,rocm --no-dkms --rocmrelease=5.2.3
 
