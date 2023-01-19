@@ -99,6 +99,8 @@ if(NOT CUDA_VERSION OR "${CUDA_VERSION}" MATCHES "non_cuda")
     add_subdirectory(src/subsystems/reliability/amd_nccl_intercept/)
     add_subdirectory(src/subsystems/storage/cache_server/)
     add_subdirectory(src/subsystems/storage/storage_intercept/)
+    add_subdirectory(src/subsystems/reliability/ab_test/)
+    add_subdirectory(src/subsystems/reliability/ab_test.tests/)
 
     set(CMAKE_DYNAMIC_PATCHES_PATH "${CMAKE_SOURCE_DIR}/src/subsystems/reliability/dynamic_patches/")
     add_custom_target(copy_dynamic_patches ALL
