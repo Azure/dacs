@@ -4,6 +4,8 @@
 #include "IBConnection.h"
 #include "StorageInterceptLogger.h"
 #include "StorageDlsymWrapper.h"
+#include <fcntl.h>
+#include <poll.h>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace ibutils;
 using namespace std;
@@ -12,6 +14,20 @@ IBConnection::IBConnection(unique_ibv_qp qp, unique_ibv_comp_channel eventChanne
     unique_ptr<char[]> mrBuffer)
     : m_qp(move(qp)), m_eventChannel(move(eventChannel)), m_cq(move(cq)), m_mr(move(mr)), m_mrBuffer(move(mrBuffer))
 {
+
+    // Fetch and change the blocking mode of the completion channel to non-blocking
+    int flags = fcntl(m_eventChannel->fd, F_GETFL);
+    if (flags < 0) {
+        LOG_CRITICAL("Couldn't get flags for channel fd={}, error={},{}", m_eventChannel->fd, flags, strerror(errno));
+        throw "Couldn't get flags for channel fd";
+    }
+
+    int rc = fcntl(m_eventChannel->fd, F_SETFL, flags | O_NONBLOCK);
+    if (rc < 0) {
+        LOG_CRITICAL("Couldn't set channel fd={} to non-blocking, error={},{}", m_eventChannel->fd, rc, strerror(errno));
+        throw "Couldn't set channel fd to non-blocking";
+    }
+
     ResetConnection();
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -128,12 +144,31 @@ int IBConnection::Receive(char* buffer, uint64_t size)
         bool bResponse = false;
         while (!bResponse)
         {
+
+            // Wait for some max timeout to prevent hangs
+            struct pollfd pollFd{};
+            pollFd.fd = m_eventChannel->fd;
+            pollFd.events = POLLIN;
+            int rc = poll(&pollFd, 1, IB_READ_TIMEOUT_MILLIS);
+            if (rc < 0) {
+                LOG_WARN("Failed to poll on event fd={} error={},{}", pollFd.fd, rc, strerror(errno));
+                m_qpError = true;
+                return -1;
+            }
+
+            if (rc == 0)
+            {
+                LOG_WARN("poll timed out waiting for read event fd={}", pollFd.fd);
+                m_qpError = true;
+                return -1;
+            }
+
             struct ibv_cq* ev_cq = nullptr;
             void *ev_ctx = nullptr;
 
             // Wait for the Completion event
             LOG_DEBUG("Check cq event qp={}", GetId());
-            int rc = ibv_get_cq_event(m_eventChannel.get(), &ev_cq, &ev_ctx);
+            rc = ibv_get_cq_event(m_eventChannel.get(), &ev_cq, &ev_ctx);
             if (rc != 0)
             {
                 LOG_WARN("Failed to get CQ event qp={} error={},{}", GetId(), rc, strerror(errno));
