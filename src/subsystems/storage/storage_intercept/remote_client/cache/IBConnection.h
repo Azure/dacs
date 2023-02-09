@@ -42,6 +42,8 @@ class IBConnection : public IConnection
         bool FinalizeWrite();
 
     private:
+        // Maximum read timeout
+        static constexpr int IB_READ_TIMEOUT_MILLIS = 5000;
 
         // The queue pair from where we read and write data from/to the remote IB device
         ibutils::unique_ibv_qp m_qp;

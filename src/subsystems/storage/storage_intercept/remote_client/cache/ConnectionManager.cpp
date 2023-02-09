@@ -149,9 +149,9 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd,
     auto clientQpns = ibRequest->mutable_clientqpn();
     clientQpns->Clear();
 
-    vector<unique_ibv_qp> vectorQps;
-    vector<unique_ibv_cq> vectorCqs;
     vector<unique_ibv_comp_channel> vectorEventChannels;
+    vector<unique_ibv_cq> vectorCqs;
+    vector<unique_ibv_qp> vectorQps;
     for (int qpn = 0; qpn < IB_CONNECTIONS_PER_SERVER; qpn++)
     {
         unique_ibv_comp_channel compChannel(ibv_create_comp_channel(m_ibDevice.context.get()), FreeIbvCompChannel);
