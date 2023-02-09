@@ -2,6 +2,7 @@
 function execute_build() {
   local cuda_deps=$1
   local python_deps=$2
+  local latest_git_hash=`git rev-parse HEAD || echo "unknown_git_commit"`
 
   echo "Build for ${cuda_deps} and python ${python_deps} projects......"
 
@@ -13,6 +14,7 @@ function execute_build() {
     -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_CONFIGURATION \
     -DSKIP_SUBMODULE_BUILD=$SKIP_NATIVE_SUBMODULE_BUILD \
     -DBUILD_WITH_DEBUG_SYMBOLS=$BUILD_WITH_DEBUG_SYMBOLS \
+    -DGIT_COMMIT_HASH=${latest_git_hash} \
     -G Ninja \
     $PATH_TO_SOURCE
 
