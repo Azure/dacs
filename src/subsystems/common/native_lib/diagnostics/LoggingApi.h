@@ -156,7 +156,12 @@ auto parseFileName(const char(&file)[N])
     auto pos = strrchr(file, '/');
     return pos ? pos + 1 : file;
 }
+
+#ifdef __FILE_NAME__
+#define __FILENAME__ __FILE_NAME__
+#else
 #define __FILENAME__ parseFileName(__FILE__)
+#endif
 #ifndef FORMAT_BASE
 #define FORMAT_BASE "|DeviceProxy|time_int:{}|pid:{}|tid:{}|"
 #endif
