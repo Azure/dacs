@@ -27,6 +27,7 @@ include_directories(
         ./handlers
         ./remote_client/cache
 	/opt/protobufstatic-3.0.0/include
+	/opt/azure-storage-cpplite-0.3.0/include
 )
 
 file(GLOB STORAGE_INTERCEPT_SOURCES ./common/*cpp ./remote_client/*cpp ./remote_client/adls/*cpp
@@ -39,18 +40,14 @@ add_library(StorageIntercept SHARED ${STORAGE_INTERCEPT_SOURCES})
 # Don't expose internally linked interfaces via the StorageIntercept shared library
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--exclude-libs,ALL")
 
-# Statically link to precompiled protobuf library to prevent mismatch with system installed versions
+# Statically link to precompiled protobuf and azurestorage sdk library to prevent mismatch with system installed versions
 ADD_LIBRARY(staticprotobuf STATIC IMPORTED)
 SET_TARGET_PROPERTIES(staticprotobuf PROPERTIES
         IMPORTED_LOCATION /opt/protobufstatic-3.0.0/lib/libprotobuf.a)
-target_link_libraries(StorageIntercept diagnostics azure-storage-lite curl jsoncpp dl staticprotobuf ibverbs)
-
-# Also copy the blob library to output folder
-add_custom_command(
-        TARGET StorageIntercept POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy
-                ${CMAKE_DEP_INSTALL_DIR}/azurestoragelite-prefix/src/azurestoragelite-build/libazure-storage-lite.so
-                ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
+ADD_LIBRARY(static-azurestorage STATIC IMPORTED)
+SET_TARGET_PROPERTIES(static-azurestorage PROPERTIES
+        IMPORTED_LOCATION /opt/azure-storage-cpplite-0.3.0/lib/libazure-storage-lite.a)
+target_link_libraries(StorageIntercept diagnostics static-azurestorage curl jsoncpp dl staticprotobuf ibverbs)
 
 #StorageIntercept Unit Tests
 enable_testing()
@@ -81,7 +78,7 @@ add_dependencies(StorageInterceptUnitTests
         )
 
 target_link_libraries(StorageInterceptUnitTests
-        diagnostics curl azure-storage-lite jsoncpp dl uuid crypto staticprotobuf ibverbs
+        diagnostics curl static-azurestorage jsoncpp dl uuid crypto staticprotobuf ibverbs
         ${GMOCK_LIBRARY}
         ${GMOCK_MAIN_LIBRARY}
         ${GTEST_LIBRARY}
