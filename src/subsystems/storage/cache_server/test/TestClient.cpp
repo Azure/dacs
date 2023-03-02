@@ -414,16 +414,16 @@ bool TestUploadAPI(
         return false;
     }
 
-    bool status = true;
     if (response.result() != expectedResult)
     {
         std::cout << "error: upload failed: response.result() != expectedResult:" << response.result() << ", " <<
             expectedResult << endl;
-        status = false;
+        close(serverFd);
+        return false;
     }
 
     ReleaseConnection(serverFd);
-    return status;
+    return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool TestDownloadAPI(

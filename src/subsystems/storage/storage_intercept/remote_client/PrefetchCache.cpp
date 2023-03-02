@@ -56,7 +56,7 @@ void PrefetchCache::Put(const std::string& path, std::shared_ptr<const FileReadD
 
     if (m_mapBuffers.size() >= MAX_ENTRIES_OVERALL)
     {
-        LOG_INFO("Too many entries in PrefetchCache. nEntries={}", m_mapBuffers.size());
+        LOG_RARELY(5, WARN, "Too many entries in PrefetchCache. nEntries={}", m_mapBuffers.size());
         return;
     }
 
@@ -71,7 +71,7 @@ void PrefetchCache::Put(const std::string& path, std::shared_ptr<const FileReadD
         off64_t purgedOffset = *offsetToPurge;
         m_mapBuffers.erase(GetCacheKey(path, purgedOffset));
         offsetIt->second.erase(offsetToPurge);
-        LOG_DEBUG("Too many entries in PrefetchCache for file={}. nEntries={} putOffset={} purgedOffset={}",
+        LOG_RARELY(5, WARN, "Too many entries in PrefetchCache for file={}. nEntries={} putOffset={} purgedOffset={}",
             path,
             nCachedFileOffsets,
             buffer->Offset,

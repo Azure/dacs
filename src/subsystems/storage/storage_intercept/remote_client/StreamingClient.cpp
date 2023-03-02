@@ -528,8 +528,8 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
         bool bRet = cacheClient->UploadAsync(m_strMountName, cacheFilePath, chunkOffset, remoteReadData);
         if (!bRet)
         {
-            // Logging as INFO as this is a best effort service
-            LOG_INFO("Failed to upload file: {}, offset: {} to cache", remotePath, chunkOffset);
+            // Not taking any action on failure as this is only a best effort service
+            LOG_DEBUG("Failed to upload file: {}, offset: {} to cache", remotePath, chunkOffset);
         }
     }
     

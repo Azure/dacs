@@ -34,6 +34,7 @@ int SocketConnection::Write(char* buffer, int size)
                 m_socketFd, errno, strerror(errno));
         }
     }
+
     return write(m_socketFd, buffer, size);
 }
 //---------------------------------------------------------------------------------------------------------------------

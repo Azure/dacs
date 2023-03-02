@@ -58,12 +58,12 @@ bool LockFile(IConnection& clientConnection, const LockFileRequest& lockRequest)
 
     if (LockManager::GetInstance().GetLockForUpload(lockRequest.filename()))
     {
-        LOG_INFO("Locked file successfully: {}", lockRequest.filename());
+        LOG_DEBUG("Locked file successfully: {}", lockRequest.filename());
         lockResponse.set_result(LockFileResponse::SUCCESS);
     }
     else
     {
-        LOG_INFO("file already locked: {}", lockRequest.filename());
+        LOG_DEBUG("file already locked: {}", lockRequest.filename());
         lockResponse.set_result(LockFileResponse::ALREADY_LOCKED);
     }
 

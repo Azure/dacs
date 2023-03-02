@@ -90,6 +90,7 @@ cacheLocalFSCachePath [local path (use ssd or tmpfs) where the cache chunks have
 cacheLocalFSCacheStagingPath [local path (use ssd or tmpfs) used for staging data currently being uploaded]
 cacheLocalFSMemoryWarnThresholdGB [when local fs cache is enabled we will trigger warning messages when local writes are slow and memory back pressure exceeds this threshold]
 cacheMaxUploadBufferSizePerProcessGB [limit upload buffer usage to this value. default - 0, unlimited]
+cacheKeyExpirySeconds [Expiry time to be set for all the cache keys uploaded by this client. default - 1 day]
 cacheServerList [If cache is enabled remote cache servers to use for this client, eg. node-0#node-1#node-3]
 cacheEncryptionEnabled [true or false - Enable end to end encryption for data stored in cache]
 cacheEncryptionKey [Key to use if encryption is enabled]

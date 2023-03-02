@@ -93,7 +93,7 @@ ibutils::shared_ibv_qp QPManager::CreateQP(ibv_cq* sendCQ, ibv_srq* receiveSRQ, 
     {
         LOG_WARN("Num active qp={} crossed critical limit={}", numQps, m_criticalQpsLimit);
 
-        // Iterate all the caches and remove one LRU entry from each bucket even if has not expired
+        // Iterate all the caches and remove one LRU entry from each bucket even if it has not expired
         for (uint32_t mapBucket = 0; mapBucket < NUM_MAPS; mapBucket++)
         {
             time_t currentTime = time(NULL);

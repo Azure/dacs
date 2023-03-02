@@ -6,4 +6,5 @@
 #define LOG_LEVEL static_cast<int>(LogLevel::Info)
 #define FORMAT_BASE "|StorageIntercept|time_int:{}|pid:{}|tid:{}|"
 #include "LoggingApi.h"
+#include "LogUtils.h"
 //---------------------------------------------------------------------------------------------------------------------

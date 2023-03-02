@@ -70,6 +70,7 @@ class CacheUploadManager
         std::mutex                                     m_mutexQueue;
         std::condition_variable                        m_cvQueue;
         const uint64_t                                 m_maxBufferMemory;        
+        const uint32_t                                 m_keyExpirySeconds;
 
         const int                                      m_numUploadThreads;
         std::vector<std::unique_ptr<std::thread>>      m_vecUploadThread;

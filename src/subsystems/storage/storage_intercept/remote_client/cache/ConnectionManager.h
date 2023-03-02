@@ -41,7 +41,7 @@ class ConnectionManager
         std::unique_ptr<IConnection> SetupIBConnections(int serverFd, int serverIndex);
     
     private:
-        static constexpr int                                    MAX_CONNECTIONS_REUSE_SIZE = 128;
+        static constexpr int                                    MAX_CONNECTIONS_REUSE_SIZE = 256;
 
         const int                                               m_ServerPort;
         std::vector<std::mutex>                                 m_vecLocks;

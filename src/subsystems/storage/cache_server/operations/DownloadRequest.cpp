@@ -86,18 +86,18 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
         return SendMessageToRemoteFinal(clientConnection, downloadResponse);
     }
 
-    CacheManager::CacheInfo cacheInfo;
+    CacheManager::CacheInfo cacheInfo(CacheManager::CacheStatus::NOTFOUND);
     if (downloadRequest.enablelock())
     {
         cacheInfo = CacheManager::GetInstance().GetAndInitCacheInfo(downloadRequest.filename());
-        if (cacheInfo.m_status == CacheManager::NOTFOUND)
+        if (cacheInfo.m_status == CacheManager::CacheStatus::NOTFOUND)
         {
             // TODO: Handle scenario when this response doesn't make it to the client.
             //       Subsequent clients will never get a lock and the file will not be cached.
             LOG_DEBUG("Locked file for download: {}", downloadRequest.filename())
             downloadResponse.set_result(DownloadResponse::NOT_FOUND_GOT_LOCK);
         }
-        else if (cacheInfo.m_status == CacheManager::COMPLETED)
+        else if (cacheInfo.m_status == CacheManager::CacheStatus::COMPLETED)
         {
             LOG_DEBUG("Found file in cache: {}, length: {}", downloadRequest.filename(), cacheInfo.m_fileSize);
             downloadResponse.set_result(DownloadResponse::SUCCESS);
@@ -111,7 +111,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
     else
     {
         cacheInfo = CacheManager::GetInstance().GetCacheInfo(downloadRequest.filename());
-        if (cacheInfo.m_status == CacheManager::COMPLETED)
+        if (cacheInfo.m_status == CacheManager::CacheStatus::COMPLETED)
         {
             LOG_DEBUG("Found file in cache: {}, length: {}", downloadRequest.filename(), cacheInfo.m_fileSize);
             downloadResponse.set_result(DownloadResponse::SUCCESS);
@@ -125,7 +125,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
 
     // update download filesize and metadata
     uint64_t downloadFileSize = 0;
-    if (cacheInfo.m_status == CacheManager::COMPLETED)
+    if (cacheInfo.m_status == CacheManager::CacheStatus::COMPLETED)
     {
         if (downloadRequest.offset() > cacheInfo.m_fileSize)
         {
@@ -143,14 +143,13 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
         {
             downloadFileSize = std::min(cacheInfo.m_fileSize - downloadRequest.offset(), downloadRequest.length());
         }
+
         LOG_DEBUG("Set download filesize to: {}", downloadFileSize);
-
         *(downloadResponse.mutable_metadata()) = cacheInfo.m_metadata;
-
     }
 
     downloadResponse.set_filesize(downloadFileSize);
-    if (cacheInfo.m_status == CacheManager::COMPLETED && downloadFileSize > 0) 
+    if (cacheInfo.m_status == CacheManager::CacheStatus::COMPLETED && downloadFileSize > 0) 
     {
         if (!SendMessageToRemote(clientConnection, downloadResponse))
         {
@@ -180,7 +179,8 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
             LOG_WARN("Failed to send file: {} to client id: {}", downloadRequest.filename(), clientConnection.GetId());
             return false;
         }
-        LOG_INFO("downloaded and sent file to client successfully: {}", downloadRequest.filename());
+
+        LOG_DEBUG("downloaded and sent file to client successfully: {}", downloadRequest.filename());
     }
     else
     {
@@ -189,6 +189,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
             LOG_WARN("Error sending response to client for file: {}", downloadRequest.filename());
             return false;
         }
+
         return true;
     }
 

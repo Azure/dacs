@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "CacheUploadManager.h"
+#include "StorageInterceptConfig.h"
 #include "StorageInterceptLogger.h"
 #include "cache.pb.h"
 #include "CacheUtils.h"
@@ -19,7 +20,8 @@ CacheUploadManager::CacheUploadManager(
       m_uploadBufferMemory(0),
       m_connectionManager(connectionManager),
       m_numUploadThreads(numUploadThreads),
-      m_maxBufferMemory(maxTotalBufferSize)
+      m_maxBufferMemory(maxTotalBufferSize),
+      m_keyExpirySeconds(StorageInterceptConfig::GetInstance().GetCacheKeyExpirySeconds())
 {
     // start worker threads
     for (int i = 0; i < m_numUploadThreads; ++i)
@@ -30,8 +32,8 @@ CacheUploadManager::CacheUploadManager(
         m_vecUploadThread.push_back(move(uploadThread));
     }
 
-    LOG_INFO("Started CacheUploadManager. Num workers: {}, max upload buffer size: {} bytes",
-        m_numUploadThreads, m_maxBufferMemory);
+    LOG_INFO("Started CacheUploadManager. Num workers={}, max upload buffer size={} bytes, key expirytime={} sec",
+        m_numUploadThreads, m_maxBufferMemory, m_keyExpirySeconds);
 }
 //---------------------------------------------------------------------------------------------------------------------
 CacheUploadManager::~CacheUploadManager()
@@ -67,6 +69,7 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
     uploadRequest->set_filename(uploadContext->m_strCacheKey);
     uploadRequest->set_filesize(bufferSizeToSend);
     uploadRequest->set_ignorelock(true);
+    uploadRequest->set_expiryseconds(m_keyExpirySeconds);
 
     if (uploadContext->m_fileAttributes.get())
     {
@@ -226,9 +229,9 @@ bool CacheUploadManager::UploadAsync(
         lock_guard lock(m_mutexQueue);
         if ((m_uploadBufferMemory + bufferSizeToSend) > m_maxBufferMemory)
         {
-            LOG_WARN("Reached upload size limit. cacheKey: {}, size: {}, upload bytes pending: {}",
+            LOG_RARELY(10, WARN, "Reached upload size limit, skipping. cacheKey={}, size={}, upload bytes pending={}",
                 cacheKey, bufferSizeToSend, m_uploadBufferMemory);
-            // TODO: need to reset upload lock and retry again on next cache miss, for now hoping for the best
+            return false;
         }
 
         m_uploadBufferMemory += bufferSizeToSend;

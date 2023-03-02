@@ -44,6 +44,7 @@ namespace StorageInterceptConstants
     const char* const ConfigNameCacheUploaderThreadsPerProcess = "cacheNumUploadThreadsPerProcess";
     const char* const ConfigNameCacheUploaderMaxBufferSizePerProcessGB = "cacheMaxUploadBufferSizePerProcessGB";
     const char* const ConfigNameCacheReuseServerConnections = "cacheReuseServerConnections";
+    const char* const ConfigNameCacheKeyExpirySeconds = "cacheKeyExpirySeconds";
     const char* const ConfigNameCacheAuthEnabled = "cacheAuthEnabled";
     const char* const ConfigNameCacheAuthAccountName = "cacheAuthAccountName";
     const char* const ConfigNameCacheAuthAccountKey = "cacheAuthAccountKey";
