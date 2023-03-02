@@ -62,6 +62,7 @@ void Initialize()
             LOG_CRITICAL("Auth is enabled but Account name or key not set");
             exit(-1);
         }
+
         AuthAccountName = accountName;
         AuthAccountKey = accountKey;
     }
@@ -124,6 +125,7 @@ string fileEncode(const string& fileName)
     {
         ss << std::setfill('0') << std::setw(2) << std::hex << static_cast<int>(fileName[i]);
     }
+
     return ss.str();
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -135,6 +137,7 @@ string GetUuid()
     {
         ss << std::setfill('0') << std::setw(4) << std::hex << rand();
     }
+
     return ss.str();
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -156,6 +159,7 @@ string GetCacheTempPath(const string& fileName)
         LOG_INFO("Failed to create temp file, could be due to UUID collision {}, errno: {}:{}", tempFilePath,
             errno, strerror(errno));
     }
+
     LOG_ERROR("Couldn't create a cache temp file for {}", fileName);
     return "";
 }

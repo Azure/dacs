@@ -24,8 +24,7 @@ LocalFSCacheClient::LocalFSCacheClient()
     StorageInterceptConfig::GetInstance().GetCacheMaxUploadBufferSizePerProcessGB() * 1024ULL * 1024 * 1024),
   m_uploadBufferMemoryWarnThreshold(
     StorageInterceptConfig::GetInstance().GetCacheLocalFSMemoryWarnThresholdGB() * 1024ULL * 1024 * 1024),
-  m_stop(false),
-  m_lastLoggedTime(0)
+  m_stop(false)
 {
     // Create local cache path if not exists
     if (::mkdir(m_strLocalCachePath.c_str(), 0777) != 0 && errno != EEXIST)
@@ -240,18 +239,10 @@ void LocalFSCacheClient::UploadWorker()
 //---------------------------------------------------------------------------------------------------------------------
 void LocalFSCacheClient::CheckBufferMemory()
 {
-    // Check memory usage at regular intervals (30 seconds) and log stats if usage is above warning threshold
+    // Check memory usage and log stats if usage is above warning threshold
     if (m_uploadBufferMemory > m_uploadBufferMemoryWarnThreshold)
     {
-        {
-            time_t currentTime = time(NULL);
-            std::lock_guard lock(m_lockLogTime);
-            if (difftime(currentTime, m_lastLoggedTime) >= 30)
-            {
-                LOG_WARN("LocalFSCacheClient high memory. Current buffer size in bytes={}", m_uploadBufferMemory);
-                m_lastLoggedTime = currentTime;
-            }
-        }
+        LOG_RARELY(5, WARN, "LocalFSCacheClient high memory. Current buffer size in bytes={}", m_uploadBufferMemory);
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -268,8 +259,10 @@ bool LocalFSCacheClient::UploadAsync(
         lock_guard lock(m_mutexQueue);
         if ((m_uploadBufferMemory + fileData->BufferSize) > m_maxUploadBufferMemory)
         {
-            LOG_INFO("Reached upload size limit, will skip upload. cacheKey={}, size={}, upload bytes pending={}",
-                cacheKey, fileData->BufferSize, m_uploadBufferMemory);
+            LOG_RARELY(5,
+                WARN,
+                "Reached upload size limit, will skip upload. cacheKey={}, size={}, upload bytes pending={}",
+                    cacheKey, fileData->BufferSize, m_uploadBufferMemory);
             return false;
         }
 

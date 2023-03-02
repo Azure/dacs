@@ -502,12 +502,20 @@ uint64_t StorageInterceptConfig::GetCacheMaxUploadBufferSizePerProcessGB()
         10);
 }
 //---------------------------------------------------------------------------------------------------------------------
-uint64_t StorageInterceptConfig::GetCacheReuseServerConnections()
+bool StorageInterceptConfig::GetCacheReuseServerConnections()
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameCacheReuseServerConnections,
         true);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint32_t StorageInterceptConfig::GetCacheKeyExpirySeconds()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint32(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheKeyExpirySeconds,
+        24 * 60 * 60 /* 1 day */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetAttributesCacheEnable(const std::string& mountName)

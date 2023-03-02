@@ -13,6 +13,7 @@
 #include <iostream>
 #include <uuid/uuid.h>
 #include <openssl/evp.h>
+#include <time.h>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cacheutils;
 using namespace std;
@@ -383,5 +384,79 @@ TEST_F(CacheClientTest, ParallelUploadDownloadTest)
         t->join();
     }
     testThreads.clear();
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(CacheClientTest, TestUploadLockExpiry)
+{
+    if (this->m_cacheClient == nullptr)
+    {
+        GTEST_SKIP();
+    }
+
+    // Only one (first) client out of many should get LOCKED status for a file
+    vector<unique_ptr<thread>> testThreads;
+    string strFileName = GetRandFilename();
+    std::atomic_uint_fast32_t numLocks = 0;
+    for (int i = 0; i < 20; ++i)
+    {
+        auto t = make_unique<thread>([&strFileName, &numLocks, this]() {
+            std::vector<char> outBuffer(1024*1024*4);
+            uint64_t dataRead = 0;
+            auto cacheStatus =
+                this->m_cacheClient->DownloadSync(
+                    "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+            ASSERT_TRUE(cacheStatus == CacheStatus::NOTFOUND_LOCKED || cacheStatus == CacheStatus::NOTFOUND);
+            if (cacheStatus == CacheStatus::NOTFOUND_LOCKED)
+            {
+                numLocks++;
+            }
+        });
+        testThreads.push_back(move(t));
+    }
+    for (auto &t : testThreads)
+    {
+        t->join();
+    }
+    testThreads.clear();
+
+    ASSERT_EQ(numLocks, 1);
+    numLocks = 0;
+
+    // The lock status should get reset after a while and we should be able to get the lock status again
+    time_t startTime = time(NULL);
+
+    // Loop for a limited time to prevent hang on test failure
+    while (difftime(time(NULL), startTime) < 60)
+    {
+        std::vector<char> outBuffer(1024*1024*4);
+        uint64_t dataRead = 0;
+        auto cacheStatus =
+            this->m_cacheClient->DownloadSync(
+                "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+        ASSERT_TRUE(cacheStatus == CacheStatus::NOTFOUND_LOCKED || cacheStatus == CacheStatus::NOTFOUND);
+        if (cacheStatus == CacheStatus::NOTFOUND_LOCKED)
+        {
+            numLocks++;
+            break;
+        }
+
+        // sleep for a while to avoid cpu usage
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    ASSERT_EQ(numLocks, 1);
+
+    // We should not get LOCK for a while
+    std::vector<char> outBuffer(1024*1024*4);
+    uint64_t dataRead = 0;
+    auto cacheStatus =
+        this->m_cacheClient->DownloadSync(
+            "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    ASSERT_TRUE(cacheStatus == CacheStatus::NOTFOUND);
+
+    cacheStatus =
+        this->m_cacheClient->DownloadSync(
+            "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    ASSERT_TRUE(cacheStatus == CacheStatus::NOTFOUND);
 }
 //---------------------------------------------------------------------------------------------------------------------

@@ -80,6 +80,7 @@ bool DeleteFile(IConnection& clientConnection, const DeleteRequest& deleteReques
         LOG_WARN("Error sending delete response to client for groupId: {}", deleteRequest.groupid());
         return false;
     }
+
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------

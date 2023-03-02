@@ -85,7 +85,7 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
     }
 
     CacheManager::CacheInfo cacheInfo = CacheManager::GetInstance().GetCacheInfo(uploadRequest.filename());
-    if (cacheInfo.m_status == CacheManager::COMPLETED)
+    if (cacheInfo.m_status == CacheManager::CacheStatus::COMPLETED)
     {
         LOG_WARN("file already uploaded {}", uploadRequest.filename());
         uploadResponse.set_result(UploadResponse::FILE_EXISTS);
@@ -93,7 +93,7 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
         return false;
     }
 
-    if (cacheInfo.m_status == CacheManager::STARTED)
+    if (cacheInfo.m_status == CacheManager::CacheStatus::STARTED)
     {
         LOG_WARN("file already being uploaded by another client {}, will attempt to upload anyway",
             uploadRequest.filename());
@@ -208,7 +208,7 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
             else
             {
                 uploadResponse.set_result(UploadResponse::SUCCESS);
-                LOG_INFO("File successfully written to cache: {}", uploadRequest.filename());
+                LOG_DEBUG("File successfully written to cache: {}", uploadRequest.filename());
             }
         }
     }
@@ -223,7 +223,7 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
         }
         else
         {
-            LOG_INFO("File successfully written to cache: {}", uploadRequest.filename());
+            LOG_DEBUG("File successfully written to cache: {}", uploadRequest.filename());
         }
     }
 

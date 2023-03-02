@@ -52,7 +52,7 @@ void CacheManager::SetCacheTTLWindowSize(const uint32_t cacheTTLWindowSizeSecond
 //---------------------------------------------------------------------------------------------------------------------
 CacheManager::CacheInfo CacheManager::GetAndInitCacheInfo(const std::string& fileName)
 {
-    CacheInfo prevCacheStatus;
+    CacheInfo prevCacheStatus(CacheStatus::NOTFOUND);
     auto index = GetHashBucket(fileName);
 
     lock_guard lockGuard(m_vCacheInfoMapMutex[index]);
@@ -60,18 +60,27 @@ CacheManager::CacheInfo CacheManager::GetAndInitCacheInfo(const std::string& fil
     if (iter == m_vCacheInfoMap[index].end())
     {
         m_vCacheInfoMap[index].insert(make_pair(fileName,
-            CacheInfo(0, ::google::protobuf::Map<std::string, std::string>(), INITIATED)));
+            CacheInfo(0, ::google::protobuf::Map<std::string, std::string>(), CacheStatus::INITIATED)));
     }
     else
     {
+        // If the previous init happened a while ago, we can reset it for new uploads to proceed
+        if (iter->second.m_status == CacheStatus::INITIATED &&
+            iter->second.m_initTimestamp + CACHE_INIT_EXPIRY_SECONDS < time(NULL))
+        {
+            iter->second.m_initTimestamp = time(NULL);
+            return prevCacheStatus;
+        }
+
         prevCacheStatus = iter->second;
     }
+
     return prevCacheStatus;
 }
 //---------------------------------------------------------------------------------------------------------------------
 CacheManager::CacheInfo CacheManager::GetCacheInfo(const std::string& fileName)
 {
-    CacheInfo prevCacheStatus;
+    CacheInfo prevCacheStatus(CacheStatus::NOTFOUND);
     auto index = GetHashBucket(fileName);
 
     lock_guard lockGuard(m_vCacheInfoMapMutex[index]);
@@ -80,6 +89,7 @@ CacheManager::CacheInfo CacheManager::GetCacheInfo(const std::string& fileName)
     {
         prevCacheStatus = iter->second;
     }
+
     return prevCacheStatus;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -87,7 +97,7 @@ bool CacheManager::InitCacheInfo(const std::string& fileName, bool ignoreLock, u
 {
     if (fileSize > 0 && (m_totalCachedSize.fetch_add(fileSize) + fileSize) > m_cacheSizeLimitBytes)
     {
-        LOG_WARN("TotalCachedSize: {}, exceeds limit: {}", m_totalCachedSize, m_cacheSizeLimitBytes);
+        LOG_RARELY(30, WARN, "TotalCachedSize: {}, exceeds limit: {}", m_totalCachedSize, m_cacheSizeLimitBytes);
         m_totalCachedSize.fetch_sub(fileSize);
         return false;
     }
@@ -97,20 +107,20 @@ bool CacheManager::InitCacheInfo(const std::string& fileName, bool ignoreLock, u
     auto iter = m_vCacheInfoMap[index].find(fileName);
     if (iter != m_vCacheInfoMap[index].end())
     {
-        if (iter->second.m_status == COMPLETED)
+        if (iter->second.m_status == CacheStatus::COMPLETED)
         {
             // Some other upload for same file has already succeeded, ignore this one.
             LOG_WARN("File already uploaded by another thread: {}", fileName);
             m_totalCachedSize.fetch_sub(fileSize);
             return false;
         }
-        iter->second = CacheInfo(STARTED);
+        iter->second = CacheInfo(CacheStatus::STARTED);
     }
     else
     {
         if (ignoreLock)
         {
-            m_vCacheInfoMap[index].insert(make_pair(fileName, CacheInfo(STARTED)));
+            m_vCacheInfoMap[index].insert(make_pair(fileName, CacheInfo(CacheStatus::STARTED)));
         }
         else
         {
@@ -152,18 +162,18 @@ bool CacheManager::UpdateCacheInfo(const std::string& fileName, uint64_t fileSiz
     auto iter = m_vCacheInfoMap[index].find(fileName);
     if (iter != m_vCacheInfoMap[index].end())
     {
-        if (iter->second.m_status == COMPLETED)
+        if (iter->second.m_status == CacheStatus::COMPLETED)
         {
             // Some other upload for same file has already succeeded, ignore this one.
             LOG_WARN("File already uploaded by another thread: {}", fileName);
             m_totalCachedSize.fetch_sub(fileSize);
             return false;
         }
-        iter->second = CacheInfo(fileSize, metadata, COMPLETED);
+        iter->second = CacheInfo(fileSize, metadata, CacheStatus::COMPLETED);
     }
     else
     {
-        m_vCacheInfoMap[index].insert(make_pair(fileName, CacheInfo(fileSize, metadata, COMPLETED)));
+        m_vCacheInfoMap[index].insert(make_pair(fileName, CacheInfo(fileSize, metadata, CacheStatus::COMPLETED)));
     }
 
     if (cacheExpirySeconds > 0)

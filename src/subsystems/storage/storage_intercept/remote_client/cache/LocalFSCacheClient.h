@@ -74,11 +74,6 @@ class LocalFSCacheClient : public ICacheClient
         const uint64_t                                 m_uploadBufferMemoryWarnThreshold;
         uint64_t                                       m_maxUploadBufferMemory;
 
-        // To limit repeated buffer memory warning logs
-        // TODO: implement a LogRarely utility which could be useful for such logging patterns
-        time_t                                         m_lastLoggedTime;
-        std::mutex                                     m_lockLogTime;
-
         // Upload thread polling for requests to write to SSD
         void UploadWorker();
 

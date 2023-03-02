@@ -176,7 +176,7 @@ int IBConnection::Receive(char* buffer, uint64_t size)
                 return -1;
             }
 
-            LOG_DEBUG("Received cq event id={}", GetId());;
+            LOG_DEBUG("Received cq event id={}", GetId());
 
             // Ack the event
             ibv_ack_cq_events(ev_cq, 1);

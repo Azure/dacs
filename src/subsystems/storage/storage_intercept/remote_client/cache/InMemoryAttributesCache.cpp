@@ -66,7 +66,7 @@ void InMemoryAttributesCache::PutAll(
     std::lock_guard<std::mutex> lock(m_mutexAttributes);
     if ((numEntries + m_mapAttributes.size()) > m_maxCacheEntries)
     {
-        LOG_WARN("Reached max attributes cache value, ignoring extra entries");
+        LOG_RARELY(30, WARN, "Reached max attributes cache value, ignoring extra entries");
         numEntries = m_maxCacheEntries - m_mapAttributes.size();
     }
 

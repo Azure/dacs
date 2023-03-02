@@ -20,7 +20,7 @@ class CacheManager
     public:
         static CacheManager& GetInstance();
 
-        enum CacheStatus
+        enum class CacheStatus
         {
             NOTFOUND, INITIATED, STARTED, COMPLETED
         };
@@ -29,13 +29,13 @@ class CacheManager
         {
             CacheInfo(uint64_t fileSize, const ::google::protobuf::Map<std::string, std::string>& metadata,
                 CacheStatus status)
-                : m_fileSize(fileSize), m_metadata(metadata), m_status(status) {}
-            CacheInfo(CacheStatus status) : m_fileSize(0), m_status(status) {}
-            CacheInfo() : m_fileSize(0), m_status(NOTFOUND) {}
+                : m_fileSize(fileSize), m_metadata(metadata), m_status(status), m_initTimestamp(time(NULL)) {}
+            CacheInfo(CacheStatus status) : m_fileSize(0), m_status(status), m_initTimestamp(time(NULL)) {}
 
             uint64_t m_fileSize;
             ::google::protobuf::Map<std::string, std::string> m_metadata;
             CacheStatus m_status;
+            time_t m_initTimestamp;
         };
 
         // Fetch cached info and initialize (to coordinate multiple updates from clients) if it does not exist
@@ -87,6 +87,9 @@ class CacheManager
             /*[in] */ const std::string& filename);
 
         void CacheCleanupWorker();
+
+        // Setting some default expiry time to ensure one client doesn't permanently lock a cache key
+        static constexpr uint32_t CACHE_INIT_EXPIRY_SECONDS = 10;
 
         std::atomic_uint_fast64_t m_cacheSizeLimitBytes;
         std::atomic_uint_fast64_t m_totalCachedSize;

@@ -62,7 +62,7 @@ bool IBInitializeClient(IConnection& clientConnection, const IBInitRequest& ibRe
 
     if (!IBManager::GetInstance().IBEnabled())
     {
-        LOG_WARN("IB not initialized");
+        LOG_RARELY(5, WARN, "IB not initialized, client={}", ibRequest.clientlid());
         ibResponse.set_result(IBInitResponse::IB_NOT_SUPPORTED);
         return SendMessageToRemoteFinal(clientConnection, ibResponse);
     }

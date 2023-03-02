@@ -328,7 +328,7 @@ std::unique_ptr<IConnection> ConnectionManager::InitFreshConnection(int serverIn
 
     if (connect(serverFd, (sockaddr * ) &structSockAddr, sizeof(sockaddr)) < 0)
     {
-        LOG_CRITICAL("Error during socket connect error={},{}", errno, strerror(errno));
+        LOG_CRITICAL("Error during socket connect serverIndex={} error={},{}", serverIndex, errno, strerror(errno));
         StorageDlsymWrapper::close(serverFd);
         return nullptr;
     }

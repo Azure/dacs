@@ -196,13 +196,12 @@ namespace cacheutils
 //---------------------------------------------------------------------------------------------------------------------
     bool AddAuthParams(Request& request)
     {
-        LOG_DEBUG("Enter AddAuthParams.");
         if (!StorageInterceptConfig::GetInstance().GetCacheAuthEnabled())
         {
             return true;
         }
 
-        LOG_INFO("AddAuthParams cache auth enabled")
+        LOG_DEBUG("AddAuthParams cache auth enabled")
         static const std::string& accountName = StorageInterceptConfig::GetInstance().GetCacheAuthAccountName();
         static const std::string& accountKey = StorageInterceptConfig::GetInstance().GetCacheAuthAccountKey();
 
