@@ -56,6 +56,7 @@ class BlobClient : public IRemoteClient
 
         std::vector<azBlobItem_t> ListOneBlob(
             /*[in] */ const std::string& containerName,
+            /*[in] */ const std::string& continuationToken,
             /*[in] */ const std::string& queryPrefix);
 
         void MakeDirectoryAttr(/*[out]*/ FileAttributes& attr);

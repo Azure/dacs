@@ -208,7 +208,7 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
         return 0;
     }
 
-    std::vector<azBlobItem_t> listBlobResult = ListOneBlob(containerName, blobPath);
+    std::vector<azBlobItem_t> listBlobResult = ListOneBlob(containerName, "", blobPath);
 
     if (blobPath.back() == DIRECTORY_DELIMITER.back())
     {
@@ -223,7 +223,7 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
                 containerName,
                 blobPath);
             const std::string blobPathWithoutTrailingDelimiter = blobPath.substr(0, blobPath.size() - 1);
-            auto secondListBlobResult = ListOneBlob(containerName, blobPathWithoutTrailingDelimiter);
+            auto secondListBlobResult = ListOneBlob(containerName, "", blobPathWithoutTrailingDelimiter);
             if (secondListBlobResult.size() > 0 && secondListBlobResult[0].name == blobPathWithoutTrailingDelimiter)
             {
                 LOG_WARN("File found instead of directory blobPath={}", blobPath);
@@ -282,7 +282,7 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
                     containerName,
                     blobPath);
                 const std::string blobPathWithTrailingDelimiter = blobPath + DIRECTORY_DELIMITER;
-                auto secondListBlobResult = ListOneBlob(containerName, blobPathWithTrailingDelimiter);
+                auto secondListBlobResult = ListOneBlob(containerName, "", blobPathWithTrailingDelimiter);
                 if (secondListBlobResult.size() > 0)
                 {
                     // Directory exists as we got non-empty result
@@ -312,12 +312,13 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
 //---------------------------------------------------------------------------------------------------------------------
 std::vector<BlobClient::azBlobItem_t> BlobClient::ListOneBlob(
     const std::string& containerName,
+    const std::string& continuationToken,
     const std::string& queryPrefix)
 {
     const auto blobOutcome = m_spClient->list_blobs_segmented(
         containerName,
         DIRECTORY_DELIMITER,
-        "" /* continuation token */,
+        continuationToken,
         queryPrefix,
         1 /* max results */).get();
 
@@ -342,11 +343,19 @@ std::vector<BlobClient::azBlobItem_t> BlobClient::ListOneBlob(
         throw BlobClientException(blobOutcome.error().message);
     }
 
-    LOG_DEBUG("List one blob result for container={}, queryPrefix={}, nBlobs={}, blobName={}",
+    LOG_DEBUG("List one blob result for container={}, queryPrefix={}, continuationToken={}, nBlobs={}, blobName={}",
         containerName,
         queryPrefix,
+        blobOutcome.response().next_marker,
         blobOutcome.response().blobs.size(),
         (blobOutcome.response().blobs.size() > 0) ? blobOutcome.response().blobs[0].name : "");
+    
+    // If blob result is empty but there are more results, we need to query again with new continuation token
+    if (blobOutcome.response().blobs.empty() && blobOutcome.response().next_marker != "")
+    {
+        return ListOneBlob(containerName, blobOutcome.response().next_marker, queryPrefix);
+    }
+    
     return blobOutcome.response().blobs;
 }
 //---------------------------------------------------------------------------------------------------------------------
