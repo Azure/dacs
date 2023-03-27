@@ -50,8 +50,6 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 execute_test "non_cuda"
 
-execute_test "cuda_11_0"
-
 execute_test "cuda_11_1"
 
 execute_test "cuda_11_3"
