@@ -78,3 +78,12 @@ link_directories("$ENV{NCCL_ROOT}/lib64")
 link_directories("$ENV{NCCL_ROOT}/lib")
 link_directories("$ENV{CUDNN_ROOT}/lib64")
 link_directories("$ENV{CUDNN_ROOT}/lib")
+
+# Aliases for linked libraries
+set(CUDART_LIB "-lcudart")
+set(CUDA_LIB "-lcuda")
+set(CUBLAS_LIB "-lcublas")
+set(NCCL_LIB "-lnccl")
+set(CUDNN_LIB "-lcudnn")
+set(NVRTC_LIB "-lnvrtc")
+set(GPU_PROFILER_LIB "")

@@ -52,8 +52,24 @@ include(${CMAKE_EXTERNAL_PROJECT}/json_include.cmake)
 #Fast Hashing with xxHash - required for criu deduping
 include(${CMAKE_EXTERNAL_PROJECT}/xxHash_include.cmake)
 
-# Include CUDA, NCCL and CuDNN libraries
-include(build/SetupBuildDependencies/cuda_include.cmake)
+if(AMD_BUILD)
+    # Include ROCm HIP, RCCL, etc.
+    include(build/SetupBuildDependencies/rocm_include.cmake)
+    set(GPU_TYPE "amd")
+
+    # hipError_t is marked as [[nodiscard]] which gives a warning when
+    # its not used. Disable that warning.
+    add_compile_options(-Wno-unused-result)
+    message(STATUS "AMD Build is enabled")
+else()
+    # Include CUDA, NCCL and CuDNN libraries
+    include(build/SetupBuildDependencies/cuda_include.cmake)
+    set(GPU_TYPE "nvidia")
+    message(STATUS "AMD Build is disabled")
+endif()
+
+# Utilities for simplifying AMD/NVIDIA specific builds
+include(build/SetupBuildDependencies/build_utils.cmake)
 
 # Azure storage lite lib - to communicate with blob services
 include(${CMAKE_EXTERNAL_PROJECT}/storagelite_include.cmake)
