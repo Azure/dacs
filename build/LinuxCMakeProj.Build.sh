@@ -1,14 +1,44 @@
 #!/bin/bash
+
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+AMD_CODE_DIR="$SCRIPT_DIR/../bin/amd_code_copy"
+DACS_ROOT="$SCRIPT_DIR/.."
+AMD_CODE_PREPARED="false"
+
+# Perform hipification, Copy native code to bin/amd_code_copy
+# so that hipification does not modify local files
+function __prepare_native_code_for_amd__(){
+  rm -rf "$AMD_CODE_DIR"
+  mkdir -p "$AMD_CODE_DIR"
+
+  cp "$DACS_ROOT/CMakeLists.txt" "$AMD_CODE_DIR"
+  cp -r "$DACS_ROOT/src" "$AMD_CODE_DIR"
+  cp -r "$DACS_ROOT/build" "$AMD_CODE_DIR"
+
+  time "$SCRIPT_DIR"/../.pipelines/amd/code_translation.py --root "$AMD_CODE_DIR"
+}
+
 function execute_build() {
   local cuda_deps=$1
   local python_deps=$2
   local latest_git_hash=`git rev-parse HEAD || echo "unknown_git_commit"`
 
-  echo "Build for ${cuda_deps} and python ${python_deps} projects......"
+  if [[ $cuda_deps == *"rocm"* ]]; then
+    local AMD_BUILD="ON"
+    PATH_TO_SOURCE="$AMD_CODE_DIR"
+    if [[ "$AMD_CODE_PREPARED" == "false" ]]; then
+      __prepare_native_code_for_amd__
+      AMD_CODE_PREPARED="true"
+    fi
+  else
+    local AMD_BUILD="OFF"
+  fi
 
+  echo "Build for ${cuda_deps} and python ${python_deps} projects......"
   mkdir -p $CMAKE_RUNTIME_OUTPUT_DIRECTORY/${cuda_deps}
   cd $CMAKE_RUNTIME_OUTPUT_DIRECTORY/${cuda_deps}
   cmake \
+    -DAMD_BUILD=$AMD_BUILD \
     -DPYTHON_VERSION=${python_deps} \
     -DCUDA_VERSION=${cuda_deps} \
     -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_CONFIGURATION \
@@ -126,6 +156,11 @@ else
   for cudaVersion in "11_1" "11_3" "11_4" "11_5" "11_6" "11_7"; do
     pythonVersion="3.6"
     execute_build "cuda_$cudaVersion" $pythonVersion
+  done
+
+  for rocmVersion in "5_2_3"; do
+    pythonVersion="3.6"
+    execute_build "rocm_$rocmVersion" $pythonVersion
   done
 fi
 
