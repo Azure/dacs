@@ -5,8 +5,8 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include <stdint.h>
 //---------------------------------------------------------------------------------------------------------------------
-constexpr int THREAD_POOL_SIZE = 128;
-constexpr int TCP_BACKLOG_SIZE = 1000;
+constexpr int DEFAULT_THREAD_POOL_SIZE = 256;
+constexpr int TCP_BACKLOG_SIZE = 1024;
 constexpr int REQUEST_METADATA_SIZE = 4;
 constexpr int NUM_MAPS = 50;
 

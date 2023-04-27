@@ -76,7 +76,7 @@ TEST_F(CacheClientTest, SimpleUploadDownloadTest)
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND);
 
     auto dataBuffer = GetRandDataBuffer(1024*1024*4);
-    bRetVal = m_cacheClient->UploadAsync("", strFileName, 0, dataBuffer);
+    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
@@ -121,7 +121,7 @@ TEST_F(CacheClientTest, DifferentFileSizesUploadDownloadTest)
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND);
 
     auto dataBuffer = GetRandDataBuffer(1);
-    bRetVal = m_cacheClient->UploadAsync("", strFileName, 0, dataBuffer);
+    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
@@ -143,7 +143,7 @@ TEST_F(CacheClientTest, DifferentFileSizesUploadDownloadTest)
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND);
 
     dataBuffer = GetRandDataBuffer(1024*1024*4 - 1);
-    bRetVal = m_cacheClient->UploadAsync("", strFileName, 0, dataBuffer);
+    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
@@ -165,7 +165,7 @@ TEST_F(CacheClientTest, DifferentFileSizesUploadDownloadTest)
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND);
 
     dataBuffer = GetRandDataBuffer(1024*1024*4 + 1);
-    bRetVal = m_cacheClient->UploadAsync("", strFileName, 0, dataBuffer);
+    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
@@ -190,7 +190,7 @@ TEST_F(CacheClientTest, DifferentFileSizesUploadDownloadTest)
         ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND);
 
         dataBuffer = GetRandDataBuffer(1024*1024*10);
-        bRetVal = m_cacheClient->UploadAsync("", strFileName, 0, dataBuffer);
+        bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer);
         ASSERT_EQ(bRetVal, true);
 
         // wait for async upload to complete 
@@ -224,7 +224,7 @@ TEST_F(CacheClientTest, ZeroSizeUploadDownloadTest)
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND);
 
     auto dataBuffer = GetRandDataBuffer(0);
-    bRetVal = m_cacheClient->UploadAsync("", strFileName, 0, dataBuffer);
+    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
@@ -257,7 +257,7 @@ TEST_F(CacheClientTest, PartialDownloadTest)
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND);
 
     auto dataBuffer = GetRandDataBuffer(1024*1024*4);
-    bRetVal = m_cacheClient->UploadAsync("", strFileName, 0, dataBuffer);
+    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
@@ -350,7 +350,7 @@ TEST_F(CacheClientTest, ParallelUploadDownloadTest)
     for (int i = 0; i < numFiles; ++i)
     {
         auto t = make_unique<thread>([i, &dataBuffer, &fileNames, this]() {
-            bool bRetVal = this->m_cacheClient->UploadAsync("", fileNames[i], 0, dataBuffer[i]);
+            bool bRetVal = this->m_cacheClient->Upload("", fileNames[i], 0, dataBuffer[i]);
             ASSERT_EQ(bRetVal, true);
         });
         testThreads.push_back(move(t));

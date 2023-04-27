@@ -20,7 +20,7 @@ class ICacheClient
             /*[out]*/ char *buffer,
             /*[out]*/ uint64_t& readLength) = 0;
 
-        virtual bool UploadAsync(
+        virtual bool Upload(
             /*[in] */ const std::string& mountName,
             /*[in] */ const std::string& filePath,
             /*[in] */ off64_t fileOffset,

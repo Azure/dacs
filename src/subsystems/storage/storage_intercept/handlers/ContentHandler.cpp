@@ -907,6 +907,29 @@ int ContentHandler::HandleXstat64(int __ver, const char* pathname, struct stat64
     return GetPropertiesInternal(*mountInfo, relPath, "xstat64", statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::HandleFstat(int fd, struct stat* statbuf)
+{
+    if (!IsFdInRange(fd))
+    {
+        return StorageDlsymWrapper::fstat(fd, statbuf);
+    }
+
+    std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
+    auto fdIt = m_mapOpenHandles.find(fd);
+    if (fdIt == m_mapOpenHandles.end())
+    {
+        openHandlesLock.unlock();
+        return StorageDlsymWrapper::fstat(fd, statbuf);
+    }
+    FileAttributes attributes = fdIt->second->Attributes;
+    openHandlesLock.unlock();
+
+    struct stat64 stat64buf;
+    PopulateStatBuf(attributes, &stat64buf);
+    CopyStat64ToStat(&stat64buf, statbuf);
+    return 0;
+}
+//---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::HandleFxstat(int __ver, int fd, struct stat* statbuf)
 {
     if (!IsFdInRange(fd))

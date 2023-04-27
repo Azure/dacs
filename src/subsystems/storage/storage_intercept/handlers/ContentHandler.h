@@ -95,6 +95,10 @@ class ContentHandler
             /*[in] */ const char* pathname,
             /*[out]*/ struct stat64* statbuf);
 
+        int HandleFstat(
+            /*[in] */ int fd,
+            /*[out]*/ struct stat* statbuf);
+
         int HandleFxstat(
             /*[in] */ int __ver,
             /*[in] */ int fd,

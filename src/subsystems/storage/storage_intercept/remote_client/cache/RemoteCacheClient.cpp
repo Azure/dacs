@@ -261,7 +261,7 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(
     return cacheStatus;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool RemoteCacheClient::UploadAsync(
+bool RemoteCacheClient::Upload(
     const std::string& mountName,
     const std::string& filePath,
     off64_t fileOffset,
@@ -269,7 +269,7 @@ bool RemoteCacheClient::UploadAsync(
 {
     const std::string cacheKey = GetCacheKey(mountName, filePath, fileOffset);
     int serverIndex = GetServerIndex(cacheKey, m_numServerNodes);
-    return m_spUploadManager->UploadAsync(
+    return m_spUploadManager->Upload(
         mountName,
         serverIndex,
         cacheKey,
@@ -307,7 +307,7 @@ void RemoteCacheClient::Put(
     m_inMemAttributeCache.Put(path, fileAttributes);
     const string cacheKey = GetAttributeCacheKey(path);
     int serverIndex = GetServerIndex(cacheKey, m_numServerNodes);
-    m_spUploadManager->UploadAsync("", serverIndex, cacheKey, nullptr, nullptr,
+    m_spUploadManager->Upload("", serverIndex, cacheKey, nullptr, nullptr,
         make_unique<::FileAttributes>(fileAttributes));
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -337,7 +337,7 @@ void RemoteCacheClient::PutAll(
 
         const string cacheKey = GetAttributeCacheKey(StorageInterceptUtils::CombinePath(pathPrefix, dirEntry.d_name));
         int serverIndex = GetServerIndex(cacheKey, m_numServerNodes);
-        m_spUploadManager->UploadAsync("", serverIndex, cacheKey, nullptr, nullptr,
+        m_spUploadManager->Upload("", serverIndex, cacheKey, nullptr, nullptr,
             make_unique<::FileAttributes>(fileAttributes));
     }
 }

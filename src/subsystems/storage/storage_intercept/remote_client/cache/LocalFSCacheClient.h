@@ -26,7 +26,7 @@ class LocalFSCacheClient : public ICacheClient
             /*[out]*/ char *buffer,
             /*[out]*/ uint64_t& readLength) override;
 
-        bool UploadAsync(
+        bool Upload(
             /*[in] */ const std::string& mountName,
             /*[in] */ const std::string& filePath,
             /*[in] */ off64_t fileOffset,

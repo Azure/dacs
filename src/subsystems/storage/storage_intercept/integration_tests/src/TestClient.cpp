@@ -73,6 +73,63 @@ void TestFileReadWithSeek(const std::string& mountPath)
   }
 }
 //---------------------------------------------------------------------------------------------------------------------
+void TestStatInterception(const std::string& mountPath)
+{
+  std::string remoteFilePath = mountPath + "/imagenet_data/train/n01494475/n01494475_10008.JPEG";
+  int expectedFileSize = 324089;
+
+  struct stat statBuf{};
+  int ret = stat(remoteFilePath.c_str(), &statBuf);
+  if (ret != 0)
+  {
+    std::cout << "ERROR: failed to stat file: " << remoteFilePath.c_str() << std::endl;
+    throw "stat file failed";
+  }
+
+  if (statBuf.st_mode & S_IFREG != S_IFREG)
+  {
+    std::cout << "ERROR: expected regular file, got: " << statBuf.st_mode << std::endl;
+    throw "stat file failed";
+  }
+
+  if (expectedFileSize != statBuf.st_size)
+  {
+    std::cout << "ERROR: filesize bytes mismatch expected: " << expectedFileSize << ", read: "
+      << statBuf.st_size << std::endl;
+    throw "stat file failed";
+  }
+
+  int fd = ::open(remoteFilePath.c_str(), O_RDONLY, 0777);
+  if (fd < 0)
+  {
+    std::cout << "ERROR: failed to open file: " << remoteFilePath.c_str() << std::endl;
+    throw "open file failed";
+  }
+
+  struct stat statBuf1{};
+  ret = fstat(fd, &statBuf1);
+  if (ret != 0)
+  {
+    std::cout << "ERROR: failed to fstat file: " << remoteFilePath.c_str() << std::endl;
+    throw "fstat file failed";
+  }
+
+  if (statBuf1.st_mode & S_IFREG != S_IFREG)
+  {
+    std::cout << "ERROR: expected regular file, got: " << statBuf1.st_mode << std::endl;
+    throw "stat file failed";
+  }
+
+  ::close(fd);
+
+  if (expectedFileSize != statBuf1.st_size)
+  {
+    std::cout << "ERROR: filesize bytes mismatch expected: " << expectedFileSize << ", read: "
+      << statBuf1.st_size << std::endl;
+    throw "fstat file failed";
+  }
+}
+//---------------------------------------------------------------------------------------------------------------------
 void TestInterceptionFallback()
 {
   char tmpFileName[] = "/tmp/interception_XXXXXX";
@@ -83,7 +140,23 @@ void TestInterceptionFallback()
     throw "mkstemp failed";
   }
 
-  int ret = close(fd);
+  struct stat statBuf{};
+  int ret = stat(tmpFileName, &statBuf);
+  if (ret != 0)
+  {
+    std::cout << "stat failed: "<< strerror(errno) <<endl;
+    throw "mkstemp failed";
+  }
+
+  struct stat statBuf1{};
+  ret = fstat(fd, &statBuf1);
+  if (ret != 0)
+  {
+    std::cout << "fstat failed: "<< strerror(errno) <<endl;
+    throw "mkstemp failed";
+  }
+
+  ret = close(fd);
   if (ret < 0)
   {
     cout << "close failed ret=" << ret << "err=" << strerror(errno) << endl;
@@ -463,6 +536,9 @@ int main(int argc, char** argv)
 
   TestFileReadWithSeek(mountPath);
   std::cout << "Test read with seek done." << std::endl;
+
+  TestStatInterception(mountPath);
+  std::cout << "Test read with stat done." << std::endl;
 
   TestInterceptionFallback();
   std::cout << "Test APIs with fallback done." << std::endl;
