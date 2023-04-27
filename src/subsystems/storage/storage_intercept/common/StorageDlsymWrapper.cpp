@@ -133,6 +133,12 @@ int StorageDlsymWrapper::lxstat64(int __ver, const char* pathname, struct stat64
     return m_OriginalLxstat64(__ver, pathname, statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
+int StorageDlsymWrapper::fstat(int fd, struct stat* statbuf)
+{
+    Original_fstat m_OriginalFstat = (Original_fstat)dlsym(RTLD_NEXT, "fstat");
+    return m_OriginalFstat(fd, statbuf);
+}
+//---------------------------------------------------------------------------------------------------------------------
 int StorageDlsymWrapper::fxstat(int __ver, int fd, struct stat* statbuf)
 {
     Original_fxstat m_OriginalFxstat = (Original_fxstat)dlsym(RTLD_NEXT, "__fxstat");

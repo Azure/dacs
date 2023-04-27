@@ -26,7 +26,7 @@ class RemoteCacheClient : public ICacheClient, public IAttributesCache
             /*[out]*/ char* buffer,
             /*[out]*/ uint64_t& readLength) override;
 
-        bool UploadAsync(
+        bool Upload(
             /*[in] */ const std::string& mountName,
             /*[in] */ const std::string& filePath,
             /*[in] */ off64_t fileOffset,

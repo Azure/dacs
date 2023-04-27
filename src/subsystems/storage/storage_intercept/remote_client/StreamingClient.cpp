@@ -525,7 +525,7 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
     // upload to cache server if this client owns the cache key
     if (cacheClient && cacheStatus == CacheStatus::NOTFOUND_LOCKED)
     {
-        bool bRet = cacheClient->UploadAsync(m_strMountName, cacheFilePath, chunkOffset, remoteReadData);
+        bool bRet = cacheClient->Upload(m_strMountName, cacheFilePath, chunkOffset, remoteReadData);
         if (!bRet)
         {
             // Not taking any action on failure as this is only a best effort service

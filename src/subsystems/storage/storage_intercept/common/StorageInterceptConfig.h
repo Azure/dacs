@@ -51,7 +51,9 @@ class StorageInterceptConfig
         std::string GetCacheServerList();
         uint64_t GetCacheNumUploadThreadsPerProcess();
         uint64_t GetCacheMaxUploadBufferSizePerProcessGB();
+        bool GetCacheEnableSyncUpload();
         bool GetCacheReuseServerConnections();
+        uint32_t GetCacheMaxConnectionsReuseSize();
         uint32_t GetCacheKeyExpirySeconds();
 
         // Getters for attribute cache

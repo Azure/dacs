@@ -32,6 +32,7 @@ ConnectionManager::ConnectionManager(
     bool useLocalServer,
     const std::vector<std::string>& cacheServers)
     :  m_ServerPort(serverPort)
+    ,  m_nMaxConnectionsReuseSize(StorageInterceptConfig::GetInstance().GetCacheMaxConnectionsReuseSize())
     ,  m_bReuseServerConnections(StorageInterceptConfig::GetInstance().GetCacheReuseServerConnections())
     ,  m_bUseInfiniband(StorageInterceptConfig::GetInstance().GetCacheIBEnabled())
     ,  m_ibDevice{0}
@@ -74,7 +75,7 @@ ConnectionManager::ConnectionManager(
         InitInfiniband();
     }
 
-    this->m_nMaxConnsPerServer = (MAX_CONNECTIONS_REUSE_SIZE + m_numServerNodes - 1) / m_numServerNodes;
+    this->m_nMaxConnsPerServer = (m_nMaxConnectionsReuseSize + m_numServerNodes - 1) / m_numServerNodes;
     LOG_INFO("Initialized Cache ConnectionManager. serverPort={} m_numServerNodes={}"
         " m_nMaxConnsPerServer={} m_bReuseServerConnections={} m_bUseInfiniband={}",
         serverPort,

@@ -502,12 +502,28 @@ uint64_t StorageInterceptConfig::GetCacheMaxUploadBufferSizePerProcessGB()
         10);
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::GetCacheEnableSyncUpload()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheEnableSyncUpload,
+        false);
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetCacheReuseServerConnections()
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameCacheReuseServerConnections,
         true);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint32_t StorageInterceptConfig::GetCacheMaxConnectionsReuseSize()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint32(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheMaxConnectionsReuseSize,
+        1024);
 }
 //---------------------------------------------------------------------------------------------------------------------
 uint32_t StorageInterceptConfig::GetCacheKeyExpirySeconds()

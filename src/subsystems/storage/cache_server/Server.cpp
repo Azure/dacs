@@ -99,6 +99,13 @@ void HandleSocket(int epollFd)
 //---------------------------------------------------------------------------------------------------------------------
 void StartServer(int port)
 {
+    int threadPoolSize = DEFAULT_THREAD_POOL_SIZE;
+    char* threadPoolSizeStr = std::getenv("CACHESERVER_THREADPOOL_SIZE");
+    if (threadPoolSizeStr != nullptr)
+    {
+        threadPoolSize = std::stoi(threadPoolSizeStr);
+    }
+
     int server_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket_fd < 0)
     {
@@ -146,7 +153,7 @@ void StartServer(int port)
 
     // start worker threads
     std::vector<std::thread *> threads;
-    for (int i = 0; i < THREAD_POOL_SIZE; ++i)
+    for (int i = 0; i < threadPoolSize; ++i)
     {
         auto thread = new std::thread([epollWorkerFd]() {
             HandleSocket(epollWorkerFd);
@@ -154,7 +161,7 @@ void StartServer(int port)
         threads.push_back(thread);
     }
 
-    LOG_INFO("Started server on port: {}", port);
+    LOG_INFO("Started server on port: {}, threadpool: {}", port, threadPoolSize);
 
     // main loop accepting connections 
     while (true)

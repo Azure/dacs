@@ -246,7 +246,7 @@ void LocalFSCacheClient::CheckBufferMemory()
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool LocalFSCacheClient::UploadAsync(
+bool LocalFSCacheClient::Upload(
     const std::string& mountName,
     const std::string& filePath,
     off64_t fileOffset,

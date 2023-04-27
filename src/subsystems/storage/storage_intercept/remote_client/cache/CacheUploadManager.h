@@ -28,7 +28,7 @@ class CacheUploadManager
     public:
 
         /* Submit an upload job */
-        bool UploadAsync(
+        bool Upload(
             const std::string& mountName,
             int serverIndex,
             const std::string& cacheKey,
@@ -69,8 +69,9 @@ class CacheUploadManager
         std::queue<std::unique_ptr<UploadContext>>     m_uploadQueue;
         std::mutex                                     m_mutexQueue;
         std::condition_variable                        m_cvQueue;
-        const uint64_t                                 m_maxBufferMemory;        
+        const uint64_t                                 m_maxBufferMemory;
         const uint32_t                                 m_keyExpirySeconds;
+        const bool                                     m_enableSyncUpload;
 
         const int                                      m_numUploadThreads;
         std::vector<std::unique_ptr<std::thread>>      m_vecUploadThread;

@@ -111,6 +111,11 @@ int StorageInterceptorImpl::lxstat64(int __ver, const char* pathname, struct sta
     return ContentHandler::GetInstance().HandleLxstat64(__ver, pathname, statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
+int StorageInterceptorImpl::fstat(int fd, struct stat* statbuf)
+{
+    return ContentHandler::GetInstance().HandleFstat(fd, statbuf);
+}
+//---------------------------------------------------------------------------------------------------------------------
 int StorageInterceptorImpl::fxstat(int __ver, int fd, struct stat* statbuf)
 {
     return ContentHandler::GetInstance().HandleFxstat(__ver, fd, statbuf);

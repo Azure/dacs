@@ -110,6 +110,11 @@ extern "C" int __xstat64(int __ver, const char* pathname, struct stat64* statbuf
     return StorageInterceptorImpl::xstat64(__ver, pathname, statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
+extern "C" int fstat(int fd, struct stat *statbuf)
+{
+    return StorageInterceptorImpl::fstat(fd, statbuf);
+}
+//---------------------------------------------------------------------------------------------------------------------
 extern "C" int __fxstat(int __ver, int fd, struct stat* statbuf)
 {
     return StorageInterceptorImpl::fxstat(__ver, fd, statbuf);

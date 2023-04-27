@@ -35,6 +35,7 @@ class StorageInterceptorImpl
         static int access(const char *pathname, int mode);
         static int xstat(int __ver, const char* pathname, struct stat* statbuf);
         static int xstat64(int __ver, const char* pathname, struct stat64* statbuf);
+        static int fstat(int fd, struct stat* statbuf);
         static int fxstat(int __ver, int fd, struct stat* statbuf);
         static int fxstat64(int __ver, int fd, struct stat64* statbuf);
         static int lxstat(int __ver, const char* pathname, struct stat* statbuf);

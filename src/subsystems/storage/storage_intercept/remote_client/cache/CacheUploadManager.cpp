@@ -7,6 +7,7 @@
 #include "cache.pb.h"
 #include "CacheUtils.h"
 #include "ICacheClient.h"
+#include <thread>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cache;
 using namespace cacheutils;
@@ -21,29 +22,36 @@ CacheUploadManager::CacheUploadManager(
       m_connectionManager(connectionManager),
       m_numUploadThreads(numUploadThreads),
       m_maxBufferMemory(maxTotalBufferSize),
-      m_keyExpirySeconds(StorageInterceptConfig::GetInstance().GetCacheKeyExpirySeconds())
+      m_keyExpirySeconds(StorageInterceptConfig::GetInstance().GetCacheKeyExpirySeconds()),
+      m_enableSyncUpload(StorageInterceptConfig::GetInstance().GetCacheEnableSyncUpload())
 {
     // start worker threads
-    for (int i = 0; i < m_numUploadThreads; ++i)
+    if (!m_enableSyncUpload)
     {
-        auto uploadThread = make_unique<thread>([this]() {
-            this->UploadWorker();
-        });
-        m_vecUploadThread.push_back(move(uploadThread));
+        for (int i = 0; i < m_numUploadThreads; ++i)
+        {
+            auto uploadThread = make_unique<thread>([this]() {
+                this->UploadWorker();
+            });
+            m_vecUploadThread.push_back(move(uploadThread));
+        }
     }
 
-    LOG_INFO("Started CacheUploadManager. Num workers={}, max upload buffer size={} bytes, key expirytime={} sec",
-        m_numUploadThreads, m_maxBufferMemory, m_keyExpirySeconds);
+    LOG_INFO("Started CacheUploadManager. workers={}, max uploadbuffer={} bytes, expiry={} sec, asyncupload={}",
+        m_numUploadThreads, m_maxBufferMemory, m_keyExpirySeconds, m_enableSyncUpload ? "false" : "true");
 }
 //---------------------------------------------------------------------------------------------------------------------
 CacheUploadManager::~CacheUploadManager()
 {
-    LOG_INFO("Stopping uploader threads");
-    m_stop = true;
-    m_cvQueue.notify_all();
-    for (int i = 0; i < m_numUploadThreads; ++i)
+    if (!m_enableSyncUpload)
     {
-        m_vecUploadThread[i]->join();
+        LOG_INFO("Stopping uploader threads");
+        m_stop = true;
+        m_cvQueue.notify_all();
+        for (int i = 0; i < m_numUploadThreads; ++i)
+        {
+            m_vecUploadThread[i]->join();
+        }
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -216,7 +224,7 @@ void CacheUploadManager::UploadWorker()
     LOG_INFO("Shutdown UploadWorker");
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool CacheUploadManager::UploadAsync(
+bool CacheUploadManager::Upload(
     const std::string& mountName,
     int serverIndex,
     const std::string& cacheKey,
@@ -224,23 +232,32 @@ bool CacheUploadManager::UploadAsync(
     EncryptionUtil* encryptionUtil,
     std::unique_ptr<::FileAttributes> fileAttributes)
 {
-    size_t bufferSizeToSend = fileData.get() ? fileData->BufferSize : 0;
+    if (m_enableSyncUpload)
     {
-        lock_guard lock(m_mutexQueue);
-        if ((m_uploadBufferMemory + bufferSizeToSend) > m_maxBufferMemory)
-        {
-            LOG_RARELY(10, WARN, "Reached upload size limit, skipping. cacheKey={}, size={}, upload bytes pending={}",
-                cacheKey, bufferSizeToSend, m_uploadBufferMemory);
-            return false;
-        }
-
-        m_uploadBufferMemory += bufferSizeToSend;
         auto uploadContext = make_unique<UploadContext>(mountName, serverIndex, cacheKey, fileData, encryptionUtil,
             move(fileAttributes));
-        m_uploadQueue.push(move(uploadContext));
+        return StartUpload(move(uploadContext));
     }
+    else
+    {
+        size_t bufferSizeToSend = fileData.get() ? fileData->BufferSize : 0;
+        {
+            lock_guard lock(m_mutexQueue);
+            if ((m_uploadBufferMemory + bufferSizeToSend) > m_maxBufferMemory)
+            {
+                LOG_RARELY(10, WARN, "Reached upload size limit, skipping. cacheKey={}, size={}, upload pending={}",
+                    cacheKey, bufferSizeToSend, m_uploadBufferMemory);
+                return false;
+            }
 
-    m_cvQueue.notify_one();
+            m_uploadBufferMemory += bufferSizeToSend;
+            auto uploadContext = make_unique<UploadContext>(mountName, serverIndex, cacheKey, fileData,
+                encryptionUtil, move(fileAttributes));
+            m_uploadQueue.push(move(uploadContext));
+        }
+
+        m_cvQueue.notify_one();
+    }
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------

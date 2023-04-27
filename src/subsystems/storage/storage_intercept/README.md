@@ -100,6 +100,7 @@ cacheAuthAccountKey [Shared key used for authentication]
 cacheIBEnabled [true or false - Use infiniband for cache client-server communication]
 prefetchCacheTotalSizeInMB [Max in-memory data cache size]
 prefetchCachePerFileSizeInMB [Max in-memory data cache size per file]
+cacheEnableSyncUpload [After downloading chunk from remote blob on a cache miss upload to cache server synchronously in critical path. Note: This will increase client IO latency. default - false]
 ```
 
 ### Config for running interception on multiple mounts
@@ -142,6 +143,7 @@ cacheUseLocalFS false
 cacheLocalFSCachePath /tmp/_cache
 cacheNumServers 1
 cacheReuseServerConnections true
+cacheMaxConnectionsReuseSize 1024
 ```
 4. Execute the tests from bash shell
 ```
