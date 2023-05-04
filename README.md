@@ -1,6 +1,7 @@
 # DACS
 
 This repository contains the native components of DACS, including device proxy, CRIU deduper, LFS interceptor and storage cache layer. 
+To set up you development enviornment, you can follow [this wiki](internal-reference-removed).
 
 ## Getting Started
 
@@ -129,7 +130,7 @@ These are the steps used to run C# unit tests.
     ```
    $ cd <path to repository root>
    $ ./bldenv.sh
-   $ .pipelines/unittest.sh [Release|Debug]
+   $.pipelines/nativeunittest.sh [Release|Debug] [optional_name_of_unittest_to_run]
    ```
 
 ## Run native unit tests 
@@ -149,7 +150,7 @@ These are the steps used to run native unit tests.
     ```
    $ cd <path to repository root>
    $ ./bldenv.sh
-   $ .pipelines/nativeunittest.sh [Release|Debug]
+   $ .pipelines/nativeunittest.sh [Release|Debug] [optional_name_of_unittest_to_run]
    ```
 
 ## Updating native build container
@@ -161,3 +162,42 @@ These are the steps used to run native unit tests.
    $ dotnet msbuild -M -t:ContainerPublish src/images/native-build/native-build.dockerproj           
    ```
 - Make sure that the final update to build/.metadata/native-build.container.metadata is included in your PR.
+
+
+## AMD support guidelines
+
+DACS supports builds for both NVIDIA and AMD. Most code is written for NVIDIA's CUDA APIs,
+and during build, the code is translated to AMD's HIP APIs.
+This works well for most cases, but there are some cases where the code is not compatible with AMD's HIP APIs.
+If you get compilation errors, here's what you can do:
+
+### The build process:
+
+1. When building for AMD, the build script copies the entire `src` tree to `bin/amd_code_copy`.
+1. Then, the tool located at `.pipelines/amd/code_translation.py` runs `hipify-perl`
+   and some custom logic on all the files in `bin/amd_code_copy` to translate CUDA APIs to HIP APIs (eg. `cudaMemcpy` to `hipMemcpy`).
+1. Then, the code is compiled against ROCm's HIP APIs.
+
+### Resolving issues:
+
+If you get compilation errors, you can look at the files in `bin/amd_code_copy` to see what the code looks like after translation.
+Sometimes, AMD's APIs are not compatible with NVIDIA's APIs, and you will have to write custom code for AMD - by keeping a common
+file for both AMD and NVIDIA, and writing AMD-specific and NVIDIA-specific code in a separate file. Then, in the CMake file for the project,
+you will need to use the `GPU_TYPE` CMake variable to specify the correct version to be picked up during compilation. See `/home/divagrawal/DACS/src/subsystems/reliability/device_proxy/CMakeLists.txt` as an examle.
+
+- For example, you can look at `src/subsystems/reliability/device_proxy/profiler/gpu_profiler/` to see how we have support for both NVIDIA
+  and AMD profiling.
+- Usually, you will find the need to write separate files for API mocking.
+- We avoid using `#ifdef AMD_BUILD` as much as possible, and instead use separate files for AMD and NVIDIA.
+  We also try to keep as much logic common to both as possible.
+
+### Examples:
+
+- Even though some APIs look similar, they may not be compatible. For example, `hipLaunchCooperativeKernel` is not compatible with
+  `cudaLaunchCooperativeKernel` due a slight difference in their signatures.
+- Some macros to reduce code duplication are present in `src/subsystems/reliability/device_proxy/common/{amd/nvidia}/commonUtils.h`.
+- See the `nvidia` and `amd` directories in `src/subsystems/reliability/device_proxy/proxy_server/elasticity_utils/nvidia/kernel_utils` for
+  how subtle differences in API support are resolved.
+- Some concepts don't exist in AMD. For example, cuDNN is an NVIDIA-specific library. To prevent major refactoring in the code base, we created empty structs and enumns for 
+  cuDNN ( which gets translated to hipIgnore by our custom python translator ), so that the code can compile but remain no-op.
+  See `src/subsystems/reliability/device_proxy/common/amd/hipIgnore.h and hipIgnoreEnums.h`. If in the future, a new NVIDIA-only lib is added, a similar approach could be considered.
