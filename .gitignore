@@ -418,3 +418,5 @@ runs/**
 src/subsystems/reliability/gpu_unit_tests/models/torch_bench/benchmark
 src/subsystems/reliability/gpu_unit_tests/models/torch_bench/azcopy_linux_amd64_10.17.0
 src/subsystems/reliability/gpu_unit_tests/models/torch_bench/azcopy_linux_amd64_10.17.0/azcopy
+logs/**
+.hypothesis/**
