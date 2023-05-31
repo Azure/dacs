@@ -71,6 +71,7 @@ class CacheUploadManager
         std::condition_variable                        m_cvQueue;
         const uint64_t                                 m_maxBufferMemory;
         const uint32_t                                 m_keyExpirySeconds;
+        const std::string                              m_keyGroupId;
         const bool                                     m_enableSyncUpload;
 
         const int                                      m_numUploadThreads;

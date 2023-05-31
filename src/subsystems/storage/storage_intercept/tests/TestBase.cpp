@@ -83,7 +83,7 @@ void TestBase::SetupMockRemoteClient()
     mockClientConfig[StorageInterceptConstants::ConfigNameMockClientRoot] = mockClientRootDir;
 
     // Step 2: Write the config
-    std::ofstream outConfig(StorageInterceptConstants::ConfigFilePath);
+    std::ofstream outConfig(StorageInterceptConstants::DefaultConfigFilePath);
     outConfig
         << StorageInterceptConstants::ConfigNameStoragePath
         << ' ' << m_strInterceptPath << std::endl

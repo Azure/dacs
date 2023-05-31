@@ -7,6 +7,7 @@
 #include "StorageDlsymWrapper.h"
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <stdio.h>
 #include <sstream>
 #include <boost/algorithm/string.hpp>
 //---------------------------------------------------------------------------------------------------------------------
@@ -28,17 +29,24 @@ void StorageInterceptConfig::LoadConfig()
     const mode_t CONFIG_FILE_OPEN_MODE=0777;
     const int XSTAT_VERSION=1;
 
+    std::string strConfigFilePath = StorageInterceptConstants::DefaultConfigFilePath;
+    const char* configFilePath = std::getenv(StorageInterceptConstants::ConfigFilePathEnv);
+    if (configFilePath != nullptr && configFilePath[0] != '\0')
+    {
+        strConfigFilePath = configFilePath;
+    }
+
     struct stat64 stBuf;
     if (StorageDlsymWrapper::xstat64(
         XSTAT_VERSION,
-        StorageInterceptConstants::ConfigFilePath,
+        strConfigFilePath.c_str(),
         &stBuf) != 0)
     {
         throw "Error getting stat for config file";
     }
 
     int nConfigFileHandle = StorageDlsymWrapper::open(
-            StorageInterceptConstants::ConfigFilePath,
+            strConfigFilePath.c_str(),
             O_RDONLY,
             CONFIG_FILE_OPEN_MODE);
 
@@ -101,6 +109,9 @@ void StorageInterceptConfig::LoadConfig()
         std::string value = line.substr(idx + 1);
 
         boost::trim(key);
+
+        // Converting key to uppercase to make key search as case insensitive
+        boost::to_upper(key);
         boost::trim(value);
         if (value.find("${") == 0 && value.back() == '}')
         {
@@ -120,12 +131,52 @@ void StorageInterceptConfig::LoadConfig()
         lineNumber++;
     }
 
+    // Overwrite config values with those defined in environment variables
+    LoadFromEnvVariables();
+
     if (lineNumber == 0)
     {
         throw "Config file is empty";
     }
 
     m_IsConfigLoaded = true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+void StorageInterceptConfig::LoadFromEnvVariables()
+{
+    extern char **environ;
+    char **envVariableIter = environ;
+
+    // Iterate over all environment variables set for this process
+    while (*envVariableIter) {
+        std::string envStr = *envVariableIter;
+        boost::trim(envStr);
+
+        // Check if the env matches storage interception env prefix
+        if (envStr.find(StorageInterceptConstants::ConfigEnvPrefix) == 0)
+        {
+            // Discard the prefix and use the key
+            envStr = envStr.substr(strlen(StorageInterceptConstants::ConfigEnvPrefix));
+            size_t idxSeparater = envStr.find('=');
+            if (idxSeparater != std::string::npos)
+            {
+                std::string envKey = envStr.substr(0, idxSeparater);
+                std::string envValue = envStr.substr(idxSeparater + 1);
+
+                boost::trim(envKey);
+                boost::to_upper(envKey);
+                boost::trim(envValue);
+
+                // envValue can be empty, this will allow clearing of existing config value by using an environment variable.
+                if (!envKey.empty())
+                {
+                    m_ConfigProps[envKey] = envValue;
+                }
+            }
+        }
+
+        envVariableIter++;
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::string StorageInterceptConfig::GetConfigStr(
@@ -137,7 +188,7 @@ std::string StorageInterceptConfig::GetConfigStr(
         LoadConfig();
     }
 
-    auto it = config.find(configName);
+    auto it = config.find(boost::to_upper_copy<std::string>(configName));
     if (it != config.end())
     {
         return it->second;
@@ -167,7 +218,7 @@ std::string StorageInterceptConfig::GetOptionalConfigStr(
         LoadConfig();
     }
 
-    auto it = config.find(configName);
+    auto it = config.find(boost::to_upper_copy<std::string>(configName));
     if (it != config.end())
     {
         return it->second;
@@ -532,6 +583,14 @@ uint32_t StorageInterceptConfig::GetCacheKeyExpirySeconds()
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameCacheKeyExpirySeconds,
         24 * 60 * 60 /* 1 day */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::GetCacheKeyGroupId()
+{
+    return StorageInterceptConfig::GetOptionalConfigStr(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheKeyGroupId,
+        "");
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetAttributesCacheEnable(const std::string& mountName)

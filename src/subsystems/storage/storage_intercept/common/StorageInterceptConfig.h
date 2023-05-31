@@ -55,6 +55,7 @@ class StorageInterceptConfig
         bool GetCacheReuseServerConnections();
         uint32_t GetCacheMaxConnectionsReuseSize();
         uint32_t GetCacheKeyExpirySeconds();
+        std::string GetCacheKeyGroupId();
 
         // Getters for attribute cache
         bool GetAttributesCacheEnable(const std::string& mountName);
@@ -103,6 +104,9 @@ class StorageInterceptConfig
 
         // Load the config by reading from the config file
         void LoadConfig();
+
+        // Overwrite config values with those defined in environment variables
+        void LoadFromEnvVariables();
 
         // Private helper function to get config string value.
         std::string GetConfigStr(

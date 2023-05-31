@@ -7,7 +7,9 @@
 //---------------------------------------------------------------------------------------------------------------------
 namespace StorageInterceptConstants
 {
-    const char* const ConfigFilePath = "/tmp/storageIntercept.config";
+    const char* const DefaultConfigFilePath = "/tmp/storageIntercept.config";
+    const char* const ConfigFilePathEnv = "STORAGE_INTERCEPT_CONFIG_FILEPATH";
+    const char* const ConfigEnvPrefix = "SI_";
 
     const char* const ConfigNameStoragePath = "storagePath";
 
@@ -47,6 +49,7 @@ namespace StorageInterceptConstants
     const char* const ConfigNameCacheReuseServerConnections = "cacheReuseServerConnections";
     const char* const ConfigNameCacheMaxConnectionsReuseSize = "cacheMaxConnectionsReuseSize";
     const char* const ConfigNameCacheKeyExpirySeconds = "cacheKeyExpirySeconds";
+    const char* const ConfigNameCacheKeyGroupId = "cacheKeyGroupId";
     const char* const ConfigNameCacheAuthEnabled = "cacheAuthEnabled";
     const char* const ConfigNameCacheAuthAccountName = "cacheAuthAccountName";
     const char* const ConfigNameCacheAuthAccountKey = "cacheAuthAccountKey";
