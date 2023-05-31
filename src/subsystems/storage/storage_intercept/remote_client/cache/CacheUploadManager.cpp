@@ -23,6 +23,7 @@ CacheUploadManager::CacheUploadManager(
       m_numUploadThreads(numUploadThreads),
       m_maxBufferMemory(maxTotalBufferSize),
       m_keyExpirySeconds(StorageInterceptConfig::GetInstance().GetCacheKeyExpirySeconds()),
+      m_keyGroupId(StorageInterceptConfig::GetInstance().GetCacheKeyGroupId()),
       m_enableSyncUpload(StorageInterceptConfig::GetInstance().GetCacheEnableSyncUpload())
 {
     // start worker threads
@@ -37,8 +38,12 @@ CacheUploadManager::CacheUploadManager(
         }
     }
 
-    LOG_INFO("Started CacheUploadManager. workers={}, max uploadbuffer={} bytes, expiry={} sec, asyncupload={}",
-        m_numUploadThreads, m_maxBufferMemory, m_keyExpirySeconds, m_enableSyncUpload ? "false" : "true");
+    LOG_INFO("Started CacheUploadManager. workers={}, max uploadbuffer={} bytes, expiry={}, groupId={} asyncupload={}",
+        m_numUploadThreads,
+        m_maxBufferMemory,
+        m_keyExpirySeconds,
+        m_keyGroupId,
+        m_enableSyncUpload ? "false" : "true");
 }
 //---------------------------------------------------------------------------------------------------------------------
 CacheUploadManager::~CacheUploadManager()
@@ -78,6 +83,10 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
     uploadRequest->set_filesize(bufferSizeToSend);
     uploadRequest->set_ignorelock(true);
     uploadRequest->set_expiryseconds(m_keyExpirySeconds);
+    if (!m_keyGroupId.empty())
+    {
+        uploadRequest->set_groupid(m_keyGroupId);
+    }
 
     if (uploadContext->m_fileAttributes.get())
     {
