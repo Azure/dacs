@@ -162,6 +162,21 @@ function stop_cache_server() {
   echo "Stopped CacheServer"
 }
 
+function test_liveness() {
+  export TEST_CACHESERVER_ADDR_PORT="${CACHE_SERVER_PORT}"
+  export TEST_CHECK_LIVENESS="true"
+  TEST_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/cacheServerTestClient "
+  TEST_CLIENT_CMD="${TEST_CLIENT_EXE}"
+  echo "starting Cache Server Liveness test with command: ${TEST_CLIENT_CMD}"
+  eval "${TEST_CLIENT_CMD}"
+  if [ $? -ne 0 ]
+  then
+      echo "Cache Server Liveness failed"
+      exit 1
+  fi
+  echo "Cache Server Liveness test completed with success"
+}
+
 function reset_local_ssd_cache() {
   echo "Clearing local ssd cache"
   if [[ -d ${CACHE_LOCAL_SSD_PATH} ]]; then
@@ -199,6 +214,9 @@ start_cache_server
 echo "Sleeping 30 secs to allow cache server to start and initialize"
 echo ""
 sleep 30
+
+#test liveness of the cache server
+test_liveness
 
 echo "Running unit tests against blob with cache enabled"
 add_interception_config_blob_with_cache /mnt/dataPathIntcpt

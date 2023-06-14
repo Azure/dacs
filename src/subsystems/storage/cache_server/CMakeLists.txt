@@ -53,3 +53,5 @@ target_link_libraries(
 add_custom_command(
     TARGET ${CACHE_SERVER_EXEC} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${CACHE_SERVER_EXEC}> ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
+
+add_subdirectory(./test/)
