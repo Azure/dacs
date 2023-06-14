@@ -1739,6 +1739,17 @@ void TestIB()
     RUNTEST(TestIBAPIParallel());
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool TestLiveness()
+{
+    string file1 = GetUniqueFilename("livenessTest");
+    bool result = false;
+
+    result = TestDownloadAPI(file1, 0, 1024 * 1024, false, DownloadResponse::NOT_FOUND, nullptr);
+    cout<< "Result for TestDownloadAPI: " << result << endl;
+
+    return result;
+}
+//---------------------------------------------------------------------------------------------------------------------
 int main(int argc, char *argv[])
 {
     char* cacheServerHost = std::getenv("TEST_CACHESERVER_ADDR_HOST");
@@ -1753,7 +1764,22 @@ int main(int argc, char *argv[])
         ServerPort = std::stoi(cacheServerPort);
     }
 
-    if (argc > 1)
+    char* checkLiveness = std::getenv("TEST_CHECK_LIVENESS");
+    if(checkLiveness != nullptr)
+    {
+        if(strcmp(checkLiveness, "true") == 0)
+        {
+            bool result = TestLiveness();
+            cout << "result of Liveness is " << result << endl;
+            if(result)
+            {
+                return 0;
+            }
+            return 1;
+        }
+    }
+
+    if(argc > 1)
     {
         return TestLimits();
     }
