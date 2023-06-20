@@ -24,6 +24,7 @@
     <_StorageIntercept>src/subsystems/storage/storage_intercept/</_StorageIntercept>
     <_CacheServer>src/subsystems/storage/cache_server/</_CacheServer>
     <_StorageCommonNative>src/subsystems/storage/common/</_StorageCommonNative>
+    <_CacheStressTests>src/subsystems/storage/stress_tests/</_CacheStressTests>
     <_DynamicPatches>src/subsystems/reliability/dynamic_patches/</_DynamicPatches>
     <_ABTest>src/subsystems/reliability/ab_test/</_ABTest>
     <_ABTestTests>src/subsystems/reliability/ab_test.tests/</_ABTestTests>
@@ -42,6 +43,7 @@
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_StorageIntercept)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_CacheServer)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_StorageCommonNative)</_SrcSyncDirs>
+    <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_CacheStressTests)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_DynamicPatches)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_ABTest)</_SrcSyncDirs>
     <_SrcSyncDirs>$(_SrcSyncDirs):$(RepositoryRootPath)/$(_ABTestTests)</_SrcSyncDirs>

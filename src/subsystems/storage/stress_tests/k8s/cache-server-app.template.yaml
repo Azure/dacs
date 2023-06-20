@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cacheserver
+spec:
+  selector:
+    matchLabels:
+      app: cacheserver
+  serviceName: cacheserver
+  replicas: %NUM_REPLICAS%
+  template:
+    metadata:
+      labels:
+        app: cacheserver
+    spec:
+      terminationGracePeriodSeconds: 10
+      imagePullSecrets:
+      - name: regcred
+      containers:
+      - name: cacheserver
+        image: dacs.azurecr.io/users/surkris/cache:poc-oci
+        ports:
+        - containerPort: 9065
+          # Cache server big enough to fit entire dataset
+          # The port which the cache server listens on should match the container port exposed
+          # in the line above
+        command: ['/bin/sh', '-c', '/home/dacsuser/CacheServer 9065 /tmp %CACHE_SIZE%']
+        resources:
+          limits:
+            ephemeral-storage: %EPHEMERAL_LIMIT%Gi
+#        volumeMounts:
+#        - mountPath: "/mnt/azure"
+#          name: pv-data-50
+#  volumeClaimTemplates:
+#  - metadata:
+#      name: pv-data-50
+#    spec:
+#      accessModes: 
+#      - ReadWriteOnce
+#      storageClassName: managed-csi-premium      
+#      resources:
+#        requests:
+#          storage: 50Gi

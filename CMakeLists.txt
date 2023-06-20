@@ -113,6 +113,7 @@ if(NOT CUDA_VERSION OR "${CUDA_VERSION}" MATCHES "non_cuda")
     add_subdirectory(src/subsystems/reliability/amd_nccl_intercept/)
     add_subdirectory(src/subsystems/storage/cache_server/)
     add_subdirectory(src/subsystems/storage/storage_intercept/)
+    add_subdirectory(src/subsystems/storage/stress_tests/)
     add_subdirectory(src/subsystems/reliability/ab_test/)
     add_subdirectory(src/subsystems/reliability/ab_test.tests/)
 
