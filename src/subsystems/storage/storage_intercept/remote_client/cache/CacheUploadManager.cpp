@@ -63,11 +63,6 @@ CacheUploadManager::~CacheUploadManager()
 bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
 {
     // TODO: Implement retries on failure
-    LOG_DEBUG("Uploading mountName: {}, file: {}, length: {}, fileAttributes: {}",
-        uploadContext->m_strMountName,
-        uploadContext->m_strCacheKey,
-        uploadContext->m_fileData.get() ? uploadContext->m_fileData->BufferSize : 0,
-        uploadContext->m_fileAttributes.get() ? "yes" : "no");
 
     char* bufferToSend = nullptr;
     size_t bufferSizeToSend = 0;
@@ -79,10 +74,19 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
 
     Request request;
     UploadRequest* uploadRequest = request.mutable_uploadrequest();
+    uploadRequest->set_requestid(cacheutils::GetCorrelationId());
     uploadRequest->set_filename(uploadContext->m_strCacheKey);
     uploadRequest->set_filesize(bufferSizeToSend);
     uploadRequest->set_ignorelock(true);
     uploadRequest->set_expiryseconds(m_keyExpirySeconds);
+
+    LOG_INFO_REQID("Uploading mountName: {}, file: {}, length: {}, fileAttributes: {}",
+        *uploadRequest,
+        uploadContext->m_strMountName,
+        uploadContext->m_strCacheKey,
+        uploadContext->m_fileData.get() ? uploadContext->m_fileData->BufferSize : 0,
+        uploadContext->m_fileAttributes.get() ? "yes" : "no");
+
     if (!m_keyGroupId.empty())
     {
         uploadRequest->set_groupid(m_keyGroupId);
@@ -99,7 +103,7 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
 
     if (!AddAuthParams(request))
     {
-        LOG_WARN("failed to create auth request for file: {}", uploadContext->m_strCacheKey);
+        LOG_WARN_REQID("failed to create auth request for file: {}", *uploadRequest, uploadContext->m_strCacheKey);
         return false;
     }
 
@@ -119,7 +123,7 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
             uploadRequest, uploadContext->m_fileData, encBuffer, encLen);
         if (!bRet)
         {
-            LOG_WARN("couldn't encrypt data to send to server, file: {}", uploadContext->m_strCacheKey);
+            LOG_WARN_REQID("couldn't encrypt data to send to server, file: {}", *uploadRequest, uploadContext->m_strCacheKey);
             return false;
         }
         
@@ -134,7 +138,7 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
     auto serverConnection = move(m_connectionManager.GetConnection(uploadContext->m_serverIndex));
     if (serverConnection.get() == nullptr)
     {
-        LOG_WARN("couldn't get server connection, ignoring upload for file: {}", uploadContext->m_strCacheKey);
+        LOG_WARN_REQID("couldn't get server connection, ignoring upload for file: {}", *uploadRequest, uploadContext->m_strCacheKey);
         return false;
     }
 
@@ -150,7 +154,7 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
 
     if (!bRet)
     {
-        LOG_WARN("couldn't send request, ignoring upload for file: {}", uploadContext->m_strCacheKey);
+        LOG_WARN_REQID("couldn't send request, ignoring upload for file: {}", *uploadRequest, uploadContext->m_strCacheKey);
         m_connectionManager.ReleaseConnection(uploadContext->m_serverIndex, move(serverConnection), true);
         return false;
     }
@@ -160,7 +164,7 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
         bool bRet = cacheutils::WriteAllFinal(serverConnection.get(), bufferToSend, bufferSizeToSend);
         if (!bRet)
         {
-            LOG_WARN("couldn't complete write to server, file: {}", uploadContext->m_strCacheKey);
+            LOG_WARN_REQID("couldn't complete write to server, file: {}", *uploadRequest, uploadContext->m_strCacheKey);
             m_connectionManager.ReleaseConnection(uploadContext->m_serverIndex, move(serverConnection), true);
             return false;
         }
@@ -169,7 +173,7 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
     string strResponse;
     if (!ReadMessageFromRemote(serverConnection.get(), strResponse))
     {
-        LOG_WARN("couldn't read response from server. file: {}", uploadContext->m_strCacheKey);
+        LOG_WARN_REQID("couldn't read response from server. file: {}", *uploadRequest, uploadContext->m_strCacheKey);
         m_connectionManager.ReleaseConnection(uploadContext->m_serverIndex, move(serverConnection), true);
         return false;
     }
@@ -177,7 +181,7 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
     UploadResponse response;
     if (!response.ParseFromString(strResponse))
     {
-        LOG_WARN("couldn't parse response from server. file: {}", uploadContext->m_strCacheKey);
+        LOG_WARN_REQID("couldn't parse response from server. file: {}", *uploadRequest, uploadContext->m_strCacheKey);
         m_connectionManager.ReleaseConnection(uploadContext->m_serverIndex, move(serverConnection), true);
         return false;
     }
@@ -185,12 +189,12 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
     bool status = false;
     if (response.result() == UploadResponse::SUCCESS)
     {
-        LOG_DEBUG("Uploaded to server successfully. file: {}", uploadContext->m_strCacheKey);
+        LOG_DEBUG_REQID("Uploaded to server successfully. file: {}", *uploadRequest, uploadContext->m_strCacheKey);
         status = true;
     }
     else
     {
-        LOG_WARN("Upload to server failed. file: {}, error: {}", uploadContext->m_strCacheKey, response.result());
+        LOG_WARN_REQID("Upload to server failed. file: {}, error: {}", *uploadRequest, uploadContext->m_strCacheKey, response.result());
     }
 
     m_connectionManager.ReleaseConnection(uploadContext->m_serverIndex, move(serverConnection), false);

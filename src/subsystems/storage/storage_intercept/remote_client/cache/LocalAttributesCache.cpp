@@ -42,19 +42,21 @@ CacheStatus LocalAttributesCache::Get(const std::string& path, FileAttributes& f
     CacheStatus cacheStatus(CacheStatus::INTERNAL_ERROR);
     cache::Request request;
     cache::GetAttributeRequest* getAttributeRequest = request.mutable_getattributerequest();
+    getAttributeRequest->set_requestid(cacheutils::GetCorrelationId());
     getAttributeRequest->set_filename(path);
     getAttributeRequest->set_enablelock(true);
+    LOG_INFO_REQID("Creating GetAttributeRequest for path: {}", *getAttributeRequest, path);
 
     auto serverConnection = move(m_spConnectionManager->GetConnection(0));
     if (serverConnection.get() == nullptr)
     {
-        LOG_WARN("couldn't get server connection");
+        LOG_WARN_REQID("couldn't get server connection", *getAttributeRequest);
         return cacheStatus;
     }
 
     if (!SendMessageToRemoteFinal(serverConnection.get(), request))
     {
-        LOG_WARN("couldn't send message to server");
+        LOG_WARN_REQID("couldn't send message to server", *getAttributeRequest);
         m_spConnectionManager->ReleaseConnection(0, move(serverConnection), true);
         return cacheStatus;
     }
@@ -62,7 +64,7 @@ CacheStatus LocalAttributesCache::Get(const std::string& path, FileAttributes& f
     string responseMessage;
     if (!ReadMessageFromRemote(serverConnection.get(), responseMessage))
     {
-        LOG_WARN("couldn't read message from server");
+        LOG_WARN_REQID("couldn't read message from server", *getAttributeRequest);
         m_spConnectionManager->ReleaseConnection(0, move(serverConnection), true);
         return cacheStatus;
     }
@@ -70,13 +72,13 @@ CacheStatus LocalAttributesCache::Get(const std::string& path, FileAttributes& f
     cache::GetAttributeResponse response;
     if (!response.ParseFromString(responseMessage))
     {
-        LOG_WARN("error: Failed to parse protobuf message");
+        LOG_WARN_REQID("error: Failed to parse protobuf message", *getAttributeRequest);
         m_spConnectionManager->ReleaseConnection(0, move(serverConnection), true);
         return cacheStatus;
     }
 
-    LOG_DEBUG("GetAttributeResponse from server: {}, key: {}, filesize: {}",
-        response.result(), path, response.fileattribute().filesize());
+    LOG_DEBUG_REQID("GetAttributeResponse from server: {}, key: {}, filesize: {}",
+         *getAttributeRequest, response.result(), path, response.fileattribute().filesize());
     if (response.result() == cache::GetAttributeResponse::SUCCESS)
     {
         fileAttributes.isDir = response.fileattribute().isdir();
@@ -96,12 +98,12 @@ CacheStatus LocalAttributesCache::Get(const std::string& path, FileAttributes& f
     }
     else if (response.result() == cache::GetAttributeResponse::AUTH_FAILED)
     {
-        LOG_WARN("Server returned auth failure for key: {}", path);
+        LOG_WARN_REQID("Server returned auth failure for key: {}", *getAttributeRequest, path);
         cacheStatus = CacheStatus::AUTH_FAILED;
     }
     else
     {
-        LOG_WARN("Server returned internal failure for key: {}", path);
+        LOG_WARN_REQID("Server returned internal failure for key: {}", *getAttributeRequest, path);
         cacheStatus = CacheStatus::INTERNAL_ERROR;
     }
 
@@ -193,6 +195,7 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
 
     cache::Request request;
     cache::PutAttributeRequest* putAttributeRequest = request.mutable_putattributerequest();
+    putAttributeRequest->set_requestid(cacheutils::GetCorrelationId());
     while (!uploadQueue.empty())
     {
         auto queueEntry = move(uploadQueue.front());
@@ -205,26 +208,27 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
         attr->set_accessedtime(queueEntry->m_fileAttributes.aTime.tv_sec);
         attr->set_modifiedtime(queueEntry->m_fileAttributes.mTime.tv_sec);
     }
+    LOG_INFO_REQID("Creating PutAttributeRequest with {} entries", *putAttributeRequest, putAttributeRequest->fileattributes_size());
 
     auto serverConnection = move(m_spConnectionManager->GetConnection(0));
     if (serverConnection.get() == nullptr)
     {
-        LOG_WARN("couldn't get server connection, ignoring upload");
+        LOG_WARN_REQID("couldn't get server connection, ignoring upload", *putAttributeRequest);
         return false;
     }
 
     if (!SendMessageToRemoteFinal(serverConnection.get(), request))
     {
-        LOG_WARN("couldn't send request, ignoring upload");
+        LOG_WARN_REQID("couldn't send request, ignoring upload", *putAttributeRequest);
         m_spConnectionManager->ReleaseConnection(0, move(serverConnection), true);
         return false;
     }
 
-    LOG_DEBUG("PutAttributeRequest request sent to server");
+    LOG_DEBUG_REQID("PutAttributeRequest request sent to server", *putAttributeRequest);
     string strResponse;
     if (!ReadMessageFromRemote(serverConnection.get(), strResponse))
     {
-        LOG_WARN("couldn't read response from server");
+        LOG_WARN_REQID("couldn't read response from server", *putAttributeRequest);
         m_spConnectionManager->ReleaseConnection(0, move(serverConnection), true);
         return false;
     }
@@ -232,18 +236,18 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
     cache::GetAttributeResponse response;
     if (!response.ParseFromString(strResponse))
     {
-        LOG_WARN("couldn't parse GetAttributeResponse from server");
+        LOG_WARN_REQID("couldn't parse GetAttributeResponse from server", *putAttributeRequest);
         m_spConnectionManager->ReleaseConnection(0, move(serverConnection), true);
         return false;
     }
 
     if (response.result() == cache::GetAttributeResponse::SUCCESS)
     {
-        LOG_DEBUG("Uploaded attributes to server successfully");
+        LOG_DEBUG_REQID("Uploaded attributes to server successfully", *putAttributeRequest);
     }
     else
     {
-        LOG_WARN("Upload attributes to server failed, result: {}", response.result());
+        LOG_WARN_REQID("Upload attributes to server failed, result: {}",  *putAttributeRequest, response.result());
         // TODO: log entries which failed
     }
     m_spConnectionManager->ReleaseConnection(0, move(serverConnection), false);

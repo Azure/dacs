@@ -30,5 +30,8 @@ namespace cacheutils
     uint32_t GetServerIndex(const std::string& filePath, uint32_t numServers);
     bool AddAuthParams(cache::Request& request);
     std::string GetSHA256Hex(const std::string& message);
+
+    // Generate a globally-unique ID. Takes ~4ms for 10K invocations.
+    std::string GetCorrelationId();
 }
 //---------------------------------------------------------------------------------------------------------------------

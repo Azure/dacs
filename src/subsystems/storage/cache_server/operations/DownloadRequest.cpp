@@ -48,7 +48,7 @@ bool AuthenticateRequest(const DownloadRequest& request)
         std::to_string(timestamp);
     if (!request.authparams().enabled())
     {
-        LOG_WARN("Auth params not sent by client");
+        LOG_WARN_REQID("Auth params not sent by client", request);
         return false;
     }
 
@@ -58,7 +58,7 @@ bool AuthenticateRequest(const DownloadRequest& request)
         serializedHeaders,
         timestamp))
     {
-        LOG_WARN("Auth validation failure");
+        LOG_WARN_REQID("Auth validation failure", request);
         return false;
     }
 
@@ -67,13 +67,13 @@ bool AuthenticateRequest(const DownloadRequest& request)
 //---------------------------------------------------------------------------------------------------------------------
 bool DownloadFile(IConnection& clientConnection, const DownloadRequest& downloadRequest)
 {
-    LOG_DEBUG("filename: {}, offset: {}, length: {}",
-        downloadRequest.filename(), downloadRequest.offset(), downloadRequest.length());
+    LOG_DEBUG_REQID("filename: {}, offset: {}, length: {}",
+        downloadRequest, downloadRequest.filename(), downloadRequest.offset(), downloadRequest.length());
 
     DownloadResponse downloadResponse;
     if (!AuthenticateRequest(downloadRequest))
     {
-        LOG_WARN("Failed to authenticate request");
+        LOG_WARN_REQID("Failed to authenticate request", downloadRequest);
         downloadResponse.set_result(DownloadResponse::AUTH_FAILED);
         return SendMessageToRemoteFinal(clientConnection, downloadResponse);
     }
@@ -81,7 +81,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
     // Set limit on filename length
     if (downloadRequest.filename().size() > UPLOAD_FILENAME_LIMIT)
     {
-        LOG_WARN("filename too large, size: {}", downloadRequest.filename().size());
+        LOG_WARN_REQID("filename too large, size: {}", downloadRequest, downloadRequest.filename().size());
         downloadResponse.set_result(DownloadResponse::FILENAME_LIMIT_EXCEEDED);
         return SendMessageToRemoteFinal(clientConnection, downloadResponse);
     }
@@ -94,17 +94,17 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
         {
             // TODO: Handle scenario when this response doesn't make it to the client.
             //       Subsequent clients will never get a lock and the file will not be cached.
-            LOG_DEBUG("Locked file for download: {}", downloadRequest.filename())
+            LOG_DEBUG_REQID("Locked file for download: {}", downloadRequest, downloadRequest.filename())
             downloadResponse.set_result(DownloadResponse::NOT_FOUND_GOT_LOCK);
         }
         else if (cacheInfo.m_status == CacheManager::CacheStatus::COMPLETED)
         {
-            LOG_DEBUG("Found file in cache: {}, length: {}", downloadRequest.filename(), cacheInfo.m_fileSize);
+            LOG_DEBUG_REQID("Found file in cache: {}, length: {}", downloadRequest, downloadRequest.filename(), cacheInfo.m_fileSize);
             downloadResponse.set_result(DownloadResponse::SUCCESS);
         }
         else
         {
-            LOG_DEBUG("File already locked by another client: {}", downloadRequest.filename())
+            LOG_DEBUG_REQID("File already locked by another client: {}", downloadRequest, downloadRequest.filename())
             downloadResponse.set_result(DownloadResponse::NOT_FOUND_ALREADY_LOCKED);
         }
     }
@@ -113,12 +113,12 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
         cacheInfo = CacheManager::GetInstance().GetCacheInfo(downloadRequest.filename());
         if (cacheInfo.m_status == CacheManager::CacheStatus::COMPLETED)
         {
-            LOG_DEBUG("Found file in cache: {}, length: {}", downloadRequest.filename(), cacheInfo.m_fileSize);
+            LOG_DEBUG_REQID("Found file in cache: {}, length: {}", downloadRequest, downloadRequest.filename(), cacheInfo.m_fileSize);
             downloadResponse.set_result(DownloadResponse::SUCCESS);
         }
         else
         {
-            LOG_DEBUG("File not found in cache: {}", downloadRequest.filename())
+            LOG_DEBUG_REQID("File not found in cache: {}", downloadRequest, downloadRequest.filename())
             downloadResponse.set_result(DownloadResponse::NOT_FOUND);
         }
     }
@@ -129,8 +129,8 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
     {
         if (downloadRequest.offset() > cacheInfo.m_fileSize)
         {
-            LOG_WARN("Download failure, file: {}, offset: {} more than cached filesize: {}",
-                downloadRequest.filename(), downloadRequest.offset(), cacheInfo.m_fileSize);
+            LOG_WARN_REQID("Download failure, file: {}, offset: {} more than cached filesize: {}",
+                downloadRequest, downloadRequest.filename(), downloadRequest.offset(), cacheInfo.m_fileSize);
             downloadResponse.set_result(DownloadResponse::INVALID_OFFSET_LENGTH);
             return SendMessageToRemoteFinal(clientConnection, downloadResponse);
         }
@@ -144,7 +144,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
             downloadFileSize = std::min(cacheInfo.m_fileSize - downloadRequest.offset(), downloadRequest.length());
         }
 
-        LOG_DEBUG("Set download filesize to: {}", downloadFileSize);
+        LOG_DEBUG_REQID("Set download filesize to: {}", downloadRequest, downloadFileSize);
         *(downloadResponse.mutable_metadata()) = cacheInfo.m_metadata;
     }
 
@@ -153,7 +153,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
     {
         if (!SendMessageToRemote(clientConnection, downloadResponse))
         {
-            LOG_WARN("Error sending response to client for file: {}", downloadRequest.filename());
+            LOG_WARN_REQID("Error sending response to client for file: {}", downloadRequest, downloadRequest.filename());
             return false;
         }
 
@@ -161,12 +161,12 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
         int fileFD = open(destFilename.c_str(), O_RDONLY, 0);
         if (fileFD < 0)
         {
-            LOG_WARN("Error opening local file: {}, filename: {}, errno: {}:{}",
-                destFilename, downloadRequest.filename(), errno, strerror(errno));
+            LOG_WARN_REQID("Error opening local file: {}, filename: {}, errno: {}:{}",
+                downloadRequest, destFilename, downloadRequest.filename(), errno, strerror(errno));
             if (errno == ENOENT)
             {
                 // Local file not present, cache state is not consistent with filesystem, reset the cache entry
-                LOG_WARN("Resetting cache for file: {}", downloadRequest.filename());
+                LOG_WARN_REQID("Resetting cache for file: {}", downloadRequest, downloadRequest.filename());
                 CacheManager::GetInstance().ResetCacheInfo(downloadRequest.filename(), downloadFileSize);
             }
             return false;
@@ -176,17 +176,17 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
         close(fileFD);
         if (!bRet)
         {
-            LOG_WARN("Failed to send file: {} to client id: {}", downloadRequest.filename(), clientConnection.GetId());
+            LOG_WARN_REQID("Failed to send file: {} to client id: {}", downloadRequest, downloadRequest.filename(), clientConnection.GetId());
             return false;
         }
 
-        LOG_DEBUG("downloaded and sent file to client successfully: {}", downloadRequest.filename());
+        LOG_DEBUG_REQID("downloaded and sent file to client successfully: {}", downloadRequest, downloadRequest.filename());
     }
     else
     {
         if (!SendMessageToRemoteFinal(clientConnection, downloadResponse))
         {
-            LOG_WARN("Error sending response to client for file: {}", downloadRequest.filename());
+            LOG_WARN_REQID("Error sending response to client for file: {}", downloadRequest, downloadRequest.filename());
             return false;
         }
 

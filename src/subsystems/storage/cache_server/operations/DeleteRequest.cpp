@@ -20,7 +20,7 @@ bool AuthenticateRequest(const DeleteRequest& request)
 
     if (!request.authparams().enabled())
     {
-        LOG_WARN("Auth params not sent by client");
+        LOG_WARN_REQID("Auth params not sent by client", request);
         return false;
     }
 
@@ -37,7 +37,7 @@ bool AuthenticateRequest(const DeleteRequest& request)
         serializedHeaders,
         timestamp))
     {
-        LOG_WARN("Auth validation failure");
+        LOG_WARN_REQID("Auth validation failure", request);
         return false;
     }
 
@@ -46,38 +46,38 @@ bool AuthenticateRequest(const DeleteRequest& request)
 //---------------------------------------------------------------------------------------------------------------------
 bool DeleteFile(IConnection& clientConnection, const DeleteRequest& deleteRequest)
 {
-    LOG_DEBUG("filename: {}, group-id: {}",
-        deleteRequest.filename(), deleteRequest.groupid());
+    LOG_INFO_REQID("filename: {}, group-id: {}",
+        deleteRequest, deleteRequest.filename(), deleteRequest.groupid());
 
     DeleteResponse deleteResponse;
     if (!AuthenticateRequest(deleteRequest))
     {
-        LOG_WARN("Failed to authenticate request");
+        LOG_WARN_REQID("Failed to authenticate request", deleteRequest);
         deleteResponse.set_result(DeleteResponse::AUTH_FAILED);
         return SendMessageToRemoteFinal(clientConnection, deleteResponse);
     }
 
     if (deleteRequest.type_case() != DeleteRequest::kGroupid || deleteRequest.groupid().empty())
     {
-        LOG_WARN("Delete failed: groupid cannot be empty");
+        LOG_WARN_REQID("Delete failed: groupid cannot be empty", deleteRequest);
         deleteResponse.set_result(DeleteResponse::INTERNAL_ERROR);
         return SendMessageToRemoteFinal(clientConnection, deleteResponse);
     }
 
     if (CacheManager::GetInstance().DeleteCacheEntryByGroupID(deleteRequest.groupid()))
     {
-        LOG_INFO("Delete successful. groupId: {}", deleteRequest.groupid());
+        LOG_INFO_REQID("Delete successful. groupId: {}", deleteRequest, deleteRequest.groupid());
         deleteResponse.set_result(DeleteResponse::SUCCESS);
     }
     else
     {
-        LOG_WARN("Failed to delete. groupId: {}", deleteRequest.groupid());
+        LOG_WARN_REQID("Failed to delete. groupId: {}", deleteRequest, deleteRequest.groupid());
         deleteResponse.set_result(DeleteResponse::INTERNAL_ERROR);
     }
 
     if (!SendMessageToRemoteFinal(clientConnection, deleteResponse))
     {
-        LOG_WARN("Error sending delete response to client for groupId: {}", deleteRequest.groupid());
+        LOG_WARN_REQID("Error sending delete response to client for groupId: {}", deleteRequest, deleteRequest.groupid());
         return false;
     }
 

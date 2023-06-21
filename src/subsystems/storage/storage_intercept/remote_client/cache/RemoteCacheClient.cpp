@@ -117,14 +117,17 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(
 
     Request request;
     DownloadRequest* downloadRequest = request.mutable_downloadrequest();
+    downloadRequest->set_requestid(cacheutils::GetCorrelationId());
     downloadRequest->set_filename(cacheKey);
     downloadRequest->set_offset(startOffset);
     downloadRequest->set_length(length);
     downloadRequest->set_enablelock(true);
+    LOG_INFO_REQID("Creating DownloadRequest filename: {}, offset: {}, length: {}, enablelock: true",
+        *downloadRequest, cacheKey, startOffset, length);
 
     if (!AddAuthParams(request))
     {
-        LOG_WARN("failed to create auth request, key: {}", cacheKey);
+        LOG_WARN_REQID("failed to create auth request, key: {}", *downloadRequest, cacheKey);
         return CacheStatus::AUTH_FAILED;
     }
 
@@ -132,13 +135,13 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(
     auto serverConnection = move(m_spConnectionManager->GetConnection(serverIndex));
     if (!serverConnection.get())
     {
-        LOG_WARN("couldn't get server connection, key: {}", cacheKey);
+        LOG_WARN_REQID("couldn't get server connection, key: {}", *downloadRequest, cacheKey);
         return cacheStatus;
     }
 
     if (!SendMessageToRemoteFinal(serverConnection.get(), request))
     {
-        LOG_WARN("couldn't send message to server, key: {}", cacheKey);
+        LOG_WARN_REQID("couldn't send message to server, key: {}", *downloadRequest, cacheKey);
         m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
         return cacheStatus;
     }
@@ -146,7 +149,7 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(
     string responseMessage;
     if (!ReadMessageFromRemote(serverConnection.get(), responseMessage))
     {
-        LOG_WARN("couldn't read message from server, key: {}", cacheKey);
+        LOG_WARN_REQID("couldn't read message from server, key: {}", *downloadRequest, cacheKey);
         m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
         return cacheStatus;
     }
@@ -154,20 +157,20 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(
     DownloadResponse response;
     if (!response.ParseFromString(responseMessage))
     {
-        LOG_WARN("error: Failed to parse protobuf message, key: {}", cacheKey);
+        LOG_WARN_REQID("error: Failed to parse protobuf message, key: {}", *downloadRequest, cacheKey);
         m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
         return cacheStatus;
     }
 
-    LOG_DEBUG("Download response from server: {}, key: {}, filesize: {}",
-        response.result(), cacheKey, response.filesize());
+    LOG_DEBUG_REQID("Download response from server: {}, key: {}, filesize: {}",
+         *downloadRequest, response.result(), cacheKey, response.filesize());
     if (response.result() == DownloadResponse::SUCCESS)
     {
         readLength = response.filesize();
         if (length > 0 && readLength > length)
         {
-            LOG_WARN("Received invalid length from server, key: {}, got: {}, expected: {}",
-                cacheKey, readLength, length);
+            LOG_WARN_REQID("Received invalid length from server, key: {}, got: {}, expected: {}",
+                *downloadRequest, cacheKey, readLength, length);
             m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
             return cacheStatus;
         }
@@ -176,7 +179,7 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(
         {
             if (!buffer)
             {
-                LOG_ERROR("readLength > 0 but no read buffer supplied, key: {}", cacheKey);
+                LOG_ERROR_REQID("readLength > 0 but no read buffer supplied, key: {}", *downloadRequest,  cacheKey);
                 m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
                 return cacheStatus;
             }
@@ -184,7 +187,7 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(
             bool bRet = encryptionUtil.DoDecrypt(response, serverConnection.get(), buffer, readLength);
             if (!bRet)
             {
-                LOG_WARN("Failed to complete read from server, key: {}", cacheKey);
+                LOG_WARN_REQID("Failed to complete read from server, key: {}", *downloadRequest,  cacheKey);
                 m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
                 return cacheStatus;
             }
@@ -198,7 +201,7 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(
             auto strDirFlag = fileMetadata.find(CACHE_META_FILE_ISDIR);
             if (strDirFlag == fileMetadata.end())
             {
-                LOG_WARN("File Attributes isDir not set for the cache key");
+                LOG_WARN_REQID("File Attributes isDir not set for the cache key", *downloadRequest);
                 m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
                 return cacheStatus;
             }
@@ -208,7 +211,7 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(
             auto strSize = fileMetadata.find(CACHE_META_FILE_SIZE);
             if (strSize == fileMetadata.end())
             {
-                LOG_WARN("File Attributes size not set for the cache key");
+                LOG_WARN_REQID("File Attributes size not set for the cache key", *downloadRequest);
                 m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
                 return cacheStatus;
             }
@@ -218,7 +221,7 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(
             auto strATime = fileMetadata.find(CACHE_META_FILE_ATIME);
             if (strATime == fileMetadata.end())
             {
-                LOG_WARN("File Attributes atime not set for the cache key");
+                LOG_WARN_REQID("File Attributes atime not set for the cache key", *downloadRequest);
                 m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
                 return cacheStatus;
             }
@@ -228,7 +231,7 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(
             auto strMTime = fileMetadata.find(CACHE_META_FILE_MTIME);
             if (strMTime == fileMetadata.end())
             {
-                LOG_WARN("File Attributes mtime not set for the cache key");
+                LOG_WARN_REQID("File Attributes mtime not set for the cache key", *downloadRequest);
                 m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
                 return cacheStatus;
             }
@@ -253,7 +256,7 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(
     }
     else
     {
-        LOG_WARN("Server returned internal failure for key: {}", cacheKey);
+        LOG_WARN_REQID("Server returned internal failure for key: {}", *downloadRequest, cacheKey);
         cacheStatus = CacheStatus::INTERNAL_ERROR;
     }
 

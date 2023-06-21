@@ -27,7 +27,7 @@ bool AuthenticateRequest(const LockFileRequest& request)
 
    if (!request.authparams().enabled())
     {
-        LOG_WARN("Auth params not sent by client");
+        LOG_WARN_REQID("Auth params not sent by client", request);
         return false;
     }
     
@@ -37,7 +37,7 @@ bool AuthenticateRequest(const LockFileRequest& request)
         serializedHeaders,
         timestamp))
     {
-        LOG_WARN("Auth validation failure");
+        LOG_WARN_REQID("Auth validation failure", request);
         return false;
     }
 
@@ -46,30 +46,30 @@ bool AuthenticateRequest(const LockFileRequest& request)
 //---------------------------------------------------------------------------------------------------------------------
 bool LockFile(IConnection& clientConnection, const LockFileRequest& lockRequest)
 {
-    LOG_DEBUG("filename received: {}", lockRequest.filename());
+    LOG_INFO_REQID("filename received: {}", lockRequest, lockRequest.filename());
 
     LockFileResponse lockResponse;
     if (!AuthenticateRequest(lockRequest))
     {
-        LOG_WARN("Failed to authenticate request");
+        LOG_WARN_REQID("Failed to authenticate request", lockRequest);
         lockResponse.set_result(LockFileResponse::AUTH_FAILED);
         return SendMessageToRemoteFinal(clientConnection, lockResponse);
     }
 
     if (LockManager::GetInstance().GetLockForUpload(lockRequest.filename()))
     {
-        LOG_DEBUG("Locked file successfully: {}", lockRequest.filename());
+        LOG_DEBUG_REQID("Locked file successfully: {}", lockRequest, lockRequest.filename());
         lockResponse.set_result(LockFileResponse::SUCCESS);
     }
     else
     {
-        LOG_DEBUG("file already locked: {}", lockRequest.filename());
+        LOG_DEBUG_REQID("file already locked: {}", lockRequest, lockRequest.filename());
         lockResponse.set_result(LockFileResponse::ALREADY_LOCKED);
     }
 
     if (!SendMessageToRemoteFinal(clientConnection, lockResponse))
     {
-        LOG_WARN("Error sending lock response to client for file: {}", lockRequest.filename());
+        LOG_WARN_REQID("Error sending lock response to client for file: {}", lockRequest, lockRequest.filename());
         return false;
     }
     return true;
