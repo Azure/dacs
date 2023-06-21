@@ -83,6 +83,7 @@ message AuthParams
 // Only the client which succeeds should perform the upload
 message LockFileRequest
 {
+    string requestid = 999;
     string filename = 1;
     AuthParams authparams = 2;
 }
@@ -102,6 +103,7 @@ message LockFileResponse
 // Upload the file contents into the cache
 message UploadRequest
 {
+    string requestid = 999;
     string filename = 1;
     uint64 filesize = 2;
 
@@ -139,6 +141,7 @@ message UploadResponse
 // Use enablelock to coordinate across multiple workers so that only one worker attempts to populate the cache
 message DownloadRequest
 {
+    string requestid = 999;
     string filename = 1;
     uint64 offset = 2;
 
@@ -169,6 +172,7 @@ message DownloadResponse
 // Delete file entry from cache
 message DeleteRequest
 {
+    string requestid = 999;
     oneof type
     {
         // TODO: Not yet supported
@@ -209,6 +213,7 @@ message FileAttributes
 // Use enablelock to coordinate across multiple workers so that only one worker attempts to populate the cache
 message GetAttributeRequest
 {
+    string requestid = 999;
     string filename = 1;
     bool enablelock = 2;
     AuthParams authparams = 3;
@@ -230,6 +235,7 @@ message GetAttributeResponse
 //---------------------------------------------------------------------------------------------------------------------
 message PutAttributeRequest
 {
+    string requestid = 999;
     repeated FileAttributes fileattributes = 1;
     AuthParams authparams = 2;
 }
@@ -247,6 +253,8 @@ message PutAttributeResponse
 //---------------------------------------------------------------------------------------------------------------------
 message IBInitRequest
 {
+
+    string requestid = 999;
 
     // Unique IB device identifier within the infiniband fabric
     uint32 clientlid = 1;

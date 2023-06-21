@@ -42,7 +42,7 @@ bool AuthenticateRequest(const GetAttributeRequest& request)
 
    if (!request.authparams().enabled())
     {
-        LOG_WARN("Auth params not sent by client");
+        LOG_WARN_REQID("Auth params not sent by client", request);
         return false;
     }
     
@@ -52,7 +52,7 @@ bool AuthenticateRequest(const GetAttributeRequest& request)
         serializedHeaders,
         timestamp))
     {
-        LOG_WARN("Auth validation failure");
+        LOG_WARN_REQID("Auth validation failure", request);
         return false;
     }
 
@@ -71,12 +71,12 @@ void PopulateAttributesInResponse(GetAttributeResponse& getAttributeResponse,
 //---------------------------------------------------------------------------------------------------------------------
 bool HandleGetAttribute(IConnection& clientConnection, const GetAttributeRequest& getAttributeRequest)
 {
-    LOG_DEBUG("filename received: {}, lock: {}", getAttributeRequest.filename(), getAttributeRequest.enablelock());
+    LOG_DEBUG_REQID("filename received: {}, lock: {}", getAttributeRequest, getAttributeRequest.filename(), getAttributeRequest.enablelock());
 
     GetAttributeResponse getAttributeResponse;
     if (!AuthenticateRequest(getAttributeRequest))
     {
-        LOG_WARN("Failed to authenticate request");
+        LOG_WARN_REQID("Failed to authenticate request", getAttributeRequest);
         getAttributeResponse.set_result(GetAttributeResponse::AUTH_FAILED);
         return SendMessageToRemoteFinal(clientConnection, getAttributeResponse);
     }
@@ -88,20 +88,20 @@ bool HandleGetAttribute(IConnection& clientConnection, const GetAttributeRequest
             getAttributeRequest.filename(), cacheAttributes);
         if (bRet == false)
         {
-            LOG_DEBUG("Locked entry for get: {}", getAttributeRequest.filename())
+            LOG_DEBUG_REQID("Locked entry for get: {}", getAttributeRequest, getAttributeRequest.filename());
             getAttributeResponse.set_result(GetAttributeResponse::NOT_FOUND_GOT_LOCK);
         }
         else if (cacheAttributes.m_filesize != -1)
         {
-            LOG_DEBUG("Found entry in cache: {}, filesize: {}",
-                getAttributeRequest.filename(), cacheAttributes.m_filesize);
+            LOG_DEBUG_REQID("Found entry in cache: {}, filesize: {}",
+                getAttributeRequest, getAttributeRequest.filename(), cacheAttributes.m_filesize);
 
             getAttributeResponse.set_result(GetAttributeResponse::SUCCESS);
             PopulateAttributesInResponse(getAttributeResponse, cacheAttributes);
         }
         else
         {
-            LOG_DEBUG("Entry already locked by another client: {}", getAttributeRequest.filename())
+            LOG_DEBUG_REQID("Entry already locked by another client: {}", getAttributeRequest, getAttributeRequest.filename());
             getAttributeResponse.set_result(GetAttributeResponse::NOT_FOUND);
         }
     }
@@ -111,22 +111,22 @@ bool HandleGetAttribute(IConnection& clientConnection, const GetAttributeRequest
         bool bRet = AttributesManager::GetInstance().GetAttribute(getAttributeRequest.filename(), cacheAttributes);
         if (bRet && cacheAttributes.m_filesize != -1)
         {
-            LOG_DEBUG("Found entry in cache: {}, length: {}",
-                getAttributeRequest.filename(), cacheAttributes.m_filesize);
+            LOG_DEBUG_REQID("Found entry in cache: {}, length: {}",
+                getAttributeRequest, getAttributeRequest.filename(), cacheAttributes.m_filesize);
 
             getAttributeResponse.set_result(GetAttributeResponse::SUCCESS);
             PopulateAttributesInResponse(getAttributeResponse, cacheAttributes);
         }
         else
         {
-            LOG_DEBUG("Entry not found in cache: {}", getAttributeRequest.filename())
+            LOG_DEBUG_REQID("Entry not found in cache: {}", getAttributeRequest, getAttributeRequest.filename());
             getAttributeResponse.set_result(GetAttributeResponse::NOT_FOUND);
         }
     }
 
     if (!SendMessageToRemoteFinal(clientConnection, getAttributeResponse))
     {
-        LOG_WARN("Error sending getAttributeRespone to client for entry: {}", getAttributeRequest.filename());
+        LOG_WARN_REQID("Error sending getAttributeRespone to client for entry: {}", getAttributeRequest, getAttributeRequest.filename());
         return false;
     }
     return true;

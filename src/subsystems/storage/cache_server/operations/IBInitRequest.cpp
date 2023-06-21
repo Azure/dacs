@@ -31,7 +31,7 @@ bool AuthenticateRequest(const IBInitRequest& request)
 
    if (!request.authparams().enabled())
     {
-        LOG_WARN("Auth params not sent by client");
+        LOG_WARN_REQID("Auth params not sent by client", request);
         return false;
     }
     
@@ -41,7 +41,7 @@ bool AuthenticateRequest(const IBInitRequest& request)
         serializedHeaders,
         timestamp))
     {
-        LOG_WARN("Auth validation failure");
+        LOG_WARN_REQID("Auth validation failure", request);
         return false;
     }
 
@@ -50,19 +50,19 @@ bool AuthenticateRequest(const IBInitRequest& request)
 //---------------------------------------------------------------------------------------------------------------------
 bool IBInitializeClient(IConnection& clientConnection, const IBInitRequest& ibRequest)
 {
-    LOG_DEBUG("received ib init request={}", ibRequest.clientlid());
+    LOG_INFO_REQID("received ib init request={}", ibRequest, ibRequest.clientlid());
 
     IBInitResponse ibResponse;
     if (!AuthenticateRequest(ibRequest))
     {
-        LOG_WARN("Failed to authenticate request");
+        LOG_WARN_REQID("Failed to authenticate request", ibRequest);
         ibResponse.set_result(IBInitResponse::AUTH_FAILED);
         return SendMessageToRemoteFinal(clientConnection, ibResponse);
     }
 
     if (!IBManager::GetInstance().IBEnabled())
     {
-        LOG_RARELY(5, WARN, "IB not initialized, client={}", ibRequest.clientlid());
+        LOG_RARELY(5, WARN, "IB not initialized, client={} request ID: {}", ibRequest.clientlid(), ibRequest.requestid());
         ibResponse.set_result(IBInitResponse::IB_NOT_SUPPORTED);
         return SendMessageToRemoteFinal(clientConnection, ibResponse);
     }
@@ -82,12 +82,12 @@ bool IBInitializeClient(IConnection& clientConnection, const IBInitRequest& ibRe
         *ibResponse.mutable_serverqpn());
     if (!bRet)
     {
-        LOG_WARN("Failed to setup qp connections");
+        LOG_WARN_REQID("Failed to setup qp connections", ibRequest);
         ibResponse.set_result(IBInitResponse::INTERNAL_ERROR);
         return SendMessageToRemoteFinal(clientConnection, ibResponse);
     }
 
-    LOG_DEBUG("ib init request succeeded={}", serverLid);
+    LOG_DEBUG_REQID("ib init request succeeded={}", ibRequest, serverLid);
     ibResponse.set_serverlid(serverLid);
     ibResponse.set_serveribport(serverIbPort);
     ibResponse.set_servermtu(serverMtu);

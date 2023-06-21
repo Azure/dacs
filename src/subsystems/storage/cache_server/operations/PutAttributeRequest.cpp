@@ -46,7 +46,7 @@ bool AuthenticateRequest(const PutAttributeRequest& request)
 
    if (!request.authparams().enabled())
     {
-        LOG_WARN("Auth params not sent by client");
+        LOG_WARN_REQID("Auth params not sent by client", request);
         return false;
     }
     
@@ -56,7 +56,7 @@ bool AuthenticateRequest(const PutAttributeRequest& request)
         serializedHeaders,
         timestamp))
     {
-        LOG_WARN("Auth validation failure");
+        LOG_WARN_REQID("Auth validation failure", request);
         return false;
     }
 
@@ -65,13 +65,13 @@ bool AuthenticateRequest(const PutAttributeRequest& request)
 //---------------------------------------------------------------------------------------------------------------------
 bool HandlePutAttribute(IConnection& clientConnection, const PutAttributeRequest& putAttributeRequest)
 {
-    LOG_DEBUG("Num entries received: {}, first entry: {}",
-        putAttributeRequest.fileattributes_size(), putAttributeRequest.fileattributes(0).filename());
+    LOG_INFO_REQID("Num entries received: {}, first entry: {}",
+        putAttributeRequest, putAttributeRequest.fileattributes_size(), putAttributeRequest.fileattributes(0).filename());
 
     PutAttributeResponse putAttributeResponse;
     if (!AuthenticateRequest(putAttributeRequest))
     {
-        LOG_WARN("Failed to authenticate request");
+        LOG_WARN_REQID("Failed to authenticate request", putAttributeRequest);
         putAttributeResponse.set_result(PutAttributeResponse::AUTH_FAILED);
         return SendMessageToRemoteFinal(clientConnection, putAttributeResponse);
     }
@@ -79,19 +79,19 @@ bool HandlePutAttribute(IConnection& clientConnection, const PutAttributeRequest
     bool bRet = AttributesManager::GetInstance().PutAttributes(putAttributeRequest);
     if (bRet)
     {
-        LOG_DEBUG("Updated cache entries: {}", putAttributeRequest.fileattributes_size());
+        LOG_DEBUG_REQID("Updated cache entries: {}", putAttributeRequest, putAttributeRequest.fileattributes_size());
         putAttributeResponse.set_result(PutAttributeResponse::SUCCESS);
     }
     else
     {
-        LOG_WARN("Failed to update entries in cache");
+        LOG_WARN_REQID("Failed to update entries in cache", putAttributeRequest);
         putAttributeResponse.set_result(PutAttributeResponse::INTERNAL_ERROR);
     }
 
     if (!SendMessageToRemoteFinal(clientConnection, putAttributeResponse))
     {
-        LOG_WARN("Error sending putAttributeResponse to client for entries: {}",
-            putAttributeRequest.fileattributes_size());
+        LOG_WARN_REQID("Error sending putAttributeResponse to client for entries: {}",
+            putAttributeRequest, putAttributeRequest.fileattributes_size());
         return false;
     }
     return true;

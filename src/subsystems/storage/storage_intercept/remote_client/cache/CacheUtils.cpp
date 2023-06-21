@@ -13,7 +13,6 @@
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
-#include <mutex>
 #include <map>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cache;
@@ -300,6 +299,20 @@ namespace cacheutils
             ss << std::setfill('0') << std::setw(2) << std::hex << static_cast<int>(shaHash[i]);
         }
         return ss.str();
+    }
+//---------------------------------------------------------------------------------------------------------------------
+    std::string GetCorrelationId()
+    {
+        static char buf[36];
+
+        int offset = 0;
+        for(int i = 0; i < 3; i++)
+        {
+            offset += sprintf(buf + offset, "%x-", rand());
+        }
+        offset += sprintf(buf + offset, "%x", rand());
+
+        return std::string(buf);
     }
 //---------------------------------------------------------------------------------------------------------------------
 }

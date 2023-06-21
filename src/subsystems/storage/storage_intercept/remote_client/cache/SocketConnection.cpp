@@ -7,6 +7,8 @@
 #include "poll.h"
 #include <sys/socket.h>
 #include <netinet/tcp.h>
+#include <string.h>
+#include <errno.h>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
@@ -49,8 +51,8 @@ int SocketConnection::Send(const char* buffer, uint64_t size)
         }
         else 
         {
-            LOG_WARN("couldn't complete write to server: fd={}. wrote={}, error={}",
-                GetId(), totalWritten, tempWrite);
+            LOG_WARN("couldn't complete write to server: fd={}. wrote={}, error={}, errno={}:{}",
+                GetId(), totalWritten, tempWrite, errno, strerror(errno));
             return totalWritten;
         }
     }
@@ -98,7 +100,12 @@ ssize_t SocketConnection::TimedRead(void* buf, size_t nByte)
     }
     if (pollResult < 0 || pollFDs[0].revents != POLLIN)
     {
-        LOG_WARN("Error listening to read event, fd={}", m_socketFd);
+        LOG_WARN("Error listening to read event, fd={}, pollResult={}, pollpollFDs[0].revents={}, Result errno: {}:{}",
+                 m_socketFd,
+                 pollResult,
+                 pollFDs[0].revents,
+                 errno,
+                 strerror(errno));
         return -1;
     }
 
@@ -120,7 +127,12 @@ ssize_t SocketConnection::TimedWrite(const void* buf, size_t nByte)
     }
     if (pollResult < 0 || pollFDs[0].revents != POLLOUT)
     {
-        LOG_WARN("Error listening to write event, fd={}", m_socketFd);
+        LOG_WARN("Error listening to write event, fd={}, pollResult={}, pollpollFDs[0].revents={}, Result errno: {}:{}",
+                 m_socketFd,
+                 pollResult,
+                 pollFDs[0].revents,
+                 errno,
+                 strerror(errno));
         return -1;
     }
 

@@ -199,6 +199,7 @@ int main(int argc, char *argv[])
 
     LoggingApi::Init();
     LoggingApi::FlushCachedLog();
+    LOG_INFO("Cache Server build commit hash " BUILD_GIT_COMMIT_HASH " built on " __DATE__);
 
     if (argc < 2) 
     {
