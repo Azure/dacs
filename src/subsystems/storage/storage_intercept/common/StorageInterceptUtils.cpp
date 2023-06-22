@@ -122,7 +122,11 @@ std::string StorageInterceptUtils::GetRemotePathPrefix(const std::string& mountN
         StorageInterceptConstants::ConfigValRemoteTypeBlob)
     {
         const bool isDynamicContainer = StorageInterceptConfig::GetInstance().IsDynamicContainerMount(mountName);
-        remotePathPrefix = StorageInterceptConfig::GetInstance().GetStorageAccountName(mountName) + "/";
+        const bool isIgnoreAccountName = StorageInterceptConfig::GetInstance().IsIgnoreAccountNameInCacheKey(mountName);
+        if(!isIgnoreAccountName)
+        {
+            remotePathPrefix = StorageInterceptConfig::GetInstance().GetStorageAccountName(mountName) + "/";
+        }
 
         if (!isDynamicContainer)
         {

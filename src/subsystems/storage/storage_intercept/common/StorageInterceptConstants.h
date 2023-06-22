@@ -73,6 +73,7 @@ namespace StorageInterceptConstants
     const char* const ConfigNameAzBlobContainerName = "azBlobContainerName";
     const char* const ConfigNameAzBlobDynamicContainer = "azBlobDynamicContainer";
     const char* const ConfigNameMaxConnsPerBlobClient = "maxConnsPerBlobClient";
+    const char* const ConfigNameAzIgnoreAccountNameInCacheKey = "azIgnoreAccountNameInCacheKey";
 
     // Config constants for chunk download parallelism
     const char* const ConfigNameChunkDownloadParallelismEnabled = "chunkDownloadParallelismEnabled";
