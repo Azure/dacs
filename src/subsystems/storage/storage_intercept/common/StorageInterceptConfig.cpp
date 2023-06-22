@@ -740,6 +740,15 @@ bool StorageInterceptConfig::IsDynamicContainerMount(const std::string& mountNam
         false);
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::IsIgnoreAccountNameInCacheKey(const std::string& mountName)
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameAzIgnoreAccountNameInCacheKey,
+        false);
+}
+//---------------------------------------------------------------------------------------------------------------------
 uint64_t StorageInterceptConfig::GetMaxBlobConnectionsPerClient(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigUint64(

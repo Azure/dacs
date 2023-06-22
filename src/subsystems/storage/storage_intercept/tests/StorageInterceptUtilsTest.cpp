@@ -3,10 +3,20 @@
 //--------------------------------------------------------------------------------------------------------------------------------------------
 // This file implements the StorageInterceptUtilsTest.cpp
 //--------------------------------------------------------------------------------------------------------------------------------------------
-#include "StorageInterceptUtils.h"
+#include "StorageInterceptUtilsTest.h"
 #include "gtest/gtest.h"
 //--------------------------------------------------------------------------------------------------------------------------------------------
-TEST(StorageInterceptUtilsTest, CombinePathTest)
+StorageInterceptUtilsTest::StorageInterceptUtilsTest()
+    : TestBase()
+{
+}
+//---------------------------------------------------------------------------------------------------------------------
+void StorageInterceptUtilsTest::SetUp()
+{
+
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StorageInterceptUtilsTest, CombinePathTest)
 {
     EXPECT_EQ(
         StorageInterceptUtils::CombinePath("foo", "bar"),
@@ -29,7 +39,7 @@ TEST(StorageInterceptUtilsTest, CombinePathTest)
         "foo");
 }
 //--------------------------------------------------------------------------------------------------------------------------------------------
-TEST(StorageInterceptUtilsTest, GetRelativePathTest)
+TEST_F(StorageInterceptUtilsTest, GetRelativePathTest)
 {
     std::string result;
 
@@ -87,4 +97,22 @@ TEST(StorageInterceptUtilsTest, GetRelativePathTest)
         StorageInterceptUtils::GetRelativePath("/foo/bar", "/foo//bart", result),
         false);
     EXPECT_EQ(result, "");
+}
+//--------------------------------------------------------------------------------------------------------------------------------------------
+TEST_F(StorageInterceptUtilsTest, GetRemotePathPrefixBlobTest)
+{
+    std::string result;
+
+    if (!m_bUsingMock)
+    {
+        result = StorageInterceptUtils::GetRemotePathPrefix("");
+        bool isDynamicContainer = StorageInterceptConfig::GetInstance().IsDynamicContainerMount("");
+        bool isIgnoreAccountName = StorageInterceptConfig::GetInstance().IsIgnoreAccountNameInCacheKey("");
+
+        std::string output = !isIgnoreAccountName ? StorageInterceptConfig::GetInstance().GetStorageAccountName("") + "/" : "";
+        output += !isDynamicContainer ? StorageInterceptConfig::GetInstance().GetBlobContainerName("") + "/" : "";
+        EXPECT_EQ(result, output);
+
+       //TODO:: test both cases when account name is ignored and otherwise, need to enable config override
+    }
 }
