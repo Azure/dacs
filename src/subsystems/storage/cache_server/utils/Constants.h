@@ -8,7 +8,14 @@
 constexpr int DEFAULT_THREAD_POOL_SIZE = 256;
 constexpr int TCP_BACKLOG_SIZE = 1024;
 constexpr int REQUEST_METADATA_SIZE = 4;
-constexpr int NUM_MAPS = 50;
+constexpr int NUM_MAPS = 50; // Note: changing this value will cause existing snapshots to fail to load
+
+// Snapshot related settings
+constexpr bool DefaultSnapshotEnabled = true;
+constexpr bool DefaultWaitForSnapshotConsistencyScan = true;
+constexpr uint32_t DefaultSnapshotIntervalInSeconds = 300;
+constexpr uint32_t SNAPSHOT_VERSION = 1; // Note: Update this only if breaking changes are made to snapshot proto
+constexpr uint32_t SNAPSHOT_MAX_AGE_IN_SECONDS = 7 * 24 * 60 * 60; // 1 week
 
 // Window size for cache expiry cleanup
 constexpr uint32_t DefaultCacheTTLWindowSizeSeconds = 60;

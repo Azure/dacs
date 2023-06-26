@@ -18,6 +18,8 @@ include_directories(${CMAKE_SOURCE_DIR}/src/subsystems/common/native_lib/diagnos
                     ./utils
                     ./state
                     ./infiniband
+                    ./snapshot
+                    ./snapshot/proto
                     /opt/protobufstatic-3.0.0/include
                     )
 
@@ -30,8 +32,14 @@ execute_process(
                 --cpp_out=${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/proto
                 ${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/proto/cache.proto)
 
+execute_process(
+    COMMAND /opt/protobufstatic-3.0.0/bin/protoc
+                --proto_path=${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/snapshot/proto 
+                --cpp_out=${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/snapshot/proto
+                ${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/snapshot/proto/snapshot.proto)
+
 file(GLOB CACHE_SERVER_SOURCES *cpp ./operations/*cpp ./utils/*cpp ./state/*cpp ./infiniband/*cpp ./proto/*cc
-    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/*cpp)
+    ./snapshot/*cpp ./snapshot/proto/*cc ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/*cpp)
 
 add_executable(${CACHE_SERVER_EXEC} ${CACHE_SERVER_SOURCES})
 
@@ -54,4 +62,51 @@ add_custom_command(
     TARGET ${CACHE_SERVER_EXEC} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${CACHE_SERVER_EXEC}> ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
 
+# Cache Server test program
 add_subdirectory(./test/)
+
+# Cache Server unit tests
+enable_testing()
+
+file(GLOB CACHE_SERVER_TEST_SOURCES ${CACHE_SERVER_SOURCES} ./unittest/*cpp)
+list(FILTER CACHE_SERVER_TEST_SOURCES EXCLUDE REGEX ".*Server\\.cpp$")
+
+add_executable(CacheServerUnitTests ${CACHE_SERVER_TEST_SOURCES})
+
+target_include_directories(CacheServerUnitTests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/subsystems/common/native_lib/diagnostics
+    ${CMAKE_SOURCE_DIR}/src/subsystems/reliability/common/native
+    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common
+    .
+    ./operations
+    ./proto
+    ./utils
+    ./state
+    ./infiniband
+    ./snapshot
+    ./snapshot/proto
+    /opt/protobufstatic-3.0.0/include)
+
+add_dependencies(CacheServerUnitTests
+        diagnostics
+        ${GMOCK_LIBRARY}
+        ${GMOCK_MAIN_LIBRARY}
+        ${GTEST_LIBRARY}
+        ${GTEST_MAIN_LIBRARY}
+        )
+
+target_link_libraries(CacheServerUnitTests
+        pthread
+        ibverbs
+        crypto
+        diagnostics
+        reliability_common
+        staticprotobuf
+        ${GMOCK_LIBRARY}
+        ${GMOCK_MAIN_LIBRARY}
+        ${GTEST_LIBRARY}
+        ${GTEST_MAIN_LIBRARY}
+        -L${DEP_INSTALL_DIR}/lib
+        )
+
+add_test(NAME CacheServerUnitTests COMMAND CacheServerUnitTests)

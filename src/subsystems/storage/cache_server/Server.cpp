@@ -6,6 +6,7 @@
 #include "ConnectionUtils.h"
 #include "HandleRequest.h"
 #include "CacheManager.h"
+#include "SnapshotManager.h"
 #include "SocketConnection.h"
 #include "AttributesManager.h"
 #include "IBManager.h"
@@ -194,6 +195,31 @@ void StartServer(int port)
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
+void SnapshotBackgroundThread(std::shared_ptr<snapshot::Snapshot> startingSnaphot)
+{
+    LOG_INFO("Starting snapshot background thread");
+    if (startingSnaphot != nullptr && !SnapshotManager::GetInstance().WaitForSnapshotConsistencyScan())
+    {
+        LOG_INFO("Scanning for snapshot consistency in background thread");
+        CacheManager::GetInstance().ScanForSnapshotConsistency(*startingSnaphot);
+        LOG_INFO("Snapshot consistency scan complete in background thread");
+    }
+
+    startingSnaphot = nullptr; // deallocate the starting snapshot
+    LOG_INFO("Starting periodic snapshots in background thread. Interval: {} seconds", 
+        SnapshotManager::GetInstance().GetSnapshotIntervalInSeconds());
+    while (true)
+    {
+        std::this_thread::sleep_for(std::chrono::seconds(SnapshotManager::GetInstance().GetSnapshotIntervalInSeconds()));
+
+        std::shared_ptr<snapshot::Snapshot> snapshot = CacheManager::GetInstance().TakeSnapshot();
+        STORAGE_ASSERT(snapshot != nullptr, "Failed to take snapshot");
+
+        LOG_INFO("Saving periodic snapshot with version: {}", snapshot->version());
+        SnapshotManager::GetInstance().SaveSnapshot(*snapshot);
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
 int main(int argc, char *argv[])
 {
 
@@ -229,7 +255,40 @@ int main(int argc, char *argv[])
         CacheManager::GetInstance().SetCacheTTLWindowSize(stoull(argv[5]));
     }
 
-    Initialize();
+    InitializeUtils();
+
+    std::thread* snapshotThread = nullptr;
+    if (SnapshotManager::GetInstance().IsSnapshotEnabled())
+    {
+        auto snapshot = SnapshotManager::GetInstance().LoadSnapshotOnStartup();
+        if (snapshot != nullptr)
+        {
+            LOG_INFO("Loaded snapshot with version: {}", snapshot->version());
+            CacheManager::GetInstance().InitializeFromSnapshot(*snapshot);
+
+            if (SnapshotManager::GetInstance().WaitForSnapshotConsistencyScan())
+            {
+                LOG_INFO("Wait for snapshot consistency scan enabled, starting it now.");
+                CacheManager::GetInstance().ScanForSnapshotConsistency(*snapshot);
+                LOG_INFO("Snapshot consistency scan complete");
+            }
+        }
+        else
+        {
+            LOG_INFO("Snapshot enabled but no snapshot found, will start with empty cache");
+            ResetCacheFolder();
+            CleanupFolder(GetSnapshotFolderPath());
+        }
+
+        // Start the snapshot background thread
+        snapshotThread = new std::thread(SnapshotBackgroundThread, snapshot);
+    }
+    else
+    {
+        LOG_INFO("Snapshot disabled, will start with empty cache");
+        ResetCacheFolder();
+        CleanupFolder(GetSnapshotFolderPath());
+    }
 
     if (!IBManager::GetInstance().Init())
     {

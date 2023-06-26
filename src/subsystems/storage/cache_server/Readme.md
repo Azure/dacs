@@ -14,3 +14,14 @@ The account name to be used for authentication
 
 #### CACHESERVER_AUTH_ACCOUNTKEY
 The shared key required to validate client requests
+
+#### CACHESERVER_SNAPSHOT_ENABLED
+Values: true or false (default is true)
+Enable periodic snapshot of cache server state and loading of any previous snapshot on startup
+
+#### CACHESERVER_SNAPSHOT_INTERVAL
+The interval in seconds between snapshots (default is 300 seconds)
+
+#### CACHESERVER_HOSTNAME
+The hostname to be used for the cache server (default is "")
+Note: If not specified, snapshot will not be enabled

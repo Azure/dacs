@@ -3,6 +3,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #pragma once
 #include <atomic>
+#include <chrono>
 //---------------------------------------------------------------------------------------------------------------------
 // Some code borrowed from APSDK
 #define VAR_NAME_CONCAT(a,b)  a##_##b
@@ -14,6 +15,29 @@
     if (storageutils::LogRarelyTime(VAR_NAME_UNIQUE(lastReportTimestampSeconds), (reportPeriodSeconds)))            \
     {                                                                                                               \
         LOG_##logLevel(__VA_ARGS__);                                                                                \
+    }                                                                                                               \
+} while (0)
+
+#define TIMER_START(timerName) auto timerName##_start = std::chrono::high_resolution_clock::now()
+#define TIMER_STOP_AND_LOG(timerName) do {                                                                          \
+    auto timerName##_stop = std::chrono::high_resolution_clock::now();                                              \
+    auto timerName##_duration = std::chrono::duration_cast<std::chrono::milliseconds>(timerName##_stop - timerName##_start); \
+    LOG_INFO("TIMER: {} took {} ms", #timerName, timerName##_duration.count());                                     \
+} while (0)
+
+#define STORAGE_ASSERT_NOTHROW(condition, ...) do {                                                                 \
+    if (!(condition))                                                                                               \
+    {                                                                                                               \
+        LOG_CRITICAL("ASSERTION FAILED: {}", #condition);                                                           \
+        LOG_CRITICAL(__VA_ARGS__);                                                                                  \
+    }                                                                                                               \
+} while (0)
+
+#define STORAGE_ASSERT(condition, ...) do {                                                                         \
+    if (!(condition))                                                                                               \
+    {                                                                                                               \
+        STORAGE_ASSERT_NOTHROW(condition, __VA_ARGS__);                                                             \
+        exit(-1);                                                                                                   \
     }                                                                                                               \
 } while (0)
 //---------------------------------------------------------------------------------------------------------------------
