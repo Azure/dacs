@@ -11,9 +11,14 @@ std::string GetCacheFolderPath();
 std::string GetCacheTempFolderPath();
 std::string GetCacheTempPath(const std::string& fileName);
 std::string GetCachePath(const std::string& fileName);
-void Initialize();
+std::string GetSnapshotFolderPath();
+void CleanupFolder(const std::string& folderPath);
+void ResetCacheFolder();
+void InitializeUtils();
 unsigned int GetHashBucket(const std::string& strKey);
 bool IsAuthEnabled();
+std::string GetServerHostName();
 bool ValidateAuthSignature(const std::string& clientAccountName, const std::string& clientSignature,
     const std::string& message, time_t timestamp);
+std::string FileNameEncode(const std::string& fileName);
 //---------------------------------------------------------------------------------------------------------------------

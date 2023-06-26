@@ -186,6 +186,15 @@ function reset_local_ssd_cache() {
   echo "Cleared local ssd cache"
 }
 
+echo "Running cache server unit tests"
+cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
+eval "ctest -V --no-tests=error -j -1 -R CacheServer"
+if [ $? -ne 0 ]
+then
+    echo "Cache server unit tests failed"
+    exit 1
+fi
+
 echo "Running unit tests against blob"
 add_interception_config_blob /mnt/dataPathIntcpt
 export STORAGE_INTERCEPT_USE_EXISITNG_CONFIG=true

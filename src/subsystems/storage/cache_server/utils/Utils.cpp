@@ -27,6 +27,7 @@ string CacheRootFolder = ".";
 string AuthAccountName = "";
 string AuthAccountKey = "";
 bool AuthEnabled = false;
+string ServerHostName = "";
 //---------------------------------------------------------------------------------------------------------------------
 void SetCacheRootPath(const string& rootFolder)
 {
@@ -43,13 +44,82 @@ string GetCacheTempFolderPath()
     return CacheRootFolder + "/_cache/temp_upload";
 }
 //---------------------------------------------------------------------------------------------------------------------
-void Initialize()
+string GetSnapshotFolderPath()
+{
+    return CacheRootFolder + "/snapshot";
+}
+//---------------------------------------------------------------------------------------------------------------------
+void CleanupFolder(const string& folderPath)
+{
+    LOG_INFO("Cleaning up folder: {}", folderPath);
+
+    DIR *dir;
+    struct dirent *ent;
+    if ((dir = opendir(folderPath.c_str())) != NULL)
+    {
+        while ((ent = readdir(dir)) != NULL)
+        {
+            if (ent->d_type == DT_REG)
+            {
+                string filePath = folderPath + "/" + ent->d_name;
+                if (remove(filePath.c_str()) != 0)
+                {
+                    LOG_ERROR("Failed to delete file: {}, errno: {}:{}", filePath, errno, strerror(errno));
+                }
+            }
+            else if (ent->d_type == DT_DIR)
+            {
+                if (strcmp(ent->d_name, ".") != 0 && strcmp(ent->d_name, "..") != 0)
+                {
+                    string subFolderPath = folderPath + "/" + ent->d_name;
+                    CleanupFolder(subFolderPath);
+                    if (rmdir(subFolderPath.c_str()) != 0)
+                    {
+                        LOG_ERROR("Failed to delete folder: {}, errno: {}:{}", subFolderPath, errno, strerror(errno));
+                    }
+                }
+            }
+            else
+            {
+                LOG_WARN("Unknown file type: {}", ent->d_type);
+            }
+        }
+        closedir(dir);
+    }
+    else
+    {
+        LOG_ERROR("Failed to open folder: {}, errno: {}:{}", folderPath, errno, strerror(errno));
+    }
+
+    LOG_INFO("Finished cleaning up folder: {}", folderPath);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void ResetCacheFolder()
+{
+    LOG_INFO("Resetting cache folder: {}", GetCacheFolderPath());
+
+    CleanupFolder(GetCacheFolderPath());
+
+    mkdir(GetCacheTempFolderPath().c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    for (int i = 0; i < NUM_MAPS; i++)
+    {
+        mkdir((GetCacheFolderPath() + "/" + to_string(i)).c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void InitializeUtils()
 {
     mkdir(CacheRootFolder.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     mkdir(GetCacheFolderPath().c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    for (int i = 0; i < NUM_MAPS; i++)
+    {
+        mkdir((GetCacheFolderPath() + "/" + to_string(i)).c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    }
 
-    // TODO: cleanup left over files in temp folder
     mkdir(GetCacheTempFolderPath().c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    CleanupFolder(GetCacheTempFolderPath());
+
+    mkdir(GetSnapshotFolderPath().c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
     char* authEnabled = std::getenv("CACHESERVER_AUTH_ENABLED");
     if (authEnabled != NULL && strcasecmp(authEnabled, "true") == 0)
@@ -65,6 +135,12 @@ void Initialize()
 
         AuthAccountName = accountName;
         AuthAccountKey = accountKey;
+    }
+
+    char* serverHostName = std::getenv("CACHESERVER_HOSTNAME");
+    if (serverHostName != NULL && strlen(serverHostName) > 0)
+    {
+        ServerHostName = serverHostName;
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -117,8 +193,13 @@ bool ValidateAuthSignature(const string& clientAccountName, const string& client
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
+string GetServerHostName()
+{
+    return ServerHostName;
+}
+//---------------------------------------------------------------------------------------------------------------------
 // Use hex encoding to handle filenames with special characters
-string fileEncode(const string& fileName)
+string FileNameEncode(const string& fileName)
 {
     std::stringstream ss;
     for(auto i = 0; i < fileName.size(); i++)
@@ -166,6 +247,7 @@ string GetCacheTempPath(const string& fileName)
 //---------------------------------------------------------------------------------------------------------------------
 string GetCachePath(const string& fileName)
 {
-    return GetCacheFolderPath() + "/" + fileEncode(fileName);
+    int folderHash = GetHashBucket(fileName);
+    return GetCacheFolderPath() + "/" + to_string(folderHash) + "/" + FileNameEncode(fileName);
 }
 //---------------------------------------------------------------------------------------------------------------------

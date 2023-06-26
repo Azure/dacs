@@ -4,6 +4,7 @@
 #pragma once
 //---------------------------------------------------------------------------------------------------------------------
 #include "cache.pb.h"
+#include "snapshot.pb.h"
 #include <string>
 #include <thread>
 #include <atomic>
@@ -14,9 +15,15 @@
 #include <map>
 #include <list>
 #include <queue>
+#include <gtest/gtest.h>
+//---------------------------------------------------------------------------------------------------------------------
+class CacheManagerTest;
 //---------------------------------------------------------------------------------------------------------------------
 class CacheManager
 {
+    // Friends for testing
+    FRIEND_TEST(CacheManagerTest, TakeAndLoadSnapshot);
+
     public:
         static CacheManager& GetInstance();
 
@@ -28,13 +35,26 @@ class CacheManager
         struct CacheInfo
         {
             CacheInfo(uint64_t fileSize, const ::google::protobuf::Map<std::string, std::string>& metadata,
-                CacheStatus status)
-                : m_fileSize(fileSize), m_metadata(metadata), m_status(status), m_initTimestamp(time(NULL)) {}
-            CacheInfo(CacheStatus status) : m_fileSize(0), m_status(status), m_initTimestamp(time(NULL)) {}
+                CacheStatus status, time_t expiryTime, const std::string& groupId)
+                : m_fileSize(fileSize)
+                , m_metadata(metadata)
+                , m_status(status)
+                , m_expiryTime(expiryTime)
+                , m_groupId(groupId)
+                , m_initTimestamp(time(NULL))
+                {}
+            CacheInfo(CacheStatus status)
+                : m_fileSize(0)
+                , m_status(status)
+                , m_expiryTime(0)
+                , m_groupId("")
+                , m_initTimestamp(time(NULL)) {}
 
             uint64_t m_fileSize;
             ::google::protobuf::Map<std::string, std::string> m_metadata;
             CacheStatus m_status;
+            time_t m_expiryTime;
+            std::string m_groupId;
             time_t m_initTimestamp;
         };
 
@@ -78,9 +98,21 @@ class CacheManager
         void SetCacheTTLWindowSize(
             /*[in] */ const uint32_t cacheTTLWindowSizeSeconds);
 
+        std::shared_ptr<snapshot::Snapshot> TakeSnapshot() const;
+
+        void InitializeFromSnapshot(
+            /*[in] */ const snapshot::Snapshot& snapshot);
+        
+        void ScanForSnapshotConsistency(
+            /*[in] */ const snapshot::Snapshot& snapshot);
+
     private:
         CacheManager();
         ~CacheManager();
+
+        // Calculate the bucketized expiry time given cache expiry seconds
+        time_t GetExpiryTimeBucket(
+            /*[in] */ uint32_t cacheExpirySeconds) const;
 
         // Delete file path from local disk
         void DeleteFile(
@@ -98,7 +130,7 @@ class CacheManager
         std::vector<std::unordered_map<std::string, CacheInfo>> m_vCacheInfoMap;
 
         // mutexes for cached buckets
-        std::vector<std::mutex> m_vCacheInfoMapMutex;
+        mutable std::vector<std::mutex> m_vCacheInfoMapMutex;
 
         // keys stored in buckets based on its expiry time and sorted by time ascending.
         // The buckets are created using the same key as cache info map and uses same mutexes for synchronization
@@ -111,7 +143,7 @@ class CacheManager
         std::vector<std::unordered_map<std::string, std::list<std::string>>> m_vCacheGroupIDMap;
 
         // mutexes for the group-id buckets
-        std::vector<std::mutex> m_vCacheGroupIDMapMutex;
+        mutable std::vector<std::mutex> m_vCacheGroupIDMapMutex;
 
         // Background thread processing all deletes
         std::unique_ptr<std::thread> m_cleanupThread;
@@ -123,7 +155,7 @@ class CacheManager
         std::queue<std::string> m_groupIdQueue;
 
         // Mutex to sychronize the deletion queue
-        std::mutex m_mutexQueue;
+        mutable std::mutex m_mutexQueue;
 
         // CV for waking up the cleanup thread and manage cleanup timer
         std::condition_variable m_cvQueue;
