@@ -4,6 +4,7 @@
 // This file implements the StorageInterceptUtilsTest.cpp
 //--------------------------------------------------------------------------------------------------------------------------------------------
 #include "StorageInterceptUtilsTest.h"
+#include "StorageInterceptConstants.h"
 #include "gtest/gtest.h"
 //--------------------------------------------------------------------------------------------------------------------------------------------
 StorageInterceptUtilsTest::StorageInterceptUtilsTest()
@@ -105,14 +106,24 @@ TEST_F(StorageInterceptUtilsTest, GetRemotePathPrefixBlobTest)
 
     if (!m_bUsingMock)
     {
+        OverrideConfig(StorageInterceptConstants::ConfigNameAzBlobDynamicContainer, "false");
+        OverrideConfig(StorageInterceptConstants::ConfigNameAzBlobStorageAccName, "acc");
+        OverrideConfig(StorageInterceptConstants::ConfigNameAzBlobContainerName, "cont");
         result = StorageInterceptUtils::GetRemotePathPrefix("");
-        bool isDynamicContainer = StorageInterceptConfig::GetInstance().IsDynamicContainerMount("");
-        bool isIgnoreAccountName = StorageInterceptConfig::GetInstance().IsIgnoreAccountNameInCacheKey("");
+        ASSERT_EQ(result, "acc/cont/");
 
-        std::string output = !isIgnoreAccountName ? StorageInterceptConfig::GetInstance().GetStorageAccountName("") + "/" : "";
-        output += !isDynamicContainer ? StorageInterceptConfig::GetInstance().GetBlobContainerName("") + "/" : "";
-        EXPECT_EQ(result, output);
+        OverrideConfig(StorageInterceptConstants::ConfigNameAzIgnoreAccountNameInCacheKey, "true");
+        result = StorageInterceptUtils::GetRemotePathPrefix("");
+        ASSERT_EQ(result, "cont/");
+        OverrideConfig(StorageInterceptConstants::ConfigNameAzIgnoreAccountNameInCacheKey, "false");
 
-       //TODO:: test both cases when account name is ignored and otherwise, need to enable config override
+        OverrideConfig(StorageInterceptConstants::ConfigNameAzBlobDynamicContainer, "true");
+        result = StorageInterceptUtils::GetRemotePathPrefix("");
+        ASSERT_EQ(result, "acc/");
+
+        OverrideConfig(StorageInterceptConstants::ConfigNameAzIgnoreAccountNameInCacheKey, "true");
+        result = StorageInterceptUtils::GetRemotePathPrefix("");
+        ASSERT_EQ(result, "");
+        OverrideConfig(StorageInterceptConstants::ConfigNameAzIgnoreAccountNameInCacheKey, "false");        
     }
 }

@@ -58,6 +58,8 @@ file(GLOB STORAGE_INTERCEPT_SOURCES_TEST ./common/*cpp ./remote_client/*cpp ./re
 
 add_executable(StorageInterceptUnitTests ${STORAGE_INTERCEPT_SOURCES_TEST})
 
+target_compile_definitions(StorageInterceptUnitTests PRIVATE STORAGE_INTERCEPT_UT=1)
+
 target_include_directories(StorageInterceptUnitTests PRIVATE
         ./adls
         ./common

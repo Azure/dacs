@@ -2,11 +2,15 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include <gtest/gtest.h>
+#include <string>
 //---------------------------------------------------------------------------------------------------------------------
 class TestBase : public ::testing::Test
 {
     public:
         TestBase();
+
+        void TearDown() override;
+        void OverrideConfig(const char* configName, const std::string& configValue);
 
         static void SetupMockRemoteClient();
         static void GenerateRandomValueBuf();
@@ -26,5 +30,8 @@ class TestBase : public ::testing::Test
         inline static const std::string m_strRemoteDirPath = "testDirForUt";
         inline static const std::string m_strRemoteDirChildDirPath = "testDirForUt/dir-1";
         inline static const std::string m_strRemoteDirChildFilePath = "testDirForUt/file-1";
+    
+    private:
+        bool m_bConfigUpdated;
 };
 //---------------------------------------------------------------------------------------------------------------------

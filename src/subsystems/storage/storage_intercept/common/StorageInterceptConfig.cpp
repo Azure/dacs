@@ -179,6 +179,21 @@ void StorageInterceptConfig::LoadFromEnvVariables()
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
+#ifdef STORAGE_INTERCEPT_UT
+void StorageInterceptConfig::OverrideConfig(const char* configName, const std::string& configValue)
+{
+    LOG_INFO("Overriding config. configName={} configValue={}", configName, configValue);
+    m_ConfigProps[boost::to_upper_copy<std::string>(configName)] = configValue;
+}
+//---------------------------------------------------------------------------------------------------------------------
+void StorageInterceptConfig::ReloadConfig()
+{
+    LOG_INFO("Reloading config");
+    m_ConfigProps.clear();
+    LoadConfig();
+}
+#endif
+//---------------------------------------------------------------------------------------------------------------------
 std::string StorageInterceptConfig::GetConfigStr(
     const std::map<std::string, std::string>& config,
     const char* configName)
