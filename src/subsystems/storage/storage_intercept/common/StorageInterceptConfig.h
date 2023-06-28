@@ -15,6 +15,14 @@ class StorageInterceptConfig
         /* Singleton */
         static StorageInterceptConfig& GetInstance();
 
+#ifdef STORAGE_INTERCEPT_UT
+        // Helper to override config for unit tests
+        void OverrideConfig(const char* configName, const std::string& configValue);
+
+        // Reload config for unit tests
+        void ReloadConfig();
+#endif
+
         // Getters for various config values.
         bool GetMultipleMountEnabled();
 

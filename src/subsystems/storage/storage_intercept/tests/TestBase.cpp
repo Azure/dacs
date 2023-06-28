@@ -32,6 +32,23 @@ TestBase::TestBase()
     m_bUsingMock = true;
     static std::once_flag mockSetupFlag;
     std::call_once(mockSetupFlag, [this](){this->SetupMockRemoteClient();});
+
+    m_bConfigUpdated = false;
+}
+//---------------------------------------------------------------------------------------------------------------------
+void TestBase::TearDown()
+{
+    if (m_bConfigUpdated)
+    {
+        StorageInterceptConfig::GetInstance().ReloadConfig();
+        m_bConfigUpdated = false;
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void TestBase::OverrideConfig(const char* configName, const std::string& configValue)
+{
+    StorageInterceptConfig::GetInstance().OverrideConfig(configName, configValue);
+    m_bConfigUpdated = true;
 }
 //---------------------------------------------------------------------------------------------------------------------
 void TestBase::GenerateRandomValueBuf()
