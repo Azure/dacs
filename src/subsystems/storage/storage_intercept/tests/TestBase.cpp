@@ -18,6 +18,7 @@ bool TestBase::m_bUsingMock;
 std::vector<char> TestBase::m_vecFileBuf;
 //---------------------------------------------------------------------------------------------------------------------
 TestBase::TestBase()
+    : m_bConfigUpdated(false)
 {
     static std::once_flag randomSeedFlag;
     std::call_once(randomSeedFlag, [](){srand(time(NULL));});
@@ -32,8 +33,6 @@ TestBase::TestBase()
     m_bUsingMock = true;
     static std::once_flag mockSetupFlag;
     std::call_once(mockSetupFlag, [this](){this->SetupMockRemoteClient();});
-
-    m_bConfigUpdated = false;
 }
 //---------------------------------------------------------------------------------------------------------------------
 void TestBase::TearDown()

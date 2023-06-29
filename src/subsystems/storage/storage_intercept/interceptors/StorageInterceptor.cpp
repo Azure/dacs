@@ -328,3 +328,8 @@ extern "C" int vfscanf(void* stream, const char* format, va_list ap)
     return StorageInterceptorImpl::vfscanf(stream, format, ap);
 }
 //---------------------------------------------------------------------------------------------------------------------
+extern "C" const char* SI_getLastError()
+{
+    return StorageInterceptorImpl::getLastError();
+}
+//---------------------------------------------------------------------------------------------------------------------

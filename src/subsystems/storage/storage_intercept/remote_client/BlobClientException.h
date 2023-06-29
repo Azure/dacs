@@ -6,11 +6,11 @@
 #include <string>
 #include <stdexcept>
 //---------------------------------------------------------------------------------------------------------------------
-class BlobClientException : std::runtime_error
+class BlobClientException : public std::runtime_error
 {
     public:
         BlobClientException(/*[in]*/ const std::string& error)
-        : std::runtime_error(std::string("Blob client error: ") + error)
+        : std::runtime_error(std::string("Blob client encountered an error: ") + error)
         {}
 };
 //---------------------------------------------------------------------------------------------------------------------
