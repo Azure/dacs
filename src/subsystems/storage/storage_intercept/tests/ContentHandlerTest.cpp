@@ -3,6 +3,9 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "ContentHandlerTest.h"
 #include "ContentHandler.h"
+#include "ErrorHandler.h"
+#include "StorageInterceptConfig.h"
+#include "StorageInterceptConstants.h"
 #include "StorageInterceptUtils.h"
 #include <fcntl.h>
 #include <iostream>
@@ -24,6 +27,17 @@ ContentHandlerTest::ContentHandlerTest()
 //---------------------------------------------------------------------------------------------------------------------
 void ContentHandlerTest::SetUp()
 {
+}
+//---------------------------------------------------------------------------------------------------------------------
+void ContentHandlerTest::TearDown()
+{
+    if (m_bConfigUpdated)
+    {
+        StorageInterceptConfig::GetInstance().ReloadConfig();
+        ContentHandler::GetInstance().ForkHandlerPrepare();
+        ContentHandler::GetInstance().ForkHandlerParent();
+        m_bConfigUpdated = false;
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 template <typename task_t>
@@ -150,6 +164,79 @@ TEST_F(ContentHandlerTest, OpenFileNonExistentTest)
     openRet = ContentHandler::GetInstance().HandleOpen(nonExistentPath.c_str(), O_RDONLY);
     ASSERT_EQ(openRet, -1);
     ASSERT_EQ(errno, ENOENT);
+}
+//---------------------------------------------------------------------------------------------------------------------
+// This test requires usage of a pre-existing config that uses blob
+TEST_F(ContentHandlerTest, OpenFileRemoteBlobErrorTest)
+{
+    // Only enable this test when using a config that uses blob/not mock
+    // Here, we assume that the config provided has blob enabled
+    // Also only run this test when cache is disabled to exercise remote blob failure codepath
+    bool bCacheEnabled = StorageInterceptConfig::GetInstance().GetCacheEnable("" /*mountName*/);
+    if(m_bUsingMock || bCacheEnabled)
+    {
+        std::cout << "Skipping test as config provided does not use blob / has cache enabled" << std::endl;
+        return;
+    }
+
+    // Set incorrect SAS token and force contenthandler to reload config
+    OverrideConfig(StorageInterceptConstants::ConfigNameAzBlobSASToken, "incorrect-token");
+    ContentHandler::GetInstance().ForkHandlerPrepare();
+    ContentHandler::GetInstance().ForkHandlerParent();
+
+    ErrorHandler::GetInstance().ResetState();
+    std::string filePath = m_strInterceptPath + '/' + m_strRemoteFilePath;
+
+    std::thread t1([&](){
+        int fd = ContentHandler::GetInstance().HandleOpen(filePath.c_str(), O_RDONLY);
+        ASSERT_EQ(fd, -1);
+        std::string errMessage;
+        GetErrorResponse errResponse = ErrorHandler::GetInstance().GetLastError(errMessage);
+        ASSERT_EQ(GetErrorResponse::Found, errResponse);
+        ASSERT_FALSE(errMessage.empty());
+        ASSERT_EQ(EIO, errno);
+
+        fd = -2;
+        errResponse = GetErrorResponse::NotFound;
+        errMessage.clear();
+
+        fd = ContentHandler::GetInstance().HandleOpen64(filePath.c_str(), O_RDONLY);
+        ASSERT_EQ(fd, -1);
+        errResponse = ErrorHandler::GetInstance().GetLastError(errMessage);
+        ASSERT_EQ(GetErrorResponse::Found, errResponse);
+        ASSERT_FALSE(errMessage.empty());
+        ASSERT_EQ(EIO, errno);
+    });
+
+    std::thread t2([&](){
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::string errMessage;
+        GetErrorResponse errResponse = ErrorHandler::GetInstance().GetLastError(errMessage);
+        ASSERT_EQ(GetErrorResponse::NotFound, errResponse);
+        ASSERT_TRUE(errMessage.empty());
+        ASSERT_NE(EIO, errno);
+
+        int fd = ContentHandler::GetInstance().HandleOpen(filePath.c_str(), O_RDONLY);
+        ASSERT_EQ(fd, -1);
+        errResponse = ErrorHandler::GetInstance().GetLastError(errMessage);
+        ASSERT_EQ(GetErrorResponse::Found, errResponse);
+        ASSERT_FALSE(errMessage.empty());
+        ASSERT_EQ(EIO, errno);
+
+        fd = -2;
+        errResponse = GetErrorResponse::NotFound;
+        errMessage.clear();
+
+        fd = ContentHandler::GetInstance().HandleOpen64(filePath.c_str(), O_RDONLY);
+        ASSERT_EQ(fd, -1);
+        errResponse = ErrorHandler::GetInstance().GetLastError(errMessage);
+        ASSERT_EQ(GetErrorResponse::Found, errResponse);
+        ASSERT_FALSE(errMessage.empty());
+        ASSERT_EQ(EIO, errno);
+    });
+
+    t1.join();
+    t2.join();
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(ContentHandlerTest, ReaddirOneThreadTest)

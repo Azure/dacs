@@ -117,7 +117,7 @@ ssize_t BlobClient::ReadChunkSync(const std::string& remotePath, void* buf, size
             blobOutcome.error().code,
             blobOutcome.error().code_name,
             blobOutcome.error().message);
-        throw BlobClientException(blobOutcome.error().message);
+        throw BlobClientException(blobOutcome.error().code_name);
     }
 
     nBytesRead = static_cast<ssize_t>(blobOutcome.response().size);
@@ -154,7 +154,7 @@ std::string BlobClient::ReadDirectory(
             blobOutcome.error().code,
             blobOutcome.error().code_name,
             blobOutcome.error().message);
-        throw BlobClientException(blobOutcome.error().message);
+        throw BlobClientException(blobOutcome.error().code_name);
     }
 
     for (auto const& blob : blobOutcome.response().blobs)
@@ -340,7 +340,7 @@ std::vector<BlobClient::azBlobItem_t> BlobClient::ListOneBlob(
             return emptyBlobList;
         }
 
-        throw BlobClientException(blobOutcome.error().message);
+        throw BlobClientException(blobOutcome.error().code_name);
     }
 
     LOG_DEBUG("List one blob result for container={}, queryPrefix={}, continuationToken={}, nBlobs={}, blobName={}",

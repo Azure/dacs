@@ -31,7 +31,7 @@ class TestBase : public ::testing::Test
         inline static const std::string m_strRemoteDirChildDirPath = "testDirForUt/dir-1";
         inline static const std::string m_strRemoteDirChildFilePath = "testDirForUt/file-1";
     
-    private:
+    protected:
         bool m_bConfigUpdated;
 };
 //---------------------------------------------------------------------------------------------------------------------

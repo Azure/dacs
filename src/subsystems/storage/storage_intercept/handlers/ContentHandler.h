@@ -249,6 +249,7 @@ class ContentHandler
             /*[in]*/ const char* format,
             /*[out]*/ va_list ap);
         
+        const char* HandleGetLastError();
         // APIs to handle shared state when a process is forked.
         // Processes which are forked share the system state including memory and open file descriptors.
         // We need to ensure network connections (sockets) are not shared across multiple processes.
@@ -329,6 +330,10 @@ class ContentHandler
         // file fd allocated range (min/max) we use internally
         static constexpr uint32_t                                    FD_VALUE_START = 90000;
         static constexpr uint32_t                                    FD_VALUE_RANGE = 100000;
+
+        // Need to store the error string in a thread local variable
+        // so that the calling application will always have access to it
+        static thread_local std::string                              m_threadLocalLastError;
 
         bool                                                         m_bForkHandlersSetup;
 

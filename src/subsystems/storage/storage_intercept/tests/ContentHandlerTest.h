@@ -41,6 +41,7 @@ class ContentHandlerTest : public TestBase
         ContentHandlerTest();
 
         void SetUp() override;
+        void TearDown() override;
 
         template <typename task_t>
         void ExecuteParallelWithArgs(

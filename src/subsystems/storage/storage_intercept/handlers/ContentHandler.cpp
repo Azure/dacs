@@ -11,6 +11,7 @@
 #include "RemoteCacheClient.h"
 #include "LocalAttributesCache.h"
 #include "InMemoryAttributesCache.h"
+#include "ErrorHandler.h"
 #include <dirent.h>
 #include <time.h>
 #include <fcntl.h>
@@ -22,6 +23,8 @@ __attribute__((constructor)) void LoggingInit(void) {
     LoggingApi::Init();
     LoggingApi::FlushCachedLog();
 }
+//---------------------------------------------------------------------------------------------------------------------
+thread_local std::string ContentHandler::m_threadLocalLastError;
 //---------------------------------------------------------------------------------------------------------------------
 ContentHandler::ContentHandler()
   : m_spCacheClient(nullptr)
@@ -468,6 +471,11 @@ int ContentHandler::OpenValidatedPathInternal(
     int getPropertiesResult = GetStreamingClient(mountInfo).GetProperties(relativePath, fullFd->Attributes);
     if (getPropertiesResult < 0)
     {
+        if (ErrorHandler::GetInstance().IsErrorSet())
+        {
+            errno = EIO;
+        }
+
         LOG_WARN("Error in getProperties during open for remote mountName={} path={}, errno={}",
             mountInfo.MountName,
             relativePath,
@@ -571,6 +579,11 @@ ssize_t ContentHandler::HandleRead(int fd, void *buf, size_t nBytes)
     ssize_t result = GetStreamingClient(mountInfo).ReadFile(path, buf, nBytes, readOffset);
     if (result < 0)
     {
+        if (ErrorHandler::GetInstance().IsErrorSet())
+        {
+            errno = EIO;
+        }
+
         LOG_ERROR("StreamingClient read returned error for fd={} mountName={} path={} nBytes={} readOffset={}",
             fd,
             mountInfo.MountName,
@@ -632,6 +645,11 @@ ssize_t ContentHandler::HandlePRead(int fd, void *buf, size_t nBytes, off64_t of
     ssize_t result = GetStreamingClient(mountInfo).ReadFile(path, buf, nBytes, offset);
     if (result < 0)
     {
+        if (ErrorHandler::GetInstance().IsErrorSet())
+        {
+            errno = EIO;
+        }
+
         LOG_ERROR("StreamingClient read returned error for fd={} mountName={} path={} nBytes={} offset={}",
             fd,
             mountInfo.MountName,
@@ -826,6 +844,12 @@ void* ContentHandler::HandleReaddir(void* dirp, bool isRead64)
         if (newContinuationToken == "")
         {
             dirStream.AllEntriesFetched = true;
+        }
+        else if (newContinuationToken == FAILED_MARKER)
+        {
+            // Failed to fetch directory entries.
+            errno = EIO;
+            return NULL;
         }
 
         // Retry reading with newly fetched directory entries.
@@ -1024,6 +1048,11 @@ int ContentHandler::GetPropertiesInternal(
     int result = GetStreamingClient(mountInfo).GetProperties(relPath, attributes);
     if (result < 0)
     {
+        if (ErrorHandler::GetInstance().IsErrorSet())
+        {
+            errno = EIO;
+        }
+
         LOG_ERROR("Error in {} call for remote path={}, mountName={}, errno={}",
             interceptedCall,
             relPath,
@@ -1464,6 +1493,18 @@ int ContentHandler::Handlevfscanf(void* stream, const char* format, va_list ap)
 
     LOG_ERROR("vfscanf interception not yet supported, fd={}", fd);
     throw "vfscanf interception not yet supported";
+}
+//---------------------------------------------------------------------------------------------------------------------
+const char* ContentHandler::HandleGetLastError()
+{
+    GetErrorResponse errResponse = ErrorHandler::GetInstance().GetLastError(m_threadLocalLastError);
+    if (errResponse == GetErrorResponse::NotFound)
+    {
+        LOG_INFO("No error(s) found while querying ErrorHandler");
+        return nullptr;
+    }
+
+    return m_threadLocalLastError.c_str();
 }
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::GetFdFromStream(void* stream)
