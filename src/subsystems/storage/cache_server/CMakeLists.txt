@@ -102,6 +102,7 @@ target_link_libraries(CacheServerUnitTests
         diagnostics
         reliability_common
         staticprotobuf
+        stdc++fs
         ${GMOCK_LIBRARY}
         ${GMOCK_MAIN_LIBRARY}
         ${GTEST_LIBRARY}

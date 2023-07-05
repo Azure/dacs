@@ -7,6 +7,9 @@
 #include "Constants.h"
 #include "Utils.h"
 //---------------------------------------------------------------------------------------------------------------------
+using namespace std::experimental::filesystem;
+using namespace google::protobuf::util;
+//---------------------------------------------------------------------------------------------------------------------
 SnapshotManagerTest::SnapshotManagerTest()
 {
     // Set environment variables
@@ -21,7 +24,7 @@ void SnapshotManagerTest::SetUp()
 {
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::shared_ptr<snapshot::Snapshot> SnapshotManagerTest::CreateMockSnapshot()
+std::shared_ptr<snapshot::Snapshot> SnapshotManagerTest::CreateMockSnapshot(std::size_t numEntriesPerBucket)
 {
     // Create mock snapshot
     std::shared_ptr<snapshot::Snapshot> pSnapshot = std::make_shared<snapshot::Snapshot>();
@@ -31,7 +34,7 @@ std::shared_ptr<snapshot::Snapshot> SnapshotManagerTest::CreateMockSnapshot()
     for (int bucketIdx = 0; bucketIdx < NUM_MAPS; bucketIdx++)
     {
         snapshot::SnapshotBucket* pBucket = pSnapshot->add_buckets();
-        for (int entryIdx = 0; entryIdx < 10; entryIdx++)
+        for (int entryIdx = 0; entryIdx < numEntriesPerBucket; entryIdx++)
         {
             snapshot::SnapshotEntry* pEntry = pBucket->add_entries();
             pEntry->set_filename("file" + std::to_string(entryIdx));
@@ -107,5 +110,74 @@ TEST_F(SnapshotManagerTest, LoadExpiredSnapshot)
     SnapshotManager::SaveSnapshotToFile(fileName, *pSnapshot);
     std::shared_ptr<snapshot::Snapshot> pLoadedSnapshot = SnapshotManager::LoadSnapshotFromFile(fileName);
     ASSERT_EQ(pLoadedSnapshot, nullptr);
+}
+//---------------------------------------------------------------------------------------------------------------------
+/** Either snapshot is saved or not saved, but no invalid / partial snapshot. **/
+TEST_F(SnapshotManagerTest, CrashWhileTakingSnapshot)
+{
+    std::string fileName = "/tmp/snapshot";
+    SnapshotManager snapshotManager = SnapshotManager::GetInstance();
+    std::shared_ptr<snapshot::Snapshot> pSnapshot = CreateMockSnapshot(1000);
+
+    auto startTs = std::chrono::high_resolution_clock::now();
+    snapshotManager.SaveSnapshotToFile(fileName, *pSnapshot);
+    auto endTS = std::chrono::high_resolution_clock::now();
+    auto saveDuration = std::chrono::duration_cast<std::chrono::milliseconds>(endTS - startTs);
+
+    LOG_INFO("Starting loop to catch race-conditions.");
+    for(int sleepMs = saveDuration.count() / 2; sleepMs < saveDuration.count() * 2; sleepMs += 5)
+    {
+        pid_t pid = fork();
+        if(pid == 0)
+        {
+            // In child
+            snapshotManager.SaveSnapshot(*pSnapshot);
+        }
+        else if(pid > 0)
+        {
+            // In parent, pid is child pid
+            // Crash the child
+            std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
+            kill(pid, SIGKILL);
+            if(std::experimental::filesystem::exists(fileName))
+            {
+                std::shared_ptr<snapshot::Snapshot> pLoadedSnapshot = SnapshotManager::LoadSnapshotFromFile(fileName);
+                ASSERT_NE(pLoadedSnapshot, nullptr);
+                ASSERT_TRUE(MessageDifferencer::Equals(*pLoadedSnapshot, *pSnapshot));
+            }
+        }
+        else
+        {
+            FAIL();
+        }
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(SnapshotManagerTest, ReadCorruptedSnapshot)
+{
+    std::string fileName = "/tmp/corruptedSnapshot";
+
+    // Write random string to file
+    std::ofstream ofs(fileName, std::ios::binary);
+    ofs << "this is not a valid protobuf message file";
+    ofs.close();
+
+    std::shared_ptr<snapshot::Snapshot> pLoadedSnapshot;
+    EXPECT_NO_THROW(pLoadedSnapshot = SnapshotManager::LoadSnapshotFromFile(fileName));
+    ASSERT_EQ(pLoadedSnapshot, nullptr);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(SnapshotManagerTest, HandleLargeSnapshotFile)
+{
+    std::string fileName = "/tmp/snapshot";
+
+    // This test can  a few seconds.
+    std::shared_ptr<snapshot::Snapshot> pSnapshot = CreateMockSnapshot(50000);
+    std::cout << "Snapshot size (MB) is " << pSnapshot->ByteSize() / (1024 * 1024) << std::endl;
+    SnapshotManager::SaveSnapshotToFile(fileName, *pSnapshot);
+
+    std::shared_ptr<snapshot::Snapshot> pLoadedSnapshot = SnapshotManager::LoadSnapshotFromFile(fileName);
+
+    ASSERT_TRUE(MessageDifferencer::Equals(*pSnapshot, *pLoadedSnapshot));
 }
 //---------------------------------------------------------------------------------------------------------------------

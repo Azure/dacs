@@ -20,5 +20,6 @@ bool IsAuthEnabled();
 std::string GetServerHostName();
 bool ValidateAuthSignature(const std::string& clientAccountName, const std::string& clientSignature,
     const std::string& message, time_t timestamp);
+std::string GetUuid();
 std::string FileNameEncode(const std::string& fileName);
 //---------------------------------------------------------------------------------------------------------------------
