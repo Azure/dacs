@@ -581,7 +581,10 @@ bool TestDeleteAPI(
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool TestParallelUploadDownload(int parallelism, int durationInSeconds)
+bool TestParallelUploadDownload(int parallelism,
+                                int durationInSeconds,
+                                bool downloadEnabled = true,
+                                std::string groupId = "")
 {
     std::atomic_uint_fast64_t totalFailed(0);
     std::atomic_bool stop(false);
@@ -590,7 +593,7 @@ bool TestParallelUploadDownload(int parallelism, int durationInSeconds)
     string filePrefix = GetUniqueFilename("paralelleltest-" + std::to_string(rand()) + "-");
     for (int threadId = 0; threadId < parallelism; threadId++)
     {
-        auto t = new std::thread([&filePrefix, &totalFailed, threadId, parallelism, &stop]()
+        auto t = new std::thread([&filePrefix, &totalFailed, threadId, parallelism, &stop, downloadEnabled, groupId]()
         {
             int i = 0;
             while (!stop)
@@ -600,11 +603,22 @@ bool TestParallelUploadDownload(int parallelism, int durationInSeconds)
                 bool passed = true;
 
                 uint64_t hashValue = 0;
-                passed &= TestDownloadAPI(fileName, 0, 100, true, DownloadResponse::NOT_FOUND_GOT_LOCK);
-                passed &= TestDownloadAPI(fileName, 0, 100, true, DownloadResponse::NOT_FOUND_ALREADY_LOCKED);
-                passed &= TestUploadAPI(fileName, 100, false, UploadResponse::SUCCESS, &hashValue);
-                passed &= TestDownloadAPI(fileName, 0, 100, true, DownloadResponse::SUCCESS, &hashValue);
-                passed &= TestDownloadAPI(fileName, 0, 100, true, DownloadResponse::SUCCESS, &hashValue);
+
+                if(downloadEnabled)
+                {
+                    passed &= TestDownloadAPI(fileName, 0, 100, true, DownloadResponse::NOT_FOUND_GOT_LOCK);
+                    passed &= TestDownloadAPI(fileName, 0, 100, true, DownloadResponse::NOT_FOUND_ALREADY_LOCKED);
+                }
+
+                bool ignoreLock = downloadEnabled ? false : true; // If download is disabled, ignore lock needed for upload to suceed.
+                passed &= TestUploadAPI(fileName, 100, ignoreLock, UploadResponse::SUCCESS, &hashValue, groupId);
+
+                if(downloadEnabled)
+                {
+                    passed &= TestDownloadAPI(fileName, 0, 100, true, DownloadResponse::SUCCESS, &hashValue);
+                    passed &= TestDownloadAPI(fileName, 0, 100, true, DownloadResponse::SUCCESS, &hashValue);
+                }
+
                 if (!passed)
                 {
                     totalFailed++;
@@ -1750,6 +1764,65 @@ bool TestLiveness()
     return result;
 }
 //---------------------------------------------------------------------------------------------------------------------
+/** Invoked to check & run if being used as a cli-application to make requests for integration tests 
+ * 
+ *  @param isCli [out] true if being used as a cli-application, false otherwise
+ *  @return true if command is successful, false otherwise
+*/
+bool cli(int argc, char* argv[], bool& /*[out]*/ isCli)
+{
+    std::string command = std::string(argv[1]);
+    cout << "CLI Command: " << command << endl;
+    isCli = false;
+
+    if(command == "uploadfile")
+    {
+        isCli = true;
+        cout << "uploadfile command" << endl;
+        std::string filename = argc > 2 ? std::string(argv[2]) : GetUniqueFilename("filename");
+        std::string groupid = argc > 3 ? std::string(argv[3]) : GetUniqueFilename("groupid");
+        return !TestUploadAPI(filename, 500, true, UploadResponse::SUCCESS, nullptr, groupid, 0);
+    }
+
+    if(command == "uploadmany")
+    {
+        isCli = true;
+        cout << "uploadmany command" << endl;
+        std::string groupid = std::string(argv[2]);
+        int count = stoi(argv[3]);
+        int waitDurationSec = stoi(argv[4]);
+        return !TestParallelUploadDownload(count, waitDurationSec, false, groupid);
+    }
+
+    if(command == "deletegroup")
+    {
+        isCli = true;
+        cout << "deletegroup command" << endl;
+        std::string groupid = argc > 2 ? std::string(argv[2]) : GetUniqueFilename("groupid");
+        return !TestDeleteAPI(groupid, DeleteResponse::SUCCESS);
+    }
+
+    if(command == "downloadfile")
+    {
+        isCli = true;
+        cout << "downloadfile command" << endl;
+        std::string fileName = argc > 2 ? std::string(argv[2]) : GetUniqueFilename("filename");
+        return !TestDownloadAPI(fileName, 0, 10, false, DownloadResponse::SUCCESS, nullptr);
+    }
+
+    if(command == "uploaddownloadmany")
+    {
+        isCli = true;
+        cout << "uploaddownloadmany command" << endl;
+        int count = stoi(argv[2]);
+        int waitDurationSec = stoi(argv[3]);
+        return !TestParallelUploadDownload(count, waitDurationSec);
+    }
+
+    cout << "Not a cli command invocation" << endl;
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
 int main(int argc, char *argv[])
 {
     char* cacheServerHost = std::getenv("TEST_CACHESERVER_ADDR_HOST");
@@ -1762,6 +1835,17 @@ int main(int argc, char *argv[])
     if (cacheServerPort != nullptr)
     {
         ServerPort = std::stoi(cacheServerPort);
+    }
+
+    // For use by storage_intercept/integration_tests/snapshot_integration_test.sh
+    if(argc > 1)
+    {
+        bool isCli = false;
+        bool result = cli(argc, argv, isCli);
+        if(isCli)
+        {
+            return result;
+        }
     }
 
     char* checkLiveness = std::getenv("TEST_CHECK_LIVENESS");

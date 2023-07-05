@@ -23,6 +23,7 @@ class CacheManager
 {
     // Friends for testing
     FRIEND_TEST(CacheManagerTest, TakeAndLoadSnapshot);
+    FRIEND_TEST(CacheManagerTest, RembemberPendingGroupIdDeletionAfterSnapshotLoad);
 
     public:
         static CacheManager& GetInstance();

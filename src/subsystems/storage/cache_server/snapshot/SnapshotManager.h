@@ -18,6 +18,9 @@ class SnapshotManager
     FRIEND_TEST(SnapshotManagerTest, LoadDifferentVersionSnapshot);
     FRIEND_TEST(SnapshotManagerTest, LoadDifferentHostnameSnapshot);
     FRIEND_TEST(SnapshotManagerTest, LoadExpiredSnapshot);
+    FRIEND_TEST(SnapshotManagerTest, CrashWhileTakingSnapshot);
+    FRIEND_TEST(SnapshotManagerTest, ReadCorruptedSnapshot);
+    FRIEND_TEST(SnapshotManagerTest, HandleLargeSnapshotFile);
 
     public:
         static SnapshotManager& GetInstance();

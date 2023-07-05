@@ -130,9 +130,10 @@ function add_interception_config_blob_with_localssdcache() {
 }
 
 function start_cache_server() {
+  local output_redirect_file=$1
 
   # ensure cache storage path is present
-  mkdir ${CACHE_SERVER_PATH}
+  mkdir -p ${CACHE_SERVER_PATH}
 
   # Loop and find free port to listen
   isfree=$(netstat -taln | grep $CACHE_SERVER_PORT)
@@ -144,18 +145,26 @@ function start_cache_server() {
   # Start cache server in the background and save pid
   CACHE_SERVER_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/CacheServer"
   CacheServerCommand="${CACHE_SERVER_EXE} ${CACHE_SERVER_PORT} ${CACHE_SERVER_PATH} 100000000000 10000000 1"
-  echo "Starting CacheServer using command: ${CacheServerCommand}"
-  eval ${CacheServerCommand} &
-  CACHE_SERVER_PID=$!
 
+  echo "Starting CacheServer using command: ${CacheServerCommand}"
+  if [[ -n "$output_redirect_file" ]]; then
+    echo "Redirecting CacheServer output to ${output_redirect_file}"
+    ${CacheServerCommand} &>$output_redirect_file &
+  else
+    ${CacheServerCommand} &
+  fi
+
+  CACHE_SERVER_PID=$!
   echo "Started CacheServer in the background, pid: ${CACHE_SERVER_PID}"
 }
 
 function stop_cache_server() {
-  echo "Stopping CacheServer"
-  eval "kill -9 ${CACHE_SERVER_PID}"
+  echo "Stopping CacheServer with pid: ${CACHE_SERVER_PID}"
+  kill -9 ${CACHE_SERVER_PID}
 
-  if [[ -d ${CACHE_SERVER_PATH} ]]; then
+  if [[ $1 == "keep_cache" ]]; then
+    echo "Keeping cache server storage path: ${CACHE_SERVER_PATH}"
+  else
     rm -rf ${CACHE_SERVER_PATH}
   fi
 
@@ -218,8 +227,12 @@ then
 fi
 echo ""
 
-# Start cache server in the background
+# Start cache server in the background, with continuous snapshotting every second
+export CACHESERVER_HOSTNAME="testhost"
+export CACHESERVER_SNAPSHOT_INTERVAL="1"
 start_cache_server
+unset CACHESERVER_HOSTNAME
+unset CACHESERVER_SNAPSHOT_INTERVAL
 echo "Sleeping 30 secs to allow cache server to start and initialize"
 echo ""
 sleep 30
@@ -315,6 +328,15 @@ echo ""
 
 reset_local_ssd_cache
 stop_cache_server
+
+echo "Running snapshot validation tests"
+source "$SCRIPT_DIR/snapshot_integration_test.sh"
+__run_restart_snapshot_basic_test__
+__test_snapshot_disk_mismatch__
+__test_no_crash_on_invalid_snapshot__
+__test_upload_download_snapshot_in_parallel__
+__test_no_crash_on_truncated_snapshot__
+echo "Snapshot validation tests passed"
 
 echo "Running dacs interface test"
 # Install go
