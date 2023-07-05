@@ -1,7 +1,7 @@
 ///--------------------------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
-#include "StorageDlsymWrapper.h"
+#include "StorageLibcApiWrapper.h"
 #include "MockRemoteClientException.h"
 #include "MockReadDirectoryApi.h"
 #include <cstring>
@@ -20,7 +20,7 @@ MockReadDirectoryApi::MockReadDirectoryApi(
 //---------------------------------------------------------------------------------------------------------------------
 void MockReadDirectoryApi::PerformOperation()
 {
-    void* dirp = StorageDlsymWrapper::opendir(m_strDirPath.c_str());
+    void* dirp = StorageLibcApiWrapper::opendir(m_strDirPath.c_str());
     if (!dirp)
     {
         throw MockRemoteClientException("Failed to open directory at path " + m_strDirPath);
@@ -32,7 +32,7 @@ void MockReadDirectoryApi::PerformOperation()
     uint32_t nEntriesAdded = 0;
     for (uint32_t i=0; i < 5; i++)
     {
-        struct dirent *dir = (struct dirent *)StorageDlsymWrapper::readdir64(dirp);
+        struct dirent *dir = (struct dirent *)StorageLibcApiWrapper::readdir64(dirp);
         if (!dir)
         {
             reachedEod = true;
@@ -59,7 +59,7 @@ void MockReadDirectoryApi::PerformOperation()
         m_strNewContToken = std::to_string(nExistingEntries + nEntriesAdded);
     }
 
-    if (StorageDlsymWrapper::closedir(dirp) != 0)
+    if (StorageLibcApiWrapper::closedir(dirp) != 0)
     {
         throw MockRemoteClientException("Failed to close directory at path " + m_strDirPath);
     }

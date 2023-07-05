@@ -11,8 +11,7 @@
 enum class SetErrorResponse
 {
     Success = 0,
-    ErrorAlreadySet = 1,
-    Failed = 2
+    Failed = 1
 };
 //---------------------------------------------------------------------------------------------------------------------
 enum class GetErrorResponse

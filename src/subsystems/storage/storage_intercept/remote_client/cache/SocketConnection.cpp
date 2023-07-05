@@ -3,7 +3,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "SocketConnection.h"
 #include "StorageInterceptLogger.h"
-#include "StorageDlsymWrapper.h"
+#include "StorageLibcApiWrapper.h"
 #include "poll.h"
 #include <sys/socket.h>
 #include <netinet/tcp.h>
@@ -21,7 +21,7 @@ SocketConnection::SocketConnection(int socketFd)
 SocketConnection::~SocketConnection()
 {
     LOG_INFO("Close server fd={}", m_socketFd);
-    StorageDlsymWrapper::close(m_socketFd);
+    StorageLibcApiWrapper::close(m_socketFd);
 }
 //---------------------------------------------------------------------------------------------------------------------
 int SocketConnection::SendAndFinalize(const char* buffer, uint64_t size)

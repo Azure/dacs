@@ -34,13 +34,10 @@ TEST_F(ErrorHandlerTests, TestResetState)
     SetErrorResponse setErrResponse = ErrorHandler::GetInstance().SetError(errMessage);
     ASSERT_EQ(SetErrorResponse::Success, setErrResponse);
 
-    std::string secondErrMessage = "different error";
-    setErrResponse = ErrorHandler::GetInstance().SetError(secondErrMessage);
-    ASSERT_EQ(SetErrorResponse::ErrorAlreadySet, setErrResponse);
-
     ErrorHandler::GetInstance().ResetState();
-    setErrResponse = ErrorHandler::GetInstance().SetError(secondErrMessage);
-    ASSERT_EQ(SetErrorResponse::Success, setErrResponse);
+    std::string lastErrorMessage;
+    GetErrorResponse getErrResponse = ErrorHandler::GetInstance().GetLastError(lastErrorMessage);
+    ASSERT_EQ(GetErrorResponse::NotFound, getErrResponse);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(ErrorHandlerTests, TestSetErrorFailed)
@@ -75,12 +72,12 @@ TEST_F(ErrorHandlerTests, TestSetAndGetErrorMultiThreaded)
         ASSERT_EQ(SetErrorResponse::Success, setErrResponse);
 
         setErrResponse = ErrorHandler::GetInstance().SetError(secondErrMessage);
-        ASSERT_EQ(SetErrorResponse::ErrorAlreadySet, setErrResponse);
+        ASSERT_EQ(SetErrorResponse::Success, setErrResponse);
 
         std::string lastErrMessage;
         GetErrorResponse getErrResponse = ErrorHandler::GetInstance().GetLastError(lastErrMessage);
         ASSERT_EQ(GetErrorResponse::Found, getErrResponse);
-        ASSERT_EQ(errMessage, lastErrMessage);
+        ASSERT_EQ(secondErrMessage, lastErrMessage);
     });
 
     std::thread t2([&](){
@@ -90,12 +87,12 @@ TEST_F(ErrorHandlerTests, TestSetAndGetErrorMultiThreaded)
         ASSERT_EQ(SetErrorResponse::Success, setErrResponse);
 
         setErrResponse = ErrorHandler::GetInstance().SetError(errMessage);
-        ASSERT_EQ(SetErrorResponse::ErrorAlreadySet, setErrResponse);
+        ASSERT_EQ(SetErrorResponse::Success, setErrResponse);
 
         std::string lastErrMessage;
         GetErrorResponse getErrResponse = ErrorHandler::GetInstance().GetLastError(lastErrMessage);
         ASSERT_EQ(GetErrorResponse::Found, getErrResponse);
-        ASSERT_EQ(secondErrMessage, lastErrMessage);
+        ASSERT_EQ(errMessage, lastErrMessage);
     });
 
     t1.join();

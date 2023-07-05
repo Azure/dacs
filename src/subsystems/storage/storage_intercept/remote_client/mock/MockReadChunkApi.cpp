@@ -1,7 +1,7 @@
 ///--------------------------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
-#include "StorageDlsymWrapper.h"
+#include "StorageLibcApiWrapper.h"
 #include "MockRemoteClientException.h"
 #include "MockReadChunkApi.h"
 #include <fcntl.h>
@@ -22,15 +22,15 @@ MockReadChunkApi::MockReadChunkApi(
 //---------------------------------------------------------------------------------------------------------------------
 void MockReadChunkApi::PerformOperation()
 {
-  const int fd = StorageDlsymWrapper::open64(m_strFilePath.c_str(), O_RDONLY, 0777);
+  const int fd = StorageLibcApiWrapper::open64(m_strFilePath.c_str(), O_RDONLY, 0777);
   if (fd == -1)
   {
     throw MockRemoteClientException("Failed to open file at path " + m_strFilePath);
   }
 
-  m_nBytesRead = StorageDlsymWrapper::pread(fd, m_pBuf, m_nReadLength, m_nReadOffset);
+  m_nBytesRead = StorageLibcApiWrapper::pread(fd, m_pBuf, m_nReadLength, m_nReadOffset);
 
-  if (StorageDlsymWrapper::close(fd) == -1)
+  if (StorageLibcApiWrapper::close(fd) == -1)
   {
     throw MockRemoteClientException("Failed to close file at path " + m_strFilePath);
   }

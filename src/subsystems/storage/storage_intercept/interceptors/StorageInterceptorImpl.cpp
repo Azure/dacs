@@ -2,7 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "StorageInterceptorImpl.h"
-#include "StorageDlsymWrapper.h"
+#include "StorageLibcApiWrapper.h"
 #include "ContentHandler.h"
 #include <cstdlib>
 //---------------------------------------------------------------------------------------------------------------------

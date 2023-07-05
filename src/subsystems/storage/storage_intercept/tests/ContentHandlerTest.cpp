@@ -185,6 +185,7 @@ TEST_F(ContentHandlerTest, OpenFileRemoteBlobErrorTest)
     ContentHandler::GetInstance().ForkHandlerParent();
 
     ErrorHandler::GetInstance().ResetState();
+    errno = 0;
     std::string filePath = m_strInterceptPath + '/' + m_strRemoteFilePath;
 
     std::thread t1([&](){
@@ -199,6 +200,7 @@ TEST_F(ContentHandlerTest, OpenFileRemoteBlobErrorTest)
         fd = -2;
         errResponse = GetErrorResponse::NotFound;
         errMessage.clear();
+        errno = 0;
 
         fd = ContentHandler::GetInstance().HandleOpen64(filePath.c_str(), O_RDONLY);
         ASSERT_EQ(fd, -1);
@@ -226,6 +228,7 @@ TEST_F(ContentHandlerTest, OpenFileRemoteBlobErrorTest)
         fd = -2;
         errResponse = GetErrorResponse::NotFound;
         errMessage.clear();
+        errno = 0;
 
         fd = ContentHandler::GetInstance().HandleOpen64(filePath.c_str(), O_RDONLY);
         ASSERT_EQ(fd, -1);

@@ -4,7 +4,7 @@
 #include "StorageInterceptConfig.h"
 #include "StorageInterceptConstants.h"
 #include "StorageInterceptLogger.h"
-#include "StorageDlsymWrapper.h"
+#include "StorageLibcApiWrapper.h"
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -37,7 +37,7 @@ void StorageInterceptConfig::LoadConfig()
     }
 
     struct stat64 stBuf;
-    if (StorageDlsymWrapper::xstat64(
+    if (StorageLibcApiWrapper::xstat64(
         XSTAT_VERSION,
         strConfigFilePath.c_str(),
         &stBuf) != 0)
@@ -45,7 +45,7 @@ void StorageInterceptConfig::LoadConfig()
         throw "Error getting stat for config file";
     }
 
-    int nConfigFileHandle = StorageDlsymWrapper::open(
+    int nConfigFileHandle = StorageLibcApiWrapper::open(
             strConfigFilePath.c_str(),
             O_RDONLY,
             CONFIG_FILE_OPEN_MODE);
@@ -58,13 +58,13 @@ void StorageInterceptConfig::LoadConfig()
     size_t nConfigFileSize = stBuf.st_size;
     std::string strConfig;
     strConfig.resize(nConfigFileSize);
-    ssize_t nConfigBytesRead = StorageDlsymWrapper::read(nConfigFileHandle, &strConfig[0], nConfigFileSize);
+    ssize_t nConfigBytesRead = StorageLibcApiWrapper::read(nConfigFileHandle, &strConfig[0], nConfigFileSize);
 
     /* Read the config file */
     while (nConfigBytesRead < nConfigFileSize)
     {
         ssize_t nConfigBytesReadNow =
-            StorageDlsymWrapper::read(
+            StorageLibcApiWrapper::read(
                 nConfigFileHandle,
                 &strConfig[nConfigBytesRead],
                 nConfigFileSize - nConfigBytesRead);
@@ -80,7 +80,7 @@ void StorageInterceptConfig::LoadConfig()
         nConfigBytesRead += nConfigBytesReadNow;
     }
 
-    if(StorageDlsymWrapper::close(nConfigFileHandle) != 0)
+    if(StorageLibcApiWrapper::close(nConfigFileHandle) != 0)
     {
         throw "Error handling close for config file";
     }

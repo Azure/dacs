@@ -4,7 +4,7 @@
 #include "ConnectionManager.h"
 #include "StorageInterceptLogger.h"
 #include "StorageInterceptConfig.h"
-#include "StorageDlsymWrapper.h"
+#include "StorageLibcApiWrapper.h"
 #include "SocketConnection.h"
 #include "IBConnection.h"
 #include "cache.pb.h"
@@ -332,7 +332,7 @@ std::unique_ptr<IConnection> ConnectionManager::InitFreshConnection(int serverIn
     if (connect(serverFd, (sockaddr * ) &structSockAddr, sizeof(sockaddr)) < 0)
     {
         LOG_CRITICAL("Error during socket connect serverIndex={} error={},{}", serverIndex, errno, strerror(errno));
-        StorageDlsymWrapper::close(serverFd);
+        StorageLibcApiWrapper::close(serverFd);
         return nullptr;
     }
 
@@ -340,7 +340,7 @@ std::unique_ptr<IConnection> ConnectionManager::InitFreshConnection(int serverIn
     if (setsockopt(serverFd, SOL_TCP, TCP_NODELAY, &enable, sizeof(enable)) != 0)
     {
         LOG_CRITICAL("Error setting TCP_NODELAY on client socket error={},{}", errno, strerror(errno));
-        StorageDlsymWrapper::close(serverFd);
+        StorageLibcApiWrapper::close(serverFd);
         return nullptr;
     }
 

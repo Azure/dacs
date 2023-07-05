@@ -6,7 +6,7 @@
 #include "StorageInterceptConstants.h"
 #include "StorageInterceptLogger.h"
 #include "StorageInterceptUtils.h"
-#include "StorageDlsymWrapper.h"
+#include "StorageLibcApiWrapper.h"
 #include "IConnection.h"
 #include <sys/socket.h>
 #include <iomanip>
