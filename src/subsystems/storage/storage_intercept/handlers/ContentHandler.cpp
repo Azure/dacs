@@ -5,7 +5,7 @@
 #include "StorageInterceptConfig.h"
 #include "StorageInterceptUtils.h"
 #include "StreamingClient.h"
-#include "StorageDlsymWrapper.h"
+#include "StorageLibcApiWrapper.h"
 #include "StorageInterceptLogger.h"
 #include "LocalFSCacheClient.h"
 #include "RemoteCacheClient.h"
@@ -313,9 +313,9 @@ void* ContentHandler::HandleFopen(const char* path, const char* mode, bool isOpe
     {
         if (!isOpen64)
         {
-            return StorageDlsymWrapper::fopen(path, mode);
+            return StorageLibcApiWrapper::fopen(path, mode);
         }
-        return StorageDlsymWrapper::fopen64(path, mode);
+        return StorageLibcApiWrapper::fopen64(path, mode);
     }
 
     std::unique_ptr<FILE> fileStream = std::make_unique<FILE>();
@@ -345,7 +345,7 @@ int ContentHandler::HandleFileNo(void* stream)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::fileno(stream);
+        return StorageLibcApiWrapper::fileno(stream);
     }
 
     LOG_DEBUG("Intercepted the fileno system call fd={}", fd);
@@ -359,7 +359,7 @@ int ContentHandler::HandleFClose(void* stream)
     FILE* fileStreamPtr = static_cast<FILE*>(stream);
     if (fileStreamPtr == nullptr || fileStreamPtr->_fileno != -1 || !IsFdInRange(fileStreamPtr->_flags))
     {
-        return StorageDlsymWrapper::fclose(stream);
+        return StorageLibcApiWrapper::fclose(stream);
     }
 
     int fd = fileStreamPtr->_flags;
@@ -368,7 +368,7 @@ int ContentHandler::HandleFClose(void* stream)
     if (fdIt == m_mapOpenHandles.end())
     {
         openHandlesLock.unlock();
-        return StorageDlsymWrapper::fclose(stream);
+        return StorageLibcApiWrapper::fclose(stream);
     }
 
     const std::string remotePath = fdIt->second->RemotePath;
@@ -410,9 +410,9 @@ int ContentHandler::HandleOpenAt(int dirfd, const char* path, int flags, mode_t 
         {
             if (!isOpen64)
             {
-                return StorageDlsymWrapper::openat(dirfd, path, flags, mode);
+                return StorageLibcApiWrapper::openat(dirfd, path, flags, mode);
             }
-            return StorageDlsymWrapper::openat64(dirfd, path, flags, mode);
+            return StorageLibcApiWrapper::openat64(dirfd, path, flags, mode);
         }
 
         LOG_DEBUG(
@@ -430,9 +430,9 @@ int ContentHandler::HandleOpenAt(int dirfd, const char* path, int flags, mode_t 
         {
             if (!isOpen64)
             {
-                return StorageDlsymWrapper::openat(dirfd, path, flags, mode);
+                return StorageLibcApiWrapper::openat(dirfd, path, flags, mode);
             }
-            return StorageDlsymWrapper::openat64(dirfd, path, flags, mode);
+            return StorageLibcApiWrapper::openat64(dirfd, path, flags, mode);
         }
 
         // Fallback to system wrapper if we are not managing this fd
@@ -443,9 +443,9 @@ int ContentHandler::HandleOpenAt(int dirfd, const char* path, int flags, mode_t 
             openHandlesLock.unlock();
             if (!isOpen64)
             {
-                return StorageDlsymWrapper::openat(dirfd, path, flags, mode);
+                return StorageLibcApiWrapper::openat(dirfd, path, flags, mode);
             }
-            return StorageDlsymWrapper::openat64(dirfd, path, flags, mode);
+            return StorageLibcApiWrapper::openat64(dirfd, path, flags, mode);
         }
 
         // path is relative to the directory referred to by dirfd.
@@ -516,9 +516,9 @@ int ContentHandler::OpenInternal(const char* path, int flags, mode_t mode, bool 
     {
         if (!isOpen64)
         {
-            return StorageDlsymWrapper::open(path, flags, mode);
+            return StorageLibcApiWrapper::open(path, flags, mode);
         }
-        return StorageDlsymWrapper::open64(path, flags, mode);
+        return StorageLibcApiWrapper::open64(path, flags, mode);
     }
 
     LOG_DEBUG(
@@ -539,7 +539,7 @@ ssize_t ContentHandler::HandleRead(int fd, void *buf, size_t nBytes)
 
     if (!IsFdInRange(fd))
     {
-        return StorageDlsymWrapper::read(fd, buf, nBytes);
+        return StorageLibcApiWrapper::read(fd, buf, nBytes);
     }
 
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
@@ -547,7 +547,7 @@ ssize_t ContentHandler::HandleRead(int fd, void *buf, size_t nBytes)
     if (fdIt == m_mapOpenHandles.end())
     {
         openHandlesLock.unlock();
-        return StorageDlsymWrapper::read(fd, buf, nBytes);
+        return StorageLibcApiWrapper::read(fd, buf, nBytes);
     }
 
     const off64_t readOffset = fdIt->second->FileOffset;
@@ -620,7 +620,7 @@ ssize_t ContentHandler::HandlePRead(int fd, void *buf, size_t nBytes, off64_t of
 {
     if (!IsFdInRange(fd))
     {
-        return StorageDlsymWrapper::pread(fd, buf, nBytes, offset);
+        return StorageLibcApiWrapper::pread(fd, buf, nBytes, offset);
     }
 
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);    
@@ -628,7 +628,7 @@ ssize_t ContentHandler::HandlePRead(int fd, void *buf, size_t nBytes, off64_t of
     if (fdIt == m_mapOpenHandles.end())
     {
         openHandlesLock.unlock();
-        return StorageDlsymWrapper::pread(fd, buf, nBytes, offset);
+        return StorageLibcApiWrapper::pread(fd, buf, nBytes, offset);
     }
 
     const std::string path = fdIt->second->RemotePath;
@@ -667,7 +667,7 @@ off64_t ContentHandler::HandleLseek(int fd, off64_t offset, int whence)
 {
     if (!IsFdInRange(fd))
     {
-        return StorageDlsymWrapper::lseek64(fd, offset, whence);
+        return StorageLibcApiWrapper::lseek64(fd, offset, whence);
     }
 
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
@@ -675,7 +675,7 @@ off64_t ContentHandler::HandleLseek(int fd, off64_t offset, int whence)
     if (fdIt == m_mapOpenHandles.end())
     {
         openHandlesLock.unlock();
-        return StorageDlsymWrapper::lseek64(fd, offset, whence);
+        return StorageLibcApiWrapper::lseek64(fd, offset, whence);
     }
 
     MountInfo& mountInfo = GetMountInfo(fdIt->second->MountName);
@@ -738,7 +738,7 @@ int ContentHandler::HandleClose(int fd)
 {
     if (!IsFdInRange(fd))
     {
-        return StorageDlsymWrapper::close(fd);
+        return StorageLibcApiWrapper::close(fd);
     }
 
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
@@ -746,7 +746,7 @@ int ContentHandler::HandleClose(int fd)
     if (fdIt == m_mapOpenHandles.end())
     {
         openHandlesLock.unlock();
-        return StorageDlsymWrapper::close(fd);
+        return StorageLibcApiWrapper::close(fd);
     }
 
     const std::string remotePath = fdIt->second->RemotePath;
@@ -771,7 +771,7 @@ void* ContentHandler::HandleOpendir(const char* path)
 
     if (!isRelative)
     {
-        return StorageDlsymWrapper::opendir(path);
+        return StorageLibcApiWrapper::opendir(path);
     }
 
     LOG_DEBUG("Intercepting the opendir system call for path={} mountName={}", path, mountInfo->MountName);
@@ -811,9 +811,9 @@ void* ContentHandler::HandleReaddir(void* dirp, bool isRead64)
         dirStreamLock.unlock();
         if (isRead64)
         {
-            return StorageDlsymWrapper::readdir64(dirp);
+            return StorageLibcApiWrapper::readdir64(dirp);
         }
-        return StorageDlsymWrapper::readdir(dirp);
+        return StorageLibcApiWrapper::readdir(dirp);
     }
     dirStreamLock.unlock();
 
@@ -869,7 +869,7 @@ int ContentHandler::HandleClosedir(void* dirp)
     if (dirIter == m_mapDirectoryStreams.end())
     {
         dirStreamLock.unlock();
-        return StorageDlsymWrapper::closedir(dirp);
+        return StorageLibcApiWrapper::closedir(dirp);
     }
 
     LOG_DEBUG("Intercepting the closedir system call for path={} mountName={}",
@@ -886,7 +886,7 @@ int ContentHandler::HandleAccess(const char* pathname, int mode)
     const bool isRelative = (mountInfo != nullptr);
     if (!isRelative)
     {
-        return StorageDlsymWrapper::access(pathname, mode);
+        return StorageLibcApiWrapper::access(pathname, mode);
     }
 
     LOG_DEBUG("Intercepted access call for path={} mountName={}", pathname, mountInfo->MountName);
@@ -910,7 +910,7 @@ int ContentHandler::HandleXstat(int __ver, const char* pathname, struct stat* st
     const bool isRelative = (mountInfo != nullptr);
     if (!isRelative)
     {
-        return StorageDlsymWrapper::xstat(__ver, pathname, statbuf);
+        return StorageLibcApiWrapper::xstat(__ver, pathname, statbuf);
     }
 
     struct stat64 stat64buf;
@@ -930,7 +930,7 @@ int ContentHandler::HandleXstat64(int __ver, const char* pathname, struct stat64
     const bool isRelative = (mountInfo != nullptr);
     if (!isRelative)
     {
-        return StorageDlsymWrapper::xstat64(__ver, pathname, statbuf);
+        return StorageLibcApiWrapper::xstat64(__ver, pathname, statbuf);
     }
 
     return GetPropertiesInternal(*mountInfo, relPath, "xstat64", statbuf);
@@ -940,7 +940,7 @@ int ContentHandler::HandleFstat(int fd, struct stat* statbuf)
 {
     if (!IsFdInRange(fd))
     {
-        return StorageDlsymWrapper::fstat(fd, statbuf);
+        return StorageLibcApiWrapper::fstat(fd, statbuf);
     }
 
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
@@ -948,7 +948,7 @@ int ContentHandler::HandleFstat(int fd, struct stat* statbuf)
     if (fdIt == m_mapOpenHandles.end())
     {
         openHandlesLock.unlock();
-        return StorageDlsymWrapper::fstat(fd, statbuf);
+        return StorageLibcApiWrapper::fstat(fd, statbuf);
     }
     FileAttributes attributes = fdIt->second->Attributes;
     openHandlesLock.unlock();
@@ -963,7 +963,7 @@ int ContentHandler::HandleFxstat(int __ver, int fd, struct stat* statbuf)
 {
     if (!IsFdInRange(fd))
     {
-        return StorageDlsymWrapper::fxstat(__ver, fd, statbuf);
+        return StorageLibcApiWrapper::fxstat(__ver, fd, statbuf);
     }
 
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
@@ -971,7 +971,7 @@ int ContentHandler::HandleFxstat(int __ver, int fd, struct stat* statbuf)
     if (fdIt == m_mapOpenHandles.end())
     {
         openHandlesLock.unlock();
-        return StorageDlsymWrapper::fxstat(__ver, fd, statbuf);
+        return StorageLibcApiWrapper::fxstat(__ver, fd, statbuf);
     }
     FileAttributes attributes = fdIt->second->Attributes;
     openHandlesLock.unlock();
@@ -986,7 +986,7 @@ int ContentHandler::HandleFxstat64(int __ver, int fd, struct stat64* statbuf)
 {
     if (!IsFdInRange(fd))
     {
-        return StorageDlsymWrapper::fxstat64(__ver, fd, statbuf);
+        return StorageLibcApiWrapper::fxstat64(__ver, fd, statbuf);
     }
 
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
@@ -994,7 +994,7 @@ int ContentHandler::HandleFxstat64(int __ver, int fd, struct stat64* statbuf)
     if (fdIt == m_mapOpenHandles.end())
     {
         openHandlesLock.unlock();
-        return StorageDlsymWrapper::fxstat64(__ver, fd, statbuf);
+        return StorageLibcApiWrapper::fxstat64(__ver, fd, statbuf);
     }
     FileAttributes attributes = fdIt->second->Attributes;
     openHandlesLock.unlock();
@@ -1010,7 +1010,7 @@ int ContentHandler::HandleLxstat(int __ver, const char* pathname, struct stat* s
     const bool isRelative = (mountInfo != nullptr);
     if (!isRelative)
     {
-        return StorageDlsymWrapper::lxstat(__ver, pathname, statbuf);
+        return StorageLibcApiWrapper::lxstat(__ver, pathname, statbuf);
     }
 
     struct stat64 stat64buf;
@@ -1030,7 +1030,7 @@ int ContentHandler::HandleLxstat64(int __ver, const char* pathname, struct stat6
     const bool isRelative = (mountInfo != nullptr);
     if (!isRelative)
     {
-        return StorageDlsymWrapper::lxstat64(__ver, pathname, statbuf);
+        return StorageLibcApiWrapper::lxstat64(__ver, pathname, statbuf);
     }
 
     return GetPropertiesInternal(*mountInfo, relPath, "lxstat64", statbuf);
@@ -1070,7 +1070,7 @@ int ContentHandler::HandleIoctl(int fd, unsigned long request, void* argp)
 {
     if (!IsFdInRange(fd))
     {
-        return StorageDlsymWrapper::ioctl(fd, request, argp);
+        return StorageLibcApiWrapper::ioctl(fd, request, argp);
     }
 
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
@@ -1078,7 +1078,7 @@ int ContentHandler::HandleIoctl(int fd, unsigned long request, void* argp)
     if (fdIt == m_mapOpenHandles.end())
     {
         openHandlesLock.unlock();
-        return StorageDlsymWrapper::ioctl(fd, request, argp);
+        return StorageLibcApiWrapper::ioctl(fd, request, argp);
     }
 
     LOG_INFO("Intercepting the ioctl call for fd={} request={} path={} mountName={}",
@@ -1097,7 +1097,7 @@ int ContentHandler::HandleIsatty(int fd)
 {
     if (!IsFdInRange(fd))
     {
-        return StorageDlsymWrapper::isatty(fd);
+        return StorageLibcApiWrapper::isatty(fd);
     }
 
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
@@ -1105,7 +1105,7 @@ int ContentHandler::HandleIsatty(int fd)
     if (fdIt == m_mapOpenHandles.end())
     {
         openHandlesLock.unlock();
-        return StorageDlsymWrapper::isatty(fd);
+        return StorageLibcApiWrapper::isatty(fd);
     }
 
     LOG_DEBUG("Intercepting the isatty call for fd={} path={} mountName={}",
@@ -1121,7 +1121,7 @@ int ContentHandler::HandleFlock(int fd, int operation)
 {
     if (!IsFdInRange(fd))
     {
-        return StorageDlsymWrapper::flock(fd, operation);
+        return StorageLibcApiWrapper::flock(fd, operation);
     }
 
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
@@ -1129,7 +1129,7 @@ int ContentHandler::HandleFlock(int fd, int operation)
     if (fdIt == m_mapOpenHandles.end())
     {
         openHandlesLock.unlock();
-        return StorageDlsymWrapper::flock(fd, operation);
+        return StorageLibcApiWrapper::flock(fd, operation);
     }
 
     LOG_DEBUG(
@@ -1152,7 +1152,7 @@ void ContentHandler::Handleclearerr(void* stream)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::clearerr(stream);
+        return StorageLibcApiWrapper::clearerr(stream);
     }
 
     LOG_ERROR("clearerr interception not yet supported, fd={}", fd);
@@ -1164,7 +1164,7 @@ int ContentHandler::Handlefeof(void* stream)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::feof(stream);
+        return StorageLibcApiWrapper::feof(stream);
     }
 
     LOG_ERROR("feof interception not yet supported, fd={}", fd);
@@ -1176,7 +1176,7 @@ int ContentHandler::Handleferror(void* stream)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::ferror(stream);
+        return StorageLibcApiWrapper::ferror(stream);
     }
 
     LOG_ERROR("ferror interception not yet supported, fd={}", fd);
@@ -1188,7 +1188,7 @@ int ContentHandler::Handlefflush(void* stream)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::fflush(stream);
+        return StorageLibcApiWrapper::fflush(stream);
     }
 
     LOG_ERROR("fflush interception not yet supported, fd={}", fd);
@@ -1200,7 +1200,7 @@ int ContentHandler::Handlefgetc(void* stream)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::fgetc(stream);
+        return StorageLibcApiWrapper::fgetc(stream);
     }
 
     LOG_ERROR("fgetc interception not yet supported, fd={}", fd);
@@ -1214,9 +1214,9 @@ int ContentHandler::Handlefgetpos(void* stream, void* pos, bool is64Bit)
     {
         if (is64Bit)
         {
-            return StorageDlsymWrapper::fgetpos64(stream, pos);
+            return StorageLibcApiWrapper::fgetpos64(stream, pos);
         }
-        return StorageDlsymWrapper::fgetpos(stream, pos);
+        return StorageLibcApiWrapper::fgetpos(stream, pos);
     }
 
     LOG_ERROR("fgetpos{} interception not yet supported, fd={}", is64Bit ? "64" : "", fd);
@@ -1228,7 +1228,7 @@ char* ContentHandler::Handlefgets(char* s, int size, void* stream)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::fgets(s, size, stream);
+        return StorageLibcApiWrapper::fgets(s, size, stream);
     }
 
     LOG_ERROR("fgets interception not yet supported, fd={}", fd);
@@ -1240,7 +1240,7 @@ int ContentHandler::Handlefpurge(void* stream)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::fpurge(stream);
+        return StorageLibcApiWrapper::fpurge(stream);
     }
 
     LOG_ERROR("fpurge interception not yet supported, fd={}", fd);
@@ -1252,7 +1252,7 @@ int ContentHandler::Handlefputc(int c, void* stream)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::fputc(c, stream);
+        return StorageLibcApiWrapper::fputc(c, stream);
     }
 
     LOG_ERROR("fputc interception not yet supported, fd={}", fd);
@@ -1264,7 +1264,7 @@ int ContentHandler::Handlefputs(const char* s, void* stream)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::fputs(s, stream);
+        return StorageLibcApiWrapper::fputs(s, stream);
     }
 
     LOG_ERROR("fputs interception not yet supported, fd={}", fd);
@@ -1276,7 +1276,7 @@ size_t ContentHandler::Handlefread(void* ptr, size_t size, size_t nmemb, void* s
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::fread(ptr, size, nmemb, stream);
+        return StorageLibcApiWrapper::fread(ptr, size, nmemb, stream);
     }
 
     LOG_ERROR("fread interception not yet supported, fd={}", fd);
@@ -1290,9 +1290,9 @@ void* ContentHandler::Handlefreopen(const char* pathname, const char* mode, void
     {
         if (is64Bit)
         {
-            return StorageDlsymWrapper::freopen64(pathname, mode, stream);
+            return StorageLibcApiWrapper::freopen64(pathname, mode, stream);
         }
-        return StorageDlsymWrapper::freopen(pathname, mode, stream);
+        return StorageLibcApiWrapper::freopen(pathname, mode, stream);
     }
 
     LOG_ERROR("freopen{} interception not yet supported, fd={}", is64Bit ? "64" : "", fd);
@@ -1304,7 +1304,7 @@ int ContentHandler::Handlefseek(void* stream, long offset, int whence)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::fseek(stream, offset, whence);
+        return StorageLibcApiWrapper::fseek(stream, offset, whence);
     }
 
     LOG_ERROR("fseek interception not yet supported, fd={}", fd);
@@ -1318,9 +1318,9 @@ int ContentHandler::Handlefsetpos(void* stream, const void* pos, bool is64Bit)
     {
         if (is64Bit)
         {
-            return StorageDlsymWrapper::fsetpos64(stream, pos);
+            return StorageLibcApiWrapper::fsetpos64(stream, pos);
         }
-        return StorageDlsymWrapper::fsetpos(stream, pos);
+        return StorageLibcApiWrapper::fsetpos(stream, pos);
     }
 
     LOG_ERROR("fsetpos{} interception not yet supported, fd={}", is64Bit ? "64" : "", fd);
@@ -1332,7 +1332,7 @@ long ContentHandler::Handleftell(void* stream)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::ftell(stream);
+        return StorageLibcApiWrapper::ftell(stream);
     }
 
     LOG_ERROR("ftell interception not yet supported, fd={}", fd);
@@ -1344,7 +1344,7 @@ size_t ContentHandler::Handlefwrite(const void* ptr, size_t size, size_t nmemb, 
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::fwrite(ptr, size, nmemb, stream);
+        return StorageLibcApiWrapper::fwrite(ptr, size, nmemb, stream);
     }
 
     LOG_ERROR("fwrite interception not yet supported, fd={}", fd);
@@ -1356,7 +1356,7 @@ int ContentHandler::Handlegetc(void* stream)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::getc(stream);
+        return StorageLibcApiWrapper::_getc(stream);
     }
 
     LOG_ERROR("getc interception not yet supported, fd={}", fd);
@@ -1368,7 +1368,7 @@ int ContentHandler::Handlegetw(void* stream)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::getw(stream);
+        return StorageLibcApiWrapper::getw(stream);
     }
 
     LOG_ERROR("getw interception not yet supported, fd={}", fd);
@@ -1380,7 +1380,7 @@ int ContentHandler::Handleputc(int c, void* stream)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::putc(c, stream);
+        return StorageLibcApiWrapper::_putc(c, stream);
     }
 
     LOG_ERROR("putc interception not yet supported, fd={}", fd);
@@ -1392,7 +1392,7 @@ int ContentHandler::Handleputw(int w, void* stream)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::putw(w, stream);
+        return StorageLibcApiWrapper::putw(w, stream);
     }
 
     LOG_ERROR("putw interception not yet supported, fd={}", fd);
@@ -1404,7 +1404,7 @@ void ContentHandler::Handlerewind(void* stream)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::rewind(stream);
+        return StorageLibcApiWrapper::rewind(stream);
     }
 
     LOG_ERROR("rewind interception not yet supported, fd={}", fd);
@@ -1416,7 +1416,7 @@ void ContentHandler::Handlesetbuf(void* stream, char* buf)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::setbuf(stream, buf);
+        return StorageLibcApiWrapper::setbuf(stream, buf);
     }
 
     LOG_ERROR("setbuf interception not yet supported, fd={}", fd);
@@ -1428,7 +1428,7 @@ void ContentHandler::Handlesetbuffer(void* stream, char* buf, size_t size)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::setbuffer(stream, buf, size);
+        return StorageLibcApiWrapper::setbuffer(stream, buf, size);
     }
 
     LOG_ERROR("setbuffer interception not yet supported, fd={}", fd);
@@ -1440,7 +1440,7 @@ void ContentHandler::Handlesetlinebuf(void* stream)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::setlinebuf(stream);
+        return StorageLibcApiWrapper::setlinebuf(stream);
     }
 
     LOG_ERROR("setlinebuf interception not yet supported, fd={}", fd);
@@ -1452,7 +1452,7 @@ int ContentHandler::Handlesetvbuf(void* stream, char* buf, int mode, size_t size
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::setvbuf(stream, buf, mode, size);
+        return StorageLibcApiWrapper::setvbuf(stream, buf, mode, size);
     }
 
     LOG_ERROR("setvbuf interception not yet supported, fd={}", fd);
@@ -1464,7 +1464,7 @@ int ContentHandler::Handleungetc(int c, void* stream)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::ungetc(c, stream);
+        return StorageLibcApiWrapper::ungetc(c, stream);
     }
 
     LOG_ERROR("ungetc interception not yet supported, fd={}", fd);
@@ -1476,7 +1476,7 @@ int ContentHandler::Handlevfprintf(void* stream, const char* format, va_list ap)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::vfprintf(stream, format, ap);
+        return StorageLibcApiWrapper::vfprintf(stream, format, ap);
     }
 
     LOG_ERROR("vfprintf interception not yet supported, fd={}", fd);
@@ -1488,7 +1488,7 @@ int ContentHandler::Handlevfscanf(void* stream, const char* format, va_list ap)
     int fd = GetFdFromStream(stream);
     if (fd < 0)
     {
-        return StorageDlsymWrapper::vfscanf(stream, format, ap);
+        return StorageLibcApiWrapper::vfscanf(stream, format, ap);
     }
 
     LOG_ERROR("vfscanf interception not yet supported, fd={}", fd);
@@ -1615,6 +1615,6 @@ ssize_t ContentHandler::HandleListxattr(const char* path, char* list, size_t siz
             mountInfo->MountName,
             path);
     }
-    return StorageDlsymWrapper::listxattr(path, list, size);
+    return StorageLibcApiWrapper::listxattr(path, list, size);
 }
 //---------------------------------------------------------------------------------------------------------------------

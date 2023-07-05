@@ -1,7 +1,7 @@
 ///--------------------------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
-#include "StorageDlsymWrapper.h"
+#include "StorageLibcApiWrapper.h"
 #include "MockRemoteClientException.h"
 #include "MockGetPropertiesApi.h"
 #include <sys/stat.h>

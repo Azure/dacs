@@ -5,7 +5,7 @@
 #include "StorageInterceptLogger.h"
 #include "cache.pb.h"
 #include "CacheUtils.h"
-#include "StorageDlsymWrapper.h"
+#include "StorageLibcApiWrapper.h"
 #include "StorageInterceptConfig.h"
 #include "StorageInterceptUtils.h"
 #include <dirent.h>

@@ -30,12 +30,15 @@ include_directories(
 	/opt/azure-storage-cpplite-0.3.0/include
 )
 
-file(GLOB STORAGE_INTERCEPT_SOURCES ./common/*cpp ./remote_client/*cpp ./remote_client/adls/*cpp
-        ./remote_client/blob/*cpp ./remote_client/mock/*cpp ./handlers/*cpp ./interceptors/*cpp
+file(GLOB STORAGE_INTERCEPT_SOURCES_COMMON ./common/*cpp ./remote_client/*cpp ./remote_client/adls/*cpp
+        ./remote_client/blob/*cpp ./remote_client/mock/*cpp ./handlers/*cpp ./interceptors/StorageInterceptorImpl.cpp
         ./remote_client/cache/* ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/*cpp)
 
+file(GLOB STORAGE_INTERCEPT_SOURCES_INTERCEPTOR ${STORAGE_INTERCEPT_SOURCES_COMMON} ./interceptors/StorageInterceptor.cpp ./common/wrapper_impl/StorageLibcDlsymWrapper.cpp)
+file(GLOB STORAGE_INTERCEPT_SOURCES_CACHE_CLIENT ${STORAGE_INTERCEPT_SOURCES_COMMON} ./interceptors/CacheClientInterface.cpp ./common/wrapper_impl/StorageLibcDirectWrapper.cpp)
 # StorageIntercept Lib
-add_library(StorageIntercept SHARED ${STORAGE_INTERCEPT_SOURCES})
+add_library(StorageIntercept SHARED ${STORAGE_INTERCEPT_SOURCES_INTERCEPTOR})
+add_library(CacheClient SHARED ${STORAGE_INTERCEPT_SOURCES_CACHE_CLIENT})
 
 # Don't expose internally linked interfaces via the StorageIntercept shared library
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--exclude-libs,ALL")
@@ -48,11 +51,22 @@ ADD_LIBRARY(static-azurestorage STATIC IMPORTED)
 SET_TARGET_PROPERTIES(static-azurestorage PROPERTIES
         IMPORTED_LOCATION /opt/azure-storage-cpplite-0.3.0/lib/libazure-storage-lite.a)
 target_link_libraries(StorageIntercept diagnostics static-azurestorage curl jsoncpp dl staticprotobuf ibverbs)
+target_link_libraries(CacheClient diagnostics static-azurestorage curl jsoncpp dl staticprotobuf ibverbs)
+
+add_custom_command(
+    TARGET CacheClient POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/include)
+
+add_custom_command(
+    TARGET CacheClient POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/src/subsystems/storage/storage_intercept/interceptors/CacheClientInterface.h
+        ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/include)
 
 #StorageIntercept Unit Tests
 enable_testing()
 
-file(GLOB STORAGE_INTERCEPT_SOURCES_TEST ./common/*cpp ./remote_client/*cpp ./remote_client/adls/*cpp
+file(GLOB STORAGE_INTERCEPT_SOURCES_TEST ./common/*cpp ./common/wrapper_impl/StorageLibcDlsymWrapper.cpp 
+        ./remote_client/*cpp ./remote_client/adls/*cpp
         ./remote_client/blob/*cpp ./remote_client/mock/*cpp ./handlers/*cpp ./remote_client/cache/* ./tests/*cpp
         ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/*cpp)
 

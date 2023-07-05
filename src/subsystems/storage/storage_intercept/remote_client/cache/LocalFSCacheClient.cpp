@@ -3,7 +3,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "LocalFSCacheClient.h"
 #include "StorageInterceptLogger.h"
-#include "StorageDlsymWrapper.h"
+#include "StorageLibcApiWrapper.h"
 #include "StorageInterceptConfig.h"
 #include "CacheUtils.h"
 #include <unistd.h>
@@ -93,13 +93,13 @@ CacheStatus LocalFSCacheClient::DownloadSync(
         throw "non zero offset not supported";
     }
 
-    const int fileFD = StorageDlsymWrapper::open(localFilePath.c_str(), O_RDONLY, 0777);
+    const int fileFD = StorageLibcApiWrapper::open(localFilePath.c_str(), O_RDONLY, 0777);
     if (fileFD >= 0)
     {
         uint64_t totalRead = 0;
         while (totalRead < length)
         {
-            const int tempRead = StorageDlsymWrapper::read(fileFD, buffer + totalRead, length - totalRead);
+            const int tempRead = StorageLibcApiWrapper::read(fileFD, buffer + totalRead, length - totalRead);
             if (tempRead > 0)
             {
                 totalRead += tempRead;
@@ -113,13 +113,13 @@ CacheStatus LocalFSCacheClient::DownloadSync(
             {
                 LOG_WARN("Failed to read() from mountName={}, file={}, errno={}:{}",
                     mountName, localFilePath, errno, strerror(errno))
-                StorageDlsymWrapper::close(fileFD);
+                StorageLibcApiWrapper::close(fileFD);
                 return cacheStatus;
             }
         }
 
         readLength = totalRead;
-        StorageDlsymWrapper::close(fileFD);
+        StorageLibcApiWrapper::close(fileFD);
         cacheStatus = CacheStatus::SUCCESS;
     }
     else
@@ -146,7 +146,7 @@ bool LocalFSCacheClient::UploadSync(std::unique_ptr<UploadContext> uploadContext
         openFlags |= O_DIRECT;
     }
 
-    const int fileFD = StorageDlsymWrapper::open(tmpFilePath.c_str(), openFlags, 0644);
+    const int fileFD = StorageLibcApiWrapper::open(tmpFilePath.c_str(), openFlags, 0644);
     if (fileFD < 0)
     {
         // TODO: Handle cases where there is left over file from previous run.
@@ -181,13 +181,13 @@ bool LocalFSCacheClient::UploadSync(std::unique_ptr<UploadContext> uploadContext
             LOG_ERROR("couldn't complete write to file={} fd={} openflags={} wrote={} actual length={} errno={}:{}",
                 tmpFilePath, fileFD, openFlags, totalWritten, uploadContext->m_fileData->BufferSize, errno,
                 strerror(errno));
-            StorageDlsymWrapper::close(fileFD);
+            StorageLibcApiWrapper::close(fileFD);
             remove(tmpFilePath.c_str());
             return false;
         }
     }
 
-    StorageDlsymWrapper::close(fileFD);
+    StorageLibcApiWrapper::close(fileFD);
 
     // Now rename file to final destination
     const string destFilename = m_strLocalCachePath + "/" + uploadContext->m_strCacheKey;

@@ -1,18 +1,25 @@
 ///--------------------------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
-// The StorageDlsymWrapper provides the original libc implementation of the intercepted libc calls, in case the 
-// intercepted libc calls need to fallback to their original counterpart. It loads the "next" libc call in the load
-// order.
+// Interface for invoking libc API calls. Two different implementations of this class exist under the files
+// StorageLibcDirectWrapper.cpp and StorageLibcDlsymWrapper.cpp. As the names suggest, the former directly invokes 
+// the libc APIs, while the latter relies on dlsym and RTLD_NEXT. The former is used while building the dacs interface for
+// storage interceptor, while the latter is used while building the status quo storage interceptor
+
+// Note that all APIs in this class following the same naming convention as their libc counterparts, except in cases
+// like __xstat, __fxstat, etc. getc and putc are also named here as _getc and _putc, since the stdio.h provided by glibc
+// expands getc and putc into their weak aliases - _IO_getc and _IO_putc. 
+// More here: https://stackoverflow.com/questions/34892601/what-does-the-weak-alias-function-do-and-where-is-it-defined
+// since this header is included in the direct wrapper implementation, the function definitions in that file would errnonously
+// expand to StorageLibcApiWrapper::_IO_getc and StorageLibcApiWrapper::_IO_putc respectively
 //---------------------------------------------------------------------------------------------------------------------
 #pragma once
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <stdint.h>
 #include <stdarg.h>
-// TODO: simplify this class using macros
 //---------------------------------------------------------------------------------------------------------------------
-class StorageDlsymWrapper
+class StorageLibcApiWrapper
 {
     public:
         static int open(/*[in]*/ const char* pathname,
@@ -118,9 +125,9 @@ class StorageDlsymWrapper
         static long ftell(/*[in]*/ void* stream);
         static size_t fwrite(/*[in]*/ const void* ptr, /*[in]*/ size_t size, /*[in]*/ size_t nmemb,
             /*[in]*/ void* stream);
-        static int getc(/*[in]*/ void* stream);
+        static int _getc(/*[in]*/ void* stream);
         static int getw(/*[in]*/ void* stream);
-        static int putc(/*[in]*/ int c, /*[in]*/ void* stream);
+        static int _putc(/*[in]*/ int c, /*[in]*/ void* stream);
         static int putw(/*[in]*/ int w, /*[in]*/ void* stream);
         static void rewind(/*[in]*/ void* stream);
         static void setbuf(/*[in]*/ void* stream, /*[in]*/ char* buf);

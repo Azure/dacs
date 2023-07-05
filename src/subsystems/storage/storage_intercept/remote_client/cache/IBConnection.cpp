@@ -3,7 +3,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "IBConnection.h"
 #include "StorageInterceptLogger.h"
-#include "StorageDlsymWrapper.h"
+#include "StorageLibcApiWrapper.h"
 #include <fcntl.h>
 #include <poll.h>
 //---------------------------------------------------------------------------------------------------------------------

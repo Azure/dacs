@@ -316,5 +316,24 @@ echo ""
 reset_local_ssd_cache
 stop_cache_server
 
+echo "Running dacs interface test"
+# Install go
+pushd /tmp
+wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz
+rm -rf /usr/local/go && tar -C /usr/local -xzf go1.20.5.linux-amd64.tar.gz
+export PATH=$PATH:/usr/local/go/bin
+popd
+
+# Run the test
+export DACS_PATH=${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/
+pushd ${SCRIPT_DIR}
+LD_LIBRARY_PATH=$DACS_PATH CGO_CFLAGS="-I $DACS_PATH/include" CGO_LDFLAGS="-L $DACS_PATH" go run main.go
+if [ $? -ne 0 ];
+then
+    echo "DACS interface test failed"
+    exit 1
+fi
+popd
+
 # TODO: add tests for adls
 echo "All Storage interception integration tests completed"
