@@ -121,9 +121,20 @@ std::string StorageInterceptUtils::GetRemotePathPrefix(const std::string& mountN
     if (StorageInterceptConfig::GetInstance().GetRemoteStoreType(mountName) ==
         StorageInterceptConstants::ConfigValRemoteTypeBlob)
     {
+        const bool isDynamicAccount = StorageInterceptConfig::GetInstance().IsDynamicAccountMount(mountName);
         const bool isDynamicContainer = StorageInterceptConfig::GetInstance().IsDynamicContainerMount(mountName);
         const bool isIgnoreAccountName = StorageInterceptConfig::GetInstance().IsIgnoreAccountNameInCacheKey(mountName);
-        if(!isIgnoreAccountName)
+
+        if (isDynamicAccount)
+        {
+            return "";
+        }
+
+        if(isIgnoreAccountName)
+        {
+            remotePathPrefix = std::string(StorageInterceptConstants::CacheKeyAccountNameOverride) + "/";
+        }
+        else
         {
             remotePathPrefix = StorageInterceptConfig::GetInstance().GetStorageAccountName(mountName) + "/";
         }

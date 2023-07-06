@@ -42,6 +42,18 @@ function append_interception_config_blob_prefix() {
     fi
 }
 
+function add_dynamic_mount_config() {
+    STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
+    MOUNT_PATH=$1
+
+    rm ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+
+    echo "storagePath ${MOUNT_PATH}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "type blob" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "azBlobDynamicAccount true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "azBlobSASToken \${STORAGE_INTCPT_SAS_TOKEN}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+}
+
 function add_interception_config_blob() {
     STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
     STORAGE_INTERCEPT_PATH=$1
@@ -216,10 +228,20 @@ then
 fi
 echo ""
 
-echo "Running integration test against blob"
+echo "Running integration test against blob with dynamic container mount"
 pip3 install h5py
 add_interception_config_blob /mnt/quiverfs true
 eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d largeMultiMountDynamic -s -n 20 -p 4"
+if [ $? -ne 0 ]
+then
+    echo "Blob Integration test failed"
+    exit 1
+fi
+echo ""
+
+echo "Running integration test against blob with dynamic account mount"
+add_dynamic_mount_config /mnt/quiverfs
+eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d largeDynamicAccount -s -n 20 -p 4"
 if [ $? -ne 0 ]
 then
     echo "Blob Integration test failed"

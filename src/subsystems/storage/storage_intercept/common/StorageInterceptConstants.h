@@ -7,6 +7,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 namespace StorageInterceptConstants
 {
+    const char* const CacheKeyAccountNameOverride = "$accountNameOverride$";
     const char* const DefaultConfigFilePath = "/tmp/storageIntercept.config";
     const char* const ConfigFilePathEnv = "STORAGE_INTERCEPT_CONFIG_FILEPATH";
     const char* const ConfigEnvPrefix = "SI_";
@@ -71,6 +72,7 @@ namespace StorageInterceptConstants
     const char* const ConfigNameAzBlobStorageAccKey = "azBlobStorageAccountKey";
     const char* const ConfigNameAzBlobStorageEndpointUrl = "azBlobStorageEndpoint";
     const char* const ConfigNameAzBlobContainerName = "azBlobContainerName";
+    const char* const ConfigNameAzBlobDynamicAccount = "azBlobDynamicAccount";
     const char* const ConfigNameAzBlobDynamicContainer = "azBlobDynamicContainer";
     const char* const ConfigNameMaxConnsPerBlobClient = "maxConnsPerBlobClient";
     const char* const ConfigNameAzIgnoreAccountNameInCacheKey = "azIgnoreAccountNameInCacheKey";

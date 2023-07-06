@@ -9,6 +9,8 @@
 #include "HttpStatus.h"
 #include <set>
 #include <storage_account.h>
+#include <map>
+#include <mutex>
 /* <blob/blob_client.h> uses syslog, that also defines the same macros defined in LoggingApi.h.
  * undef and redefine __linux__ to avoid conflict
  */
@@ -55,6 +57,7 @@ class BlobClient : public IRemoteClient
         bool IsIgnorableError(/*[in] */ HttpStatus statusCode);
 
         std::vector<azBlobItem_t> ListOneBlob(
+            /*[in] */ azBlobClient_t& blobClient,
             /*[in] */ const std::string& containerName,
             /*[in] */ const std::string& continuationToken,
             /*[in] */ const std::string& queryPrefix);
@@ -64,6 +67,8 @@ class BlobClient : public IRemoteClient
         void MakeFileAttr(
             /*[in]*/ const azBlobItem_t& blobItem,
             /*[out]*/ FileAttributes& attr);
+        
+        azBlobClient_t& GetBlobClient(/*[in] */ const std::string& remotePath);
 
         std::string GetContainerName(/*[in] */ const std::string& remotePath) const;
 
@@ -71,10 +76,12 @@ class BlobClient : public IRemoteClient
 
     private:
         const std::string                                           m_strMountName;
-        std::unique_ptr<azBlobClient_t>                             m_spClient;
+        std::map<std::string, std::unique_ptr<azBlobClient_t>>      m_mapBlobClients;
+        std::mutex                                                  m_lockBlobClients;
         AzStorageAccountContext                                     m_storageAccountContext;
         AzStorageAuthContext                                        m_storageAuthContext;
-        const bool                                                  m_bIsDynamic;
+        const bool                                                  m_bIsDynamicAccount;
+        const bool                                                  m_bIsDynamicContainer;
         std::string                                                 m_strContainerName;
         size_t                                                      m_nMaxConnections;
         static constexpr bool                                       USE_HTTPS=true;
