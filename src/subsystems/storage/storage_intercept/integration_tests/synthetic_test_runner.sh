@@ -128,11 +128,19 @@ then
 elif [ "$dataset" = "largeMultiMountDynamic" ]
 then
     mount_path="/mnt/quiverfs/dataset"
-    samples_file="${SCRIPT_DIR}/large_dataset_testcases_multi_account_dynamic_container.txt"
+    samples_file="${SCRIPT_DIR}/large_dataset_testcases_dynamic_container.txt"
     declare -A io_test_args=(
         [folder_path]="/mnt/quiverfs/dataset/books_wiki_en_corpus"
         [compressed_tar_path]="/mnt/quiverfs/dataset/books_wiki_en_corpus.tar.gz"
         [compressed_zip_path]="/mnt/quiverfs/dataset/books_wiki_en_corpus.zip")
+elif [ "$dataset" = "largeDynamicAccount" ]
+then
+    mount_path="/mnt/quiverfs/surkriseastus.blob.core.windows.net/dataset"
+    samples_file="${SCRIPT_DIR}/large_dataset_testcases_dynamic_account.txt"
+    declare -A io_test_args=(
+        [folder_path]="/mnt/quiverfs/surkriseastus.blob.core.windows.net/dataset/books_wiki_en_corpus"
+        [compressed_tar_path]="/mnt/quiverfs/surkriseastus.blob.core.windows.net/dataset/books_wiki_en_corpus.tar.gz"
+        [compressed_zip_path]="/mnt/quiverfs/surkriseastus.blob.core.windows.net/dataset/books_wiki_en_corpus.zip")
 else
     samples_file="${SCRIPT_DIR}/large_dataset_testcases.txt"
     declare -A io_test_args=(

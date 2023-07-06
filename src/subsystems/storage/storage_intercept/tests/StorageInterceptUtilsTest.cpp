@@ -114,7 +114,7 @@ TEST_F(StorageInterceptUtilsTest, GetRemotePathPrefixBlobTest)
 
         OverrideConfig(StorageInterceptConstants::ConfigNameAzIgnoreAccountNameInCacheKey, "true");
         result = StorageInterceptUtils::GetRemotePathPrefix("");
-        ASSERT_EQ(result, "cont/");
+        ASSERT_EQ(result, "$accountNameOverride$/cont/");
         OverrideConfig(StorageInterceptConstants::ConfigNameAzIgnoreAccountNameInCacheKey, "false");
 
         OverrideConfig(StorageInterceptConstants::ConfigNameAzBlobDynamicContainer, "true");
@@ -123,7 +123,7 @@ TEST_F(StorageInterceptUtilsTest, GetRemotePathPrefixBlobTest)
 
         OverrideConfig(StorageInterceptConstants::ConfigNameAzIgnoreAccountNameInCacheKey, "true");
         result = StorageInterceptUtils::GetRemotePathPrefix("");
-        ASSERT_EQ(result, "");
+        ASSERT_EQ(result, "$accountNameOverride$/");
         OverrideConfig(StorageInterceptConstants::ConfigNameAzIgnoreAccountNameInCacheKey, "false");        
     }
 }

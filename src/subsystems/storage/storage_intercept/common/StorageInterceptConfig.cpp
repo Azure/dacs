@@ -746,6 +746,15 @@ std::string StorageInterceptConfig::GetStorageEndpointUrl(const std::string& mou
         StorageInterceptConstants::ConfigNameAzBlobStorageEndpointUrl);
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::IsDynamicAccountMount(const std::string& mountName)
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameAzBlobDynamicAccount,
+        false);
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::IsDynamicContainerMount(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(

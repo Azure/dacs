@@ -56,7 +56,6 @@ type blob
 azBlobStorageAccountName <storage-account-name>
 azBlobStorageEndpoint <storage-account-blob-endpoint>
 azBlobContainerName <storage-account-container>
-azBlobDynamicContainer <true or false - enable interception across multiple containers>
 maxConnsPerBlobClient [eg. 10 or 100]
 ```
 
@@ -75,6 +74,21 @@ If the blob requests need to be authenticated using an accessToken obtained from
 azBlobAccessToken <token>
 ```
 
+To enable dynamic account interception, use
+```
+azBlobDynamicAccount true
+```
+This would cause account and container name to be picked from the intercepted path. The account hostname would be the first path segment and container name would be the second path segment.
+Note: Any account name, container name and blob endpoint config settings specified would be ignored.
+Note: Only SAS or access token auth is supported for dynamic account mount.
+
+To enable dynamic container interception, use
+```
+azBlobDynamicContainer true
+```
+This would cause container name to be picked from the intercepted path. The container name would be the first path segment.
+Note: The container name config setting if specified would be ignored.
+
 ### Other config settings
 Other config settings you can experiment with in `/tmp/storageIntercept.config`.
 
@@ -88,6 +102,7 @@ chunkDownloadMaxConcurrency [eg. 40, should ideally be same as maxConnsPerBlobCl
 enableLargePrefetch [true or false]
 prefetchWindowSizeInMB [eg. 100]
 cacheEnable [true or false - Enable data cache. default -false]
+azIgnoreAccountNameInCacheKey [true or false - Ignore account name in cache key. default - false]
 cacheServerPort [remote cache server port. default - 20000]
 cacheUseLocalFS [true or false - Enable local ssd cache. default - false (use remote cache server)]
 cacheLocalFSCachePath [local path (use ssd or tmpfs) where the cache chunks have to be stored]

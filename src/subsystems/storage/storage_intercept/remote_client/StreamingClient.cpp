@@ -848,6 +848,15 @@ void StreamingClient::LogGetPropertiesStats(bool forceLog)
 //---------------------------------------------------------------------------------------------------------------------
 std::string StreamingClient::GetCacheFilePath(const std::string& path) const
 {
+    if ((StorageInterceptConfig::GetInstance().GetRemoteStoreType(m_strMountName) ==
+     StorageInterceptConstants::ConfigValRemoteTypeBlob) &&
+     StorageInterceptConfig::GetInstance().IsDynamicAccountMount(m_strMountName) &&
+     StorageInterceptConfig::GetInstance().IsIgnoreAccountNameInCacheKey(m_strMountName))
+    {
+        // For dynamic mounts, we want to skip the account hostname in first component of path
+        return std::string(StorageInterceptConstants::CacheKeyAccountNameOverride) + "/" + StorageInterceptUtils::RemoveFirstComponentFromPath(path);
+    }
+
     return m_strRemotePathPrefix + path;
 }
 //---------------------------------------------------------------------------------------------------------------------
