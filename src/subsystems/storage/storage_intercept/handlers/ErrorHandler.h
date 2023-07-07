@@ -8,18 +8,6 @@
 
 #include "StorageInterceptLogger.h"
 //---------------------------------------------------------------------------------------------------------------------
-enum class SetErrorResponse
-{
-    Success = 0,
-    Failed = 1
-};
-//---------------------------------------------------------------------------------------------------------------------
-enum class GetErrorResponse
-{
-    Found = 0,
-    NotFound = 1
-};
-//---------------------------------------------------------------------------------------------------------------------
 // Appending a generated GUID at the end of the marker to avoid collisions with actual markers
 static const std::string FAILED_MARKER = "READDIR_ERROR_5601fce891d847d0aa58b361ab9a45be";
 //---------------------------------------------------------------------------------------------------------------------
@@ -38,9 +26,9 @@ class ErrorHandler
     static ErrorHandler& GetInstance();
 
     void ResetState();
-    SetErrorResponse SetError(/*[in]*/ const std::string& error, /*[in]*/ const int key = ::gettid());
-    GetErrorResponse GetLastError(/*[out]*/ std::string& error, /*[in]*/ const int key = ::gettid());
-    bool IsErrorSet(/*[in]*/ const int key = ::gettid());
+    void SetError(/*[in]*/ const std::string& error, /*[in]*/ const int tid = ::gettid());
+    char* GetLastError(/*[in]*/ const int tid = ::gettid());
+    bool IsErrorSet(/*[in]*/ const int tid = ::gettid());
 
   private:
     ErrorHandler();

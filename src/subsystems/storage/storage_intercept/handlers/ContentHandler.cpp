@@ -1495,16 +1495,16 @@ int ContentHandler::Handlevfscanf(void* stream, const char* format, va_list ap)
     throw "vfscanf interception not yet supported";
 }
 //---------------------------------------------------------------------------------------------------------------------
-const char* ContentHandler::HandleGetLastError()
+char* ContentHandler::HandleGetLastError()
 {
-    GetErrorResponse errResponse = ErrorHandler::GetInstance().GetLastError(m_threadLocalLastError);
-    if (errResponse == GetErrorResponse::NotFound)
+    char* error = ErrorHandler::GetInstance().GetLastError();
+
+    if (error == nullptr)
     {
         LOG_INFO("No error(s) found while querying ErrorHandler");
-        return nullptr;
     }
 
-    return m_threadLocalLastError.c_str();
+    return error;
 }
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::GetFdFromStream(void* stream)

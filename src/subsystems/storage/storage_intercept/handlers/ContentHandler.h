@@ -249,7 +249,7 @@ class ContentHandler
             /*[in]*/ const char* format,
             /*[out]*/ va_list ap);
         
-        const char* HandleGetLastError();
+        char* HandleGetLastError();
         // APIs to handle shared state when a process is forked.
         // Processes which are forked share the system state including memory and open file descriptors.
         // We need to ensure network connections (sockets) are not shared across multiple processes.

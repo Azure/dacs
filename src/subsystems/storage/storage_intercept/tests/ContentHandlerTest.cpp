@@ -14,6 +14,7 @@
 #include <fstream>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <stdlib.h>
 //---------------------------------------------------------------------------------------------------------------------
 ContentHandlerTest::ContentHandlerTest()
     : TestBase()
@@ -191,51 +192,46 @@ TEST_F(ContentHandlerTest, OpenFileRemoteBlobErrorTest)
     std::thread t1([&](){
         int fd = ContentHandler::GetInstance().HandleOpen(filePath.c_str(), O_RDONLY);
         ASSERT_EQ(fd, -1);
-        std::string errMessage;
-        GetErrorResponse errResponse = ErrorHandler::GetInstance().GetLastError(errMessage);
-        ASSERT_EQ(GetErrorResponse::Found, errResponse);
-        ASSERT_FALSE(errMessage.empty());
+        char* error = ContentHandler::GetInstance().HandleGetLastError();
+        ASSERT_NE(nullptr, error);
         ASSERT_EQ(EIO, errno);
 
         fd = -2;
-        errResponse = GetErrorResponse::NotFound;
-        errMessage.clear();
+        ::free(error);
+        error = nullptr;
         errno = 0;
 
         fd = ContentHandler::GetInstance().HandleOpen64(filePath.c_str(), O_RDONLY);
         ASSERT_EQ(fd, -1);
-        errResponse = ErrorHandler::GetInstance().GetLastError(errMessage);
-        ASSERT_EQ(GetErrorResponse::Found, errResponse);
-        ASSERT_FALSE(errMessage.empty());
+        error = ContentHandler::GetInstance().HandleGetLastError();
+        ASSERT_NE(nullptr, error);
         ASSERT_EQ(EIO, errno);
+        ::free(error);
     });
 
     std::thread t2([&](){
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        std::string errMessage;
-        GetErrorResponse errResponse = ErrorHandler::GetInstance().GetLastError(errMessage);
-        ASSERT_EQ(GetErrorResponse::NotFound, errResponse);
-        ASSERT_TRUE(errMessage.empty());
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        char* error = ContentHandler::GetInstance().HandleGetLastError();
+        ASSERT_EQ(nullptr, error);
         ASSERT_NE(EIO, errno);
 
         int fd = ContentHandler::GetInstance().HandleOpen(filePath.c_str(), O_RDONLY);
         ASSERT_EQ(fd, -1);
-        errResponse = ErrorHandler::GetInstance().GetLastError(errMessage);
-        ASSERT_EQ(GetErrorResponse::Found, errResponse);
-        ASSERT_FALSE(errMessage.empty());
+        error = ContentHandler::GetInstance().HandleGetLastError();
+        ASSERT_NE(nullptr, error);
         ASSERT_EQ(EIO, errno);
+        ::free(error);
 
         fd = -2;
-        errResponse = GetErrorResponse::NotFound;
-        errMessage.clear();
         errno = 0;
+        error = nullptr;
 
         fd = ContentHandler::GetInstance().HandleOpen64(filePath.c_str(), O_RDONLY);
         ASSERT_EQ(fd, -1);
-        errResponse = ErrorHandler::GetInstance().GetLastError(errMessage);
-        ASSERT_EQ(GetErrorResponse::Found, errResponse);
-        ASSERT_FALSE(errMessage.empty());
+        error = ContentHandler::GetInstance().HandleGetLastError();
+        ASSERT_NE(nullptr, error);
         ASSERT_EQ(EIO, errno);
+        ::free(error);
     });
 
     t1.join();
