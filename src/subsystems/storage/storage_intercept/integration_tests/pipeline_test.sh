@@ -115,11 +115,18 @@ function add_interception_config_blob_with_cache_encryption() {
 }
 
 function add_interception_config_blob_with_remote_cache() {
-    add_interception_config_blob $1
+    add_interception_config_blob $1 $2
+    TEST_MULTI_MOUNT=${2:false}
 
     STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
-    echo "cacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "attributesCacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    if [ "$TEST_MULTI_MOUNT" = true ]
+    then
+      echo "mount1cacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+      echo "mount1attributesCacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    else
+      echo "cacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+      echo "attributesCacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    fi
     echo "attributesCacheUseRemoteServer true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "cacheServerPort ${CACHE_SERVER_PORT}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "cacheEnableRemote true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
@@ -321,6 +328,16 @@ eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large 
 if [ $? -ne 0 ]
 then
     echo "Blob Integration test with remote attribute and data cache failed"
+    exit 1
+fi
+echo ""
+
+echo "Running integration test with multi-mount against blob with remote attribute and data cache enabled"
+add_interception_config_blob_with_remote_cache /mnt/quiverfs true
+eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d largeMultiMountDynamic -s -n 20 -p 4"
+if [ $? -ne 0 ]
+then
+    echo "Blob Integration test with multi-mount and remote attribute and data cache failed"
     exit 1
 fi
 echo ""

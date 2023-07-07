@@ -80,7 +80,7 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
     uploadRequest->set_ignorelock(true);
     uploadRequest->set_expiryseconds(m_keyExpirySeconds);
 
-    LOG_INFO_REQID("Uploading mountName: {}, file: {}, length: {}, fileAttributes: {}",
+    LOG_DEBUG_REQID("Uploading mountName: {}, file: {}, length: {}, fileAttributes: {}",
         *uploadRequest,
         uploadContext->m_strMountName,
         uploadContext->m_strCacheKey,
