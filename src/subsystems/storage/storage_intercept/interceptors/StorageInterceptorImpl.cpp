@@ -301,7 +301,7 @@ int StorageInterceptorImpl::vfscanf(void* stream, const char* format, va_list ap
     return ContentHandler::GetInstance().Handlevfscanf(stream, format, ap);
 }
 //---------------------------------------------------------------------------------------------------------------------
-const char* StorageInterceptorImpl::getLastError()
+char* StorageInterceptorImpl::getLastError()
 {
     return ContentHandler::GetInstance().HandleGetLastError();
 }

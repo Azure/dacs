@@ -23,7 +23,7 @@ extern "C" int SI_fstat(int fd, struct stat *statbuf)
     return StorageInterceptorImpl::fstat(fd, statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
-extern "C" const char* SI_getLastError()
+extern "C" char* SI_getLastError()
 {
     return StorageInterceptorImpl::getLastError();
 }

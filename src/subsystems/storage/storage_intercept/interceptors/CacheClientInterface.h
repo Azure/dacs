@@ -19,16 +19,10 @@ int SI_fstat(int fd, struct stat *statbuf);
 // SI_getLastError semantics:
 // Returns a pointer to a null-terminated string describing the last error that occurred in the calling thread.
 // if no error occurred which originated from the cache client, then NULL is returned
-// The pointer returned by SI_getLastError() is valid until the next call to SI_getLastError(),
-// and is undefined after that.
+// It is upto the caller to free the returned pointer.
 
-// Example:
-//  const char* error = SI_getLastError();
-//  printf("Error: %s\n", error); <- Valid pointer
-//  const char* secondError = SI_getLastError();
-//  printf("Error: %s\n", error); <- error is now invalid
-//  printf("Error: %s\n", secondError); <- secondError is valid
-const char* SI_getLastError();
+char* SI_getLastError();
+//---------------------------------------------------------------------------------------------------------------------
 
 #endif
 //---------------------------------------------------------------------------------------------------------------------

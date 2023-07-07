@@ -78,6 +78,6 @@ class StorageInterceptorImpl
         static int vfprintf(void* stream, const char* format, va_list ap);
         static int vfscanf(void* stream, const char* format, va_list ap);
 
-        static const char* getLastError();
+        static char* getLastError();
 };
 //---------------------------------------------------------------------------------------------------------------------

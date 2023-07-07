@@ -2,6 +2,9 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "ErrorHandler.h"
+
+#include <stdlib.h>
+#include <string.h>
 //---------------------------------------------------------------------------------------------------------------------
 ErrorHandler& ErrorHandler::GetInstance()
 {
@@ -19,46 +22,47 @@ void ErrorHandler::ResetState()
     m_mapTidToErrorString.clear();
 }
 //---------------------------------------------------------------------------------------------------------------------
-SetErrorResponse ErrorHandler::SetError(/*[in]*/ const std::string& error, /*[in]*/ const int key)
+void ErrorHandler::SetError(/*[in]*/ const std::string& error, /*[in]*/ const int tid)
 {
     if(error.empty())
     {
-        LOG_ERROR("Error string is empty");
-        return SetErrorResponse::Failed;
+        LOG_WARN("Skipping setting error, string is empty");
+        return;
     }
 
     std::lock_guard<std::mutex> lock(m_lock);
 
     LOG_DEBUG("Setting error to {}", error);
-    auto it = m_mapTidToErrorString.find(key);
+    auto it = m_mapTidToErrorString.find(tid);
     if(it == m_mapTidToErrorString.end())
     {
-        m_mapTidToErrorString.emplace(key, error);
+        m_mapTidToErrorString.emplace(tid, error);
     }
     else
     {
         it->second = error;
     }
-
-    return SetErrorResponse::Success;
 }
 //---------------------------------------------------------------------------------------------------------------------
-GetErrorResponse ErrorHandler::GetLastError(/*[out]*/ std::string& error, /*[in]*/ const int key)
+char* ErrorHandler::GetLastError(/*[in]*/ const int tid)
 {
     std::lock_guard<std::mutex> lock(m_lock);
-    auto it = m_mapTidToErrorString.find(key);
+    char* error = nullptr;
+
+    auto it = m_mapTidToErrorString.find(tid);
     if(it != m_mapTidToErrorString.end())
     {
-        error = it->second;
-        return GetErrorResponse::Found;
+        error = (char*)::malloc(it->second.size() + 1);
+        ::strcpy(error, it->second.c_str());
     }
 
-    return GetErrorResponse::NotFound;
+    return error;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool ErrorHandler::IsErrorSet(/*[in]*/ const int key)
+bool ErrorHandler::IsErrorSet(/*[in]*/ const int tid)
 {
     std::lock_guard<std::mutex> lock(m_lock);
-    return m_mapTidToErrorString.find(key) != m_mapTidToErrorString.end();
+
+    return m_mapTidToErrorString.find(tid) != m_mapTidToErrorString.end();
 }
 //---------------------------------------------------------------------------------------------------------------------

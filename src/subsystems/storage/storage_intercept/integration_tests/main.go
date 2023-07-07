@@ -8,31 +8,52 @@ package main
 #include <unistd.h>
 #include <stdlib.h>
 
-static size_t getFileSize(int fd)
+static size_t getFileSize(int fd, char** errorPtr)
 {
 	struct stat buf;
 	int ret = SI_fstat(fd, &buf);
-	if (ret != 0)
+	if (ret == -1)
 	{
+		if (errorPtr != NULL)
+			*errorPtr = SI_getLastError();
 		return -1;
 	}
 
 	return buf.st_size;
 }
 
-static int fileOpen(char* s)
+static int fileOpen(char* s, char** errorPtr)
 {
-	return SI_open(s, O_RDONLY, 0644);
+	int fd = SI_open(s, O_RDONLY, 0644);
+	if (fd == -1)
+	{
+		if (errorPtr != NULL)
+			*errorPtr = SI_getLastError();
+	}
+
+	return fd;
 }
 
-static void fileClose(int fd)
+static void fileClose(int fd, char** errorPtr)
 {
-	SI_close(fd);
+	int ret = SI_close(fd);
+	if (ret == -1)
+	{
+		if (errorPtr != NULL)
+			*errorPtr = SI_getLastError();
+	}
 }
 
-static const char* checkError()
+static ssize_t filePread(int fd, void *buf, size_t count, off_t offset, char** errorPtr)
 {
-	return SI_getLastError();
+	ssize_t ret = SI_pread(fd, buf, count, offset);
+	if(ret == -1)
+	{
+		if (errorPtr != NULL)
+			*errorPtr = SI_getLastError();
+	}
+
+	return ret;
 }
 */
 import "C"
@@ -47,42 +68,57 @@ func main() {
 	fileName := C.CString("sample_file.txt")
 	defer C.free(unsafe.Pointer(fileName))
 
-	fileFd := C.fileOpen(fileName)
+	var errorPtr *C.char
+	fileFd := C.fileOpen(fileName, &errorPtr)
 	if fileFd == -1 {
 		fmt.Println("fileOpen failed")
-		ret := C.checkError()
-		if ret != nil {
-			fmt.Println("ErrorHandler reported:", C.GoString(ret))
+		if errorPtr != nil {
+			fmt.Println("ErrorHandler reported:", C.GoString(errorPtr))
 		}
+		C.free(unsafe.Pointer(errorPtr))
 		os.Exit(1)
 	}
 
-	fileSize := int64(C.getFileSize(C.int(fileFd)))
+	errorPtr = nil
+	fileSize := int64(C.getFileSize(C.int(fileFd), &errorPtr))
 	if fileSize == -1 {
 		fmt.Println("getFileSize failed")
-		ret := C.checkError()
-		if ret != nil {
-			fmt.Println("ErrorHandler reported:", C.GoString(ret))
+		if errorPtr != nil {
+			fmt.Println("ErrorHandler reported:", C.GoString(errorPtr))
 		}
+		C.free(unsafe.Pointer(errorPtr))
 		os.Exit(1)
 	}
+
 	fmt.Println("fileSize:", fileSize)
+	errorPtr = nil
 	count := 10
 	offset := 0
 	buf := make([]byte, fileSize)
 
-	bytes_read := int64(C.SI_pread(C.int(fileFd), unsafe.Pointer(&buf[0]), C.ulong(count), C.long(offset)))
+	bytes_read := int64(C.filePread(C.int(fileFd), unsafe.Pointer(&buf[0]), C.ulong(count), C.long(offset), &errorPtr))
 	if bytes_read == -1 {
 		fmt.Println("pread failed")
-		ret := C.checkError()
-		if ret != nil {
-			fmt.Println("ErrorHandler reported:", C.GoString(ret))
+		if errorPtr != nil {
+			fmt.Println("ErrorHandler reported:", C.GoString(errorPtr))
 		}
+		C.free(unsafe.Pointer(errorPtr))
 		os.Exit(1)
 	}
 
 	fmt.Println("bytes_read:", bytes_read)
+	errorPtr = nil
 
-	C.checkError()
-	C.fileClose(C.int(fileFd))
+	errorPtr = C.SI_getLastError()
+	if errorPtr != nil {
+		fmt.Println("ErrorHandler reported:", C.GoString(errorPtr))
+		C.free(unsafe.Pointer(errorPtr))
+	}
+
+	errorPtr = nil
+	C.fileClose(C.int(fileFd), &errorPtr)
+	if errorPtr != nil {
+		fmt.Println("ErrorHandler reported:", C.GoString(errorPtr))
+		C.free(unsafe.Pointer(errorPtr))
+	}
 }

@@ -6,6 +6,7 @@
 
 #include <thread>
 #include <chrono>
+#include <stdlib.h>
 //---------------------------------------------------------------------------------------------------------------------
 #define ASSERT_IF(condition, stmt)                                                         { if (condition) { stmt; } }
 //---------------------------------------------------------------------------------------------------------------------
@@ -22,43 +23,31 @@ void ErrorHandlerTests::SetUp()
 TEST_F(ErrorHandlerTests, TestGetLastErrorNotFound)
 {
     ErrorHandler::GetInstance().ResetState();
-    std::string lastErrorMessage;
-    GetErrorResponse getErrResponse = ErrorHandler::GetInstance().GetLastError(lastErrorMessage);
-    ASSERT_EQ(GetErrorResponse::NotFound, getErrResponse);
+    char* error = ErrorHandler::GetInstance().GetLastError();
+    ASSERT_EQ(nullptr, error);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(ErrorHandlerTests, TestResetState)
 {
     ErrorHandler::GetInstance().ResetState();
     std::string errMessage = "Sample error";
-    SetErrorResponse setErrResponse = ErrorHandler::GetInstance().SetError(errMessage);
-    ASSERT_EQ(SetErrorResponse::Success, setErrResponse);
+    ErrorHandler::GetInstance().SetError(errMessage);
 
     ErrorHandler::GetInstance().ResetState();
-    std::string lastErrorMessage;
-    GetErrorResponse getErrResponse = ErrorHandler::GetInstance().GetLastError(lastErrorMessage);
-    ASSERT_EQ(GetErrorResponse::NotFound, getErrResponse);
-}
-//---------------------------------------------------------------------------------------------------------------------
-TEST_F(ErrorHandlerTests, TestSetErrorFailed)
-{
-    ErrorHandler::GetInstance().ResetState();
-    std::string errMessage;
-    SetErrorResponse setErrResponse = ErrorHandler::GetInstance().SetError(errMessage);
-    ASSERT_EQ(SetErrorResponse::Failed, setErrResponse);
+    char* error = ErrorHandler::GetInstance().GetLastError();
+    ASSERT_EQ(nullptr, error);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(ErrorHandlerTests, TestSetAndGetErrorSingleThreaded)
 {
     ErrorHandler::GetInstance().ResetState();
     std::string errMessage = "Sample error";
-    SetErrorResponse setErrResponse = ErrorHandler::GetInstance().SetError(errMessage);
-    ASSERT_EQ(SetErrorResponse::Success, setErrResponse);
+    ErrorHandler::GetInstance().SetError(errMessage);
 
-    std::string lastErrMessage;
-    GetErrorResponse getErrResponse = ErrorHandler::GetInstance().GetLastError(lastErrMessage);
-    ASSERT_EQ(GetErrorResponse::Found, getErrResponse);
-    ASSERT_EQ(errMessage, lastErrMessage);
+    char* error = ErrorHandler::GetInstance().GetLastError();
+    ASSERT_NE(nullptr, error);
+    ASSERT_EQ(errMessage, error);
+    ::free(error);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(ErrorHandlerTests, TestSetAndGetErrorMultiThreaded)
@@ -68,48 +57,39 @@ TEST_F(ErrorHandlerTests, TestSetAndGetErrorMultiThreaded)
     std::string secondErrMessage = "different error";
 
     std::thread t1([&](){
-        SetErrorResponse setErrResponse = ErrorHandler::GetInstance().SetError(errMessage);
-        ASSERT_EQ(SetErrorResponse::Success, setErrResponse);
+        ErrorHandler::GetInstance().SetError(errMessage);
+        ErrorHandler::GetInstance().SetError(secondErrMessage);
 
-        setErrResponse = ErrorHandler::GetInstance().SetError(secondErrMessage);
-        ASSERT_EQ(SetErrorResponse::Success, setErrResponse);
-
-        std::string lastErrMessage;
-        GetErrorResponse getErrResponse = ErrorHandler::GetInstance().GetLastError(lastErrMessage);
-        ASSERT_EQ(GetErrorResponse::Found, getErrResponse);
-        ASSERT_EQ(secondErrMessage, lastErrMessage);
+        char* error = ErrorHandler::GetInstance().GetLastError();
+        ASSERT_NE(nullptr, error);
+        ASSERT_EQ(secondErrMessage, error);
+        ::free(error);
     });
 
     std::thread t2([&](){
         // Sleep for a bit
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        SetErrorResponse setErrResponse = ErrorHandler::GetInstance().SetError(secondErrMessage);
-        ASSERT_EQ(SetErrorResponse::Success, setErrResponse);
+        ErrorHandler::GetInstance().SetError(secondErrMessage);
+        ErrorHandler::GetInstance().SetError(errMessage);
 
-        setErrResponse = ErrorHandler::GetInstance().SetError(errMessage);
-        ASSERT_EQ(SetErrorResponse::Success, setErrResponse);
-
-        std::string lastErrMessage;
-        GetErrorResponse getErrResponse = ErrorHandler::GetInstance().GetLastError(lastErrMessage);
-        ASSERT_EQ(GetErrorResponse::Found, getErrResponse);
-        ASSERT_EQ(errMessage, lastErrMessage);
+        char* error = ErrorHandler::GetInstance().GetLastError();
+        ASSERT_NE(nullptr, error);
+        ASSERT_EQ(errMessage, error);
+        ::free(error);
     });
 
     t1.join();
     t2.join();
 
-    std::string lastErrMessage;
-    GetErrorResponse getErrResponse = ErrorHandler::GetInstance().GetLastError(lastErrMessage);
-    ASSERT_EQ(GetErrorResponse::NotFound, getErrResponse);
-    ASSERT_TRUE(lastErrMessage.empty());
+    char* error = ErrorHandler::GetInstance().GetLastError();
+    ASSERT_EQ(nullptr, error);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(ErrorHandlerTests, TestIsErrorSet)
 {
     ErrorHandler::GetInstance().ResetState();
     std::string errMessage = "Sample error";
-    SetErrorResponse setErrResponse = ErrorHandler::GetInstance().SetError(errMessage);
-    ASSERT_EQ(SetErrorResponse::Success, setErrResponse);
+    ErrorHandler::GetInstance().SetError(errMessage);
 
     bool isErrorSet = ErrorHandler::GetInstance().IsErrorSet();
     ASSERT_TRUE(isErrorSet);
