@@ -101,7 +101,11 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(
     ::FileAttributes* fileAttributes)
 {
     CacheStatus cacheStatus = CacheStatus::INTERNAL_ERROR;
-    EncryptionUtil& encryptionUtil = GetEncryptionUtilForMount(mountName);
+
+    // Encryption isn't supported for attribute download, initialize encryptionUtil for other cases
+    const bool isAttrDownload = (fileAttributes != nullptr && readLength == 0);
+    EncryptionUtil encryptionDisabledUtil(false, "");
+    EncryptionUtil& encryptionUtil = isAttrDownload ? encryptionDisabledUtil : GetEncryptionUtilForMount(mountName);
 
     if (encryptionUtil.IsEncryptionEnabled())
     {
@@ -122,7 +126,7 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(
     downloadRequest->set_offset(startOffset);
     downloadRequest->set_length(length);
     downloadRequest->set_enablelock(true);
-    LOG_INFO_REQID("Creating DownloadRequest filename: {}, offset: {}, length: {}, enablelock: true",
+    LOG_DEBUG_REQID("Creating DownloadRequest filename: {}, offset: {}, length: {}, enablelock: true",
         *downloadRequest, cacheKey, startOffset, length);
 
     if (!AddAuthParams(request))
