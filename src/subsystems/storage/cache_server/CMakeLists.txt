@@ -52,6 +52,8 @@ target_link_libraries(
     ${CACHE_SERVER_EXEC}
     pthread
     ibverbs
+    prometheus-cpp-pull
+    prometheus-cpp-core
     crypto
     diagnostics
     reliability_common
@@ -103,6 +105,8 @@ target_link_libraries(CacheServerUnitTests
         reliability_common
         staticprotobuf
         stdc++fs
+        prometheus-cpp-pull
+        prometheus-cpp-core
         ${GMOCK_LIBRARY}
         ${GMOCK_MAIN_LIBRARY}
         ${GTEST_LIBRARY}

@@ -93,8 +93,15 @@ RUN \
   apt-get install ninja-build -y && \
   add-apt-repository ppa:deadsnakes/ppa -y && \
   apt-get update -y && \
-  apt-get install python3.9 python3.9-dev python3.9-venv -y && \
-# Dependencies for storage
+  sudo apt-get install -y wget build-essential checkinstall && \
+  sudo apt-get install -y libreadline-gplv2-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libffi-dev zlib1g-dev && \
+  sudo wget https://www.python.org/ftp/python/3.9.16/Python-3.9.16.tgz && \
+  tar xzf Python-3.9.16.tgz   && \
+  cd Python-3.9.16  && \  
+  sudo ./configure --enable-optimizations --enable-shared && \
+  sudo make altinstall  && \
+  sudo rm -f Python-3.9.6.tgz  && \
+  cd .. && \
   apt-get update && apt-get install -y --no-install-recommends \
   libssl-dev libcurl4-openssl-dev curl libjsoncpp-dev uuid-dev && \
 # Following is used to prebuild all DACS dependencies
@@ -113,7 +120,11 @@ RUN \
   ) > /etc/ssh/sshd_dev_config && \
   mkdir /run/sshd && \
   useradd -m dacsuser && \
-  find /dependency -type d | xargs chmod 777
+  #find all the dirs in /dependency and chmod 777,
+  #few dir name might have spaces in their name, so pass each line of the output of the find command to xargs instead of using space as separator
+  find /dependency -type d -print0 | xargs -0 -I {} chmod 777 "{}"
+
+
 
 # GPU Profiler Dependencies
 RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
