@@ -286,7 +286,7 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd,
             return nullptr;
         }
 
-        LOG_INFO_REQID("Created IB connection, qp={}", *ibRequest, qp->qp_num, ibRequest->requestid());
+        LOG_INFO_REQID("Created IB connection, qp={}", *ibRequest, qp->qp_num);
         if (qpn < IB_CONNECTIONS_PER_SERVER - 1)
         {
 

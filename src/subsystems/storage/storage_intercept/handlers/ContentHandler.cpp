@@ -103,7 +103,7 @@ ContentHandler::MountInfo& ContentHandler::GetMountInfo(const std::string& mount
         if (mountName == mountInfo->MountName) return *mountInfo;
     }
 
-    LOG_ERROR("MountInfo not found for mountName=", mountName);
+    LOG_ERROR("MountInfo not found for mountName={}", mountName);
     throw "MountInfo not found";
 }
 //---------------------------------------------------------------------------------------------------------------------
