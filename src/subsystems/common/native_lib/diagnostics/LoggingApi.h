@@ -156,7 +156,38 @@ auto parseFileName(const char(&file)[N])
     auto pos = strrchr(file, '/');
     return pos ? pos + 1 : file;
 }
+//-------------------------------------------------------------------------------------------------------------------------------------------
+// Ensure number of format specifiers is equal to number of arguments
+#if defined(__HIPCC__) || defined(__NVCC__) || defined(__CUDACC__) || defined(AMD_BUILD) || defined(__HIP_PLATFORM_AMD__) || !defined(__cplusplus)
+#define STATIC_ASSERT_FORMATTERS(message, ...)                                                                         \
+    /** Does not work with device compilers, and is quite limited in AMD **/                                           \
+    ;
+#else
+//-------------------------------------------------------------------------------------------------------------------------------------------
+constexpr std::size_t constexpr_strlen(const char* s)
+{
+    return std::char_traits<char>::length(s);
+}
+//-------------------------------------------------------------------------------------------------------------------------------------------
+constexpr int count_format_specifiers(const char* str)
+{
+    int count = 0;
+    for(auto i = 0; i + 1 < constexpr_strlen(str); i++)
+    {
+        if(str[i] == '{' && str[i + 1] == '}')
+        {
+            count++;
+            i++;
+        }
+    }
 
+    return count;
+}
+//-------------------------------------------------------------------------------------------------------------------------------------------
+#define STATIC_ASSERT_FORMATTERS(message, ...)                                                                         \
+    static_assert(std::tuple_size<decltype(std::make_tuple(__VA_ARGS__))>::value == count_format_specifiers(message));
+#endif
+//-------------------------------------------------------------------------------------------------------------------------------------------
 #ifdef __FILE_NAME__
 #define __FILENAME__ __FILE_NAME__
 #else
@@ -168,34 +199,47 @@ auto parseFileName(const char(&file)[N])
 #define FORMAT_STR FORMAT_BASE "operation_Id:{}|rank:{}|{}:{}({}): "
 //-------------------------------------------------------------------------------------------------------------------------------------------
 #define LOG_TRACE(message, args...) \
+    STATIC_ASSERT_FORMATTERS(message, ##args); \
     LoggingApi::LogMessage<LogLevel::Trace>("DACS_CTR:TRACE" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 #define CX_LOG_TRACE(message, args...) \
+    STATIC_ASSERT_FORMATTERS(message, ##args); \
     LoggingApi::LogMessage<LogLevel::Trace>("CX_RAW:TRACE" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 //-------------------------------------------------------------------------------------------------------------------------------------------
 #define LOG_DEBUG(message, args...) \
+    STATIC_ASSERT_FORMATTERS(message, ##args); \
     LoggingApi::LogMessage<LogLevel::Debug>("DACS_CTR:DEBUG" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 #define CX_LOG_DEBUG(message, args...) \
     LoggingApi::LogMessage<LogLevel::Debug>("CX_RAW:DEBUG" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 //-------------------------------------------------------------------------------------------------------------------------------------------
 #define LOG_INFO(message, args...) \
+    STATIC_ASSERT_FORMATTERS(message, ##args); \
     LoggingApi::LogMessage<LogLevel::Info>("DACS_CTR:INFO" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 #define CX_LOG_INFO(message, args...) \
+    STATIC_ASSERT_FORMATTERS(message, ##args); \
     LoggingApi::LogMessage<LogLevel::Info>("CX_RAW:INFO" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 //-------------------------------------------------------------------------------------------------------------------------------------------
 #define LOG_WARN(message, args...) \
+    STATIC_ASSERT_FORMATTERS(message, ##args); \
     LoggingApi::LogMessage<LogLevel::Warn>("DACS_CTR:WARN" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 #define CX_LOG_WARN(message, args...) \
+    STATIC_ASSERT_FORMATTERS(message, ##args); \
     LoggingApi::LogMessage<LogLevel::Warn>("CX_RAW:WARN" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 //-------------------------------------------------------------------------------------------------------------------------------------------
 #define LOG_ERROR(message, args...) \
+    STATIC_ASSERT_FORMATTERS(message, ##args); \
     LoggingApi::LogMessage<LogLevel::Error>("DACS_CTR:ERROR" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 #define CX_LOG_ERROR(message, args...) \
+    STATIC_ASSERT_FORMATTERS(message, ##args); \
     LoggingApi::LogMessage<LogLevel::Error>("CX_RAW:ERROR" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
+//-------------------------------------------------------------------------------------------------------------------------------------------
 #define LOG_STACK(message, args...) \
+    STATIC_ASSERT_FORMATTERS(message, ##args); \
     std::cerr << fmt::format("DACS_CTR:ERROR" FORMAT_BASE message, GET_TIME, ::getpid(), ::gettid(), ##args) <<  std::endl;
 //-------------------------------------------------------------------------------------------------------------------------------------------
 #define LOG_CRITICAL(message, args...) \
+    STATIC_ASSERT_FORMATTERS(message, ##args); \
     LoggingApi::LogMessage<LogLevel::Critical>("DACS_CTR:CRITICAL" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 #define CX_LOG_CRITICAL(message, args...) \
+    STATIC_ASSERT_FORMATTERS(message, ##args); \
     LoggingApi::LogMessage<LogLevel::Critical>("CX_RAW:CRITICAL" FORMAT_STR message, __FILENAME__, __FUNCTION__, __LINE__, ##args);
 //-------------------------------------------------------------------------------------------------------------------------------------------
