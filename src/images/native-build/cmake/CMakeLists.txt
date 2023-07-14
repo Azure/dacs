@@ -46,3 +46,7 @@ include_directories(SYSTEM ${PROJECT_BINARY_DIR}/include)
 # google protobuf static library
 include(external/External_protobufstatic.cmake)
 include_directories(SYSTEM ${PROJECT_BINARY_DIR}/include)
+
+# prometheus cpp
+include(external/External_prometheus_cpp.cmake)
+include_directories(SYSTEM ${PROJECT_BINARY_DIR}/include)

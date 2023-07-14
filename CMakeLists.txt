@@ -54,6 +54,9 @@ include(${CMAKE_EXTERNAL_PROJECT}/json_include.cmake)
 #Fast Hashing with xxHash - required for criu deduping
 include(${CMAKE_EXTERNAL_PROJECT}/xxHash_include.cmake)
 
+#prometheus support through https://github.com/jupp0r/prometheus-cpp/releases 
+include(${CMAKE_EXTERNAL_PROJECT}/prometheus_cpp_include.cmake)
+
 if(AMD_BUILD)
     # Include ROCm HIP, RCCL, etc.
     include(build/SetupBuildDependencies/rocm_include.cmake)
