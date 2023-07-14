@@ -25,7 +25,7 @@ def main():
     assert args.name is not None, 'Dataset name must be provided'
     assert args.storage_path is not None, 'Storage path must be provided'
 
-    print("Starting storage client with {} workers, reading dataset: {}".format(args.num_workers, args.name)
+    print("Starting storage client with {} workers, reading dataset: {}".format(args.num_workers, args.name))
     full_path = os.path.join(args.storage_path, args.name)
     # Recursively scan through the directory and get all the files
     work_queue = []
