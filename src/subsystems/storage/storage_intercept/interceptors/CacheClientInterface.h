@@ -10,19 +10,11 @@
 #include <sys/stat.h>
 
 // libc APIs
-int SI_open(const char *pathname, int flags, mode_t mode);
-ssize_t SI_pread(int fd, void* buf, size_t nByte, off64_t offset);
-int SI_close(int fd);
-int SI_fstat(int fd, struct stat *statbuf);
+int SI_open(/*[in]*/ const char *pathname, /*[in]*/ int flags, /*[in]*/ mode_t mode, /*[out]*/ char** errorString);
+ssize_t SI_pread(/*[in]*/ int fd, /*[in]*/ void* buf, /*[in]*/ size_t nByte, /*[in]*/ off64_t offset, /*[out]*/ char** errorString);
+int SI_close(/*[in]*/ int fd, /*[out]*/ char** errorString);
+int SI_fstat(/*[in]*/ int fd, /*[in]*/ struct stat *statbuf, /*[out]*/ char** errorString);
 // End of libc APIs
-
-// SI_getLastError semantics:
-// Returns a pointer to a null-terminated string describing the last error that occurred in the calling thread.
-// if no error occurred which originated from the cache client, then NULL is returned
-// It is upto the caller to free the returned pointer.
-
-char* SI_getLastError();
-//---------------------------------------------------------------------------------------------------------------------
 
 #endif
 //---------------------------------------------------------------------------------------------------------------------

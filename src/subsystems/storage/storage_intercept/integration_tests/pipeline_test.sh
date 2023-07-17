@@ -235,6 +235,29 @@ then
 fi
 echo ""
 
+echo "Running go integration test against blob"
+add_interception_config_blob /mnt/quiverfs
+export SI_azBlobSASToken="incorrect-token"
+# Install go
+pushd /tmp
+wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz
+rm -rf /usr/local/go && tar -C /usr/local -xzf go1.20.5.linux-amd64.tar.gz
+export PATH=$PATH:/usr/local/go/bin
+popd
+
+# Run the test
+export DACS_PATH=${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/
+pushd ${SCRIPT_DIR}
+LD_LIBRARY_PATH=$DACS_PATH CGO_CFLAGS="-I $DACS_PATH/include" CGO_LDFLAGS="-L $DACS_PATH" go run main.go
+if [ $? -ne 0 ];
+then
+    echo "Go integration test failed"
+    exit 1
+fi
+popd
+unset SI_azBlobSASToken
+echo ""
+
 echo "Running integration test against blob with dynamic container mount"
 pip3 install h5py
 add_interception_config_blob /mnt/quiverfs true
@@ -376,25 +399,6 @@ __test_no_crash_on_invalid_snapshot__
 __test_upload_download_snapshot_in_parallel__
 __test_no_crash_on_truncated_snapshot__
 echo "Snapshot validation tests passed"
-
-echo "Running dacs interface test"
-# Install go
-pushd /tmp
-wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz
-rm -rf /usr/local/go && tar -C /usr/local -xzf go1.20.5.linux-amd64.tar.gz
-export PATH=$PATH:/usr/local/go/bin
-popd
-
-# Run the test
-export DACS_PATH=${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/
-pushd ${SCRIPT_DIR}
-LD_LIBRARY_PATH=$DACS_PATH CGO_CFLAGS="-I $DACS_PATH/include" CGO_LDFLAGS="-L $DACS_PATH" go run main.go
-if [ $? -ne 0 ];
-then
-    echo "DACS interface test failed"
-    exit 1
-fi
-popd
 
 # TODO: add tests for adls
 echo "All Storage interception integration tests completed"

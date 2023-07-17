@@ -5,7 +5,7 @@
 #include "StorageInterceptConfig.h"
 #include "StorageInterceptLogger.h"
 #include "StorageInterceptUtils.h"
-#include "BlobClientException.h"
+#include "RemoteClientException.h"
 #include <dirent.h>
 #include <sstream>
 #include <mstream.h>
@@ -69,7 +69,7 @@ void BlobClient::GetConfigProperties()
         }
         else
         {
-            throw BlobClientException("Access token or SAS token is required for dynamic account mount");
+            throw RemoteClientException("ConfigurationError: Access token or SAS token is required for dynamic account mount");
         }
 
         return;
@@ -101,7 +101,7 @@ void BlobClient::GetConfigProperties()
     }
     else
     {
-        throw BlobClientException("Blob auth credentials missing");
+        throw RemoteClientException("ConfigurationError: auth credentials missing");
     }
 
     if (!m_bIsDynamicContainer)
@@ -144,7 +144,7 @@ ssize_t BlobClient::ReadChunkSync(const std::string& remotePath, void* buf, size
             blobOutcome.error().code,
             blobOutcome.error().code_name,
             blobOutcome.error().message);
-        throw BlobClientException(blobOutcome.error().code_name);
+        throw RemoteClientException("BlobClientError: " + blobOutcome.error().code_name + ", " + blobOutcome.error().message);
     }
 
     nBytesRead = static_cast<ssize_t>(blobOutcome.response().size);
@@ -182,7 +182,7 @@ std::string BlobClient::ReadDirectory(
             blobOutcome.error().code,
             blobOutcome.error().code_name,
             blobOutcome.error().message);
-        throw BlobClientException(blobOutcome.error().code_name);
+        throw RemoteClientException("BlobClientError: " + blobOutcome.error().code_name + ", " + blobOutcome.error().message);
     }
 
     for (auto const& blob : blobOutcome.response().blobs)
@@ -298,7 +298,7 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
                     "Possible memory corruption. List blob response items not matching query. response={}, query={}",
                     blobResponse.name,
                     blobPath);
-                throw BlobClientException("Invalid blob path received in response");
+                throw RemoteClientException("BlobClientError: Invalid blob path received in response");
             }
 
             const std::string blobPathWithTrailingDelimiter = blobPath + DIRECTORY_DELIMITER;
@@ -370,7 +370,7 @@ std::vector<BlobClient::azBlobItem_t> BlobClient::ListOneBlob(
             return emptyBlobList;
         }
 
-        throw BlobClientException(blobOutcome.error().code_name);
+        throw RemoteClientException("BlobClientError: " + blobOutcome.error().code_name + ", " + blobOutcome.error().message);
     }
 
     LOG_DEBUG("List one blob result for container={}, queryPrefix={}, continuationToken={}, nBlobs={}, blobName={}",

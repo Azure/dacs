@@ -11,11 +11,9 @@ package main
 static size_t getFileSize(int fd, char** errorPtr)
 {
 	struct stat buf;
-	int ret = SI_fstat(fd, &buf);
+	int ret = SI_fstat(fd, &buf, errorPtr);
 	if (ret == -1)
 	{
-		if (errorPtr != NULL)
-			*errorPtr = SI_getLastError();
 		return -1;
 	}
 
@@ -24,36 +22,7 @@ static size_t getFileSize(int fd, char** errorPtr)
 
 static int fileOpen(char* s, char** errorPtr)
 {
-	int fd = SI_open(s, O_RDONLY, 0644);
-	if (fd == -1)
-	{
-		if (errorPtr != NULL)
-			*errorPtr = SI_getLastError();
-	}
-
-	return fd;
-}
-
-static void fileClose(int fd, char** errorPtr)
-{
-	int ret = SI_close(fd);
-	if (ret == -1)
-	{
-		if (errorPtr != NULL)
-			*errorPtr = SI_getLastError();
-	}
-}
-
-static ssize_t filePread(int fd, void *buf, size_t count, off_t offset, char** errorPtr)
-{
-	ssize_t ret = SI_pread(fd, buf, count, offset);
-	if(ret == -1)
-	{
-		if (errorPtr != NULL)
-			*errorPtr = SI_getLastError();
-	}
-
-	return ret;
+	return SI_open(s, O_RDONLY, 0644, errorPtr);
 }
 */
 import "C"
@@ -62,63 +31,78 @@ import (
 	"fmt"
 	"unsafe"
 	"os"
+	"time"
 )
 
-func main() {
-	fileName := C.CString("sample_file.txt")
+func OpenRoutine(fileNameStr string) int {
+	fileName := C.CString(fileNameStr)
+	retValue := 1
 	defer C.free(unsafe.Pointer(fileName))
 
 	var errorPtr *C.char
 	fileFd := C.fileOpen(fileName, &errorPtr)
 	if fileFd == -1 {
-		fmt.Println("fileOpen failed")
+		fmt.Println("open failed")
 		if errorPtr != nil {
-			fmt.Println("ErrorHandler reported:", C.GoString(errorPtr))
+			fmt.Println("Error reported:", C.GoString(errorPtr))
+			retValue = 0
 		}
 		C.free(unsafe.Pointer(errorPtr))
-		os.Exit(1)
 	}
 
-	errorPtr = nil
-	fileSize := int64(C.getFileSize(C.int(fileFd), &errorPtr))
-	if fileSize == -1 {
-		fmt.Println("getFileSize failed")
-		if errorPtr != nil {
-			fmt.Println("ErrorHandler reported:", C.GoString(errorPtr))
-		}
-		C.free(unsafe.Pointer(errorPtr))
-		os.Exit(1)
-	}
-
-	fmt.Println("fileSize:", fileSize)
-	errorPtr = nil
-	count := 10
-	offset := 0
-	buf := make([]byte, fileSize)
-
-	bytes_read := int64(C.filePread(C.int(fileFd), unsafe.Pointer(&buf[0]), C.ulong(count), C.long(offset), &errorPtr))
-	if bytes_read == -1 {
-		fmt.Println("pread failed")
-		if errorPtr != nil {
-			fmt.Println("ErrorHandler reported:", C.GoString(errorPtr))
-		}
-		C.free(unsafe.Pointer(errorPtr))
-		os.Exit(1)
-	}
-
-	fmt.Println("bytes_read:", bytes_read)
-	errorPtr = nil
-
-	errorPtr = C.SI_getLastError()
-	if errorPtr != nil {
-		fmt.Println("ErrorHandler reported:", C.GoString(errorPtr))
-		C.free(unsafe.Pointer(errorPtr))
-	}
-
-	errorPtr = nil
-	C.fileClose(C.int(fileFd), &errorPtr)
-	if errorPtr != nil {
-		fmt.Println("ErrorHandler reported:", C.GoString(errorPtr))
-		C.free(unsafe.Pointer(errorPtr))
-	}
+	return retValue
 }
+
+func main() {
+	// Assume that the intercept path is /mnt/quiverfs
+	// Also we assume that the intercept config has an incorrect sas token
+	go OpenRoutine("/mnt/quiverfs/dataset/testFileForUt")
+	go OpenRoutine("/mnt/quiverfs/dataset/testDirForUt/file-1")
+
+	time.Sleep(1 * time.Second)
+	ret := OpenRoutine("/mnt/quiverfs/dataset/testFileForUt")
+	os.Exit(ret)
+}
+
+	// errorPtr = nil
+	// fileSize := int64(C.getFileSize(C.int(fileFd), &errorPtr))
+	// if fileSize == -1 {
+	// 	fmt.Println("getFileSize failed")
+	// 	if errorPtr != nil {
+	// 		fmt.Println("ErrorHandler reported:", C.GoString(errorPtr))
+	// 	}
+	// 	C.free(unsafe.Pointer(errorPtr))
+	// 	os.Exit(1)
+	// }
+
+	// fmt.Println("fileSize:", fileSize)
+	// errorPtr = nil
+	// count := 10
+	// offset := 0
+	// buf := make([]byte, fileSize)
+
+	// bytes_read := int64(C.filePread(C.int(fileFd), unsafe.Pointer(&buf[0]), C.ulong(count), C.long(offset), &errorPtr))
+	// if bytes_read == -1 {
+	// 	fmt.Println("pread failed")
+	// 	if errorPtr != nil {
+	// 		fmt.Println("ErrorHandler reported:", C.GoString(errorPtr))
+	// 	}
+	// 	C.free(unsafe.Pointer(errorPtr))
+	// 	os.Exit(1)
+	// }
+
+	// fmt.Println("bytes_read:", bytes_read)
+	// errorPtr = nil
+
+	// errorPtr = C.SI_getLastError()
+	// if errorPtr != nil {
+	// 	fmt.Println("ErrorHandler reported:", C.GoString(errorPtr))
+	// 	C.free(unsafe.Pointer(errorPtr))
+	// }
+
+	// errorPtr = nil
+	// C.fileClose(C.int(fileFd), &errorPtr)
+	// if errorPtr != nil {
+	// 	fmt.Println("ErrorHandler reported:", C.GoString(errorPtr))
+	// 	C.free(unsafe.Pointer(errorPtr))
+	// }

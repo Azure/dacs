@@ -10,8 +10,7 @@
 #include "StorageInterceptLogger.h"
 #include "StorageInterceptConstants.h"
 #include "StorageInterceptUtils.h"
-#include "ErrorHandler.h"
-#include "BlobClientException.h"
+#include "RemoteClientException.h"
 #include <cstring>
 #include <algorithm>
 #include <pthread.h>
@@ -129,9 +128,6 @@ void StreamingClient::ForkHandlerChild(
     std::shared_ptr<IAttributesCache> attributesCache)
 {
     SetClients(cacheClient, attributesCache);
-    
-    // Reset the error state so that the child process can start fresh
-    ErrorHandler::GetInstance().ResetState();
 }
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::SetClients(
@@ -239,26 +235,12 @@ ssize_t StreamingClient::ReadChunksSequential(
         const size_t bufSizeForChunkCopy = std::min(readEnd, (size_t)m_nChunkSize + chunkOffset) - currentOffset;
         const size_t chunkCopyOffset = currentOffset - chunkOffset;
 
-        ssize_t bytesReadIntoBuffer = 0;
-        try
-        {
-            bytesReadIntoBuffer = ReadChunkAndCopyToBuffer(
+        ssize_t bytesReadIntoBuffer = ReadChunkAndCopyToBuffer(
                 remotePath,
                 chunkOffset,
                 (char*)buf + bufOffset,
                 bufSizeForChunkCopy,
                 chunkCopyOffset);
-        }
-        catch (BlobClientException e)
-        {
-            LOG_ERROR("ReadChunkAndCopyToBuffer encountered a blob client exception. remotePath={} chunkOffset={} exception={}",
-                remotePath,
-                chunkOffset,
-                e.what());
-
-            ErrorHandler::GetInstance().SetError(e.what());
-            return -1;
-        }
 
         if (bytesReadIntoBuffer < 0)
         {
@@ -266,9 +248,7 @@ ssize_t StreamingClient::ReadChunksSequential(
                 remotePath,
                 chunkOffset,
                 currentOffset);
-
-            ErrorHandler::GetInstance().SetError("ReadChunkAndCopyToBuffer operation failed");
-            return -1;
+            throw RemoteClientException("InternalError: ReadChunkAndCopyToBuffer failed");
         }
 
         bufOffset += bufSizeForChunkCopy;
@@ -334,30 +314,13 @@ ssize_t StreamingClient::ReadChunksParallel(
     ssize_t nBytesRead = 0;
     for (AsyncReadChunkInfo& asyncReadChunk: asyncReadChunks)
     {
-        ssize_t bytesRead = 0;
-        try
-        {
-            bytesRead = asyncReadChunk.AsyncResult.get();
-        }
-        catch (BlobClientException e)
-        {
-            LOG_ERROR("ReadChunkAndCopyToBuffer encountered a blob client exception. remotePath={} chunkOffset={} exception={}",
-                remotePath,
-                asyncReadChunk.ChunkOffset,
-                e.what());
-
-            ErrorHandler::GetInstance().SetError(e.what());
-            return -1;
-        }
-
+        ssize_t bytesRead = asyncReadChunk.AsyncResult.get();
         if (bytesRead < 0)
         {
             LOG_ERROR("ReadChunkAndCopyToBuffer failed. remotePath={} chunkOffset={}",
                 remotePath,
                 asyncReadChunk.ChunkOffset);
-            
-            ErrorHandler::GetInstance().SetError("ReadChunkAndCopyToBuffer operation failed");
-            return -1;
+            throw RemoteClientException("InternalError: ReadChunkAndCopyToBuffer failed");
         }
         else
         {
@@ -377,22 +340,10 @@ std::string StreamingClient::ReadDirectory(
     std::vector<DirectoryEntry>& dirEntries)
 {
     const size_t numInitialEntries = dirEntries.size();
-    std::string strReturnVal;
-    try
-    {
-        strReturnVal = std::atomic_load(&m_spRemoteClient)->ReadDirectory(
-            remotePath,
-            continuationToken,
-            dirEntries);
-    }
-    catch (BlobClientException e)
-    {
-        LOG_ERROR("ReadDirectory encountered a blob client exception. remotePath={} exception={}",
-            remotePath,
-            e.what());
-        ErrorHandler::GetInstance().SetError(e.what());
-        return FAILED_MARKER;
-    }
+    std::string strReturnVal = std::atomic_load(&m_spRemoteClient)->ReadDirectory(
+        remotePath,
+        continuationToken,
+        dirEntries);
     
     // Update the attributes cache if new entries were found
     auto attributesCache = std::atomic_load(&m_spAttributesCache);
@@ -426,21 +377,9 @@ int StreamingClient::GetProperties(
         return 0;
     }
 
-    int result = 0;
-    try
-    {
-        result = std::atomic_load(&m_spRemoteClient)->GetProperties(
-            remotePath,
-            attributes);
-    }
-    catch (BlobClientException e)
-    {
-        LOG_ERROR("GetProperties encountered a blob client exception. remotePath={} exception={}",
-            remotePath,
-            e.what());
-        ErrorHandler::GetInstance().SetError(e.what());
-        result = -1;
-    }
+    int result = std::atomic_load(&m_spRemoteClient)->GetProperties(
+        remotePath,
+        attributes);
 
     m_nGetPropertiesRemoteClient++;
     if (result >= 0 && attributesCache && cacheStatus == CacheStatus::NOTFOUND_LOCKED)
