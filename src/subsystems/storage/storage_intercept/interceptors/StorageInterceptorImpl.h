@@ -78,6 +78,9 @@ class StorageInterceptorImpl
         static int vfprintf(void* stream, const char* format, va_list ap);
         static int vfscanf(void* stream, const char* format, va_list ap);
 
-        static char* getLastError();
+        static int SI_open(const char* pathname, int flags, int mode, char** errorString);
+        static ssize_t SI_pread(int fd, void* buf, size_t count, off64_t offset, char** errorString);
+        static int SI_close(int fd, char** errorString);
+        static int SI_fstat(int fd, struct stat* statbuf, char** errorString);
 };
 //---------------------------------------------------------------------------------------------------------------------

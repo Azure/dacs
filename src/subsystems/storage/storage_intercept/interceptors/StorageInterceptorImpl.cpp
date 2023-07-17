@@ -4,6 +4,7 @@
 #include "StorageInterceptorImpl.h"
 #include "StorageLibcApiWrapper.h"
 #include "ContentHandler.h"
+#include "RemoteClientException.h"
 #include <cstdlib>
 //---------------------------------------------------------------------------------------------------------------------
 int StorageInterceptorImpl::open(const char* pathname, int flags, mode_t mode)
@@ -68,7 +69,7 @@ int StorageInterceptorImpl::close(int fd)
 //---------------------------------------------------------------------------------------------------------------------
 void* StorageInterceptorImpl::opendir(const char* pathname)
 {
-    return ContentHandler::GetInstance().HandleOpendir(pathname);;
+    return ContentHandler::GetInstance().HandleOpendir(pathname);
 }
 //---------------------------------------------------------------------------------------------------------------------
 void* StorageInterceptorImpl::readdir(void* dirp)
@@ -301,8 +302,131 @@ int StorageInterceptorImpl::vfscanf(void* stream, const char* format, va_list ap
     return ContentHandler::GetInstance().Handlevfscanf(stream, format, ap);
 }
 //---------------------------------------------------------------------------------------------------------------------
-char* StorageInterceptorImpl::getLastError()
+int StorageInterceptorImpl::SI_open(const char* pathname, int flags, int mode, char** errorString)
 {
-    return ContentHandler::GetInstance().HandleGetLastError();
+    if(errorString == nullptr)
+    {
+        errno = EIO;
+        return -1;
+    }
+
+    try
+    {
+        int fd = ContentHandler::GetInstance().HandleOpen(pathname, flags, mode);
+        if(fd < 0)
+        {
+            *errorString = ::strdup(::strerror(errno));
+        }
+        else
+        {
+            *errorString = nullptr;
+        }
+
+        return fd;
+    }
+    catch(const RemoteClientException& e)
+    {
+        *errorString = ::strdup(e.what());
+        errno = EIO;
+        return -1;
+    }
+
+    return -1;   
+}
+//---------------------------------------------------------------------------------------------------------------------
+ssize_t StorageInterceptorImpl::SI_pread(int fd, void* buf, size_t count, off64_t offset, char** errorString)
+{
+    if(errorString == nullptr)
+    {
+        errno = EIO;
+        return -1;
+    }
+
+    try
+    {
+        int ret = ContentHandler::GetInstance().HandlePRead(fd, buf, count, offset);
+        if(ret < 0)
+        {
+            *errorString = ::strdup(::strerror(errno));
+        }
+        else
+        {
+            *errorString = nullptr;
+        }
+
+        return ret;
+    }
+    catch(const RemoteClientException& e)
+    {
+        *errorString = ::strdup(e.what());
+        errno = EIO;
+        return -1;
+    }
+
+    return -1;   
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageInterceptorImpl::SI_close(int fd, char** errorString)
+{
+    if(errorString == nullptr)
+    {
+        errno = EIO;
+        return -1;
+    }
+
+    try
+    {
+        int ret = ContentHandler::GetInstance().HandleClose(fd);
+        if(ret < 0)
+        {
+            *errorString = ::strdup(::strerror(errno));
+        }
+        else
+        {
+            *errorString = nullptr;
+        }
+
+        return ret;
+    }
+    catch(const RemoteClientException& e)
+    {
+        *errorString = ::strdup(e.what());
+        errno = EIO;
+        return -1;
+    }
+
+    return -1;   
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageInterceptorImpl::SI_fstat(int fd, struct stat* statbuf, char** errorString)
+{
+    if(errorString == nullptr)
+    {
+        errno = EIO;
+        return -1;
+    }
+
+    try
+    {
+        int ret = ContentHandler::GetInstance().HandleFstat(fd, statbuf);
+        if(ret < 0)
+        {
+            *errorString = ::strdup(::strerror(errno));
+        }
+        else
+        {
+            *errorString = nullptr;
+        }
+
+        return ret;
+    }
+    catch(const RemoteClientException& e)
+    {
+        *errorString = ::strdup(e.what());
+        errno = EIO;
+        return -1;
+    }
+
+    return -1;   
 }
 //---------------------------------------------------------------------------------------------------------------------
