@@ -5,7 +5,27 @@ metadata:
 spec:
   parallelism: %PARALLELISM%
   template:
+    metadata:
+      labels:
+        app: stress-client
     spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - cacheserver
+            topologyKey: kubernetes.io/hostname
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - stress-client
+            topologyKey: kubernetes.io/hostname
       imagePullSecrets:
       - name: regcred
       containers:
