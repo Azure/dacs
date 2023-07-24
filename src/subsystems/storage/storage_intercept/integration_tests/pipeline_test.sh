@@ -214,6 +214,53 @@ function reset_local_ssd_cache() {
   echo "Cleared local ssd cache"
 }
 
+function __run_perf_benchmark__() {
+  echo "Running perf tracker benchmark"
+  stop_cache_server
+
+  # Todo: Move to build container
+  sudo apt-get install -y python3-setuptools
+  python3 -m pip install --upgrade pip
+  python3 -m pip install setuptools opencensus-ext-azure
+
+  if [[ -z "${APP_INSIGHTS_KEY}" ]]; then
+    echo "APP_INSIGHTS_KEY not set."
+    echo "When running locally, ensure you export it (get it from Azure Portal > App Insights > dacs_perf_tracker_ai > Overview > Instrumentation Key)"
+    exit 1
+  fi
+
+  if [[ -z "${GIT_COMMIT}" ||  -z "${GIT_BRANCH}" ]]; then
+    echo "Setting git variables"
+    GIT_BRANCH="$(git symbolic-ref --short HEAD)"
+    GIT_COMMIT="$(git rev-parse HEAD)"
+    GIT_COMMIT_MESSAGE="$(git log -1 --pretty=%B | head -n 1)"
+  fi
+
+  TEST_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/cacheServerTestClient "
+  export TEST_CACHESERVER_ADDR_PORT="${CACHE_SERVER_PORT}"
+
+  start_cache_server /dev/null
+  sleep 10
+
+  perf_logs=$($TEST_CLIENT_EXE measureperf)
+  echo "$perf_logs"
+  uploader_args=$(grep "\[PerfTracker\]" <<< "$perf_logs" | awk '{ print "--upload_throughput_mbps " $3 " --download_throughput_mbps " $6 }')
+  uploader_args+=" --git_branch \"$GIT_BRANCH\" --git_commit_hash \"$GIT_COMMIT\" --git_commit_message \"$GIT_COMMIT_MESSAGE\""
+
+  eval "${SCRIPT_DIR}/storage_perf_app_insights_uploader.py $uploader_args" 
+
+  if [ $? -ne 0 ]
+  then
+      echo "Perf tracker benchmark upload failed."
+      exit 1
+  fi
+
+  stop_cache_server
+  echo "Done running & uploading perf tracker benchmark"
+}
+
+__run_perf_benchmark__
+
 echo "Running cache server unit tests"
 cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
 eval "ctest -V --no-tests=error -j -1 -R CacheServer"
