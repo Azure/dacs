@@ -14,7 +14,6 @@ include_directories(${CMAKE_SOURCE_DIR}/src/subsystems/common/native_lib/diagnos
                     ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common
                     .
                     ./operations
-                    ./proto
                     ./utils
                     ./state
                     ./infiniband
@@ -25,31 +24,26 @@ include_directories(${CMAKE_SOURCE_DIR}/src/subsystems/common/native_lib/diagnos
 
 set(CACHE_SERVER_EXEC CacheServer)
 
-# Generate protobuf source files
-execute_process(
-    COMMAND /opt/protobufstatic-3.0.0/bin/protoc
-                --proto_path=${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/proto 
-                --cpp_out=${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/proto
-                ${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/proto/cache.proto)
-
 execute_process(
     COMMAND /opt/protobufstatic-3.0.0/bin/protoc
                 --proto_path=${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/snapshot/proto 
                 --cpp_out=${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/snapshot/proto
                 ${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/snapshot/proto/snapshot.proto)
 
-file(GLOB CACHE_SERVER_SOURCES *cpp ./operations/*cpp ./utils/*cpp ./state/*cpp ./infiniband/*cpp ./proto/*cc
+file(GLOB CACHE_SERVER_SOURCES *cpp ./operations/*cpp ./utils/*cpp ./state/*cpp ./infiniband/*cpp
     ./snapshot/*cpp ./snapshot/proto/*cc ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/*cpp)
 
 add_executable(${CACHE_SERVER_EXEC} ${CACHE_SERVER_SOURCES})
 
 # Statically link to precompiled protobuf library to prevent mismatch with system installed versions
 ADD_LIBRARY(staticprotobuf STATIC IMPORTED)
+
 SET_TARGET_PROPERTIES(staticprotobuf PROPERTIES
         IMPORTED_LOCATION /opt/protobufstatic-3.0.0/lib/libprotobuf.a)
 
 target_link_libraries(
     ${CACHE_SERVER_EXEC}
+    CacheProto
     pthread
     ibverbs
     prometheus-cpp-pull
@@ -81,7 +75,6 @@ target_include_directories(CacheServerUnitTests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common
     .
     ./operations
-    ./proto
     ./utils
     ./state
     ./infiniband
@@ -90,6 +83,7 @@ target_include_directories(CacheServerUnitTests PRIVATE
     /opt/protobufstatic-3.0.0/include)
 
 add_dependencies(CacheServerUnitTests
+        CacheProto
         diagnostics
         ${GMOCK_LIBRARY}
         ${GMOCK_MAIN_LIBRARY}
@@ -98,6 +92,7 @@ add_dependencies(CacheServerUnitTests
         )
 
 target_link_libraries(CacheServerUnitTests
+        CacheProto
         pthread
         ibverbs
         crypto

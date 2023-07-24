@@ -114,8 +114,8 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
         if (!uploadContext->m_encryptionUtil)
         {
             // TODO: replace these with DACS ASSERT_WITH_TRACE_CRITICAL_AND_EXIT
-            LOG_CRITICAL("EncryptionUtil not configured for mount: {}, file: {}",
-                uploadContext->m_strMountName, uploadContext->m_strCacheKey);
+            LOG_CRITICAL_REQID("EncryptionUtil not configured for mount: {}, file: {}",
+                *uploadRequest, uploadContext->m_strMountName, uploadContext->m_strCacheKey);
             throw "EncryptionUtil not configured";
         }
 
