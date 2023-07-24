@@ -28,6 +28,7 @@ string AuthAccountName = "";
 string AuthAccountKey = "";
 bool AuthEnabled = false;
 string ServerHostName = "";
+string CacheServerMetricPort = "";
 //---------------------------------------------------------------------------------------------------------------------
 void SetCacheRootPath(const string& rootFolder)
 {
@@ -142,6 +143,25 @@ void InitializeUtils()
     {
         ServerHostName = serverHostName;
     }
+
+    char* cacheServerMetricPort = std::getenv("CACHESERVER_METRICS_PORT");
+    if (cacheServerMetricPort != NULL && strlen(cacheServerMetricPort) > 0)
+    {
+        char* pEndPtr = nullptr;
+        long int nValue = std::strtol(cacheServerMetricPort, &pEndPtr, 10);
+        if (pEndPtr == cacheServerMetricPort || nValue < 0 || nValue > 65535)
+        {
+            LOG_CRITICAL("Invalid port number for metrics: {}", cacheServerMetricPort);
+            exit(-1);
+        }
+        CacheServerMetricPort = std::to_string(nValue);
+        LOG_INFO("Metrics port: {}", CacheServerMetricPort);
+    }
+    else
+    {
+        LOG_CRITICAL("Metrics port not set");
+        exit(-1);
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 unsigned int GetHashBucket(const std::string& strKey)
@@ -196,6 +216,11 @@ bool ValidateAuthSignature(const string& clientAccountName, const string& client
 string GetServerHostName()
 {
     return ServerHostName;
+}
+//---------------------------------------------------------------------------------------------------------------------
+string GetCacheServerMetricPort()
+{
+    return CacheServerMetricPort;
 }
 //---------------------------------------------------------------------------------------------------------------------
 // Use hex encoding to handle filenames with special characters

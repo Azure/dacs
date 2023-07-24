@@ -28,6 +28,8 @@
 #include <vector>
 #include <fstream>
 #include <errno.h>
+
+#include "Metrics.h"
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 using namespace cache;
@@ -73,11 +75,15 @@ void HandleSocket(int epollFd)
             close (epollEvents[0].data.fd);
             continue;
         }
+        
+        Metrics::IncrementActiveConnections();
+        auto start_time = std::chrono::steady_clock::now();
 
         // TODO: read with a timeout
         // Get the request protobuf size
         SocketConnection socketConnection(clientFd);
-        bool bReuse = HandleRequest(socketConnection);
+        Request::TypeCase requestType = Request::TypeCase::TYPE_NOT_SET;
+        bool bReuse = HandleRequest(socketConnection, requestType);
         if (bReuse)
         {
             // To re-use the client connection, put it back into the epoll list
@@ -88,13 +94,18 @@ void HandleSocket(int epollFd)
                 LOG_WARN("Failed to re-insert client fd={} to epoll list, errno: {}:{}",
                     clientFd, errno, strerror(errno));
                 close(clientFd);
-            }    
+            }
         }
         else
         {
             LOG_DEBUG("close fd={}", clientFd);
             close(clientFd);
         }
+
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        Metrics::RegisterRequestLatency(requestType, bReuse, duration.count());
+        Metrics::DecrementActiveConnections();
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -220,6 +231,18 @@ void SnapshotBackgroundThread(std::shared_ptr<snapshot::Snapshot> startingSnapho
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
+void CacheServerSizeBackgroundThread()
+{
+    LOG_INFO("Starting cache server size background thread");
+    while (true)
+    {
+        std::this_thread::sleep_for(std::chrono::seconds(60));
+        size_t cacheSize = CacheManager::GetInstance().GetCacheServerSize();
+        LOG_INFO("Cache server size: {}", cacheSize);
+        Metrics::UpdateCacheSize(cacheSize);
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
 int main(int argc, char *argv[])
 {
 
@@ -296,7 +319,9 @@ int main(int argc, char *argv[])
     }
 
     // ignore signal when write to socket fails, this is handled by -1 return value of the write call
-    signal(SIGPIPE, SIG_IGN); 
+    signal(SIGPIPE, SIG_IGN);
+    Metrics::Init();
+    std::thread* cacheServerSizeThread = new std::thread(CacheServerSizeBackgroundThread);
     StartServer(port);
 }
 //---------------------------------------------------------------------------------------------------------------------

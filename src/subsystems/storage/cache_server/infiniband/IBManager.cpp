@@ -7,9 +7,12 @@
 #include "HandleRequest.h"
 #include "Constants.h"
 #include "Logger.h"
+#include "cache.pb.h"
+#include "Metrics.h"
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 using namespace ibutils;
+using namespace cache;
 //---------------------------------------------------------------------------------------------------------------------
 IBManager& IBManager::GetInstance()
 {
@@ -324,8 +327,12 @@ void IBManager::ProcessRequest(const ibv_wc& wc)
         return;
     }
 
+    Metrics::IncrementActiveConnections();
+    auto start_time = std::chrono::steady_clock::now();
+
     IBConnection ibConnection(qp, (char*) wc.wr_id, m_ibDevice.mrBuffer->lkey, wc.byte_len);
-    bool bRet = HandleRequest(ibConnection);
+    Request::TypeCase requestType = Request::TypeCase::TYPE_NOT_SET;
+    bool bRet = HandleRequest(ibConnection, requestType);
     if (bRet)
     {
         LOG_DEBUG("Processed request successfully. qp={}, addr={}", wc.qp_num, wc.wr_id);
@@ -351,6 +358,11 @@ void IBManager::ProcessRequest(const ibv_wc& wc)
         // Cleanup QP from server
         m_qpManager->DeleteQP(qp->qp_num);
     }
+
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    Metrics::RegisterRequestLatency(requestType, bRet, duration.count());
+    Metrics::DecrementActiveConnections();
 }
 //---------------------------------------------------------------------------------------------------------------------
 void IBManager::PostWrToSRQ(uint64_t bufferAddr)

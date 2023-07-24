@@ -131,6 +131,7 @@ bool CacheManager::InitCacheInfo(const std::string& fileName, bool ignoreLock, u
             return false;
         }
     }
+
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -145,6 +146,7 @@ bool CacheManager::ResetCacheInfo(const std::string& fileName, uint64_t fileSize
     {
         m_vCacheInfoMap[index].erase(iter);
     }
+    
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -195,7 +197,7 @@ bool CacheManager::UpdateCacheInfo(const std::string& fileName, uint64_t fileSiz
         lock_guard groupLockGuard(m_vCacheGroupIDMapMutex[groupIndex]);
         m_vCacheGroupIDMap[groupIndex][groupId].emplace_back(fileName);
     }
-
+   
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -376,7 +378,7 @@ void CacheManager::InitializeFromSnapshot(const Snapshot& snapshot)
 
         LOG_INFO("Loaded snapshot toDeleteGroups into queue. num groups: {}", snapshot.todeletegroups_size());
     }
-
+  
     LOG_INFO("Completed initializing cache from snapshot. num entries: {}", nEntries);
     TIMER_STOP_AND_LOG(initFromSnapshot);
 }
@@ -503,7 +505,7 @@ void CacheManager::ScanForSnapshotConsistency(const Snapshot& snapshot)
         LOG_INFO("Deleted {} files from groupID index not found on disk. bucket: {}", nDeletedFromGroupIDIndex, bucket);
         LOG_INFO("Scanning for snapshot consistency bucket: {} completed", bucket);
     }
-
+  
     LOG_INFO("Completed scanning for snapshot consistency");
     TIMER_STOP_AND_LOG(scanForSnapshotConsistency);
 }
@@ -618,5 +620,10 @@ void CacheManager::CacheCleanupWorker()
     }
 
     LOG_INFO("Shutdown CacheCleanupWorker");
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::size_t CacheManager::GetCacheServerSize() const
+{
+    return (std::size_t)m_totalCachedSize.load();
 }
 //---------------------------------------------------------------------------------------------------------------------
