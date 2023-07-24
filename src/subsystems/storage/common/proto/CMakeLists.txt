@@ -1,0 +1,35 @@
+project(cache_proto LANGUAGES CXX C)
+cmake_minimum_required(VERSION 3.10)
+
+set(CMAKE_REMOTE_PUBLISH_DIRECTORY "${CMAKE_REMOTE_PUBLISH_DIRECTORY}-storage/storage")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}-storage/storage")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}-storage/storage")
+
+message("Current CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+message("Current CMAKE_LIBRARY_OUTPUT_DIRECTORY from ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
+message("Current CMAKE_REMOTE_PUBLISH_DIRECTORY ${CMAKE_REMOTE_PUBLISH_DIRECTORY}")
+
+set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS_INIT} -fPIC")
+
+# Generate protobuf source files
+execute_process(COMMAND mkdir -p ${CMAKE_CURRENT_LIST_DIR}/compiled)
+execute_process(
+    COMMAND /opt/protobufstatic-3.0.0/bin/protoc
+                --proto_path=${CMAKE_CURRENT_LIST_DIR} 
+                --cpp_out=${CMAKE_CURRENT_LIST_DIR}/compiled/
+                ${CMAKE_CURRENT_LIST_DIR}/cache.proto)
+
+include_directories(${CMAKE_CURRENT_LIST_DIR}/compiled
+                    /opt/protobufstatic-3.0.0/include
+                    )
+
+add_library(staticprotobuf STATIC IMPORTED)
+
+add_library(CacheProto STATIC ${CMAKE_CURRENT_LIST_DIR}/compiled/cache.pb.cc)
+
+target_include_directories(CacheProto PUBLIC ${CMAKE_CURRENT_LIST_DIR}/compiled)
+
+set_target_properties(staticprotobuf PROPERTIES
+        IMPORTED_LOCATION /opt/protobufstatic-3.0.0/lib/libprotobuf.a)
+
+target_link_libraries(CacheProto staticprotobuf)

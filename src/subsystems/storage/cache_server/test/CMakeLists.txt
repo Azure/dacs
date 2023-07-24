@@ -3,7 +3,6 @@ cmake_minimum_required(VERSION 3.10)
 
 include_directories(.
                     ../operations
-                    ../proto
                     ../utils
                     ../state
                     ../infiniband
@@ -14,8 +13,11 @@ set(TEST_CLIENT_EXEC cacheServerTestClient)
 
 add_executable(${TEST_CLIENT_EXEC} TestClient.cpp)
 
+add_dependencies(${TEST_CLIENT_EXEC} CacheProto)
+
 target_link_libraries(
     ${TEST_CLIENT_EXEC}
+    CacheProto
     pthread
     ibverbs
     staticprotobuf

@@ -11,13 +11,6 @@ message("Current CMAKE_REMOTE_PUBLISH_DIRECTORY ${CMAKE_REMOTE_PUBLISH_DIRECTORY
 
 set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS_INIT} -fPIC")
 
-# Generate protobuf source files
-execute_process(
-    COMMAND /opt/protobufstatic-3.0.0/bin/protoc
-                --proto_path=${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/proto 
-                --cpp_out=${CMAKE_SOURCE_DIR}/src/subsystems/storage/storage_intercept/remote_client/cache
-                ${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/proto/cache.proto)
-
 include_directories(
         ${CMAKE_SOURCE_DIR}/src/subsystems/common/native_lib/diagnostics
         ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common
@@ -50,8 +43,11 @@ SET_TARGET_PROPERTIES(staticprotobuf PROPERTIES
 ADD_LIBRARY(static-azurestorage STATIC IMPORTED)
 SET_TARGET_PROPERTIES(static-azurestorage PROPERTIES
         IMPORTED_LOCATION /opt/azure-storage-cpplite-0.3.0/lib/libazure-storage-lite.a)
-target_link_libraries(StorageIntercept diagnostics static-azurestorage curl jsoncpp dl staticprotobuf ibverbs)
-target_link_libraries(CacheClient diagnostics static-azurestorage curl jsoncpp dl staticprotobuf ibverbs)
+
+add_dependencies(StorageIntercept CacheProto)
+
+target_link_libraries(StorageIntercept CacheProto diagnostics static-azurestorage curl jsoncpp dl staticprotobuf ibverbs)
+target_link_libraries(CacheClient CacheProto diagnostics static-azurestorage curl jsoncpp dl staticprotobuf ibverbs)
 
 add_custom_command(
     TARGET CacheClient POST_BUILD
@@ -86,6 +82,7 @@ target_include_directories(StorageInterceptUnitTests PRIVATE
         ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common)
 
 add_dependencies(StorageInterceptUnitTests
+        CacheProto
         diagnostics
         ${GMOCK_LIBRARY}
         ${GMOCK_MAIN_LIBRARY}
@@ -94,7 +91,7 @@ add_dependencies(StorageInterceptUnitTests
         )
 
 target_link_libraries(StorageInterceptUnitTests
-        diagnostics curl static-azurestorage jsoncpp dl uuid crypto staticprotobuf ibverbs
+        CacheProto diagnostics curl static-azurestorage jsoncpp dl uuid crypto staticprotobuf ibverbs
         ${GMOCK_LIBRARY}
         ${GMOCK_MAIN_LIBRARY}
         ${GTEST_LIBRARY}

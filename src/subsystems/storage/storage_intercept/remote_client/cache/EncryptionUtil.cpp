@@ -193,7 +193,7 @@ bool EncryptionUtil::DoEncrypt(UploadRequest* uploadRequest, std::shared_ptr<con
     if (encLen != m_fileData->BufferSize)
     {
         // We use GCM mode which doesn't require any padding, so length of message should not be affected 
-        LOG_WARN("Encryption failed");
+        LOG_WARN_REQID("Encryption failed", *uploadRequest);
         return false;
     }
 
@@ -205,7 +205,7 @@ bool EncryptionUtil::DoEncrypt(UploadRequest* uploadRequest, std::shared_ptr<con
     fileMetadata[CACHE_META_ENCRYPTION_IV] = iv;
     fileMetadata[CACHE_META_ENCRYPTION_TAG] = tag;
 
-    LOG_DEBUG("Encrypted input buffer. len: {}", m_fileData->BufferSize);
+    LOG_DEBUG_REQID("Encrypted input buffer. len: {}", *uploadRequest, m_fileData->BufferSize);
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------

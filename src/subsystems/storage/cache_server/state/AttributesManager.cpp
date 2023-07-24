@@ -72,7 +72,7 @@ bool AttributesManager::PutAttributes(const cache::PutAttributeRequest& putAttri
     if ((m_anTotalCachedAttributes.fetch_add(putAttributeRequest.fileattributes_size()) +
             putAttributeRequest.fileattributes_size()) > m_anAttributeCacheLimit)
     {
-        LOG_WARN("TotalCachedAttributes: {}, exceeds limit: {}", m_anTotalCachedAttributes, m_anAttributeCacheLimit);
+        LOG_WARN_REQID("TotalCachedAttributes: {}, exceeds limit: {}", putAttributeRequest, m_anTotalCachedAttributes, m_anAttributeCacheLimit);
         m_anTotalCachedAttributes.fetch_sub(putAttributeRequest.fileattributes_size());
         return false;
     }
