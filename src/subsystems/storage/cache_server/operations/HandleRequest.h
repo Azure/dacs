@@ -4,6 +4,9 @@
 #pragma once
 //---------------------------------------------------------------------------------------------------------------------
 #include "IConnection.h"
+#include "cache.pb.h"
+
+using namespace cache;
 //---------------------------------------------------------------------------------------------------------------------
-bool HandleRequest(IConnection& clientConnection);
+bool HandleRequest(IConnection& clientConnection, /*[out]*/ Request::TypeCase& requestType);
 //---------------------------------------------------------------------------------------------------------------------

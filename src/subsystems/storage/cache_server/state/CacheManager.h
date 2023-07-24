@@ -107,6 +107,8 @@ class CacheManager
         void ScanForSnapshotConsistency(
             /*[in] */ const snapshot::Snapshot& snapshot);
 
+        std::size_t GetCacheServerSize() const;
+
     private:
         CacheManager();
         ~CacheManager();

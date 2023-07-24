@@ -295,6 +295,11 @@ message IBInitResponse
     repeated uint32 serverqpn = 5;
 }
 //---------------------------------------------------------------------------------------------------------------------
+message EndMarker
+{
+
+}
+//---------------------------------------------------------------------------------------------------------------------
 message Request
 {
     oneof type
@@ -306,6 +311,7 @@ message Request
         PutAttributeRequest putattributerequest = 5;
         DeleteRequest deleterequest = 6;
         IBInitRequest ibinitrequest = 7;
+        EndMarker endmarker = 8;
     }
 }
 //---------------------------------------------------------------------------------------------------------------------

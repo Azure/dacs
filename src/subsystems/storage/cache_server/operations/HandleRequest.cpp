@@ -18,7 +18,7 @@
 using namespace std;
 using namespace cache;
 //---------------------------------------------------------------------------------------------------------------------
-bool HandleRequest(IConnection& clientConnection)
+bool HandleRequest(IConnection& clientConnection, Request::TypeCase& requestType)
 {
     char metaData[REQUEST_METADATA_SIZE];
     int res = ReadBytesToArray(clientConnection, metaData, REQUEST_METADATA_SIZE);
@@ -45,31 +45,32 @@ bool HandleRequest(IConnection& clientConnection)
     }
 
     bool bRet = false;
-    if (request.type_case() == Request::kDownloadrequest)
+    requestType = request.type_case();
+    if (requestType == Request::kDownloadrequest)
     {
         bRet = DownloadFile(clientConnection, request.downloadrequest());
     }
-    else if (request.type_case() == Request::kUploadrequest)
+    else if (requestType == Request::kUploadrequest)
     {
         bRet = UploadFile(clientConnection, request.uploadrequest());
     } 
-    else if (request.type_case() == Request::kLockrequest)
+    else if (requestType == Request::kLockrequest)
     {
         bRet = LockFile(clientConnection, request.lockrequest());
     }
-    else if (request.type_case() == Request::kGetattributerequest)
+    else if (requestType == Request::kGetattributerequest)
     {
         bRet = HandleGetAttribute(clientConnection, request.getattributerequest());
     }
-    else if (request.type_case() == Request::kPutattributerequest)
+    else if (requestType == Request::kPutattributerequest)
     {
         bRet = HandlePutAttribute(clientConnection, request.putattributerequest());
     }
-    else if (request.type_case() == Request::kDeleterequest)
+    else if (requestType == Request::kDeleterequest)
     {
         bRet = DeleteFile(clientConnection, request.deleterequest());
     }
-    else if (request.type_case() == Request::kIbinitrequest)
+    else if (requestType == Request::kIbinitrequest)
     {
         bRet = IBInitializeClient(clientConnection, request.ibinitrequest());
     }

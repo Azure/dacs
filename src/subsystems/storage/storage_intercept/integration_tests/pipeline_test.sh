@@ -12,6 +12,9 @@ CACHE_SERVER_PORT=${CACHE_SERVER_PORT_RANGE_START}
 CACHE_SERVER_PID=-1
 CACHE_SERVER_PATH=/tmp/_cache
 CACHE_LOCAL_SSD_PATH=/tmp/_localcache
+# set the cache server metrics port to a 9096 for testing
+export CACHESERVER_METRICS_PORT="9096"
+echo "cache server metrics port set to ${CACHESERVER_METRICS_PORT}"
 
 if [ -z "$1" ]
 then

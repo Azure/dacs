@@ -11,7 +11,7 @@ CacheManagerTest::CacheManagerTest()
 {
     // Set environment variables
     ::setenv("CACHESERVER_HOSTNAME", "unittesthost", 1);
-
+    ::setenv("CACHESERVER_METRICS_PORT", "9096", 1);
     SetCacheRootPath("/tmp/cacheManagerUnitTest");
     InitializeUtils();
 }

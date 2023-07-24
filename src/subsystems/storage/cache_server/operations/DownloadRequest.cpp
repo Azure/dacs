@@ -27,6 +27,7 @@
 #include <queue>
 #include <chrono>
 #include <set>
+#include "Metrics.h"
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 using namespace cache;
@@ -101,6 +102,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
         {
             LOG_DEBUG_REQID("Found file in cache: {}, length: {}", downloadRequest, downloadRequest.filename(), cacheInfo.m_fileSize);
             downloadResponse.set_result(DownloadResponse::SUCCESS);
+            Metrics::IncrementCacheHit();
         }
         else
         {
@@ -115,6 +117,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
         {
             LOG_DEBUG_REQID("Found file in cache: {}, length: {}", downloadRequest, downloadRequest.filename(), cacheInfo.m_fileSize);
             downloadResponse.set_result(DownloadResponse::SUCCESS);
+            Metrics::IncrementCacheHit();
         }
         else
         {

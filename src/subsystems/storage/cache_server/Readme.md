@@ -25,3 +25,6 @@ The interval in seconds between snapshots (default is 300 seconds)
 #### CACHESERVER_HOSTNAME
 The hostname to be used for the cache server (default is "")
 Note: If not specified, snapshot will not be enabled
+
+#### CACHESERVER_METRICS_PORT
+The port to be used for exposing the cache server metrics (default is "")
