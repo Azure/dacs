@@ -643,6 +643,122 @@ bool TestParallelUploadDownload(int parallelism,
     return totalFailed == 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
+void __UploadDownloadBytesCounter(bool /*[in]*/ downloadMode,
+                                  std::atomic_bool& /*[in]*/ stop,
+                                  std::atomic_uint_fast64_t& /*[out]*/ totalBytesTransferred,
+                                  std::atomic_uint_fast64_t& /*[out]*/ fileNamePrefixCounter)
+{
+    string filePrefix = "tput_tester_";
+    uint64_t fileSize = 100 * 1024 * 1024; // 100 MB
+    while(!stop)
+    {
+        if(downloadMode)
+        {
+            int suffix = (rand() % fileNamePrefixCounter);
+            if(TestDownloadAPI(filePrefix + to_string(suffix), 0, fileSize, true, DownloadResponse::SUCCESS))
+            {
+                totalBytesTransferred += fileSize;
+            }
+        }
+        else
+        {
+            if(TestUploadAPI(
+                   filePrefix + to_string(fileNamePrefixCounter.fetch_add(1)), fileSize, true, UploadResponse::SUCCESS))
+            {
+                totalBytesTransferred += fileSize;
+            }
+        }
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void MeasurePerf(int parallelism, uint64_t GBUpload, uint64_t GBDownload)
+{
+    // To track throughput
+    const uint64_t toUploadBytes = GBUpload * 1024 * 1024 * 1024;
+    const uint64_t toDownloadBytes = GBDownload * 1024 * 1024 * 1024;
+
+    cout << "Measuring upload throughput with data size " << toUploadBytes << " bytes" << endl;
+    cout << "Measuring download throughput with data size " << toDownloadBytes << " bytes" << endl;
+
+    std::atomic_uint_fast64_t totalBytesUploaded(0);
+    std::atomic_uint_fast64_t totalBytesDownloaded(0);
+    std::atomic_uint_fast64_t fileNamePrefixCounter(0);
+    int64_t uploadDurationMs, downloadDurationMs;
+
+    // Test upload throughput
+    {
+        cout << "Starting upload throughput test" << endl;
+        auto start_time = std::chrono::high_resolution_clock::now();
+        std::vector<std::thread*> threads;
+        std::atomic_bool stop(false);
+        for(int threadId = 0; threadId < parallelism; threadId++)
+        {
+            auto t = new std::thread(__UploadDownloadBytesCounter,
+                                     /*downloadMode*/ false,
+                                     std::ref(stop),
+                                     std::ref(totalBytesUploaded),
+                                     std::ref(fileNamePrefixCounter));
+            threads.push_back(t);
+        }
+
+        while(totalBytesUploaded < toUploadBytes)
+        {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+        stop = true;
+
+        for(int i = 0; i < threads.size(); ++i)
+        {
+            auto t = threads[i];
+            t->join();
+            delete t;
+        }
+
+        auto end_time = std::chrono::high_resolution_clock::now();
+        uploadDurationMs = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+    }
+
+    // Test download throughput
+    {
+        cout << "Starting download throughput test" << endl;
+        auto start_time = std::chrono::high_resolution_clock::now();
+        std::vector<std::thread*> threads;
+        std::atomic_bool stop(false);
+        for(int threadId = 0; threadId < parallelism; threadId++)
+        {
+            auto t = new std::thread(__UploadDownloadBytesCounter,
+                                     /*downloadMode*/ true,
+                                     std::ref(stop),
+                                     std::ref(totalBytesDownloaded),
+                                     std::ref(fileNamePrefixCounter));
+            threads.push_back(t);
+        }
+
+        while(totalBytesDownloaded < toDownloadBytes)
+        {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+        stop = true;
+
+        for(int i = 0; i < threads.size(); ++i)
+        {
+            auto t = threads[i];
+            t->join();
+            delete t;
+        }
+        auto end_time = std::chrono::high_resolution_clock::now();
+        downloadDurationMs = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+    }
+
+    cout << "Upload duration in ms: " << uploadDurationMs << " bytes: " << totalBytesUploaded << endl;
+    cout << "Download duration in ms: " << downloadDurationMs << " bytes: " << totalBytesDownloaded << endl;
+    cout << "Parallelism: " << parallelism << endl;
+
+    cout << "[PerfTracker] "
+         << "UploadThroughput: " << totalBytesUploaded / (uploadDurationMs * 1000) << " MB/s "
+         << "DownloadThroughput: " << totalBytesDownloaded / (downloadDurationMs * 1000) << " MB/s" << endl;
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool TestPutAttributeAPI(PutAttributeRequest& putRequest, PutAttributeResponse_Result expectedResult)
 {
     int serverFd = GetConnection();
@@ -1817,6 +1933,14 @@ bool cli(int argc, char* argv[], bool& /*[out]*/ isCli)
         int count = stoi(argv[2]);
         int waitDurationSec = stoi(argv[3]);
         return !TestParallelUploadDownload(count, waitDurationSec);
+    }
+
+    if(command == "measureperf")
+    {
+        isCli = true;
+        cout << "measureperf command" << endl;
+        MeasurePerf(16, 50, 1000);
+        return true;
     }
 
     cout << "Not a cli command invocation" << endl;
