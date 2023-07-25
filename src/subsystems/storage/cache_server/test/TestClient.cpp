@@ -754,9 +754,12 @@ void MeasurePerf(int parallelism, uint64_t GBUpload, uint64_t GBDownload)
     cout << "Download duration in ms: " << downloadDurationMs << " bytes: " << totalBytesDownloaded << endl;
     cout << "Parallelism: " << parallelism << endl;
 
-    cout << "[PerfTracker] "
-         << "UploadThroughput: " << totalBytesUploaded / (uploadDurationMs * 1000) << " MB/s "
-         << "DownloadThroughput: " << totalBytesDownloaded / (downloadDurationMs * 1000) << " MB/s" << endl;
+    cout << "--upload_throughput_mbps " << totalBytesUploaded / (uploadDurationMs * 1000) << " "
+         << "--download_throughput_mbps " << totalBytesDownloaded / (downloadDurationMs * 1000) << " "
+         << "--upload_size_bytes " << totalBytesUploaded << " "
+         << "--download_size_bytes " << totalBytesDownloaded << " "
+         << "--upload_time_ms " << uploadDurationMs << " "
+         << "--download_time_ms " << downloadDurationMs << " " << endl;
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool TestPutAttributeAPI(PutAttributeRequest& putRequest, PutAttributeResponse_Result expectedResult)
@@ -1939,7 +1942,7 @@ bool cli(int argc, char* argv[], bool& /*[out]*/ isCli)
     {
         isCli = true;
         cout << "measureperf command" << endl;
-        MeasurePerf(16, 50, 1000);
+        MeasurePerf(16, 10, 200);
         return true;
     }
 

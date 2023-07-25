@@ -245,9 +245,9 @@ function __run_perf_benchmark__() {
   start_cache_server /dev/null
   sleep 10
 
-  perf_logs=$($TEST_CLIENT_EXE measureperf)
+  perf_logs=$($TEST_CLIENT_EXE measureperf | tee /dev/tty)
   echo "$perf_logs"
-  uploader_args=$(grep "\[PerfTracker\]" <<< "$perf_logs" | awk '{ print "--upload_throughput_mbps " $3 " --download_throughput_mbps " $6 }')
+  uploader_args=$(grep "\-\-upload_throughput_mbps" <<< "$perf_logs")
   uploader_args+=" --git_branch \"$GIT_BRANCH\" --git_commit_hash \"$GIT_COMMIT\" --git_commit_message \"$GIT_COMMIT_MESSAGE\""
 
   eval "${SCRIPT_DIR}/storage_perf_app_insights_uploader.py $uploader_args" 
