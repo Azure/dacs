@@ -16,7 +16,7 @@ void Metrics::Init()
     
     LOG_INFO("Initializing cache server metrics");
     MetricsStore::s_instance.m_spRegistry = std::make_shared<prometheus::Registry>();
-    MetricsStore::s_instance.m_sExposerAddress = "127.0.0.1:" + GetCacheServerMetricPort();
+    MetricsStore::s_instance.m_sExposerAddress = "0.0.0.0:" + GetCacheServerMetricPort();
     MetricsStore::s_instance.m_pExposer = std::make_shared<prometheus::Exposer>(MetricsStore::s_instance.m_sExposerAddress);
     MetricsStore::s_instance.m_pExposer->RegisterCollectable(MetricsStore::s_instance.m_spRegistry);
     MetricsStore::s_instance.m_serverHostName = GetServerHostName();
@@ -35,7 +35,7 @@ void Metrics::Init()
             .Name("cache_server_cache_hits")
             .Help("Number of cache hits.")
             .Register(*MetricsStore::s_instance.m_spRegistry)
-            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}});
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}, {"request_type", MetricsStore::m_arrRequestTypes[Request::TypeCase::kDownloadrequest]}});
 
     int nSize = MetricsStore::m_arrRequestTypes.size();
     MetricsStore::s_instance.m_vecSuccessfulRequestLatencies.resize(nSize);
