@@ -10,13 +10,11 @@ message("Current CMAKE_LIBRARY_OUTPUT_DIRECTORY from ${CMAKE_LIBRARY_OUTPUT_DIRE
 message("Current CMAKE_REMOTE_PUBLISH_DIRECTORY ${CMAKE_REMOTE_PUBLISH_DIRECTORY}")
 
 add_executable(CacheStorageClient 
-    StorageClient.cpp
-    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/storage_intercept/integration_tests/src/ThreadPool.cpp)
+    StorageClient.cpp)
 
-target_include_directories(CacheStorageClient PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/storage_intercept/integration_tests/src/)
+add_dependencies(CacheStorageClient storage_utils)
 
-target_link_libraries(CacheStorageClient pthread stdc++fs)
+target_link_libraries(CacheStorageClient storage_utils pthread stdc++fs)
 
 add_executable(DeleteClient
     DeleteClient.cpp)
