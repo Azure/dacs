@@ -46,7 +46,7 @@ bool AuthenticateRequest(const LockFileRequest& request)
 //---------------------------------------------------------------------------------------------------------------------
 bool LockFile(IConnection& clientConnection, const LockFileRequest& lockRequest)
 {
-    LOG_INFO_REQID("filename received: {}", lockRequest, lockRequest.filename());
+    LOG_DEBUG_REQID("filename received: {}", lockRequest, lockRequest.filename());
 
     LockFileResponse lockResponse;
     if (!AuthenticateRequest(lockRequest))
