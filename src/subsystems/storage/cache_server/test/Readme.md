@@ -5,11 +5,8 @@
 ### Start Cache server
 ./bin/Release/native-storage/storage/CacheServer 20000 <folder path on ssd> 100000000000 10000000 1
 
-### Compile and run test client
-g++ -std=c++17 -o2 -I . -I ../proto -I ../operations -I ../utils -I ../infiniband -I ../../common -I /include/ -L/usr/lib/x86_64-linux-gnu -pthread \
--lstdc++fs -o testclient TestClient.cpp  -lprotobuf -lxxhash -libverbs
-
-./testclient 
+### Run test client
+./bin/Release/native-storage/storage/cacheServerTestClient
 
 ## Test cache size limits
 
@@ -17,7 +14,20 @@ g++ -std=c++17 -o2 -I . -I ../proto -I ../operations -I ../utils -I ../infiniban
 ./CacheServer 20000 <folder path on ssd> 104857600 1024 1
 
 ### Run test client
-./testclient testlimits
+./bin/Release/native-storage/storage/cacheServerTestClient testlimits
 
-## Cleanup
-Delete CacheServer folder path after the tests
+## Supported environment variables:
+
+#### TEST_CACHESERVER_ADDR_HOST
+Address of the cache server to run tests against (default is ""127.0.0.1"")
+
+#### TEST_CACHESERVER_ADDR_PORT
+Port of the cache server to run tests against (default is 20000)
+
+#### TEST_CHECK_LIVENESS
+Values: true or false (default is false).
+Run a small ping like test to check if the cache server is alive
+
+#### TEST_IB
+Values: true or false (default is false).
+Enable Infiniband tests

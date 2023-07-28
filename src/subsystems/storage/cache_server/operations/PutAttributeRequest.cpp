@@ -65,7 +65,7 @@ bool AuthenticateRequest(const PutAttributeRequest& request)
 //---------------------------------------------------------------------------------------------------------------------
 bool HandlePutAttribute(IConnection& clientConnection, const PutAttributeRequest& putAttributeRequest)
 {
-    LOG_INFO_REQID("Num entries received: {}, first entry: {}",
+    LOG_DEBUG_REQID("Num entries received: {}, first entry: {}",
         putAttributeRequest, putAttributeRequest.fileattributes_size(), putAttributeRequest.fileattributes(0).filename());
 
     PutAttributeResponse putAttributeResponse;

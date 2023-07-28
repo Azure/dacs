@@ -1990,6 +1990,16 @@ int main(int argc, char *argv[])
         }
     }
 
+    bool runIBTests = false;
+    char* testIB = std::getenv("TEST_IB");
+    if(testIB != nullptr)
+    {
+        if(strcmp(testIB, "true") == 0)
+        {
+            runIBTests = true;
+        }
+    }
+
     if(argc > 1)
     {
         return TestLimits();
@@ -2002,7 +2012,11 @@ int main(int argc, char *argv[])
     TestCacheMetadata();
     TestDeletes();
     TestExpiry();
-    TestIB();
+
+    if (runIBTests)
+    {
+        TestIB();
+    }
 
     cout << endl << "Total established connections: " << totalConnections << endl;
     cout << "Test complete. Total tests: " << TotalTests << ". Failed: " << TestsFailed << endl;
@@ -2016,7 +2030,10 @@ int main(int argc, char *argv[])
         {
             cout << test << endl;
         }
+
+        return 1;
     }
+
     return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
