@@ -67,20 +67,33 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
     LOG_DEBUG_REQID("filename received: {}", uploadRequest, uploadRequest.filename());
 
     UploadResponse uploadResponse;
+    const std::string& requestid = uploadRequest.requestid();
     if (!AuthenticateRequest(uploadRequest))
     {
         LOG_WARN_REQID("Failed to authenticate request", uploadRequest);
         uploadResponse.set_result(UploadResponse::AUTH_FAILED);
-        SendMessageToRemoteFinal(clientConnection, uploadResponse);
+        SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
         return false;
     }
+
+    // Note: On the behavior of connection reuse
+    // The return value of this function indicates whether the server should teardown or reuse the client connection
+    // However, the client sends two messages in succession - first the upload request params, then the actual file contents
+    // before even parsing the server's response - this means the file's contents are in flight before the server can properly
+    // parse the request message.
+    // This has a few implications:
+    // 1. If server encounters an error while parsing the request message, it must tear down the connection, lest the in-flight
+    // data be misinterpreted as a new request 
+    // 2. Once the request has been parsed, and validated - the server begins to read the actual in-flight data of the file.
+    // After all the data has been read, barring any genuine transmission/receive errors, encountered errors do not require the connection
+    // to be torn down
 
     // Set limit on filename length
     if (uploadRequest.filename().size() > UPLOAD_FILENAME_LIMIT)
     {
         LOG_WARN_REQID("filename too large, size: {}", uploadRequest, uploadRequest.filename().size());
         uploadResponse.set_result(UploadResponse::BAD_REQUEST);
-        SendMessageToRemoteFinal(clientConnection, uploadResponse);
+        SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
         return false;
     }
 
@@ -89,10 +102,14 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
     {
         LOG_WARN_REQID("file already uploaded {}", uploadRequest, uploadRequest.filename());
         uploadResponse.set_result(UploadResponse::FILE_EXISTS);
-        SendMessageToRemoteFinal(clientConnection, uploadResponse);
+        SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
         return false;
     }
 
+    // Note: we let the client try to upload if another client has also started for a few reasons:
+    // 1. Redundancy - if at the last moment the other client fails to upload, 
+    // we still have a chance to succeed uploading the file
+    // 2. This case is usually rare - lease expiry scenarios, or if the client is not taking the lock to upload
     if (cacheInfo.m_status == CacheManager::CacheStatus::STARTED)
     {
         LOG_WARN_REQID("file already being uploaded by another client {}, will attempt to upload anyway",
@@ -103,7 +120,7 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
     {
         LOG_WARN_REQID("filesize too large: {}", uploadRequest, uploadRequest.filesize());
         uploadResponse.set_result(UploadResponse::BAD_REQUEST);
-        SendMessageToRemoteFinal(clientConnection, uploadResponse);
+        SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
         return false;
     }
 
@@ -112,7 +129,7 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
     {
         LOG_WARN_REQID("error starting upload for: {}", uploadRequest, uploadRequest.filename());
         uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
-        SendMessageToRemoteFinal(clientConnection, uploadResponse);
+        SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
         return false;
     }
 
@@ -126,7 +143,7 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
             LOG_WARN_REQID("Couldn't create a temp file for uploading: {}", uploadRequest, uploadRequest.filename());
             CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
             uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
-            SendMessageToRemoteFinal(clientConnection, uploadResponse);
+            SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
             return false;
         }
 
@@ -159,7 +176,7 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
                     remove(tempFilename.c_str());
                     CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
                     uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
-                    SendMessageToRemoteFinal(clientConnection, uploadResponse);
+                    SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
                     return false;
                 }
                 bufferPos += temp;
@@ -184,10 +201,11 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
             remove(tempFilename.c_str());
             CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
             uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
-            SendMessageToRemoteFinal(clientConnection, uploadResponse);
+            SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
             return false;
         }
 
+        // Required data has been correctly read at this point, connection can be safely reused 
         // Now atomically rename file to final target
         string destFilename = GetCachePath(uploadRequest.filename());
         int ret = rename(tempFilename.c_str(), destFilename.c_str());
@@ -204,8 +222,9 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
             if (!CacheManager::GetInstance().UpdateCacheInfo(uploadRequest.filename(), uploadRequest.filesize(),
                 uploadRequest.metadata(), uploadRequest.expiryseconds(), uploadRequest.groupid()))
             {
-                uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
-                LOG_ERROR_REQID("error updating upload status to COMPLETED: {}", uploadRequest, uploadRequest.filename());
+                // UpdateCacheInfo returns false only if the file is already cached
+                uploadResponse.set_result(UploadResponse::FILE_EXISTS);
+                LOG_WARN_REQID("Cache entry upload status already marked as COMPLETED: {} - duplicate upload scenario", uploadRequest, uploadRequest.filename());
             }
             else
             {
@@ -220,8 +239,9 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
         if (!CacheManager::GetInstance().UpdateCacheInfo(uploadRequest.filename(), uploadRequest.filesize(),
             uploadRequest.metadata(), uploadRequest.expiryseconds(), uploadRequest.groupid()))
         {
-            uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
-            LOG_WARN_REQID("error updating upload status to COMPLETED: {}", uploadRequest, uploadRequest.filename());
+            // UpdateCacheInfo returns false only if the file is already cached
+            uploadResponse.set_result(UploadResponse::FILE_EXISTS);
+            LOG_WARN_REQID("Cache entry upload status already marked as COMPLETED: {} - duplicate upload scenario", uploadRequest, uploadRequest.filename());
         }
         else
         {
@@ -229,7 +249,7 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
         }
     }
 
-    if (!SendMessageToRemoteFinal(clientConnection, uploadResponse))
+    if (!SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid))
     {
         LOG_WARN_REQID("Error sending response to client for file: {}", uploadRequest, uploadRequest.filename());
         return false;

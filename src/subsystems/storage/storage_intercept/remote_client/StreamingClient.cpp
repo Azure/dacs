@@ -51,6 +51,9 @@ StreamingClient::StreamingClient(
     , m_nMaxReadChunkConcurrency(StorageInterceptConfig::GetInstance().GetChunkDownloadMaxConcurrency(mountName))
     , m_bEnableLargePrefetch(StorageInterceptConfig::GetInstance().GetEnableLargePrefetch(mountName))
     , m_nPrefetchWindowSize(StorageInterceptConfig::GetInstance().GetPrefetchWindowSizeInMB(mountName) * (1*1024*1024))
+    , m_bRemoteDownloadOnlyWhenLockHeldEnabled(StorageInterceptConfig::GetInstance().IsRemoteDownloadOnlyWhenLockHeldEnabled())
+    , m_nRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs(StorageInterceptConfig::GetInstance().GetRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs())
+    , m_nRemoteDownloadOnlyWhenLockHeldMaxAttempts(50)
     , m_nReadChunksInProgress(0)
     , m_nReadChunksTotal(0)
     , m_nReadChunksPrefetchCache(0)
@@ -479,26 +482,51 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
     // Try fetching from cache service
     CacheStatus cacheStatus = CacheStatus::NOTFOUND;
     auto cacheClient = std::atomic_load(&m_spCacheClient);
+
     if (cacheClient)
     {
-        uint64_t readLength = 0;
-        cacheStatus = cacheClient->DownloadSync(
-            m_strMountName,
-            cacheFilePath,
-            chunkOffset,
-            0,
-            m_nChunkSize,
-            remoteReadData->Buffer.get(),
-            readLength);
-        if (cacheStatus == CacheStatus::SUCCESS)
+        int nIterations = 0;
+        do
         {
-            LOG_DEBUG("Read file: {}, offset: {}, length: {} from cache", remotePath, chunkOffset, readLength);
-            remoteReadData->BufferSize = readLength;
-            m_nReadChunksRemoteCache++;
+            if(nIterations > 0)
+            {
+                LOG_INFO("Failed to acquire entry/lock for cache key: {}, attempt: {}, retrying after {} seconds",
+                    cacheFilePath,
+                    nIterations,
+                    m_nRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs);
+                std::this_thread::sleep_for(std::chrono::seconds(m_nRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs));
+            }
+
+            uint64_t readLength = 0;
+            cacheStatus = cacheClient->DownloadSync(
+                m_strMountName,
+                cacheFilePath,
+                chunkOffset,
+                0,
+                m_nChunkSize,
+                remoteReadData->Buffer.get(),
+                readLength);
+            if (cacheStatus == CacheStatus::SUCCESS)
+            {
+                LOG_DEBUG("Read file: {}, offset: {}, length: {} from cache", remotePath, chunkOffset, readLength);
+                remoteReadData->BufferSize = readLength;
+                m_nReadChunksRemoteCache++;
+            }
+            else if (cacheStatus == CacheStatus::INTERNAL_ERROR)
+            {
+                LOG_WARN("Got server internal error for cache key: {}, ignore and continue blob download", cacheFilePath);
+            }
+
+            nIterations++;
         }
-        else if (cacheStatus == CacheStatus::INTERNAL_ERROR)
+        while (m_bRemoteDownloadOnlyWhenLockHeldEnabled &&
+                cacheStatus == CacheStatus::NOTFOUND &&
+                nIterations < m_nRemoteDownloadOnlyWhenLockHeldMaxAttempts);
+        
+        if (cacheStatus == CacheStatus::NOTFOUND && nIterations >= m_nRemoteDownloadOnlyWhenLockHeldMaxAttempts)
         {
-            LOG_WARN("Got server internal error for cache key: {}, ignore and continue blob download", cacheFilePath);
+            LOG_WARN("Failed to acquire lock/entry for cache key: {}, max attempts reached: {}, downloading from remote store",
+                cacheFilePath, m_nRemoteDownloadOnlyWhenLockHeldMaxAttempts);
         }
     }
 

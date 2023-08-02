@@ -50,18 +50,19 @@ bool DeleteFile(IConnection& clientConnection, const DeleteRequest& deleteReques
         deleteRequest, deleteRequest.filename(), deleteRequest.groupid());
 
     DeleteResponse deleteResponse;
+    const std::string& requestid = deleteRequest.requestid();
     if (!AuthenticateRequest(deleteRequest))
     {
         LOG_WARN_REQID("Failed to authenticate request", deleteRequest);
         deleteResponse.set_result(DeleteResponse::AUTH_FAILED);
-        return SendMessageToRemoteFinal(clientConnection, deleteResponse);
+        return SendMessageToRemoteFinal(clientConnection, deleteResponse, requestid);
     }
 
     if (deleteRequest.type_case() != DeleteRequest::kGroupid || deleteRequest.groupid().empty())
     {
         LOG_WARN_REQID("Delete failed: groupid cannot be empty", deleteRequest);
         deleteResponse.set_result(DeleteResponse::INTERNAL_ERROR);
-        return SendMessageToRemoteFinal(clientConnection, deleteResponse);
+        return SendMessageToRemoteFinal(clientConnection, deleteResponse, requestid);
     }
 
     if (CacheManager::GetInstance().DeleteCacheEntryByGroupID(deleteRequest.groupid()))
@@ -75,7 +76,7 @@ bool DeleteFile(IConnection& clientConnection, const DeleteRequest& deleteReques
         deleteResponse.set_result(DeleteResponse::INTERNAL_ERROR);
     }
 
-    if (!SendMessageToRemoteFinal(clientConnection, deleteResponse))
+    if (!SendMessageToRemoteFinal(clientConnection, deleteResponse, requestid))
     {
         LOG_WARN_REQID("Error sending delete response to client for groupId: {}", deleteRequest, deleteRequest.groupid());
         return false;

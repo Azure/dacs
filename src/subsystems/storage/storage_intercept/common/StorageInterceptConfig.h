@@ -108,6 +108,9 @@ class StorageInterceptConfig
         bool GetEnableLargePrefetch(const std::string& mountName);
         uint64_t GetPrefetchWindowSizeInMB(const std::string& mountName);
 
+        bool IsRemoteDownloadOnlyWhenLockHeldEnabled();
+        uint64_t GetRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs();
+
     private:
         // Constructor
         StorageInterceptConfig();

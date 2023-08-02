@@ -74,11 +74,12 @@ bool HandleGetAttribute(IConnection& clientConnection, const GetAttributeRequest
     LOG_DEBUG_REQID("filename received: {}, lock: {}", getAttributeRequest, getAttributeRequest.filename(), getAttributeRequest.enablelock());
 
     GetAttributeResponse getAttributeResponse;
+    const std::string& requestid = getAttributeRequest.requestid();
     if (!AuthenticateRequest(getAttributeRequest))
     {
         LOG_WARN_REQID("Failed to authenticate request", getAttributeRequest);
         getAttributeResponse.set_result(GetAttributeResponse::AUTH_FAILED);
-        return SendMessageToRemoteFinal(clientConnection, getAttributeResponse);
+        return SendMessageToRemoteFinal(clientConnection, getAttributeResponse, requestid);
     }
 
     if (getAttributeRequest.enablelock())
@@ -124,7 +125,7 @@ bool HandleGetAttribute(IConnection& clientConnection, const GetAttributeRequest
         }
     }
 
-    if (!SendMessageToRemoteFinal(clientConnection, getAttributeResponse))
+    if (!SendMessageToRemoteFinal(clientConnection, getAttributeResponse, requestid))
     {
         LOG_WARN_REQID("Error sending getAttributeRespone to client for entry: {}", getAttributeRequest, getAttributeRequest.filename());
         return false;

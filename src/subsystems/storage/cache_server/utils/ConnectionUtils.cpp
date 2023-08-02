@@ -47,7 +47,7 @@ int ReadBytesToArray(IConnection& clientConnection, char* data, int size)
         }
         else 
         {
-            LOG_WARN("read client incomplete, id: {}, errno: {}:{}, expected: {}, read: {}",
+            LOG_WARN("read client incomplete, id: {}, errno: {}:{}, expected: {}, read: {} requestid: unavailable",
                 clientConnection.GetId(), errno, strerror(errno), size, totalRead);
             return totalRead;
         }
@@ -55,12 +55,12 @@ int ReadBytesToArray(IConnection& clientConnection, char* data, int size)
     return totalRead;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool SendMessageToRemote(IConnection& clientConnection, const ::google::protobuf::Message& message)
+bool SendMessageToRemote(IConnection& clientConnection, const ::google::protobuf::Message& message, const string& requestid)
 {
     string protoBuffer;
     if (!message.SerializeToString(&protoBuffer))
     {
-        LOG_WARN("couldn't serialize message proto");
+        LOG_WARN_REQID_STR("couldn't serialize message proto", requestid);
         return false;
     }
 
@@ -69,19 +69,20 @@ bool SendMessageToRemote(IConnection& clientConnection, const ::google::protobuf
     outputBuffer += protoBuffer;
     if (clientConnection.Write(outputBuffer.data(), outputBuffer.size()) != outputBuffer.size())
     {
-        LOG_WARN("couldn't write response to client id: {}, errno: {}:{}",
+        LOG_WARN_REQID_STR("couldn't write response to client id: {}, errno: {}:{}",
+            requestid,
             clientConnection.GetId(), errno, strerror(errno));
         return false;
     }
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool SendMessageToRemoteFinal(IConnection& clientConnection, const ::google::protobuf::Message& message)
+bool SendMessageToRemoteFinal(IConnection& clientConnection, const ::google::protobuf::Message& message, const string& requestid)
 {
     string protoBuffer;
     if (!message.SerializeToString(&protoBuffer))
     {
-        LOG_WARN("couldn't serialize message proto");
+        LOG_WARN_REQID_STR("couldn't serialize message proto", requestid);
         return false;
     }
 
@@ -90,7 +91,8 @@ bool SendMessageToRemoteFinal(IConnection& clientConnection, const ::google::pro
     outputBuffer += protoBuffer;
     if (clientConnection.WriteFinal(outputBuffer.data(), outputBuffer.size()) != outputBuffer.size())
     {
-        LOG_WARN("couldn't write response to client id: {}, errno: {}:{}",
+        LOG_WARN_REQID_STR("couldn't write response to client id: {}, errno: {}:{}",
+            requestid,
             clientConnection.GetId(), errno, strerror(errno));
         return false;
     }

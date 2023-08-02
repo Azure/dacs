@@ -192,6 +192,10 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
         LOG_DEBUG_REQID("Uploaded to server successfully. file: {}", *uploadRequest, uploadContext->m_strCacheKey);
         status = true;
     }
+    else if (response.result() == UploadResponse::FILE_EXISTS)
+    {
+        LOG_WARN_REQID("Duplicate upload attempted for file: {}", *uploadRequest, uploadContext->m_strCacheKey);
+    }
     else
     {
         LOG_WARN_REQID("Upload to server failed. file: {}, error: {}", *uploadRequest, uploadContext->m_strCacheKey, response.result());
