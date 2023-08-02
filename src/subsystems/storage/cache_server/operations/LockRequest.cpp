@@ -49,11 +49,12 @@ bool LockFile(IConnection& clientConnection, const LockFileRequest& lockRequest)
     LOG_DEBUG_REQID("filename received: {}", lockRequest, lockRequest.filename());
 
     LockFileResponse lockResponse;
+    const std::string& requestid = lockRequest.requestid();
     if (!AuthenticateRequest(lockRequest))
     {
         LOG_WARN_REQID("Failed to authenticate request", lockRequest);
         lockResponse.set_result(LockFileResponse::AUTH_FAILED);
-        return SendMessageToRemoteFinal(clientConnection, lockResponse);
+        return SendMessageToRemoteFinal(clientConnection, lockResponse, requestid);
     }
 
     if (LockManager::GetInstance().GetLockForUpload(lockRequest.filename()))
@@ -67,7 +68,7 @@ bool LockFile(IConnection& clientConnection, const LockFileRequest& lockRequest)
         lockResponse.set_result(LockFileResponse::ALREADY_LOCKED);
     }
 
-    if (!SendMessageToRemoteFinal(clientConnection, lockResponse))
+    if (!SendMessageToRemoteFinal(clientConnection, lockResponse, requestid))
     {
         LOG_WARN_REQID("Error sending lock response to client for file: {}", lockRequest, lockRequest.filename());
         return false;

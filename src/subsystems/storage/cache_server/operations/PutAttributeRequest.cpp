@@ -69,11 +69,12 @@ bool HandlePutAttribute(IConnection& clientConnection, const PutAttributeRequest
         putAttributeRequest, putAttributeRequest.fileattributes_size(), putAttributeRequest.fileattributes(0).filename());
 
     PutAttributeResponse putAttributeResponse;
+    const std::string& requestid = putAttributeRequest.requestid();
     if (!AuthenticateRequest(putAttributeRequest))
     {
         LOG_WARN_REQID("Failed to authenticate request", putAttributeRequest);
         putAttributeResponse.set_result(PutAttributeResponse::AUTH_FAILED);
-        return SendMessageToRemoteFinal(clientConnection, putAttributeResponse);
+        return SendMessageToRemoteFinal(clientConnection, putAttributeResponse, requestid);
     }
 
     bool bRet = AttributesManager::GetInstance().PutAttributes(putAttributeRequest);
@@ -88,7 +89,7 @@ bool HandlePutAttribute(IConnection& clientConnection, const PutAttributeRequest
         putAttributeResponse.set_result(PutAttributeResponse::INTERNAL_ERROR);
     }
 
-    if (!SendMessageToRemoteFinal(clientConnection, putAttributeResponse))
+    if (!SendMessageToRemoteFinal(clientConnection, putAttributeResponse, requestid))
     {
         LOG_WARN_REQID("Error sending putAttributeResponse to client for entries: {}",
             putAttributeRequest, putAttributeRequest.fileattributes_size());

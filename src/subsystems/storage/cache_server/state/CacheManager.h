@@ -124,7 +124,7 @@ class CacheManager
         void CacheCleanupWorker();
 
         // Setting some default expiry time to ensure one client doesn't permanently lock a cache key
-        static constexpr uint32_t CACHE_INIT_EXPIRY_SECONDS = 10;
+        static constexpr uint32_t CACHE_INIT_EXPIRY_SECONDS = 60;
 
         std::atomic_uint_fast64_t m_cacheSizeLimitBytes;
         std::atomic_uint_fast64_t m_totalCachedSize;

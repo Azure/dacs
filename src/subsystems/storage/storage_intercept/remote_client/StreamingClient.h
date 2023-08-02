@@ -70,6 +70,11 @@ class StreamingClient
         // Log every read on completion
         const bool                         m_enableReadIOLogs;
 
+        // Avoid remote downloads when cache lock is not held
+        const bool                         m_bRemoteDownloadOnlyWhenLockHeldEnabled;
+        const int                          m_nRemoteDownloadOnlyWhenLockHeldMaxAttempts;
+        const uint64_t                     m_nRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs;
+
         // The following shared_ptrs are updated/reset on a process fork,
         // so ensure all access to this is synchronized via atomic APIs 
         std::shared_ptr<IRemoteClient>     m_spRemoteClient;

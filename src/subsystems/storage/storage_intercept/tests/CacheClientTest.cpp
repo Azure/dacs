@@ -426,7 +426,7 @@ TEST_F(CacheClientTest, TestUploadLockExpiry)
     time_t startTime = time(NULL);
 
     // Loop for a limited time to prevent hang on test failure
-    while (difftime(time(NULL), startTime) < 60)
+    while (difftime(time(NULL), startTime) < 120)
     {
         std::vector<char> outBuffer(1024*1024*4);
         uint64_t dataRead = 0;
@@ -441,7 +441,7 @@ TEST_F(CacheClientTest, TestUploadLockExpiry)
         }
 
         // sleep for a while to avoid cpu usage
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     }
 
     ASSERT_EQ(numLocks, 1);

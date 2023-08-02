@@ -695,6 +695,22 @@ bool StorageInterceptConfig::GetCacheIBEnabled()
         false);
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::IsRemoteDownloadOnlyWhenLockHeldEnabled()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameRemoteDownloadOnlyWhenLockHeldEnabled,
+        false);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint64_t StorageInterceptConfig::GetRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint64(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs,
+        2/* default */);
+}
+//---------------------------------------------------------------------------------------------------------------------
 std::string StorageInterceptConfig::GetStorageAccountName(const std::string& mountName)
 {
     return StorageInterceptConfig::GetConfigStr(

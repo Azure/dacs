@@ -88,5 +88,9 @@ namespace StorageInterceptConstants
     // Config constants for large prefetch
     const char* const ConfigNameLargePrefetchEnabled = "enableLargePrefetch";
     const char* const ConfigNamePrefetchSizeInMB = "prefetchWindowSizeInMB";
+
+    // Config for avoiding remote downloads when cache lock is not held
+    const char* const ConfigNameRemoteDownloadOnlyWhenLockHeldEnabled = "remoteDownloadOnlyWhenLockHeldEnabled";
+    const char* const ConfigNameRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs = "remoteDownloadOnlyWhenLockHeldPollingIntervalInSeconds";
 };
 //---------------------------------------------------------------------------------------------------------------------

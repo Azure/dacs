@@ -59,6 +59,21 @@
 #define LOG_CRITICAL_REQID(message, request_object, args...) \
     LOG_CRITICAL(REQID_STR message, (request_object).requestid(), ##args)
 //---------------------------------------------------------------------------------------------------------------------
+#define LOG_DEBUG_REQID_STR(message, reqid_str, args...) \
+    LOG_DEBUG(REQID_STR message, reqid_str, ##args)
+//---------------------------------------------------------------------------------------------------------------------
+#define LOG_INFO_REQID_STR(message, reqid_str, args...) \
+    LOG_INFO(REQID_STR message, reqid_str, ##args)
+//---------------------------------------------------------------------------------------------------------------------
+#define LOG_WARN_REQID_STR(message, reqid_str, args...) \
+    LOG_WARN(REQID_STR message, reqid_str, ##args)
+//---------------------------------------------------------------------------------------------------------------------
+#define LOG_ERROR_REQID_STR(message, reqid_str, args...) \
+    LOG_ERROR(REQID_STR message, reqid_str, ##args)
+//---------------------------------------------------------------------------------------------------------------------
+#define LOG_CRITICAL_REQID_STR(message, reqid_str, args...) \
+    LOG_CRITICAL(REQID_STR message, reqid_str, ##args)
+//---------------------------------------------------------------------------------------------------------------------
 namespace storageutils
 {
     bool LogRarelyTime(std::atomic_uint_fast32_t& lastReportTimestampSeconds, uint32_t reportPeriodSeconds);

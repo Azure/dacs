@@ -72,11 +72,12 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
         downloadRequest, downloadRequest.filename(), downloadRequest.offset(), downloadRequest.length());
 
     DownloadResponse downloadResponse;
+    const std::string& requestid = downloadRequest.requestid();
     if (!AuthenticateRequest(downloadRequest))
     {
         LOG_WARN_REQID("Failed to authenticate request", downloadRequest);
         downloadResponse.set_result(DownloadResponse::AUTH_FAILED);
-        return SendMessageToRemoteFinal(clientConnection, downloadResponse);
+        return SendMessageToRemoteFinal(clientConnection, downloadResponse, requestid);
     }
 
     // Set limit on filename length
@@ -84,7 +85,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
     {
         LOG_WARN_REQID("filename too large, size: {}", downloadRequest, downloadRequest.filename().size());
         downloadResponse.set_result(DownloadResponse::FILENAME_LIMIT_EXCEEDED);
-        return SendMessageToRemoteFinal(clientConnection, downloadResponse);
+        return SendMessageToRemoteFinal(clientConnection, downloadResponse, requestid);
     }
 
     CacheManager::CacheInfo cacheInfo(CacheManager::CacheStatus::NOTFOUND);
@@ -135,7 +136,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
             LOG_WARN_REQID("Download failure, file: {}, offset: {} more than cached filesize: {}",
                 downloadRequest, downloadRequest.filename(), downloadRequest.offset(), cacheInfo.m_fileSize);
             downloadResponse.set_result(DownloadResponse::INVALID_OFFSET_LENGTH);
-            return SendMessageToRemoteFinal(clientConnection, downloadResponse);
+            return SendMessageToRemoteFinal(clientConnection, downloadResponse, requestid);
         }
         
         if (downloadRequest.length() == 0)
@@ -154,7 +155,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
     downloadResponse.set_filesize(downloadFileSize);
     if (cacheInfo.m_status == CacheManager::CacheStatus::COMPLETED && downloadFileSize > 0) 
     {
-        if (!SendMessageToRemote(clientConnection, downloadResponse))
+        if (!SendMessageToRemote(clientConnection, downloadResponse, requestid))
         {
             LOG_WARN_REQID("Error sending response to client for file: {}", downloadRequest, downloadRequest.filename());
             return false;
@@ -187,7 +188,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
     }
     else
     {
-        if (!SendMessageToRemoteFinal(clientConnection, downloadResponse))
+        if (!SendMessageToRemoteFinal(clientConnection, downloadResponse, requestid))
         {
             LOG_WARN_REQID("Error sending response to client for file: {}", downloadRequest, downloadRequest.filename());
             return false;
