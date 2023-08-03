@@ -23,12 +23,12 @@ include_directories(
 	/opt/azure-storage-cpplite-0.3.0/include
 )
 
-file(GLOB STORAGE_INTERCEPT_SOURCES_COMMON ./common/*cpp ./remote_client/*cpp ./remote_client/adls/*cpp
-        ./remote_client/blob/*cpp ./remote_client/mock/*cpp ./handlers/*cpp ./interceptors/StorageInterceptorImpl.cpp
-        ./remote_client/cache/* ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/*cpp)
+file(GLOB STORAGE_INTERCEPT_SOURCES_COMMON ./remote_client/*cpp ./remote_client/adls/*cpp
+        ./remote_client/blob/*cpp ./remote_client/mock/*cpp ./common/*.cpp ./handlers/*cpp ./interceptors/StorageInterceptorImpl.cpp
+        ./remote_client/cache/*)
 
-file(GLOB STORAGE_INTERCEPT_SOURCES_INTERCEPTOR ${STORAGE_INTERCEPT_SOURCES_COMMON} ./interceptors/StorageInterceptor.cpp ./common/wrapper_impl/StorageLibcDlsymWrapper.cpp)
-file(GLOB STORAGE_INTERCEPT_SOURCES_CACHE_CLIENT ${STORAGE_INTERCEPT_SOURCES_COMMON} ./interceptors/CacheClientInterface.cpp ./common/wrapper_impl/StorageLibcDirectWrapper.cpp)
+file(GLOB STORAGE_INTERCEPT_SOURCES_INTERCEPTOR ${STORAGE_INTERCEPT_SOURCES_COMMON} ./interceptors/StorageInterceptor.cpp)
+file(GLOB STORAGE_INTERCEPT_SOURCES_CACHE_CLIENT ${STORAGE_INTERCEPT_SOURCES_COMMON} ./interceptors/CacheClientInterface.cpp)
 # StorageIntercept Lib
 add_library(StorageIntercept SHARED ${STORAGE_INTERCEPT_SOURCES_INTERCEPTOR})
 add_library(CacheClient SHARED ${STORAGE_INTERCEPT_SOURCES_CACHE_CLIENT})
@@ -44,10 +44,15 @@ ADD_LIBRARY(static-azurestorage STATIC IMPORTED)
 SET_TARGET_PROPERTIES(static-azurestorage PROPERTIES
         IMPORTED_LOCATION /opt/azure-storage-cpplite-0.3.0/lib/libazure-storage-lite.a)
 
-add_dependencies(StorageIntercept CacheProto)
+set(CommonDeps StorageCommon CacheProto ClientConnections diagnostics curl static-azurestorage jsoncpp dl uuid crypto staticprotobuf ibverbs)
 
-target_link_libraries(StorageIntercept CacheProto diagnostics static-azurestorage curl jsoncpp dl staticprotobuf ibverbs)
-target_link_libraries(CacheClient CacheProto diagnostics static-azurestorage curl jsoncpp dl staticprotobuf ibverbs)
+add_dependencies(StorageIntercept StorageInterceptLibcDlsym StorageCommon CacheProto ClientConnections)
+
+target_link_libraries(StorageIntercept StorageInterceptLibcDlsym ${CommonDeps})
+
+add_dependencies(CacheClient StorageInterceptLibcDirect StorageCommon CacheProto ClientConnections)
+
+target_link_libraries(CacheClient StorageInterceptLibcDirect ${CommonDeps})
 
 add_custom_command(
     TARGET CacheClient POST_BUILD
@@ -61,10 +66,9 @@ add_custom_command(
 #StorageIntercept Unit Tests
 enable_testing()
 
-file(GLOB STORAGE_INTERCEPT_SOURCES_TEST ./common/*cpp ./common/wrapper_impl/StorageLibcDlsymWrapper.cpp 
+file(GLOB STORAGE_INTERCEPT_SOURCES_TEST
         ./remote_client/*cpp ./remote_client/adls/*cpp
-        ./remote_client/blob/*cpp ./remote_client/mock/*cpp ./handlers/*cpp ./remote_client/cache/* ./tests/*cpp
-        ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/*cpp)
+        ./remote_client/blob/*cpp ./remote_client/mock/*cpp ./handlers/*cpp ./common/*.cpp ./remote_client/cache/* ./tests/*cpp)
 
 add_executable(StorageInterceptUnitTests ${STORAGE_INTERCEPT_SOURCES_TEST})
 
@@ -72,17 +76,18 @@ target_compile_definitions(StorageInterceptUnitTests PRIVATE STORAGE_INTERCEPT_U
 
 target_include_directories(StorageInterceptUnitTests PRIVATE
         ./adls
-        ./common
         ./remote_client
         ./remote_client/adls
         ./remote_client/blob
         ./remote_client/mock
         ./remote_client/cache
-        ./handlers
-        ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common)
+        ./handlers)
 
 add_dependencies(StorageInterceptUnitTests
+        StorageCommon
+        StorageInterceptLibcDlsym
         CacheProto
+        ClientConnections
         diagnostics
         ${GMOCK_LIBRARY}
         ${GMOCK_MAIN_LIBRARY}
@@ -91,7 +96,9 @@ add_dependencies(StorageInterceptUnitTests
         )
 
 target_link_libraries(StorageInterceptUnitTests
-        CacheProto diagnostics curl static-azurestorage jsoncpp dl uuid crypto staticprotobuf ibverbs
+        StorageCommon
+        StorageInterceptLibcDlsym
+        ${CommonDeps}
         ${GMOCK_LIBRARY}
         ${GMOCK_MAIN_LIBRARY}
         ${GTEST_LIBRARY}

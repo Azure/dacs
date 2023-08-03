@@ -25,6 +25,8 @@ class SocketConnection : public IConnection
 
         int GetId();
 
+        void __UnitTest_SetSocketTimeoutMillis(int timeoutMillis);
+
         bool IsValidConnection();
 
         void ResetConnection();
@@ -33,7 +35,7 @@ class SocketConnection : public IConnection
         ssize_t TimedRead(void* buf, size_t nByte);
         ssize_t TimedWrite(const void* buf, size_t nByte);
     
-        static constexpr int SOCKET_TIMEOUT_MILLIS = 5000;
+        static int socketTimeoutMillis;
 
         int m_socketFd;
         bool m_sendAttempted;

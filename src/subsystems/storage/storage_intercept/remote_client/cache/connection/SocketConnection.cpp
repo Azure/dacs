@@ -12,6 +12,8 @@
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
+int SocketConnection::socketTimeoutMillis = 5000;
+//---------------------------------------------------------------------------------------------------------------------
 SocketConnection::SocketConnection(int socketFd)
 : m_socketFd(socketFd)
 {
@@ -70,6 +72,11 @@ int SocketConnection::GetId()
     return m_socketFd;
 }
 //---------------------------------------------------------------------------------------------------------------------
+void SocketConnection::__UnitTest_SetSocketTimeoutMillis(int timeoutMillis)
+{
+    SocketConnection::socketTimeoutMillis = timeoutMillis;
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool SocketConnection::IsValidConnection()
 {
     if (recv(m_socketFd, NULL, 1, MSG_PEEK | MSG_DONTWAIT) == 0)
@@ -92,7 +99,7 @@ ssize_t SocketConnection::TimedRead(void* buf, size_t nByte)
     pollFDs[0].fd = m_socketFd;
     pollFDs[0].events = POLLIN;
 
-    int pollResult = poll(pollFDs, 1, SOCKET_TIMEOUT_MILLIS);
+    int pollResult = poll(pollFDs, 1, socketTimeoutMillis);
     if (pollResult == 0)
     {
         LOG_WARN("Timeout reading from server, fd={}", m_socketFd);
@@ -119,7 +126,7 @@ ssize_t SocketConnection::TimedWrite(const void* buf, size_t nByte)
     pollFDs[0].fd = m_socketFd;
     pollFDs[0].events = POLLOUT;
 
-    int pollResult = poll(pollFDs, 1, SOCKET_TIMEOUT_MILLIS);
+    int pollResult = poll(pollFDs, 1, socketTimeoutMillis);
     if (pollResult == 0)
     {
         LOG_WARN("Timeout writing to server, fd={}", m_socketFd);

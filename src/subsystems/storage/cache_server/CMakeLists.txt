@@ -9,19 +9,6 @@ message("Current CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY
 message("Current CMAKE_LIBRARY_OUTPUT_DIRECTORY from ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 message("Current CMAKE_REMOTE_PUBLISH_DIRECTORY ${CMAKE_REMOTE_PUBLISH_DIRECTORY}")
 
-include_directories(${CMAKE_SOURCE_DIR}/src/subsystems/common/native_lib/diagnostics
-                    ${CMAKE_SOURCE_DIR}/src/subsystems/reliability/common/native
-                    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common
-                    .
-                    ./operations
-                    ./utils
-                    ./state
-                    ./infiniband
-                    ./snapshot
-                    ./snapshot/proto
-                    /opt/protobufstatic-3.0.0/include
-                    )
-
 set(CACHE_SERVER_EXEC CacheServer)
 
 execute_process(
@@ -35,14 +22,35 @@ file(GLOB CACHE_SERVER_SOURCES *cpp ./operations/*cpp ./utils/*cpp ./state/*cpp 
 
 add_executable(${CACHE_SERVER_EXEC} ${CACHE_SERVER_SOURCES})
 
+target_include_directories(${CACHE_SERVER_EXEC} PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/subsystems/common/native_lib/diagnostics
+    ${CMAKE_SOURCE_DIR}/src/subsystems/reliability/common/native
+    ${CMAKE_CURRENT_LIST_DIR}
+    ./operations
+    ./utils
+    ./state
+    ./infiniband
+    ./snapshot
+    ./snapshot/proto
+    /opt/protobufstatic-3.0.0/include
+)
+
+
 # Statically link to precompiled protobuf library to prevent mismatch with system installed versions
 ADD_LIBRARY(staticprotobuf STATIC IMPORTED)
 
 SET_TARGET_PROPERTIES(staticprotobuf PROPERTIES
         IMPORTED_LOCATION /opt/protobufstatic-3.0.0/lib/libprotobuf.a)
 
+add_dependencies(${CACHE_SERVER_EXEC}
+    StorageCommon
+    CacheProto
+    diagnostics
+)
+
 target_link_libraries(
     ${CACHE_SERVER_EXEC}
+    StorageCommon
     CacheProto
     pthread
     ibverbs
@@ -72,7 +80,6 @@ add_executable(CacheServerUnitTests ${CACHE_SERVER_TEST_SOURCES})
 target_include_directories(CacheServerUnitTests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/subsystems/common/native_lib/diagnostics
     ${CMAKE_SOURCE_DIR}/src/subsystems/reliability/common/native
-    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common
     .
     ./operations
     ./utils
@@ -83,6 +90,7 @@ target_include_directories(CacheServerUnitTests PRIVATE
     /opt/protobufstatic-3.0.0/include)
 
 add_dependencies(CacheServerUnitTests
+        StorageCommon
         CacheProto
         diagnostics
         ${GMOCK_LIBRARY}
@@ -92,6 +100,7 @@ add_dependencies(CacheServerUnitTests
         )
 
 target_link_libraries(CacheServerUnitTests
+        StorageCommon
         CacheProto
         pthread
         ibverbs
