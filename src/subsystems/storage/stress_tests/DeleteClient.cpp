@@ -2,14 +2,13 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 // DACS includes
-#include "Constants.h"
-#include "Utils.h"
-#include "ConnectionUtils.h"
 #include "UploadRequest.h"
 #include "LockRequest.h"
 #include "DownloadRequest.h"
 #include "cache.pb.h"
 #include "cache.pb.cc"
+#include "CacheUtils.h"
+#include "SocketConnection.cpp"
 // End of DACS includes
 
 #include <iostream>
@@ -34,59 +33,17 @@
 #include <atomic>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cache;
+using namespace cacheutils;
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
-uint64_t ConvertBytesToInt(/*[in]*/ char* data, /*[in]*/ int size)
-{
-    uint64_t result = 0;
-    uint64_t mask = 255;
-    for (int i = 0; i < size; ++i)
-    {
-        uint64_t d = (uint64_t)data[i] & mask;
-        uint64_t x = d << (8 * (size - (i + 1)));
-        result |= (x);
-    }
-
-    return result;
-}
-//---------------------------------------------------------------------------------------------------------------------
-void ConvertIntToBytes(/*[in]*/ uint64_t source, /*[out]*/ char* destination, /*[in]*/ int index, /*[in]*/ int size)
-{
-    uint64_t allOnes = 255;
-    for (int i = 0; i < size; ++i)
-    {
-        int numBitsToShift = 8 * (size - (i + 1));
-        uint64_t mask = source >> numBitsToShift;
-        destination[index + i] = (char)(allOnes & mask);
-    }
-}
-//---------------------------------------------------------------------------------------------------------------------
-int ReadBytesToArray(/*[in]*/ int clientFd, /*[out]*/ char* data, /*[in]*/ int size)
-{
-    int totalRead = 0;
-
-    while (totalRead < size)
-    {
-        int tempRead;
-        if ((tempRead = read(clientFd, data + totalRead, size - totalRead)) > 0)
-        {
-            totalRead += tempRead;
-        }
-        else 
-        {
-            return totalRead;
-        }
-    }
-    return totalRead;
-}
 //---------------------------------------------------------------------------------------------------------------------
 bool InitializeConnection(
     /*[in]*/ const std::string& hostName,
     /*[in]*/ int port,
-    /*[out]*/ int& clientSocketFd)
+    /*[out]*/ unique_ptr<IConnection> &connection)
 {
+    int clientSocketFd = -1;
     std::cout << "New connection to server: " << hostName << " Port: " << port << std::endl;
-
     sockaddr_in sockAddr;
     sockAddr.sin_family = AF_INET;
     sockAddr.sin_port = htons(port);
@@ -108,53 +65,7 @@ bool InitializeConnection(
         return false;
     }
 
-    return true;
-}
-//---------------------------------------------------------------------------------------------------------------------
-bool SendMessageToRemote(/*[in]*/ int clientFd, /*[in]*/ const ::google::protobuf::Message& message)
-{
-    std::string protoBuffer;
-    if (!message.SerializeToString(&protoBuffer))
-    {
-        std::cout << "error: couldn't serialize message proto" << std::endl;
-        return false;
-    }
-
-    std::string outputBuffer(REQUEST_METADATA_SIZE, 0);
-    ConvertIntToBytes(protoBuffer.size(), outputBuffer.data(), 0, REQUEST_METADATA_SIZE);
-    
-    outputBuffer += protoBuffer;
-
-    if (write(clientFd, outputBuffer.data(), outputBuffer.size()) != outputBuffer.size())
-    {
-        std::cout << "error: couldn't write message to remote fd: " << clientFd << std::endl;
-        return false;
-    }
-
-    return true;
-}
-//---------------------------------------------------------------------------------------------------------------------
-bool ReadMessageFromRemote(/*[in]*/ int serverFd, /*[in]*/ string& message)
-{
-    char metaData[REQUEST_METADATA_SIZE];
-    int res = ReadBytesToArray(serverFd, metaData, REQUEST_METADATA_SIZE);
-    if (res != REQUEST_METADATA_SIZE)
-    {
-        std::cout << "error : Failed to read metadata from server" << std::endl;
-        return false;
-    }
-
-    uint32_t protoSize = ConvertBytesToInt(metaData, REQUEST_METADATA_SIZE);
-    string requestMessage(protoSize, 0);
-
-    res = ReadBytesToArray(serverFd, requestMessage.data(), protoSize);
-    if (res != protoSize)
-    {
-        std::cout << "Failed to read protobuf message" << std::endl;
-        return false;
-    }
-
-    message = requestMessage;
+    connection = make_unique<SocketConnection>(clientSocketFd);
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -192,8 +103,8 @@ int main(int argc, char** argv)
     // Loop through each server, setup a connection and issue the delete request
     for(auto& hostName : serverHostNamesList)
     {
-        int clientSocketFd = -1;
-        if(!InitializeConnection(hostName, port, clientSocketFd))
+        unique_ptr<IConnection> connection;
+        if(!InitializeConnection(hostName, port, connection))
         {
             std::cout << "error: Failed to initialize connection to server: " <<  hostName << std::endl;
             exit(1);
@@ -203,18 +114,16 @@ int main(int argc, char** argv)
         DeleteRequest* deleteRequest = request.mutable_deleterequest();
         deleteRequest->set_groupid(groupId.c_str());
 
-        if(!SendMessageToRemote(clientSocketFd, request))
+        if(!SendMessageToRemote(connection.get(), request))
         {
             std::cout << "error : couldn't send message to server: " << hostName << std::endl;
-            close(clientSocketFd);
             exit(1);
         }
 
         std::string requestMessage;
-        if (!ReadMessageFromRemote(clientSocketFd, requestMessage))
+        if (!ReadMessageFromRemote(connection.get(), requestMessage))
         {
             std::cout << "error : couldn't read message from server: " <<  hostName << std::endl;
-            close(clientSocketFd);
             exit(1);
         }
 
@@ -222,20 +131,16 @@ int main(int argc, char** argv)
         if (!response.ParseFromString(requestMessage))
         {
             std::cout << "error : Failed to parse protobuf message" << std::endl;
-            close(clientSocketFd);
             exit(1);
         }
 
         if (response.result() != DeleteResponse::SUCCESS)
         {
             std::cout << "delete failed: response.result() != DeleteResponse::SUCCESS" << std::endl;
-            close(clientSocketFd);
             exit(1);
         }
 
         std::cout << "Delete request succeeded for server: " << hostName << std::endl;
-        // Close the connection
-        close(clientSocketFd);
     }
 
     return 0;

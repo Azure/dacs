@@ -1,11 +1,11 @@
 ///--------------------------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
-#include "Constants.h"
-#include "Utils.h"
-#include "ConnectionUtils.h"
+#include "SocketConnection.h"
+#include "CacheUtils.h"
 #include "UploadRequest.h"
 #include "LockRequest.h"
+#include "StorageInterceptLogger.h"
 #include "DownloadRequest.h"
 #include "IBConstants.h"
 #include "IBUtils.h"
@@ -39,10 +39,11 @@
 using namespace cache;
 using namespace ibutils;
 using namespace std;
+using namespace cacheutils;
 //---------------------------------------------------------------------------------------------------------------------
 string CacherServer  = "127.0.0.1";
 int ServerPort = 20000;
-queue<int> ServerConnections;
+queue<unique_ptr<IConnection>> ServerConnections;
 mutex LockPool;
 std::atomic_uint_fast64_t totalConnections(0);
 int TotalTests = 0;
@@ -60,15 +61,16 @@ list<string> FailedTests;
         } \
     }
 //---------------------------------------------------------------------------------------------------------------------
-int GetConnection()
+unique_ptr<IConnection> GetConnection()
 {
     {
         lock_guard lock(LockPool);
         if (!ServerConnections.empty())
         {
-            int serverFd = ServerConnections.front();
+            unique_ptr<IConnection> serverConnection = std::move(ServerConnections.front());
+            static_cast<SocketConnection*>(serverConnection.get())->ResetConnection();
             ServerConnections.pop();
-            return serverFd;
+            return serverConnection;
         }
     }
 
@@ -81,22 +83,27 @@ int GetConnection()
     if( (inet_pton(AF_INET, CacherServer.c_str(), &(sockAddr.sin_addr))) < 0)
     {
         cout << "inet_pton error" << endl;
-        return -1;
+        return std::unique_ptr<IConnection>(nullptr);
     }
     
     int clientSocketFd;
     if ( (clientSocketFd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
     {
         cout << "unable to create a socket connection" << endl;
-        return -1;
+        return std::unique_ptr<IConnection>(nullptr);
     }
     
     if (connect(clientSocketFd, (sockaddr *) &( sockAddr ), sizeof(sockAddr) ) < 0 )
     {
         cout << "connection failed error" << endl;
-        return -1;
+        return std::unique_ptr<IConnection>(nullptr);
     }
-    return clientSocketFd;
+
+    unique_ptr<IConnection> socketConnection = make_unique<SocketConnection>(clientSocketFd);
+
+    // To prevent timeout when testing large upload/downloads.
+    static_cast<SocketConnection*>(socketConnection.get())->__UnitTest_SetSocketTimeoutMillis(200000);
+    return socketConnection;
 }
 //---------------------------------------------------------------------------------------------------------------------
 string GetUniqueFilename(const string& filename)
@@ -106,126 +113,35 @@ string GetUniqueFilename(const string& filename)
     return boost::uuids::to_string(uuid).substr(0, 12) + filename;
 }
 //---------------------------------------------------------------------------------------------------------------------
-void ReleaseConnection(int fd)
+void ReleaseConnection(unique_ptr<IConnection> &connection)
 {
     lock_guard lock(LockPool);
-    ServerConnections.push(fd);
-}
-//---------------------------------------------------------------------------------------------------------------------
-uint64_t ConvertBytesToInt(char *data, int size)
-{
-    uint64_t result = 0;
-    uint64_t mask = 255;
-    for (int i = 0; i < size; ++i)
-    {
-        uint64_t d = (uint64_t)data[i] & mask;
-        uint64_t x = d << (8 * (size - (i + 1)));
-        result |= (x);
-    }
-    return result;
-}
-//---------------------------------------------------------------------------------------------------------------------
-void ConvertIntToBytes(uint64_t source, char* destination, int index, int size)
-{
-    uint64_t allOnes = 255;
-    for (int i = 0; i < size; ++i)
-    {
-        int numBitsToShift = 8 * (size - (i + 1));
-        uint64_t mask = source >> numBitsToShift;
-        destination[index + i] = (char)(allOnes & mask);
-    }
-}
-//---------------------------------------------------------------------------------------------------------------------
-int ReadBytesToArray(int clientFd, char* data, int size)
-{
-    int totalRead = 0;
-
-    while (totalRead < size)
-    {
-        int tempRead;
-        if ((tempRead = read(clientFd, data + totalRead, size - totalRead)) > 0)
-        {
-            totalRead += tempRead;
-        }
-        else 
-        {
-            return totalRead;
-        }
-    }
-    return totalRead;
-}
-//---------------------------------------------------------------------------------------------------------------------
-bool SendMessageToRemote(int clientFd, const ::google::protobuf::Message& message)
-{
-    string protoBuffer;
-    if (!message.SerializeToString(&protoBuffer))
-    {
-        cout << "couldn't serialize message proto" << endl;
-        return false;
-    }
-
-    string outputBuffer(REQUEST_METADATA_SIZE, 0);
-    ConvertIntToBytes(protoBuffer.size(), outputBuffer.data(), 0, REQUEST_METADATA_SIZE);
-    
-    outputBuffer += protoBuffer;
-
-    if (write(clientFd, outputBuffer.data(), outputBuffer.size()) != outputBuffer.size())
-    {
-        cout << "couldn't write message to remote fd: " << clientFd << endl;
-        return false;
-    }
-    return true;
-}
-//---------------------------------------------------------------------------------------------------------------------
-bool ReadMessageFromRemote(int serverFd, string& message)
-{
-    char metaData[REQUEST_METADATA_SIZE];
-    int res = ReadBytesToArray(serverFd, metaData, REQUEST_METADATA_SIZE);
-    if (res != REQUEST_METADATA_SIZE)
-    {
-        std::cout << "error: Failed to read metadata from server" << endl;
-        return false;
-    }
-
-    uint32_t protoSize = ConvertBytesToInt(metaData, REQUEST_METADATA_SIZE);
-    //std::cout << "Cache server protobuf size: " << protoSize << endl;
-
-    string requestMessage(protoSize, 0);
-    res = ReadBytesToArray(serverFd, requestMessage.data(), protoSize);
-    if (res != protoSize)
-    {
-        std::cout << "error: Failed to read protobuf message" << endl;
-        return false;
-    }
-    message = requestMessage;
-    return true;
+    ServerConnections.push(std::move(connection));
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool TestLockAPI(const string& filename, bool locked)
 {
-    int serverFd = GetConnection();
-    if (serverFd < 0)
-    { 
-        cout << "failed to get server connection" << endl;
-	    return false;
+    unique_ptr<IConnection> serverConnection  = GetConnection();
+    if (!serverConnection)
+    {
+        return false;
     }
+
     Request request;
 
     LockFileRequest* lockRequest = request.mutable_lockrequest();
     lockRequest->set_filename(filename.c_str());
 
-    if (!SendMessageToRemote(serverFd, request))
+    if (!SendMessageToRemote(serverConnection.get(), request))
     {
         cout << "couldn't send message to server" << endl;
-        close(serverFd);
         return false;
     }
 
     string requestMessage;
-    if (!ReadMessageFromRemote(serverFd, requestMessage))
+    if (!ReadMessageFromRemote(serverConnection.get(), requestMessage))
     {
         cout << "couldn't read message from server" << endl;
-        close(serverFd);
         return false;
     }
 
@@ -233,7 +149,6 @@ bool TestLockAPI(const string& filename, bool locked)
     if (!response.ParseFromString(requestMessage))
     {
         std::cout << "Failed to parse protobuf message" << endl;
-        close(serverFd);
         return false;
     }
 
@@ -255,7 +170,7 @@ bool TestLockAPI(const string& filename, bool locked)
         }
     }
 
-    ReleaseConnection(serverFd);
+    ReleaseConnection(serverConnection);
     return status;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -321,12 +236,12 @@ bool TestUploadAPI(
     const string& groupid = "",
     uint32_t ttlInSeconds = 0)
 {
-    int serverFd = GetConnection();
-    if (serverFd < 0)
-    { 
-        cout << "failed to get server connection" << endl;
+    unique_ptr<IConnection> serverConnection  = GetConnection();
+    if (!serverConnection)
+    {
         return false;
     }
+
     Request request;
 
     //cout << "testupload. filesize: " << filesize << endl;
@@ -344,10 +259,9 @@ bool TestUploadAPI(
         uploadRequest->set_expiryseconds(ttlInSeconds);
     }
 
-    if (!SendMessageToRemote(serverFd, request))
+    if (!SendMessageToRemote(serverConnection.get(), request))
     {
         cout << "couldn't send message to server" << endl;
-        close(serverFd);
         return false;
     }
 
@@ -371,7 +285,7 @@ bool TestUploadAPI(
             }
 
             int tempWrite;
-            if ((tempWrite = write(serverFd, data, bufferLen)) > 0)
+            if ((tempWrite = (*serverConnection).Send(data, bufferLen)) > 0)
             {
                 totalWritten += tempWrite;
             }
@@ -379,14 +293,12 @@ bool TestUploadAPI(
             {
                 cout << "couldn't write() message to server. wrote: " << totalWritten <<", error: " <<
                     tempWrite << endl;
-                close(serverFd);
                 return false;
             }
 
             if (XXH64_update(hashState, data, bufferLen) != 0)
             {
                 cout << "xxh64_update failed" << endl;
-                close(serverFd);
                 return false;
             }
         }
@@ -399,10 +311,9 @@ bool TestUploadAPI(
     //cout << "sent file to server" << endl;
 
     string requestMessage;
-    if (!ReadMessageFromRemote(serverFd, requestMessage))
+    if (!ReadMessageFromRemote(serverConnection.get(), requestMessage))
     {
         cout << "couldn't read message from server" << endl;
-        close(serverFd);
         return false;
     }
 
@@ -410,7 +321,6 @@ bool TestUploadAPI(
     if (!response.ParseFromString(requestMessage))
     {
         std::cout << "error: Failed to parse protobuf message" << endl;
-        close(serverFd);
         return false;
     }
 
@@ -418,11 +328,10 @@ bool TestUploadAPI(
     {
         std::cout << "error: upload failed: response.result() != expectedResult:" << response.result() << ", " <<
             expectedResult << endl;
-        close(serverFd);
         return false;
     }
 
-    ReleaseConnection(serverFd);
+    ReleaseConnection(serverConnection);
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -434,11 +343,10 @@ bool TestDownloadAPI(
     DownloadResponse_Result expectedResult,
     uint64_t *hashValue = nullptr)
 {
-    int serverFd = GetConnection();
-    if (serverFd < 0)
-    { 
-        cout << "failed to get server connection" << endl;
-	    return false;
+    unique_ptr<IConnection> serverConnection  = GetConnection();
+    if (!serverConnection)
+    {
+        return false;
     }
     Request request;
 
@@ -448,18 +356,16 @@ bool TestDownloadAPI(
     downloadRequest->set_length(filesize);
     downloadRequest->set_enablelock(lock);
 
-    if (!SendMessageToRemote(serverFd, request))
+    if (!SendMessageToRemote(serverConnection.get(), request))
     {
         cout << "couldn't send message to server" << endl;
-        close(serverFd);
         return false;
     }
 
     string requestMessage;
-    if (!ReadMessageFromRemote(serverFd, requestMessage))
+    if (!ReadMessageFromRemote(serverConnection.get(), requestMessage))
     {
         cout << "couldn't read message from server" << endl;
-        close(serverFd);
         return false;
     }
 
@@ -467,7 +373,6 @@ bool TestDownloadAPI(
     if (!response.ParseFromString(requestMessage))
     {
         std::cout << "error: Failed to parse protobuf message" << endl;
-        close(serverFd);
         return false;
     }
 
@@ -475,7 +380,6 @@ bool TestDownloadAPI(
     {
         std::cout << "error: download failed: response.result() != expectedResult:" << response.result() << ", " <<
             expectedResult << endl;
-        close(serverFd);
         return false;
     }
 
@@ -484,7 +388,6 @@ bool TestDownloadAPI(
         if (filesize != response.filesize())
         {
             std::cout << "error: download failed: invalid filesize" << endl;
-            close(serverFd);
             return false;
         }
         uint64_t totalRead = 0;
@@ -496,38 +399,34 @@ bool TestDownloadAPI(
         {
             int BUFSIZE = 1024*1024;
             char data[BUFSIZE];
-            if ((tempRead = read(serverFd, data, (int)std::min((uint64_t)BUFSIZE, filesize - totalRead))) > 0)
+            if ((tempRead = (*serverConnection).Receive(data, (int)std::min((uint64_t)BUFSIZE, filesize - totalRead))) > 0)
             {
                 totalRead += tempRead;
             }
             else 
             {
                 cout << "couldn't read() message from server" << endl;
-                close(serverFd);
                 return false;
             }
             if (XXH64_update(hashState, data, tempRead) != 0)
             {
                 cout << "xxh64_update failed" << endl;
-                close(serverFd);
                 return false;
             }
         }
         if (totalRead != filesize)
         {
             cout << "error: totalRead != filesize" << endl;
-            close(serverFd);
             return false;
         }
         if (hashValue != nullptr && *hashValue != XXH64_digest(hashState))
         {
             cout << "hashValue doesn't match" << endl;
-            close(serverFd);
             return false;
         }
     }
 
-    ReleaseConnection(serverFd);
+    ReleaseConnection(serverConnection);
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -535,29 +434,26 @@ bool TestDeleteAPI(
     const string& groupid,
     DeleteResponse_Result expectedResult)
 {
-    int serverFd = GetConnection();
-    if (serverFd < 0)
-    { 
-        cout << "failed to get server connection" << endl;
-	    return false;
+    unique_ptr<IConnection> serverConnection  = GetConnection();
+    if (!serverConnection)
+    {
+        return false;
     }
     Request request;
 
     DeleteRequest* deleteRequest = request.mutable_deleterequest();
     deleteRequest->set_groupid(groupid.c_str());
 
-    if (!SendMessageToRemote(serverFd, request))
+    if (!SendMessageToRemote(serverConnection.get(), request))
     {
         cout << "couldn't send message to server" << endl;
-        close(serverFd);
         return false;
     }
 
     string requestMessage;
-    if (!ReadMessageFromRemote(serverFd, requestMessage))
+    if (!ReadMessageFromRemote(serverConnection.get(), requestMessage))
     {
         cout << "couldn't read message from server" << endl;
-        close(serverFd);
         return false;
     }
 
@@ -565,7 +461,6 @@ bool TestDeleteAPI(
     if (!response.ParseFromString(requestMessage))
     {
         std::cout << "error: Failed to parse protobuf message" << endl;
-        close(serverFd);
         return false;
     }
 
@@ -573,11 +468,10 @@ bool TestDeleteAPI(
     {
         std::cout << "error: delete failed: response.result() != expectedResult:" << response.result() << ", " <<
             expectedResult << endl;
-        close(serverFd);
         return false;
     }
 
-    ReleaseConnection(serverFd);
+    ReleaseConnection(serverConnection);
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -764,27 +658,24 @@ void MeasurePerf(int parallelism, uint64_t GBUpload, uint64_t GBDownload)
 //---------------------------------------------------------------------------------------------------------------------
 bool TestPutAttributeAPI(PutAttributeRequest& putRequest, PutAttributeResponse_Result expectedResult)
 {
-    int serverFd = GetConnection();
-    if (serverFd < 0)
-    { 
-        cout << "failed to get server connection" << endl;
+    unique_ptr<IConnection> serverConnection  = GetConnection();
+    if (!serverConnection)
+    {
         return false;
     }
 
     Request request;
     request.set_allocated_putattributerequest(&putRequest);
-    if (!SendMessageToRemote(serverFd, request))
+    if (!SendMessageToRemote(serverConnection.get(), request))
     {
         cout << "couldn't send message to server" << endl;
-        close(serverFd);
         return false;
     }
 
     string requestMessage;
-    if (!ReadMessageFromRemote(serverFd, requestMessage))
+    if (!ReadMessageFromRemote(serverConnection.get(), requestMessage))
     {
         cout << "couldn't read message from server" << endl;
-        close(serverFd);
         return false;
     }
 
@@ -792,7 +683,6 @@ bool TestPutAttributeAPI(PutAttributeRequest& putRequest, PutAttributeResponse_R
     if (!response.ParseFromString(requestMessage))
     {
         std::cout << "error: Failed to parse protobuf message" << endl;
-        close(serverFd);
         return false;
     }
 
@@ -805,7 +695,7 @@ bool TestPutAttributeAPI(PutAttributeRequest& putRequest, PutAttributeResponse_R
     }
 
     request.release_putattributerequest();
-    ReleaseConnection(serverFd);
+    ReleaseConnection(serverConnection);
     return status;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -818,10 +708,9 @@ bool TestGetAttributeAPI(
     uint64_t accessedtime,
     uint64_t modifiedtime)
 {
-    int serverFd = GetConnection();
-    if (serverFd < 0)
-    { 
-        cout << "failed to get server connection" << endl;
+    unique_ptr<IConnection> serverConnection  = GetConnection();
+    if (!serverConnection)
+    {
         return false;
     }
 
@@ -829,18 +718,16 @@ bool TestGetAttributeAPI(
     GetAttributeRequest* getAttributeRequest = request.mutable_getattributerequest();
     getAttributeRequest->set_filename(filename);
     getAttributeRequest->set_enablelock(enableLock);
-    if (!SendMessageToRemote(serverFd, request))
+    if (!SendMessageToRemote(serverConnection.get(), request))
     {
         cout << "couldn't send message to server" << endl;
-        close(serverFd);
         return false;
     }
 
     string requestMessage;
-    if (!ReadMessageFromRemote(serverFd, requestMessage))
+    if (!ReadMessageFromRemote(serverConnection.get(), requestMessage))
     {
         cout << "couldn't read message from server" << endl;
-        close(serverFd);
         return false;
     }
 
@@ -848,7 +735,6 @@ bool TestGetAttributeAPI(
     if (!response.ParseFromString(requestMessage))
     {
         std::cout << "error: Failed to parse protobuf message" << endl;
-        close(serverFd);
         return false;
     }
 
@@ -872,7 +758,7 @@ bool TestGetAttributeAPI(
             }
     }
 
-    ReleaseConnection(serverFd);
+    ReleaseConnection(serverConnection);
     return status;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -1077,10 +963,9 @@ int TestLimits()
 //---------------------------------------------------------------------------------------------------------------------
 bool TestMetadata(const google::protobuf::Map<string, string>& metadata)
 {
-    int serverFd = GetConnection();
-    if (serverFd < 0)
-    { 
-        cout << "failed to get server connection" << endl;
+    unique_ptr<IConnection> serverConnection  = GetConnection();
+    if (!serverConnection)
+    {
         return false;
     }
 
@@ -1095,18 +980,16 @@ bool TestMetadata(const google::protobuf::Map<string, string>& metadata)
         *(uploadRequest->mutable_metadata()) = metadata;
     }
 
-    if (!SendMessageToRemote(serverFd, request))
+    if (!SendMessageToRemote(serverConnection.get(), request))
     {
         cout << "couldn't send message to server" << endl;
-        close(serverFd);
         return false;
     }
 
     string responseMessage;
-    if (!ReadMessageFromRemote(serverFd, responseMessage))
+    if (!ReadMessageFromRemote(serverConnection.get(), responseMessage))
     {
         cout << "couldn't read message from server" << endl;
-        close(serverFd);
         return false;
     }
 
@@ -1120,7 +1003,6 @@ bool TestMetadata(const google::protobuf::Map<string, string>& metadata)
     if (response.result() != UploadResponse::SUCCESS)
     {
         std::cout << "error: upload failed" << endl;
-        close(serverFd);
         return false;
     }
 
@@ -1131,17 +1013,15 @@ bool TestMetadata(const google::protobuf::Map<string, string>& metadata)
     downloadRequest->set_filename(filename);
     downloadRequest->set_enablelock(false);
 
-    if (!SendMessageToRemote(serverFd, drequest))
+    if (!SendMessageToRemote(serverConnection.get(), drequest))
     {
         cout << "couldn't send message to server" << endl;
-        close(serverFd);
         return false;
     }
 
-    if (!ReadMessageFromRemote(serverFd, responseMessage))
+    if (!ReadMessageFromRemote(serverConnection.get(), responseMessage))
     {
         cout << "couldn't read message from server" << endl;
-        close(serverFd);
         return false;
     }
 
@@ -1149,21 +1029,18 @@ bool TestMetadata(const google::protobuf::Map<string, string>& metadata)
     if (!dresponse.ParseFromString(responseMessage))
     {
         std::cout << "error: Failed to parse protobuf message" << endl;
-        close(serverFd);
         return false;
     }
 
     if (dresponse.result() != DownloadResponse::SUCCESS)
     {
         std::cout << "error: download failed: response.result() != expectedResult:" << endl;
-        close(serverFd);
         return false;
     }
 
     if (dresponse.filesize() != 0)
     {
         cout << "error: bad filesize: " << dresponse.filesize() << endl;
-        close(serverFd);
         return false;
     }
 
@@ -1171,7 +1048,6 @@ bool TestMetadata(const google::protobuf::Map<string, string>& metadata)
     if (dresponse.metadata().size() != metadata.size())
     {
         cout << "error: bad metadatasize: " << dresponse.metadata().size() << endl;
-        close(serverFd);
         return false;
     }
 
@@ -1180,12 +1056,11 @@ bool TestMetadata(const google::protobuf::Map<string, string>& metadata)
         if (metadata.at(iter.first) != iter.second)
         {
             cout << "error: received bad metadata. " << metadata.at(iter.first) << " != " << iter.second << endl;
-            close(serverFd);
             return false;
         }
     }
 
-    ReleaseConnection(serverFd);
+    ReleaseConnection(serverConnection);
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -1667,11 +1542,10 @@ bool IBInit()
 //---------------------------------------------------------------------------------------------------------------------
 bool TestIBAPI()
 {
-    int serverFd = GetConnection();
-    if (serverFd < 0)
-    { 
-        cout << "failed to get server connection" << endl;
-	    return false;
+    unique_ptr<IConnection> serverConnection  = GetConnection();
+    if (!serverConnection)
+    {
+        return false;
     }
 
     Request request;
@@ -1742,18 +1616,16 @@ bool TestIBAPI()
         vectorQps.push_back(qp);
     }
 
-    if (!SendMessageToRemote(serverFd, request))
+    if (!SendMessageToRemote(serverConnection.get(), request))
     {
         cout << "couldn't send message to server" << endl;
-        close(serverFd);
         return false;
     }
 
     string requestMessage;
-    if (!ReadMessageFromRemote(serverFd, requestMessage))
+    if (!ReadMessageFromRemote(serverConnection.get(), requestMessage))
     {
         cout << "couldn't read message from server" << endl;
-        close(serverFd);
         return false;
     }
 
@@ -1761,25 +1633,21 @@ bool TestIBAPI()
     if (!response.ParseFromString(requestMessage))
     {
         std::cout << "Failed to parse protobuf message" << endl;
-        close(serverFd);
         return false;
     }
 
     if (response.result() != IBInitResponse::SUCCESS)
     {
         std::cout << "unexpected response: " << response.result() << endl;
-        close(serverFd);
         return false;
     }
 
     if (response.serverqpn_size() != numQPsPerConnection)
     {
         std::cout << "serverqpn size mismatch: " << numQPsPerConnection << " != " << response.serverqpn_size() << endl;
-        close(serverFd);
         return false;
     }
 
-    close(serverFd);
     for (int qpn = 0; qpn < numQPsPerConnection; qpn++)
     {
         // Transition to RTR
@@ -1952,6 +1820,10 @@ bool cli(int argc, char* argv[], bool& /*[out]*/ isCli)
 //---------------------------------------------------------------------------------------------------------------------
 int main(int argc, char *argv[])
 {
+
+    LoggingApi::Init();
+    LoggingApi::FlushCachedLog();
+
     char* cacheServerHost = std::getenv("TEST_CACHESERVER_ADDR_HOST");
     if (cacheServerHost != nullptr)
     {
