@@ -19,6 +19,7 @@ class CacheClientTest : public TestBase
         std::shared_ptr<ICacheClient>   m_cacheClient;
         static std::atomic_int          m_fileCount;
         std::string                     m_strTestId;
+        bool                            m_bRunExtensiveTests;
 
         std::string GetRandFilename();
         std::shared_ptr<FileReadData> GetRandDataBuffer(uint64_t size);

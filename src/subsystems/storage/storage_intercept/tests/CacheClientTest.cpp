@@ -8,6 +8,7 @@
 #include "CacheUtils.h"
 #include "StorageInterceptConfig.h"
 #include <algorithm>
+#include <cctype>
 #include <vector>
 #include <unistd.h>
 #include <iostream>
@@ -30,6 +31,29 @@ CacheClientTest::CacheClientTest()
         !StorageInterceptConfig::GetInstance().GetCacheUseLocalFS())
     {
         m_cacheClient = make_shared<RemoteCacheClient>();
+    }
+
+    const char* envRunExtensiveTests = std::getenv("STORAGE_INTERCEPT_RUN_EXTENSIVE_TESTS");
+    if (envRunExtensiveTests == nullptr)
+    {
+        m_bRunExtensiveTests = false;
+    }
+    else
+    {
+        std::string strRunExtensiveTests(envRunExtensiveTests);
+        std::transform(strRunExtensiveTests.begin(),
+            strRunExtensiveTests.end(),
+            strRunExtensiveTests.begin(),
+            [](unsigned char c){ return std::tolower(c); });
+
+        if (strRunExtensiveTests.compare("true") == 0)
+        {
+            m_bRunExtensiveTests = true;
+        }
+        else
+        {
+            m_bRunExtensiveTests = false;
+        }
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -458,5 +482,153 @@ TEST_F(CacheClientTest, TestUploadLockExpiry)
         this->m_cacheClient->DownloadSync(
             "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_TRUE(cacheStatus == CacheStatus::NOTFOUND);
+}
+//---------------------------------------------------------------------------------------------------------------------
+// This test is meant to emulate the StreamingClient::ReadChunkImpl loop
+TEST_F(CacheClientTest, TestAvoidRemoteDownloadLoopWithUploadSuccessful)
+{
+    if (this->m_cacheClient == nullptr || !this->m_bRunExtensiveTests)
+    {
+        GTEST_SKIP();
+    }
+
+    // Test 4MB file
+    std::vector<char> outBuffer(1024*1024*4);
+    string strFileName = GetRandFilename();
+
+    unique_ptr<thread> t1 = make_unique<thread>([&outBuffer, &strFileName, this]() {
+        uint64_t dataRead = 0;
+        auto cacheStatus =
+            this->m_cacheClient->DownloadSync(
+                "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+        ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
+
+        this_thread::sleep_for(chrono::seconds(30));
+        auto dataBuffer = GetRandDataBuffer(1024*1024*4);
+        bool bRetVal =
+            m_cacheClient->Upload("", strFileName, 0, dataBuffer);
+        ASSERT_EQ(bRetVal, true);
+    });
+
+    unique_ptr<thread> t2 = make_unique<thread>([&outBuffer, &strFileName, this]() {
+        this_thread::sleep_for(chrono::seconds(2));
+        uint64_t dataRead = 0;
+        CacheStatus cacheStatus = CacheStatus::NOTFOUND;
+        int nMaxAttempts = 50;
+        int nIteration = 0;
+        do
+        {
+            if(nIteration > 0)
+            {
+                this_thread::sleep_for(chrono::seconds(2));
+            }
+
+            cacheStatus = this->m_cacheClient->DownloadSync(
+                "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+
+            nIteration++;
+        }
+        while(cacheStatus == CacheStatus::NOTFOUND && nIteration < nMaxAttempts);
+        ASSERT_EQ(CacheStatus::SUCCESS, cacheStatus);
+        ASSERT_FALSE(nIteration >= nMaxAttempts);
+        ASSERT_EQ(dataRead, 1024*1024*4);
+    });
+
+    t1->join();
+    t2->join();
+}
+//---------------------------------------------------------------------------------------------------------------------
+// This test is meant to emulate the StreamingClient::ReadChunkImpl loop
+TEST_F(CacheClientTest, TestAvoidRemoteDownloadLoopWithLeaseExpiry)
+{
+    if (this->m_cacheClient == nullptr || !this->m_bRunExtensiveTests)
+    {
+        GTEST_SKIP();
+    }
+
+    // Test 4MB file
+    std::vector<char> outBuffer(1024*1024*4);
+    string strFileName = GetRandFilename();
+
+    unique_ptr<thread> t1 = make_unique<thread>([&outBuffer, &strFileName, this]() {
+        uint64_t dataRead = 0;
+        auto cacheStatus =
+            this->m_cacheClient->DownloadSync(
+                "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+        ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
+    });
+
+    unique_ptr<thread> t2 = make_unique<thread>([&outBuffer, &strFileName, this]() {
+        this_thread::sleep_for(chrono::seconds(2));
+        uint64_t dataRead = 0;
+        CacheStatus cacheStatus = CacheStatus::NOTFOUND;
+        int nMaxAttempts = 50;
+        int nIteration = 0;
+        do
+        {
+            if(nIteration > 0)
+            {
+                this_thread::sleep_for(chrono::seconds(2));
+            }
+
+            cacheStatus = this->m_cacheClient->DownloadSync(
+                "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+
+            nIteration++;
+        }
+        while(cacheStatus == CacheStatus::NOTFOUND && nIteration < nMaxAttempts);
+        ASSERT_EQ(CacheStatus::NOTFOUND_LOCKED, cacheStatus);
+        ASSERT_FALSE(nIteration >= nMaxAttempts);
+    });
+
+    t1->join();
+    t2->join();
+}
+//---------------------------------------------------------------------------------------------------------------------
+// This test is meant to emulate the StreamingClient::ReadChunkImpl loop
+TEST_F(CacheClientTest, TestAvoidRemoteDownloadLoopWithoutLeaseExpiry)
+{
+    if (this->m_cacheClient == nullptr || !this->m_bRunExtensiveTests)
+    {
+        GTEST_SKIP();
+    }
+
+    // Test 4MB file
+    std::vector<char> outBuffer(1024*1024*4);
+    string strFileName = GetRandFilename();
+
+    unique_ptr<thread> t1 = make_unique<thread>([&outBuffer, &strFileName, this]() {
+        uint64_t dataRead = 0;
+        auto cacheStatus =
+            this->m_cacheClient->DownloadSync(
+                "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+        ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
+    });
+
+    unique_ptr<thread> t2 = make_unique<thread>([&outBuffer, &strFileName, this]() {
+        this_thread::sleep_for(chrono::seconds(2));
+        uint64_t dataRead = 0;
+        CacheStatus cacheStatus = CacheStatus::NOTFOUND;
+        int nMaxAttempts = 10;
+        int nIteration = 0;
+        do
+        {
+            if(nIteration > 0)
+            {
+                this_thread::sleep_for(chrono::seconds(2));
+            }
+
+            cacheStatus = this->m_cacheClient->DownloadSync(
+                "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+
+            nIteration++;
+        }
+        while(cacheStatus == CacheStatus::NOTFOUND && nIteration < nMaxAttempts);
+        ASSERT_EQ(CacheStatus::NOTFOUND, cacheStatus);
+        ASSERT_TRUE(nIteration >= nMaxAttempts);
+    });
+
+    t1->join();
+    t2->join();
 }
 //---------------------------------------------------------------------------------------------------------------------
