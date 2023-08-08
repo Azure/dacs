@@ -2,8 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "ConnectionManager.h"
-#include "StorageInterceptLogger.h"
-#include "StorageInterceptConfig.h"
+#include "CommonLogger.h"
 #include "StorageLibcApiWrapper.h"
 #include "SocketConnection.h"
 #include "IBConnection.h"
@@ -28,15 +27,25 @@ using namespace ibutils;
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
 ConnectionManager::ConnectionManager(
-    int serverPort,
-    bool useLocalServer,
-    const std::vector<std::string>& cacheServers)
+    /*[in]*/ int serverPort,
+    /*[in]*/ bool useLocalServer,
+    /*[in]*/ const std::vector<std::string>& cacheServers,
+    /*[in]*/ bool bAuthEnabled,
+    /*[in]*/ const std::string& strCacheAccountName,
+    /*[in]*/ const std::string& strCacheAccountKey,
+    /*[in]*/ const int nMaxConnectionsReuseSize,
+    /*[in]*/ bool bReuseServerConnections,
+    /*[in]*/ bool bUseInfiniband)
     :  m_ServerPort(serverPort)
-    ,  m_nMaxConnectionsReuseSize(StorageInterceptConfig::GetInstance().GetCacheMaxConnectionsReuseSize())
-    ,  m_bReuseServerConnections(StorageInterceptConfig::GetInstance().GetCacheReuseServerConnections())
-    ,  m_bUseInfiniband(StorageInterceptConfig::GetInstance().GetCacheIBEnabled())
-    ,  m_ibDevice{0}
+    ,  m_bAuthEnabled(bAuthEnabled)
+    ,  m_strCacheAccountName(strCacheAccountName)
+    ,  m_strCacheAccountKey(strCacheAccountKey)
+    ,  m_nMaxConnectionsReuseSize(nMaxConnectionsReuseSize)
+    ,  m_bReuseServerConnections(bReuseServerConnections)
+    ,  m_bUseInfiniband(bUseInfiniband)
 {
+
+    m_ibDevice = {0};
     if (useLocalServer)
     {
         m_numServerNodes = 1;
@@ -219,7 +228,7 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd,
 
     // serverFd will be auto-closed by socketConnection
     unique_ptr<IConnection> socketConnection = make_unique<SocketConnection>(serverFd);
-    if (!AddAuthParams(request))
+    if (m_bAuthEnabled && !AddAuthParams(request, m_strCacheAccountName, m_strCacheAccountKey))
     {
         LOG_WARN_REQID("failed to create auth request", *ibRequest);
         return nullptr;

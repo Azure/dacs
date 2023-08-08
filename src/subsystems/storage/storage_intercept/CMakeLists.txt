@@ -46,13 +46,13 @@ SET_TARGET_PROPERTIES(static-azurestorage PROPERTIES
 
 set(CommonDeps StorageCommon CacheProto ClientConnections diagnostics curl static-azurestorage jsoncpp dl uuid crypto staticprotobuf ibverbs)
 
-add_dependencies(StorageIntercept StorageInterceptLibcDlsym StorageCommon CacheProto ClientConnections)
+add_dependencies(StorageIntercept StorageLibcDlsymWrapper StorageCommon CacheProto ClientConnections)
 
-target_link_libraries(StorageIntercept StorageInterceptLibcDlsym ${CommonDeps})
+target_link_libraries(StorageIntercept StorageLibcDlsymWrapper ${CommonDeps})
 
-add_dependencies(CacheClient StorageInterceptLibcDirect StorageCommon CacheProto ClientConnections)
+add_dependencies(CacheClient StorageLibcDirectWrapper StorageCommon CacheProto ClientConnections)
 
-target_link_libraries(CacheClient StorageInterceptLibcDirect ${CommonDeps})
+target_link_libraries(CacheClient StorageLibcDirectWrapper ${CommonDeps})
 
 add_custom_command(
     TARGET CacheClient POST_BUILD
@@ -85,7 +85,7 @@ target_include_directories(StorageInterceptUnitTests PRIVATE
 
 add_dependencies(StorageInterceptUnitTests
         StorageCommon
-        StorageInterceptLibcDlsym
+        StorageLibcDlsymWrapper
         CacheProto
         ClientConnections
         diagnostics
@@ -97,7 +97,7 @@ add_dependencies(StorageInterceptUnitTests
 
 target_link_libraries(StorageInterceptUnitTests
         StorageCommon
-        StorageInterceptLibcDlsym
+        StorageLibcDlsymWrapper
         ${CommonDeps}
         ${GMOCK_LIBRARY}
         ${GMOCK_MAIN_LIBRARY}

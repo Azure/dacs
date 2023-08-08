@@ -2,7 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "SocketConnection.h"
-#include "StorageInterceptLogger.h"
+#include "CommonLogger.h"
 #include "StorageLibcApiWrapper.h"
 #include "poll.h"
 #include <sys/socket.h>

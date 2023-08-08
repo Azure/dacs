@@ -101,10 +101,16 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
         fileMetadata[CACHE_META_FILE_MTIME] = std::to_string(uploadContext->m_fileAttributes->mTime.tv_sec);
     }
 
-    if (!AddAuthParams(request))
+    static bool bCacheAuthEnabled = StorageInterceptConfig::GetInstance().GetCacheAuthEnabled();
+    if(bCacheAuthEnabled)
     {
-        LOG_WARN_REQID("failed to create auth request for file: {}", *uploadRequest, uploadContext->m_strCacheKey);
-        return false;
+        static const std::string strCacheAccountName = StorageInterceptConfig::GetInstance().GetCacheAuthAccountName();
+        static const std::string strCacheAccountKey = StorageInterceptConfig::GetInstance().GetCacheAuthAccountKey();
+        if(!AddAuthParams(request, strCacheAccountName, strCacheAccountKey))
+        {
+            LOG_WARN_REQID("failed to create auth request for file: {}", *uploadRequest, uploadContext->m_strCacheKey);
+            return false;
+        }
     }
 
     std::unique_ptr<char[]> encBuffer;

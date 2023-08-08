@@ -5,7 +5,7 @@
 #include "CacheUtils.h"
 #include "UploadRequest.h"
 #include "LockRequest.h"
-#include "StorageInterceptLogger.h"
+#include "CommonLogger.h"
 #include "DownloadRequest.h"
 #include "IBConstants.h"
 #include "IBUtils.h"

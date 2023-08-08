@@ -18,7 +18,14 @@ class ConnectionManager
         ConnectionManager(
             /*[in]*/ int serverPort,
             /*[in]*/ bool useLocalServer,
-            /*[in]*/ const std::vector<std::string>& cacheServers);
+            /*[in]*/ const std::vector<std::string>& cacheServers,
+            /*[in]*/ bool bAuthEnabled,
+            /*[in]*/ const std::string& strCacheAccountName,
+            /*[in]*/ const std::string& strCacheAccountKey,
+            /*[in]*/ const int nMaxConnectionsReuseSize,
+            /*[in]*/ bool bReuseServerConnections,
+            /*[in]*/ bool bUseInfiniband
+        );
         ~ConnectionManager();
 
     public:
@@ -42,6 +49,9 @@ class ConnectionManager
     
     private:
         const int                                               m_ServerPort;
+        const bool                                              m_bAuthEnabled;
+        const std::string                                       m_strCacheAccountName;
+        const std::string                                       m_strCacheAccountKey;
         const int                                               m_nMaxConnectionsReuseSize;
         std::vector<std::mutex>                                 m_vecLocks;
         std::vector<std::queue<std::unique_ptr<IConnection>>>   m_vecConnectionQueue;

@@ -20,10 +20,10 @@ add_executable(DeleteClient
     DeleteClient.cpp)
 
 # Need the protobuf files to be created before we can build this executable
-add_dependencies(DeleteClient StorageCommon StorageInterceptLibcDlsym ClientConnections CacheProto CacheServer)
+add_dependencies(DeleteClient StorageCommon StorageLibcDlsymWrapper ClientConnections CacheProto CacheServer)
 
 target_include_directories(DeleteClient PRIVATE
     ${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/operations
 )
 
-target_link_libraries(DeleteClient StorageCommon StorageInterceptLibcDlsym ClientConnections CacheProto pthread protobuf)
+target_link_libraries(DeleteClient StorageCommon StorageLibcDlsymWrapper ClientConnections CacheProto pthread protobuf)

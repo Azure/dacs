@@ -2,9 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "CacheUtils.h"
-#include "StorageInterceptConfig.h"
-#include "StorageInterceptLogger.h"
-#include "StorageInterceptUtils.h"
+#include "CommonLogger.h"
 #include "StorageLibcApiWrapper.h"
 #include "IConnection.h"
 #include <sys/socket.h>
@@ -192,17 +190,9 @@ namespace cacheutils
         return hashValue.substr(0, hashLen);
     }
 //---------------------------------------------------------------------------------------------------------------------
-    bool AddAuthParams(Request& request)
+    bool AddAuthParams(Request& request, const string& strCacheAccountName, const string& strCacheAccountKey)
     {
-        if (!StorageInterceptConfig::GetInstance().GetCacheAuthEnabled())
-        {
-            return true;
-        }
-
         LOG_DEBUG("AddAuthParams cache auth enabled")
-        static const std::string& accountName = StorageInterceptConfig::GetInstance().GetCacheAuthAccountName();
-        static const std::string& accountKey = StorageInterceptConfig::GetInstance().GetCacheAuthAccountKey();
-
         AuthParams* authParams = nullptr;
         time_t timestamp = time(NULL);
         string serializedHeaders;
@@ -276,9 +266,9 @@ namespace cacheutils
         }
 
         authParams->set_enabled(true);
-        authParams->set_accountname(accountName);
+        authParams->set_accountname(strCacheAccountName);
         authParams->set_timestamp(timestamp);
-        authParams->set_signature(getHMACSHA256(accountKey, serializedHeaders));
+        authParams->set_signature(getHMACSHA256(strCacheAccountKey, serializedHeaders));
 
         return authParams->signature().length() > 0;
     }

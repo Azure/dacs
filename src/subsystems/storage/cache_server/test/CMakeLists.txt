@@ -6,7 +6,7 @@ set(TEST_CLIENT_EXEC cacheServerTestClient)
 
 add_executable(${TEST_CLIENT_EXEC} TestClient.cpp)
 
-add_dependencies(${TEST_CLIENT_EXEC} StorageCommon StorageInterceptLibcDlsym ClientConnections CacheProto)
+add_dependencies(${TEST_CLIENT_EXEC} StorageCommon StorageLibcDlsymWrapper ClientConnections CacheProto)
 
 target_include_directories(${TEST_CLIENT_EXEC} PRIVATE
                     .
@@ -19,7 +19,7 @@ target_include_directories(${TEST_CLIENT_EXEC} PRIVATE
 target_link_libraries(
     ${TEST_CLIENT_EXEC}
     StorageCommon
-    StorageInterceptLibcDlsym
+    StorageLibcDlsymWrapper
     ClientConnections
     CacheProto
     pthread
