@@ -19,7 +19,23 @@ LocalAttributesCache::LocalAttributesCache()
 : m_stop(false)
 {
     int serverPort = StorageInterceptConfig::GetInstance().GetAttributesCacheServerPort();
-    m_spConnectionManager = make_unique<ConnectionManager>(serverPort, true, vector<string>());
+    bool bCacheAuthEnabled = StorageInterceptConfig::GetInstance().GetCacheAuthEnabled();
+    const std::string strCacheAccountName =
+        bCacheAuthEnabled ? StorageInterceptConfig::GetInstance().GetCacheAuthAccountName() : "";
+    const std::string strCacheAccountKey =
+        bCacheAuthEnabled ? StorageInterceptConfig::GetInstance().GetCacheAuthAccountKey() : "";
+    int nMaxConnectionsReuseSize = StorageInterceptConfig::GetInstance().GetCacheMaxConnectionsReuseSize();
+    bool bReuseServerConnections = StorageInterceptConfig::GetInstance().GetCacheReuseServerConnections();
+    bool bUseInfiniband = StorageInterceptConfig::GetInstance().GetCacheIBEnabled();
+    m_spConnectionManager = make_unique<ConnectionManager>(serverPort,
+                                                           true,
+                                                           vector<string>(),
+                                                           bCacheAuthEnabled,
+                                                           strCacheAccountName,
+                                                           strCacheAccountKey,
+                                                           nMaxConnectionsReuseSize,
+                                                           bReuseServerConnections,
+                                                           bUseInfiniband);
 
     // start worker thread
     m_uploadThread = make_unique<thread>([this]() {

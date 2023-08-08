@@ -28,7 +28,7 @@ namespace cacheutils
     bool SendMessageToRemoteFinal(IConnection* connection, const ::google::protobuf::Message& message);
     bool ReadMessageFromRemote(IConnection* connection, std::string& message);
     uint32_t GetServerIndex(const std::string& filePath, uint32_t numServers);
-    bool AddAuthParams(cache::Request& request);
+    bool AddAuthParams(cache::Request& request, const std::string& strCacheAccountName, const std::string& strCacheAccountKey);
     std::string GetSHA256Hex(const std::string& message);
 
     // Generate a globally-unique ID. Takes ~4ms for 10K invocations.

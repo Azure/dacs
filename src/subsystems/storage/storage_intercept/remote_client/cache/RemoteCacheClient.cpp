@@ -20,6 +20,12 @@ RemoteCacheClient::RemoteCacheClient()
     int serverPort = StorageInterceptConfig::GetInstance().GetCacheServerPort();
     bool enableRemoteCache = StorageInterceptConfig::GetInstance().GetCacheEnableRemote();
     int numUploadThreads = StorageInterceptConfig::GetInstance().GetCacheNumUploadThreadsPerProcess();
+    bool bCacheAuthEnabled = StorageInterceptConfig::GetInstance().GetCacheAuthEnabled();
+    const std::string strCacheAccountName = bCacheAuthEnabled ? StorageInterceptConfig::GetInstance().GetCacheAuthAccountName() : "";
+    const std::string strCacheAccountKey = bCacheAuthEnabled ? StorageInterceptConfig::GetInstance().GetCacheAuthAccountKey() : "";
+    int nMaxConnectionsReuseSize = StorageInterceptConfig::GetInstance().GetCacheMaxConnectionsReuseSize();
+    bool bReuseServerConnections = StorageInterceptConfig::GetInstance().GetCacheReuseServerConnections();
+    bool bUseInfiniband = StorageInterceptConfig::GetInstance().GetCacheIBEnabled();
 
     uint64_t maxUploadBufferSizePerProcess =
         StorageInterceptConfig::GetInstance().GetCacheMaxUploadBufferSizePerProcessGB() * 1024ULL * 1024 * 1024;
@@ -58,7 +64,15 @@ RemoteCacheClient::RemoteCacheClient()
         m_numServerNodes = 1;
     }
 
-    m_spConnectionManager = make_unique<ConnectionManager>(serverPort, !enableRemoteCache, vsServerNodes);
+    m_spConnectionManager = make_unique<ConnectionManager>(serverPort,
+                                                           !enableRemoteCache,
+                                                           vsServerNodes,
+                                                           bCacheAuthEnabled,
+                                                           strCacheAccountName,
+                                                           strCacheAccountKey,
+                                                           nMaxConnectionsReuseSize,
+                                                           bReuseServerConnections,
+                                                           bUseInfiniband);
     m_spUploadManager = make_unique<CacheUploadManager>(
         *(m_spConnectionManager.get()),
         numUploadThreads,
@@ -129,10 +143,16 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(
     LOG_DEBUG_REQID("Creating DownloadRequest filename: {}, offset: {}, length: {}, enablelock: true",
         *downloadRequest, cacheKey, startOffset, length);
 
-    if (!AddAuthParams(request))
+    static bool bCacheAuthEnabled = StorageInterceptConfig::GetInstance().GetCacheAuthEnabled();
+    if(bCacheAuthEnabled)
     {
-        LOG_WARN_REQID("failed to create auth request, key: {}", *downloadRequest, cacheKey);
-        return CacheStatus::AUTH_FAILED;
+        static const std::string strCacheAccountName = StorageInterceptConfig::GetInstance().GetCacheAuthAccountName();
+        static const std::string strCacheAccountKey = StorageInterceptConfig::GetInstance().GetCacheAuthAccountKey();
+        if(!AddAuthParams(request, strCacheAccountName, strCacheAccountKey))
+        {
+            LOG_WARN_REQID("failed to create auth request, key: {}", *downloadRequest, cacheKey);
+            return CacheStatus::AUTH_FAILED;
+        }
     }
 
     int serverIndex = GetServerIndex(cacheKey, m_numServerNodes);

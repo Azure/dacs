@@ -2,7 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "IBConnection.h"
-#include "StorageInterceptLogger.h"
+#include "CommonLogger.h"
 #include "StorageLibcApiWrapper.h"
 #include <fcntl.h>
 #include <poll.h>
