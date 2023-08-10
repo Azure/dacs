@@ -420,3 +420,6 @@ src/subsystems/reliability/gpu_unit_tests/models/torch_bench/azcopy_linux_amd64_
 src/subsystems/reliability/gpu_unit_tests/models/torch_bench/azcopy_linux_amd64_10.17.0/azcopy
 logs/**
 .hypothesis/**
+
+src/subsystems/storage/rust/cache_interface/target/**
+src/subsystems/storage/rust/cache_interface/Cargo.lock
