@@ -283,6 +283,32 @@ function __run_perf_benchmark__() {
 
 __run_perf_benchmark__
 
+echo "Running rust cache client integration test"
+# Install rust
+pushd /tmp
+curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y
+# update env for safety
+[[ ! -f "$HOME/.cargo/env" ]] && echo "Failed to install rust" && exit 1
+source "$HOME/.cargo/env"
+popd
+
+# Install built binaries
+cp ${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/libcache_client.so /usr/lib/x86_64-linux-gnu/
+cp ${REPOSITORY_ROOT}/src/subsystems/storage/cache_client/CacheClient.h /usr/include/
+chmod 0755 /usr/lib/x86_64-linux-gnu/libcache_client.so
+ldconfig
+
+# Run the test
+pushd ${REPOSITORY_ROOT}/src/subsystems/storage/rust/cache_interface
+cargo run
+if [ $? -ne 0 ];
+then
+    echo "Rust cache client integration test failed"
+    exit 1
+fi
+popd
+echo ""
+
 echo "Running cache server unit tests"
 cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
 eval "ctest -V --no-tests=error -j -1 -R CacheServer"
