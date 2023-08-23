@@ -16,6 +16,30 @@ add_dependencies(CacheStorageClient storage_utils)
 
 target_link_libraries(CacheStorageClient storage_utils pthread stdc++fs)
 
+add_custom_command(
+    TARGET CacheStorageClient POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/cache-test)
+
+add_custom_command(
+    TARGET CacheStorageClient POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/src/subsystems/storage/stress_tests/launcher.py
+        ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/cache-test)
+
+add_custom_command(
+    TARGET CacheStorageClient POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/src/subsystems/storage/stress_tests/StorageClient.py
+        ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/cache-test)
+
+add_custom_command(
+    TARGET CacheStorageClient POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/src/subsystems/storage/stress_tests/storageIntercept.config
+        ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/cache-test)
+
+add_custom_command(
+    TARGET CacheStorageClient POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/CacheStorageClient
+        ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/cache-test)
+
 add_executable(DeleteClient
     DeleteClient.cpp)
 
@@ -27,3 +51,8 @@ target_include_directories(DeleteClient PRIVATE
 )
 
 target_link_libraries(DeleteClient StorageCommon StorageLibcDlsymWrapper ClientConnections CacheProto pthread protobuf)
+
+add_custom_command(
+    TARGET DeleteClient POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/DeleteClient
+        ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/cache-test)
