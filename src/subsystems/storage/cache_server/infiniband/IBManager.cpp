@@ -331,8 +331,10 @@ void IBManager::ProcessRequest(const ibv_wc& wc)
     auto start_time = std::chrono::steady_clock::now();
 
     IBConnection ibConnection(qp, (char*) wc.wr_id, m_ibDevice.mrBuffer->lkey, wc.byte_len);
-    Request::TypeCase requestType = Request::TypeCase::TYPE_NOT_SET;
-    bool bRet = HandleRequest(ibConnection, requestType);
+    Request::TypeCase eRequestType = Request::TypeCase::TYPE_NOT_SET;
+    ResponseCode eResponseCode = ResponseCode::SUCCESS;
+    std::size_t nFileSize = 0;
+    bool bRet = HandleRequest(ibConnection, eRequestType, eResponseCode, nFileSize);
     if (bRet)
     {
         LOG_DEBUG("Processed request successfully. qp={}, addr={}", wc.qp_num, wc.wr_id);
@@ -361,7 +363,7 @@ void IBManager::ProcessRequest(const ibv_wc& wc)
 
     auto end_time = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    Metrics::RegisterRequestLatency(requestType, bRet, duration.count());
+    Metrics::RegisterRequest(eRequestType, eResponseCode, duration.count(), nFileSize);
     Metrics::DecrementActiveConnections();
 }
 //---------------------------------------------------------------------------------------------------------------------

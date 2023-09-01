@@ -62,7 +62,10 @@ bool AuthenticateRequest(const UploadRequest& request)
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadRequest)
+bool UploadFile(IConnection& clientConnection,
+                const cache::UploadRequest& uploadRequest,
+                ResponseCode& eResponseCode,
+                std::size_t& nFileSize)
 {
     LOG_DEBUG_REQID("filename received: {}", uploadRequest, uploadRequest.filename());
 
@@ -71,7 +74,7 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
     if (!AuthenticateRequest(uploadRequest))
     {
         LOG_WARN_REQID("Failed to authenticate request", uploadRequest);
-        uploadResponse.set_result(UploadResponse::AUTH_FAILED);
+        SET_RESULT(uploadResponse, eResponseCode, UploadResponse::AUTH_FAILED);
         SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
         return false;
     }
@@ -92,7 +95,7 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
     if (uploadRequest.filename().size() > UPLOAD_FILENAME_LIMIT)
     {
         LOG_WARN_REQID("filename too large, size: {}", uploadRequest, uploadRequest.filename().size());
-        uploadResponse.set_result(UploadResponse::BAD_REQUEST);
+        SET_RESULT(uploadResponse, eResponseCode, UploadResponse::BAD_REQUEST);
         SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
         return false;
     }
@@ -101,7 +104,7 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
     if (cacheInfo.m_status == CacheManager::CacheStatus::COMPLETED)
     {
         LOG_WARN_REQID("file already uploaded {}", uploadRequest, uploadRequest.filename());
-        uploadResponse.set_result(UploadResponse::FILE_EXISTS);
+        SET_RESULT(uploadResponse, eResponseCode, UploadResponse::FILE_EXISTS);
         SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
         return false;
     }
@@ -119,7 +122,7 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
     if (uploadRequest.filesize() > UPLOAD_FILESIZE_LIMIT)
     {
         LOG_WARN_REQID("filesize too large: {}", uploadRequest, uploadRequest.filesize());
-        uploadResponse.set_result(UploadResponse::BAD_REQUEST);
+        SET_RESULT(uploadResponse, eResponseCode, UploadResponse::BAD_REQUEST);
         SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
         return false;
     }
@@ -128,7 +131,7 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
         uploadRequest.filesize()))
     {
         LOG_WARN_REQID("error starting upload for: {}", uploadRequest, uploadRequest.filename());
-        uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
+        SET_RESULT(uploadResponse, eResponseCode, UploadResponse::INTERNAL_ERROR);
         SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
         return false;
     }
@@ -142,7 +145,7 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
         {
             LOG_WARN_REQID("Couldn't create a temp file for uploading: {}", uploadRequest, uploadRequest.filename());
             CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
-            uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
+            SET_RESULT(uploadResponse, eResponseCode, UploadResponse::INTERNAL_ERROR);
             SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
             return false;
         }
@@ -175,7 +178,7 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
                     fileOutput.close();
                     remove(tempFilename.c_str());
                     CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
-                    uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
+                    SET_RESULT(uploadResponse, eResponseCode, UploadResponse::INTERNAL_ERROR);
                     SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
                     return false;
                 }
@@ -200,7 +203,7 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
                 totalRead);
             remove(tempFilename.c_str());
             CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
-            uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
+            SET_RESULT(uploadResponse, eResponseCode, UploadResponse::INTERNAL_ERROR);
             SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
             return false;
         }
@@ -214,7 +217,7 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
             LOG_WARN_REQID("Failed to rename file from {} to {}. errno: {}:{}",
                 uploadRequest, tempFilename, destFilename, errno, strerror(errno));
             remove(tempFilename.c_str());
-            uploadResponse.set_result(UploadResponse::INTERNAL_ERROR);
+            SET_RESULT(uploadResponse, eResponseCode, UploadResponse::INTERNAL_ERROR);
             CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
         }
         else
@@ -223,35 +226,38 @@ bool UploadFile(IConnection& clientConnection, const UploadRequest& uploadReques
                 uploadRequest.metadata(), uploadRequest.expiryseconds(), uploadRequest.groupid()))
             {
                 // UpdateCacheInfo returns false only if the file is already cached
-                uploadResponse.set_result(UploadResponse::FILE_EXISTS);
+                SET_RESULT(uploadResponse, eResponseCode, UploadResponse::FILE_EXISTS);
                 LOG_WARN_REQID("Cache entry upload status already marked as COMPLETED: {} - duplicate upload scenario", uploadRequest, uploadRequest.filename());
             }
             else
             {
-                uploadResponse.set_result(UploadResponse::SUCCESS);
+                SET_RESULT(uploadResponse, eResponseCode, UploadResponse::SUCCESS);
+                nFileSize = uploadRequest.filesize();
                 LOG_DEBUG_REQID("File successfully written to cache: {}", uploadRequest, uploadRequest.filename());
             }
         }
     }
     else
     {
-        uploadResponse.set_result(UploadResponse::SUCCESS);
+        SET_RESULT(uploadResponse, eResponseCode, UploadResponse::SUCCESS);
         if (!CacheManager::GetInstance().UpdateCacheInfo(uploadRequest.filename(), uploadRequest.filesize(),
             uploadRequest.metadata(), uploadRequest.expiryseconds(), uploadRequest.groupid()))
         {
             // UpdateCacheInfo returns false only if the file is already cached
-            uploadResponse.set_result(UploadResponse::FILE_EXISTS);
+            SET_RESULT(uploadResponse, eResponseCode, UploadResponse::FILE_EXISTS);
             LOG_WARN_REQID("Cache entry upload status already marked as COMPLETED: {} - duplicate upload scenario", uploadRequest, uploadRequest.filename());
         }
         else
         {
             LOG_DEBUG_REQID("File successfully written to cache: {}", uploadRequest, uploadRequest.filename());
+            nFileSize = uploadRequest.filesize();
         }
     }
 
     if (!SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid))
     {
         LOG_WARN_REQID("Error sending response to client for file: {}", uploadRequest, uploadRequest.filename());
+        eResponseCode = ResponseCode::NETWORK_ERROR;
         return false;
     }
     return true;

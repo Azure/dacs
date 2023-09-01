@@ -27,7 +27,6 @@
 #include <queue>
 #include <chrono>
 #include <set>
-#include "Metrics.h"
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 using namespace cache;
@@ -66,7 +65,7 @@ bool AuthenticateRequest(const DownloadRequest& request)
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool DownloadFile(IConnection& clientConnection, const DownloadRequest& downloadRequest)
+bool DownloadFile(IConnection& clientConnection, const DownloadRequest& downloadRequest, enum ResponseCode& eResponseCode, std::size_t& nFileSize)
 {
     LOG_DEBUG_REQID("filename: {}, offset: {}, length: {}",
         downloadRequest, downloadRequest.filename(), downloadRequest.offset(), downloadRequest.length());
@@ -76,7 +75,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
     if (!AuthenticateRequest(downloadRequest))
     {
         LOG_WARN_REQID("Failed to authenticate request", downloadRequest);
-        downloadResponse.set_result(DownloadResponse::AUTH_FAILED);
+        SET_RESULT(downloadResponse, eResponseCode, DownloadResponse::AUTH_FAILED);
         return SendMessageToRemoteFinal(clientConnection, downloadResponse, requestid);
     }
 
@@ -84,7 +83,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
     if (downloadRequest.filename().size() > UPLOAD_FILENAME_LIMIT)
     {
         LOG_WARN_REQID("filename too large, size: {}", downloadRequest, downloadRequest.filename().size());
-        downloadResponse.set_result(DownloadResponse::FILENAME_LIMIT_EXCEEDED);
+        SET_RESULT(downloadResponse, eResponseCode, DownloadResponse::FILENAME_LIMIT_EXCEEDED);
         return SendMessageToRemoteFinal(clientConnection, downloadResponse, requestid);
     }
 
@@ -97,18 +96,17 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
             // TODO: Handle scenario when this response doesn't make it to the client.
             //       Subsequent clients will never get a lock and the file will not be cached.
             LOG_DEBUG_REQID("Locked file for download: {}", downloadRequest, downloadRequest.filename())
-            downloadResponse.set_result(DownloadResponse::NOT_FOUND_GOT_LOCK);
+            SET_RESULT(downloadResponse, eResponseCode, DownloadResponse::NOT_FOUND_GOT_LOCK);
         }
         else if (cacheInfo.m_status == CacheManager::CacheStatus::COMPLETED)
         {
             LOG_DEBUG_REQID("Found file in cache: {}, length: {}", downloadRequest, downloadRequest.filename(), cacheInfo.m_fileSize);
-            downloadResponse.set_result(DownloadResponse::SUCCESS);
-            Metrics::IncrementCacheHit();
+            SET_RESULT(downloadResponse, eResponseCode, DownloadResponse::SUCCESS);
         }
         else
         {
             LOG_DEBUG_REQID("File already locked by another client: {}", downloadRequest, downloadRequest.filename())
-            downloadResponse.set_result(DownloadResponse::NOT_FOUND_ALREADY_LOCKED);
+            SET_RESULT(downloadResponse, eResponseCode, DownloadResponse::NOT_FOUND_ALREADY_LOCKED);
         }
     }
     else
@@ -117,13 +115,12 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
         if (cacheInfo.m_status == CacheManager::CacheStatus::COMPLETED)
         {
             LOG_DEBUG_REQID("Found file in cache: {}, length: {}", downloadRequest, downloadRequest.filename(), cacheInfo.m_fileSize);
-            downloadResponse.set_result(DownloadResponse::SUCCESS);
-            Metrics::IncrementCacheHit();
+            SET_RESULT(downloadResponse, eResponseCode, DownloadResponse::SUCCESS);
         }
         else
         {
             LOG_DEBUG_REQID("File not found in cache: {}", downloadRequest, downloadRequest.filename())
-            downloadResponse.set_result(DownloadResponse::NOT_FOUND);
+            SET_RESULT(downloadResponse, eResponseCode, DownloadResponse::NOT_FOUND);
         }
     }
 
@@ -135,7 +132,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
         {
             LOG_WARN_REQID("Download failure, file: {}, offset: {} more than cached filesize: {}",
                 downloadRequest, downloadRequest.filename(), downloadRequest.offset(), cacheInfo.m_fileSize);
-            downloadResponse.set_result(DownloadResponse::INVALID_OFFSET_LENGTH);
+            SET_RESULT(downloadResponse, eResponseCode, DownloadResponse::INVALID_OFFSET_LENGTH);
             return SendMessageToRemoteFinal(clientConnection, downloadResponse, requestid);
         }
         
@@ -158,6 +155,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
         if (!SendMessageToRemote(clientConnection, downloadResponse, requestid))
         {
             LOG_WARN_REQID("Error sending response to client for file: {}", downloadRequest, downloadRequest.filename());
+            eResponseCode = ResponseCode::NETWORK_ERROR;
             return false;
         }
 
@@ -173,6 +171,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
                 LOG_WARN_REQID("Resetting cache for file: {}", downloadRequest, downloadRequest.filename());
                 CacheManager::GetInstance().ResetCacheInfo(downloadRequest.filename(), downloadFileSize);
             }
+            eResponseCode = ResponseCode::INTERNAL_ERROR;
             return false;
         }
 
@@ -181,9 +180,10 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
         if (!bRet)
         {
             LOG_WARN_REQID("Failed to send file: {} to client id: {}", downloadRequest, downloadRequest.filename(), clientConnection.GetId());
+            eResponseCode = ResponseCode::NETWORK_ERROR;
             return false;
         }
-
+        nFileSize = downloadFileSize;
         LOG_DEBUG_REQID("downloaded and sent file to client successfully: {}", downloadRequest, downloadRequest.filename());
     }
     else
@@ -191,9 +191,10 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
         if (!SendMessageToRemoteFinal(clientConnection, downloadResponse, requestid))
         {
             LOG_WARN_REQID("Error sending response to client for file: {}", downloadRequest, downloadRequest.filename());
+            eResponseCode = ResponseCode::NETWORK_ERROR;
             return false;
         }
-
+        nFileSize = downloadFileSize;
         return true;
     }
 

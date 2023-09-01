@@ -12,7 +12,9 @@ MetricsStore MetricsStore::s_instance;
 void Metrics::Init()
 {    
     static_assert(MetricsStore::m_arrRequestTypes.size() == Request::TypeCase::kEndmarker,
-              "Request::TypeCase and MetricsStore::m_vecRequestTypeToString are out of sync");
+              "Request::TypeCase and MetricsStore::m_arrRequestTypes are out of sync");
+    static_assert(MetricsStore::m_arrResponseCodes.size() == (int)ResponseCode::END_MARKER,
+              "ResponseCode and MetricsStore::m_arrResponseCodes are out of sync");
     
     LOG_INFO("Initializing cache server metrics");
     MetricsStore::s_instance.m_spRegistry = std::make_shared<prometheus::Registry>();
@@ -31,15 +33,10 @@ void Metrics::Init()
             .Help("Size of the cache in bytes.")
             .Register(*MetricsStore::s_instance.m_spRegistry)
             .Add({{"instance", MetricsStore::s_instance.m_serverHostName}});
-    MetricsStore::s_instance.m_pCacheHitCounter = &prometheus::BuildCounter()
-            .Name("cache_server_cache_hits")
-            .Help("Number of cache hits.")
-            .Register(*MetricsStore::s_instance.m_spRegistry)
-            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}, {"request_type", MetricsStore::m_arrRequestTypes[Request::TypeCase::kDownloadrequest]}});
 
     int nSize = MetricsStore::m_arrRequestTypes.size();
     MetricsStore::s_instance.m_vecSuccessfulRequestLatencies.resize(nSize);
-    MetricsStore::s_instance.m_vecFailedRequestLatencies.resize(nSize);
+
     for (int i = 0; i < nSize; i++)
     {
         //creates a histogram with the following bucket intervals 0-5.0, 0.5-10.0 ...., 5000.0-10000.0, 10000.0-inf
@@ -50,13 +47,33 @@ void Metrics::Init()
                 .Name("cache_server_successful_request_latency_ms")
                 .Help("Latency of successful requests.")
                 .Register(*MetricsStore::s_instance.m_spRegistry)
-                .Add({{"instance", MetricsStore::s_instance.m_serverHostName}, {"request_type", str}}, buckets);
-        MetricsStore::s_instance.m_vecFailedRequestLatencies[index] = &prometheus::BuildHistogram()
-                .Name("cache_server_failed_request_latency_ms")
-                .Help("Latency of failed requests.")
-                .Register(*MetricsStore::s_instance.m_spRegistry)
-                .Add({{"instance", MetricsStore::s_instance.m_serverHostName}, {"request_type", str}}, buckets);
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}, {"request_type", str}, {"status", MetricsStore::m_arrResponseCodes[(int)ResponseCode::SUCCESS]}}, buckets);
+
+        int requestVecSize = MetricsStore::m_arrResponseCodes.size();
+        MetricsStore::s_instance.m_vecRequestCounter.push_back(std::vector<prometheus::Counter*>(requestVecSize));
+        for( int j = 0; j < requestVecSize; j++)
+        {
+            std::string errorCode = MetricsStore::m_arrResponseCodes[j];
+            MetricsStore::s_instance.m_vecRequestCounter[index][j] = &prometheus::BuildCounter()
+                    .Name("cache_server_request_counter")
+                    .Help("Number of requests.")
+                    .Register(*MetricsStore::s_instance.m_spRegistry)
+                    .Add({{"instance", MetricsStore::s_instance.m_serverHostName}, {"request_type", str}, {"status", errorCode}});
+        }
     }
+
+    prometheus::Histogram::BucketBoundaries sizeBuckets = {100000, 512000, 1024000, 4*1024000, 16*1024000};
+    MetricsStore::s_instance.m_pDownloadRequestSizeHistogram = &prometheus::BuildHistogram()
+            .Name("cache_server_download_request_size_bytes")
+            .Help("Size of download requests.")
+            .Register(*MetricsStore::s_instance.m_spRegistry)
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}}, sizeBuckets);
+    MetricsStore::s_instance.m_pUploadRequestSizeHistogram = &prometheus::BuildHistogram().
+            Name("cache_server_upload_request_size_bytes")
+            .Help("Size of upload requests.")
+            .Register(*MetricsStore::s_instance.m_spRegistry)
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}}, sizeBuckets);
+
 }
 //---------------------------------------------------------------------------------------------------------------------
 void Metrics::IncrementActiveConnections()
@@ -69,21 +86,42 @@ void Metrics::DecrementActiveConnections()
     MetricsStore::s_instance.m_pActiveConnectionsGauge->Decrement();
 }
 //---------------------------------------------------------------------------------------------------------------------
-void Metrics::RegisterRequestLatency(enum Request::TypeCase requestType, bool bIsSuccess, double latency)
+void Metrics::RegisterRequest(enum Request::TypeCase eRequestType,
+                              enum ResponseCode eResponseCode,
+                              double dLatency,
+                              std::size_t nBytes)
 {
-    if (bIsSuccess)
+
+    switch (eResponseCode)
     {
-        MetricsStore::s_instance.m_vecSuccessfulRequestLatencies[(int)requestType]->Observe(latency);
+        case ResponseCode::SUCCESS:
+            MetricsStore::s_instance.m_vecRequestCounter[(int)eRequestType][(int)ResponseCode::SUCCESS]->Increment();
+            MetricsStore::s_instance.m_vecSuccessfulRequestLatencies[(int)eRequestType]->Observe(dLatency);
+            if(eRequestType == Request::TypeCase::kDownloadrequest)
+            {
+                MetricsStore::s_instance.m_pDownloadRequestSizeHistogram->Observe(nBytes);
+            }
+            else if (eRequestType == Request::TypeCase::kUploadrequest)
+            {
+                MetricsStore::s_instance.m_pUploadRequestSizeHistogram->Observe(nBytes);
+            }
+            break;
+        case ResponseCode::INVALID_TRANSITION:
+            MetricsStore::s_instance.m_vecRequestCounter[(int)eRequestType][(int)ResponseCode::INVALID_TRANSITION]->Increment();
+            break;
+        case ResponseCode::BAD_REQUEST:
+            MetricsStore::s_instance.m_vecRequestCounter[(int)eRequestType][(int)ResponseCode::BAD_REQUEST]->Increment();
+            break;
+        case ResponseCode::INTERNAL_ERROR:
+            MetricsStore::s_instance.m_vecRequestCounter[(int)eRequestType][(int)ResponseCode::INTERNAL_ERROR]->Increment();
+            break;
+        case ResponseCode::NETWORK_ERROR:
+            MetricsStore::s_instance.m_vecRequestCounter[(int)eRequestType][(int)ResponseCode::NETWORK_ERROR]->Increment();
+            break;
+        default:
+            MetricsStore::s_instance.m_vecRequestCounter[(int)eRequestType][(int)ResponseCode::NOT_SET]->Increment();
+            break;         
     }
-    else
-    {
-        MetricsStore::s_instance.m_vecFailedRequestLatencies[(int)requestType]->Observe(latency);
-    }
-}
-//---------------------------------------------------------------------------------------------------------------------
-void Metrics::IncrementCacheHit()
-{
-    MetricsStore::s_instance.m_pCacheHitCounter->Increment();
 }
 //---------------------------------------------------------------------------------------------------------------------
 void Metrics::UpdateCacheSize(std::size_t nBytes)

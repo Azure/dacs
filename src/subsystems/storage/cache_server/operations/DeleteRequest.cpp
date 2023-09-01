@@ -44,7 +44,7 @@ bool AuthenticateRequest(const DeleteRequest& request)
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool DeleteFile(IConnection& clientConnection, const DeleteRequest& deleteRequest)
+bool DeleteFile(IConnection& clientConnection, const DeleteRequest& deleteRequest, enum ResponseCode& eResponseCode)
 {
     LOG_INFO_REQID("filename: {}, group-id: {}",
         deleteRequest, deleteRequest.filename(), deleteRequest.groupid());
@@ -54,31 +54,32 @@ bool DeleteFile(IConnection& clientConnection, const DeleteRequest& deleteReques
     if (!AuthenticateRequest(deleteRequest))
     {
         LOG_WARN_REQID("Failed to authenticate request", deleteRequest);
-        deleteResponse.set_result(DeleteResponse::AUTH_FAILED);
+        SET_RESULT(deleteResponse, eResponseCode, DeleteResponse::AUTH_FAILED);
         return SendMessageToRemoteFinal(clientConnection, deleteResponse, requestid);
     }
 
     if (deleteRequest.type_case() != DeleteRequest::kGroupid || deleteRequest.groupid().empty())
     {
         LOG_WARN_REQID("Delete failed: groupid cannot be empty", deleteRequest);
-        deleteResponse.set_result(DeleteResponse::INTERNAL_ERROR);
+        SET_RESULT(deleteResponse, eResponseCode, DeleteResponse::INTERNAL_ERROR);
         return SendMessageToRemoteFinal(clientConnection, deleteResponse, requestid);
     }
 
     if (CacheManager::GetInstance().DeleteCacheEntryByGroupID(deleteRequest.groupid()))
     {
         LOG_INFO_REQID("Delete successful. groupId: {}", deleteRequest, deleteRequest.groupid());
-        deleteResponse.set_result(DeleteResponse::SUCCESS);
+        SET_RESULT(deleteResponse, eResponseCode, DeleteResponse::SUCCESS);
     }
     else
     {
         LOG_WARN_REQID("Failed to delete. groupId: {}", deleteRequest, deleteRequest.groupid());
-        deleteResponse.set_result(DeleteResponse::INTERNAL_ERROR);
+        SET_RESULT(deleteResponse, eResponseCode, DeleteResponse::INTERNAL_ERROR);
     }
 
     if (!SendMessageToRemoteFinal(clientConnection, deleteResponse, requestid))
     {
         LOG_WARN_REQID("Error sending delete response to client for groupId: {}", deleteRequest, deleteRequest.groupid());
+        eResponseCode = ResponseCode::NETWORK_ERROR;
         return false;
     }
 

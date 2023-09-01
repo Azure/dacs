@@ -14,11 +14,15 @@
 #include "IConnection.h"
 #include "cache.pb.h"
 #include "Logger.h"
+#include "HandleRequest.h"
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 using namespace cache;
 //---------------------------------------------------------------------------------------------------------------------
-bool HandleRequest(IConnection& clientConnection, Request::TypeCase& requestType)
+bool HandleRequest(IConnection& clientConnection,
+                   Request::TypeCase& eRequestType,
+                   enum ResponseCode& eResponseCode,
+                   std::size_t& filesize)
 {
     char metaData[REQUEST_METADATA_SIZE];
     int res = ReadBytesToArray(clientConnection, metaData, REQUEST_METADATA_SIZE);
@@ -45,34 +49,34 @@ bool HandleRequest(IConnection& clientConnection, Request::TypeCase& requestType
     }
 
     bool bRet = false;
-    requestType = request.type_case();
-    if (requestType == Request::kDownloadrequest)
+    eRequestType = request.type_case();
+    if (eRequestType == Request::kDownloadrequest)
     {
-        bRet = DownloadFile(clientConnection, request.downloadrequest());
+        bRet = DownloadFile(clientConnection, request.downloadrequest(), eResponseCode, filesize);
     }
-    else if (requestType == Request::kUploadrequest)
+    else if (eRequestType == Request::kUploadrequest)
     {
-        bRet = UploadFile(clientConnection, request.uploadrequest());
+        bRet = UploadFile(clientConnection, request.uploadrequest(), eResponseCode, filesize);
     } 
-    else if (requestType == Request::kLockrequest)
+    else if (eRequestType == Request::kLockrequest)
     {
         bRet = LockFile(clientConnection, request.lockrequest());
     }
-    else if (requestType == Request::kGetattributerequest)
+    else if (eRequestType == Request::kGetattributerequest)
     {
         bRet = HandleGetAttribute(clientConnection, request.getattributerequest());
     }
-    else if (requestType == Request::kPutattributerequest)
+    else if (eRequestType == Request::kPutattributerequest)
     {
         bRet = HandlePutAttribute(clientConnection, request.putattributerequest());
     }
-    else if (requestType == Request::kDeleterequest)
+    else if (eRequestType == Request::kDeleterequest)
     {
-        bRet = DeleteFile(clientConnection, request.deleterequest());
+        bRet = DeleteFile(clientConnection, request.deleterequest(), eResponseCode);
     }
-    else if (requestType == Request::kIbinitrequest)
+    else if (eRequestType == Request::kIbinitrequest)
     {
-        bRet = IBInitializeClient(clientConnection, request.ibinitrequest());
+        bRet = IBInitializeClient(clientConnection, request.ibinitrequest(), eResponseCode);
     }
     else
     {
