@@ -48,7 +48,7 @@ bool AuthenticateRequest(const IBInitRequest& request)
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool IBInitializeClient(IConnection& clientConnection, const IBInitRequest& ibRequest)
+bool IBInitializeClient(IConnection& clientConnection, const IBInitRequest& ibRequest, enum ResponseCode& eResponseCode)
 {
     LOG_INFO_REQID("received ib init request={}", ibRequest, ibRequest.clientlid());
 
@@ -57,14 +57,14 @@ bool IBInitializeClient(IConnection& clientConnection, const IBInitRequest& ibRe
     if (!AuthenticateRequest(ibRequest))
     {
         LOG_WARN_REQID("Failed to authenticate request", ibRequest);
-        ibResponse.set_result(IBInitResponse::AUTH_FAILED);
+        SET_RESULT(ibResponse, eResponseCode, IBInitResponse::AUTH_FAILED);
         return SendMessageToRemoteFinal(clientConnection, ibResponse, requestid);
     }
 
     if (!IBManager::GetInstance().IBEnabled())
     {
         LOG_RARELY(5, WARN, "IB not initialized, client={} request ID: {}", ibRequest.clientlid(), ibRequest.requestid());
-        ibResponse.set_result(IBInitResponse::IB_NOT_SUPPORTED);
+        SET_RESULT(ibResponse, eResponseCode, IBInitResponse::IB_NOT_SUPPORTED);
         return SendMessageToRemoteFinal(clientConnection, ibResponse, requestid);
     }
 
@@ -84,7 +84,7 @@ bool IBInitializeClient(IConnection& clientConnection, const IBInitRequest& ibRe
     if (!bRet)
     {
         LOG_WARN_REQID("Failed to setup qp connections", ibRequest);
-        ibResponse.set_result(IBInitResponse::INTERNAL_ERROR);
+        SET_RESULT(ibResponse, eResponseCode, IBInitResponse::INTERNAL_ERROR);
         return SendMessageToRemoteFinal(clientConnection, ibResponse, requestid);
     }
 
@@ -92,6 +92,6 @@ bool IBInitializeClient(IConnection& clientConnection, const IBInitRequest& ibRe
     ibResponse.set_serverlid(serverLid);
     ibResponse.set_serveribport(serverIbPort);
     ibResponse.set_servermtu(serverMtu);
-    ibResponse.set_result(IBInitResponse::SUCCESS);
+    SET_RESULT(ibResponse, eResponseCode, IBInitResponse::SUCCESS);
     return SendMessageToRemoteFinal(clientConnection, ibResponse, requestid);
 }

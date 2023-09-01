@@ -28,7 +28,6 @@
 #include <vector>
 #include <fstream>
 #include <errno.h>
-
 #include "Metrics.h"
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
@@ -82,8 +81,11 @@ void HandleSocket(int epollFd)
         // TODO: read with a timeout
         // Get the request protobuf size
         SocketConnection socketConnection(clientFd);
-        Request::TypeCase requestType = Request::TypeCase::TYPE_NOT_SET;
-        bool bReuse = HandleRequest(socketConnection, requestType);
+        Request::TypeCase eRequestType = Request::TypeCase::TYPE_NOT_SET;
+        ResponseCode eResponseCode = ResponseCode::SUCCESS;
+        std::size_t nFileSize = 0;
+        bool bReuse = HandleRequest(socketConnection, eRequestType, eResponseCode, nFileSize);
+        LOG_DEBUG("Request type: {}, response code: {}", eRequestType, eResponseCode);
         if (bReuse)
         {
             // To re-use the client connection, put it back into the epoll list
@@ -100,11 +102,15 @@ void HandleSocket(int epollFd)
         {
             LOG_DEBUG("close fd={}", clientFd);
             close(clientFd);
+            if(eResponseCode == ResponseCode::SUCCESS)
+            {
+                eResponseCode = ResponseCode::NETWORK_ERROR;
+            }
         }
 
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        Metrics::RegisterRequestLatency(requestType, bReuse, duration.count());
+        Metrics::RegisterRequest(eRequestType, eResponseCode, duration.count(), nFileSize);
         Metrics::DecrementActiveConnections();
     }
 }

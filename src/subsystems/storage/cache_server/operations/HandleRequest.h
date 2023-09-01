@@ -5,8 +5,13 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "IConnection.h"
 #include "cache.pb.h"
+#include "ResponseCode.h"
 
 using namespace cache;
 //---------------------------------------------------------------------------------------------------------------------
-bool HandleRequest(IConnection& clientConnection, /*[out]*/ Request::TypeCase& requestType);
+bool HandleRequest(IConnection& clientConnection,
+                   /*[out]*/ Request::TypeCase& eRequestType,
+                   /*[out]*/ enum ResponseCode& eResponseCode,
+                   /*[out]*/ std::size_t& nFileSize);
+
 //---------------------------------------------------------------------------------------------------------------------
