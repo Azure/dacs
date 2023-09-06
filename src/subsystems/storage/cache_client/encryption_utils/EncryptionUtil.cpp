@@ -2,7 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "EncryptionUtil.h"
-#include "StorageInterceptLogger.h"
+#include "CommonLogger.h"
 #include "CacheUtils.h"
 #include <openssl/evp.h>
 #include <boost/uuid/uuid.hpp>
@@ -11,14 +11,14 @@
 using namespace cache;
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
-EncryptionUtil::EncryptionUtil(bool encryptionEnabled, const string& encryptionKey)
+EncryptionUtil::EncryptionUtil(bool encryptionEnabled, const char* encryptionKey)
 : m_encryptionEnabled(encryptionEnabled)
 {
     if (m_encryptionEnabled)
     {
         SHA256_CTX sha256;
         SHA256_Init(&sha256);
-        SHA256_Update(&sha256, encryptionKey.c_str(), encryptionKey.size());
+        SHA256_Update(&sha256, encryptionKey, strlen(encryptionKey));
         SHA256_Final(m_encryptionKey, &sha256);
     }
 }
@@ -176,8 +176,11 @@ std::string EncryptionUtil::GenerateIV()
     return uuidStr.substr(0, 12);
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool EncryptionUtil::DoEncrypt(UploadRequest* uploadRequest, std::shared_ptr<const FileReadData>& m_fileData,
-    std::unique_ptr<char[]>& encBuffer, int64_t& encLen)
+bool EncryptionUtil::DoEncrypt(UploadRequest* uploadRequest,
+                               const char* inBuffer,
+                               std::size_t inBufferLen,
+                               std::unique_ptr<char[]>& encBuffer,
+                               int64_t& encLen)
 {
     if (!m_encryptionEnabled)
     {
@@ -187,10 +190,9 @@ bool EncryptionUtil::DoEncrypt(UploadRequest* uploadRequest, std::shared_ptr<con
     std::string iv = GenerateIV();
     std::string tag(16, '\0');
 
-    std::unique_ptr<char[]> buffer(new char[m_fileData->BufferSize]);
-    encLen = GcmEncrypt((unsigned char*)m_fileData->Buffer.get(), m_fileData->BufferSize, iv,
-        (unsigned char*)buffer.get(), tag);
-    if (encLen != m_fileData->BufferSize)
+    std::unique_ptr<char[]> buffer(new char[inBufferLen]);
+    encLen = GcmEncrypt((unsigned char*)inBuffer, inBufferLen, iv, (unsigned char*)buffer.get(), tag);
+    if(encLen != inBufferLen)
     {
         // We use GCM mode which doesn't require any padding, so length of message should not be affected 
         LOG_WARN_REQID("Encryption failed", *uploadRequest);
@@ -201,11 +203,11 @@ bool EncryptionUtil::DoEncrypt(UploadRequest* uploadRequest, std::shared_ptr<con
 
     auto& fileMetadata = *(uploadRequest->mutable_metadata());
     fileMetadata[CACHE_META_ENCRYPTION_ENABLED] = "true";
-    fileMetadata[CACHE_META_ENCRYPTION_ORIG_LEN] = std::to_string(m_fileData->BufferSize);
+    fileMetadata[CACHE_META_ENCRYPTION_ORIG_LEN] = std::to_string(inBufferLen);
     fileMetadata[CACHE_META_ENCRYPTION_IV] = iv;
     fileMetadata[CACHE_META_ENCRYPTION_TAG] = tag;
 
-    LOG_DEBUG_REQID("Encrypted input buffer. len: {}", *uploadRequest, m_fileData->BufferSize);
+    LOG_DEBUG_REQID("Encrypted input buffer. len: {}", *uploadRequest, inBufferLen);
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------

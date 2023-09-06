@@ -1,8 +1,19 @@
 ///--------------------------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
-#include <iostream>
 #include "CacheClient.h"
+
+#include <memory>
+#include <stdint.h>
+
+#include "CacheClientImpl.h"
+#include "CacheClientLogger.h"
+//---------------------------------------------------------------------------------------------------------------------
+static std::shared_ptr<CacheClientImpl> GetImplInstance()
+{
+    static std::shared_ptr<CacheClientImpl> instance = std::make_shared<CacheClientImpl>();
+    return instance;
+}
 //---------------------------------------------------------------------------------------------------------------------
 extern "C" CacheClientStatus Initialize(
     /*[in]*/ const char* const* arrServers,
@@ -11,33 +22,41 @@ extern "C" CacheClientStatus Initialize(
     /*[in]*/ bool bEnableIB,
     /*[in]*/ const AuthCredentials* pAuthCredentials)
 {
-    return CacheClientStatus::SUCCESS;
+    return GetImplInstance()->Initialize(arrServers,
+                                         nServers,
+                                         nPort,
+                                         bEnableIB,
+                                         0,                             /* nConnectionPoolSize */
+                                         (pAuthCredentials != nullptr), /* bEnableAuth */
+                                         pAuthCredentials ? pAuthCredentials->m_strAccountKey : nullptr,
+                                         pAuthCredentials ? pAuthCredentials->m_strAccountName : nullptr);
 }
 //---------------------------------------------------------------------------------------------------------------------
 extern "C" CacheClientStatus Upload(
     /*[in]*/ const char* strCacheKey,
     /*[in]*/ const void* pBuffer,
     /*[in]*/ const uint64_t nLength,
-    /*[inopt]*/ const uint32_t nExpirySeconds,
-    /*[inopt]*/ const char* strGroupId,
-    /*[inopt]*/ const Metadata* pMetadata,
-    /*[inopt]*/ const char* strEncryptionKey)
+    /*[in]*/ const uint32_t nExpirySeconds,
+    /*[in]*/ const char* strGroupId,
+    /*[in]*/ const Metadata* pMetadata,
+    /*[in]*/ const char* strEncryptionKey)
 {
-    return CacheClientStatus::SUCCESS;
+    return GetImplInstance()->Upload(
+        strCacheKey, pBuffer, nLength, nExpirySeconds, strGroupId, pMetadata, strEncryptionKey);
 }
 //---------------------------------------------------------------------------------------------------------------------
 extern "C" CacheClientStatus Download(
-    /*[in]    */ const char* strCacheKey,
-    /*[out]   */ void* pBuffer,
-    /*[inout] */ uint64_t* nLength,
+    /*[in]*/ const char* strCacheKey,
+    /*[out]*/ void* pBuffer,
+    /*[inout]*/ uint64_t* nLength,
     /*[outopt]*/ Metadata* pMetadata,
-    /*[inopt] */ const char* strEncryptionKey)
+    /*[inopt]*/ const char* strEncryptionKey)
 {
-    return CacheClientStatus::SUCCESS;
+    return GetImplInstance()->Download(strCacheKey, pBuffer, nLength, pMetadata, strEncryptionKey);
 }
 //---------------------------------------------------------------------------------------------------------------------
 extern "C" CacheClientStatus DeleteGroup(/*[in]*/ const char* strGroupId)
 {
-    return CacheClientStatus::SUCCESS;
+    return GetImplInstance()->DeleteGroup(strGroupId);
 }
 //---------------------------------------------------------------------------------------------------------------------

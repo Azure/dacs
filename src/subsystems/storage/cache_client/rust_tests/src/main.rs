@@ -21,19 +21,15 @@ fn generate_random_string(length: usize) -> String {
 fn test_upload() -> (String, usize) {
     let cache_key = generate_random_string(20);
     let key_copy = cache_key.clone();
-
-    // Create variable buf of &[u8] with 100 MB of random data
-    // let mut buf = vec![0; 100 * 1024 * 1024];
-    // rand::thread_rng().fill(&mut buf[..]);
-
-    let data = "Hello World!".as_bytes();
+    let rand_str = generate_random_string(32);
+    let data = rand_str.as_bytes();
     let data_size = data.len() as u64;
     let expiry: u32 = 0;
     let group_id: *const c_char = std::ptr::null();
     let metadata: *const Metadata = std::ptr::null();
     let encryption_key: *const c_char = std::ptr::null();
 
-    println!("Testing upload");
+    println!("Starting upload");
 
     unsafe {
         let status = Upload(
@@ -63,6 +59,8 @@ fn test_download(cache_key: String, data_size: usize) {
     };
     let encryption_key: *const c_char = std::ptr::null();
 
+    println!("Starting download");
+
     let status = unsafe {
         Download(
             CString::new(cache_key).unwrap().into_raw(),
@@ -73,6 +71,8 @@ fn test_download(cache_key: String, data_size: usize) {
         )
     };
 
+    println!("Finished download");
+
     let buf_as_c_string = unsafe { std::ffi::CStr::from_ptr(buf.as_ptr() as *const c_char) };
     println!("Downloaded: {}", buf_as_c_string.to_str().unwrap());
 
@@ -82,12 +82,13 @@ fn test_download(cache_key: String, data_size: usize) {
 fn test_initialize() {
     let servers = vec!["127.0.0.1"];
     let num_servers = servers.len() as u32;
-    let port: u32 = 9065;
+    let port: u32 = std::env::var("CACHE_SERVER_PORT").unwrap().parse().unwrap();
+    println!("Using port {port}");
     let enable_ib = false;
 
     let accountName = "admin";
     let accountKey = "1234";
-    let _auth_credentials = AuthCredentials {
+    let auth_credentials = AuthCredentials {
         m_strAccountName: CString::new(accountName.to_string()).unwrap().into_raw(),
         m_strAccountKey: CString::new(accountKey.to_string()).unwrap().into_raw(),
     };
@@ -96,15 +97,13 @@ fn test_initialize() {
     let c_string_ptrs: Vec<*const c_char> = c_strings.iter().map(|s| s.as_ptr()).collect();
     let c_string_array: *const *const c_char = c_string_ptrs.as_ptr();
 
-    let auth_credentials: *mut AuthCredentials = std::ptr::null_mut();
-
     unsafe {
         let status = Initialize(
             c_string_array,
             num_servers,
             port,
             enable_ib,
-            auth_credentials,
+            &auth_credentials as *const AuthCredentials,
         );
 
         assert!(status == 0, "Initialize failed")
@@ -118,14 +117,19 @@ fn test_delete_group() {
         assert!(status == 0, "DeleteGroup failed");
     }
 }
+
 fn main() {
     test_initialize();
     println!("Initialize test passed");
+
     let (cache_key, data_size) = test_upload();
     println!("Upload test passed");
+
     test_download(cache_key, data_size);
     println!("Download test passed");
+
     test_delete_group();
     println!("Delete group test passed");
+
     println!("All tests passed");
 }
