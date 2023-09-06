@@ -30,7 +30,7 @@ CacheClientTest::CacheClientTest()
     if (StorageInterceptConfig::GetInstance().GetCacheEnable("") && 
         !StorageInterceptConfig::GetInstance().GetCacheUseLocalFS())
     {
-        m_cacheClient = make_shared<RemoteCacheClient>();
+        m_cacheClient = make_shared<RemoteCacheClient>(16 * 1024 * 1024);
     }
 
     const char* envRunExtensiveTests = std::getenv("STORAGE_INTERCEPT_RUN_EXTENSIVE_TESTS");

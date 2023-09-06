@@ -31,7 +31,7 @@ AttributesCacheTest::AttributesCacheTest()
         }
         else if (StorageInterceptConfig::GetInstance().GetAttributesCacheUseRemoteServer())
         {
-            m_attributesCacheClient = make_shared<RemoteCacheClient>();
+            m_attributesCacheClient = std::make_shared<RemoteCacheClient>();
         }
     }
 }

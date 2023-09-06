@@ -24,7 +24,7 @@ void EncryptionUtilTest::GetRandDataBuffer(unsigned char* buffer, size_t bufSize
 TEST_F(EncryptionUtilTest, EncryptDecryptTest)
 {
     string encKey = "1234567890";
-    EncryptionUtil encUtil(true, encKey);
+    EncryptionUtil encUtil(true, encKey.c_str());
 
     // 12 bytes IV
     string iv = encUtil.GenerateIV();
@@ -66,7 +66,8 @@ TEST_F(EncryptionUtilTest, EncryptDecryptTest)
     AssertEqArray<unsigned char>(origBuffer, decBuffer, finalLen);
 
     // try invalid key
-    EncryptionUtil encUtilBad(true, "1234567891");
+    string invalid_key = "1234567891";
+    EncryptionUtil encUtilBad(true, invalid_key.c_str());
     finalLen = encUtilBad.GcmDecrypt(encBuffer, encLen, tag, iv, decBuffer);
     ASSERT_EQ(-1, finalLen);
 

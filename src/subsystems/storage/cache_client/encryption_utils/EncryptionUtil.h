@@ -3,7 +3,6 @@
 //---------------------------------------------------------------------------------------------------------------------
 #pragma once
 #include "cache.pb.h"
-#include "FileReadData.h"
 #include "IConnection.h"
 #include <openssl/sha.h>
 #include <gtest/gtest.h>
@@ -15,7 +14,7 @@ class EncryptionUtil
     FRIEND_TEST(EncryptionUtilTest, EncryptDecryptTest);
 
     public:
-        EncryptionUtil(bool encryptionEnabled, const std::string& encryptionKey);
+        EncryptionUtil(bool encryptionEnabled, const char* encryptionKey);
         ~EncryptionUtil();
 
     public:
@@ -27,7 +26,8 @@ class EncryptionUtil
         */
         bool DoEncrypt(
             /*[out]*/ cache::UploadRequest* uploadRequest,
-            /*[in] */ std::shared_ptr<const FileReadData>& m_fileData,
+            /*[in] */ const char* inBuffer,
+            /*[in] */ std::size_t inBufferLen,
             /*[out]*/ std::unique_ptr<char[]>& encBuffer,
             /*[out]*/ int64_t& encLen);
 
@@ -59,10 +59,10 @@ class EncryptionUtil
         std::string GenerateIV();
 
     private:
-        const char* const CACHE_META_ENCRYPTION_ENABLED = "ENC_FLAG";
-        const char* const CACHE_META_ENCRYPTION_ORIG_LEN = "ENC_ORIG_LEN";
-        const char* const CACHE_META_ENCRYPTION_IV = "ENC_IV";
-        const char* const CACHE_META_ENCRYPTION_TAG = "ENC_TAG";
+        constexpr static const char* const CACHE_META_ENCRYPTION_ENABLED = "ENC_FLAG";
+        constexpr static const char* const CACHE_META_ENCRYPTION_ORIG_LEN = "ENC_ORIG_LEN";
+        constexpr static const char* const CACHE_META_ENCRYPTION_IV = "ENC_IV";
+        constexpr static const char* const CACHE_META_ENCRYPTION_TAG = "ENC_TAG";
 
         const bool m_encryptionEnabled;
         unsigned char m_encryptionKey[SHA256_DIGEST_LENGTH];

@@ -1,4 +1,4 @@
-project(client_utils LANGUAGES CXX C)
+project(client_connections LANGUAGES CXX C)
 cmake_minimum_required(VERSION 3.10)
 
 set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS_INIT} -fPIC")

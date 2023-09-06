@@ -5,16 +5,20 @@
 #include "ICacheClient.h"
 #include "IAttributesCache.h"
 #include "InMemoryAttributesCache.h"
+#include "CacheClientImpl.h"
 #include "ConnectionManager.h"
 #include "CacheUploadManager.h"
 #include "CacheUtils.h"
-#include "EncryptionUtil.h"
 #include <memory>
 //---------------------------------------------------------------------------------------------------------------------
 class RemoteCacheClient : public ICacheClient, public IAttributesCache
 {
     public:
-        RemoteCacheClient();
+        /**
+         * @param nMaxBufferSize The max size of the buffer that allowed for upload/download.
+         *   When 0, the size is determined by Cache Client Impl.
+         */
+        RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize = MAX_BUFFER_SIZE_BYTES);
         ~RemoteCacheClient();
 
         cacheutils::CacheStatus DownloadSync(
@@ -46,13 +50,13 @@ class RemoteCacheClient : public ICacheClient, public IAttributesCache
             /*[in] */ const size_t startIndex) override;
 
     private:
-        std::unique_ptr<ConnectionManager>              m_spConnectionManager;
+        std::shared_ptr<CacheClientImpl>                m_spCacheClientImpl;
         std::unique_ptr<CacheUploadManager>             m_spUploadManager;
         int                                             m_numServerNodes;
         InMemoryAttributesCache                         m_inMemAttributeCache;
 
         // Per mount specific parameters
-        std::map<std::string, EncryptionUtil>           m_mapEncryptionUtil;
+        std::map<std::string, std::string>              m_mapEncryptionKey;
         std::map<std::string, std::string>              m_strCachePrefixMap;
 
         cacheutils::CacheStatus DownloadWithMetadataSync(
@@ -70,7 +74,7 @@ class RemoteCacheClient : public ICacheClient, public IAttributesCache
         
         // Get the ref to the encryption util of a mount.
         // This function is thread-safe as long as LoadEncryptionConfig() is not being called cocurrently.
-        EncryptionUtil& GetEncryptionUtilForMount(/*[in] */ const std::string& mountName);
+        std::string& GetEncryptionKeyForMount(/*[in] */ const std::string& mountName);
 
         std::string GetCacheKey(
             /*[in] */ const std::string& mountName,

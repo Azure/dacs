@@ -12,6 +12,11 @@
 extern "C" {
 #endif
 //---------------------------------------------------------------------------------------------------------------------
+#define MAX_BUFFER_SIZE_BYTES (4 * 1024 * 1024)
+#define MAX_CACHE_KEY_LEN 127
+#define MAX_METADATA_KEY_VALUE_PAIRS 32
+#define MAX_GROUPID_LEN 127
+//---------------------------------------------------------------------------------------------------------------------
 typedef enum
 {
     SUCCESS,
@@ -127,6 +132,7 @@ CacheClientStatus Upload(
  * @param nLength Size of pBuffer in bytes, this variable will be updated with the actual number of bytes downloaded,
  *        if the download is successful
  * @param pMetadata pointer to the Metadata object where the downloaded metadata associated with strCacheKey is stored.
+ *        The arrKeyValuePairs field of the Metadata object is allocated by the library and should be freed by the caller.
  *        If set to `NULL`, metadata is not returned.
  * @param strEncryptionKey C-string containing the encryption key used to decrypt the data. Set the value to `NULL` to
  *        indicate no decryption needs to be performed

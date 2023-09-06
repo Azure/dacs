@@ -8,7 +8,7 @@ REPOSITORY_ROOT="$(readlink -f ${SCRIPT_DIR}/../../../../../)"
 
 CACHE_SERVER_PORT_RANGE_START=20100
 CACHE_SERVER_PORT_RANGE_LENGTH=10000
-CACHE_SERVER_PORT=${CACHE_SERVER_PORT_RANGE_START}
+export CACHE_SERVER_PORT=${CACHE_SERVER_PORT_RANGE_START}
 CACHE_SERVER_PID=-1
 CACHE_SERVER_PATH=/tmp/_cache
 CACHE_LOCAL_SSD_PATH=/tmp/_localcache
@@ -160,13 +160,14 @@ function start_cache_server() {
   # Loop and find free port to listen
   isfree=$(netstat -taln | grep $CACHE_SERVER_PORT)
   while [[ -n "$isfree" ]]; do
-      CACHE_SERVER_PORT=$(($CACHE_SERVER_PORT_RANGE_START + $RANDOM % $CACHE_SERVER_PORT_RANGE_LENGTH))
+      export CACHE_SERVER_PORT=$(($CACHE_SERVER_PORT_RANGE_START + $RANDOM % $CACHE_SERVER_PORT_RANGE_LENGTH))
       isfree=$(netstat -taln | grep $CACHE_SERVER_PORT)
   done
   
   # Start cache server in the background and save pid
   CACHE_SERVER_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/CacheServer"
-  CacheServerCommand="${CACHE_SERVER_EXE} ${CACHE_SERVER_PORT} ${CACHE_SERVER_PATH} 100000000000 10000000 1"
+  TTL_WINDOW_IN_SECONDS=5
+  CacheServerCommand="${CACHE_SERVER_EXE} ${CACHE_SERVER_PORT} ${CACHE_SERVER_PATH} 100000000000 10000000 1 $"
 
   echo "Starting CacheServer using command: ${CacheServerCommand}"
   if [[ -n "$output_redirect_file" ]]; then
@@ -281,33 +282,9 @@ function __run_perf_benchmark__() {
   echo "Done running & uploading perf tracker benchmark"
 }
 
+#### BEGIN : Tests which DONT require cache server running ####
+
 __run_perf_benchmark__
-
-echo "Running rust cache client integration test"
-# Install rust
-pushd /tmp
-curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y
-# update env for safety
-[[ ! -f "$HOME/.cargo/env" ]] && echo "Failed to install rust" && exit 1
-source "$HOME/.cargo/env"
-popd
-
-# Install built binaries
-cp ${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/libcache_client.so /usr/lib/x86_64-linux-gnu/
-cp ${REPOSITORY_ROOT}/src/subsystems/storage/cache_client/CacheClient.h /usr/include/
-chmod 0755 /usr/lib/x86_64-linux-gnu/libcache_client.so
-ldconfig
-
-# Run the test
-pushd ${REPOSITORY_ROOT}/src/subsystems/storage/rust/cache_interface
-cargo run
-if [ $? -ne 0 ];
-then
-    echo "Rust cache client integration test failed"
-    exit 1
-fi
-popd
-echo ""
 
 echo "Running cache server unit tests"
 cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
@@ -374,6 +351,75 @@ then
 fi
 echo ""
 
+#### END : Tests which DONT require cache server running ####
+
+#### BEGIN : Tests against cache server with snapshot and auth disabled ####
+start_cache_server
+sleep 10
+
+echo "Running cache client lib test"
+cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
+eval "ctest -V --no-tests=error -j -1 -R CacheClientLibTests"
+if [ $? -ne 0 ]
+then
+    echo "cache client lib unit test failed"
+    exit 1
+fi
+echo ""
+
+echo "Running rust cache client integration test"
+# TODO: Move to build container
+if ! [[ -x $(command -v "cargo") ]]; then
+    pushd /tmp
+    curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y
+    [[ ! -f "$HOME/.cargo/env" ]] && echo "Failed to install rust" && exit 1
+    source "$HOME/.cargo/env"
+    popd
+fi
+
+pushd ${REPOSITORY_ROOT}/src/subsystems/storage/cache_client/rust_tests
+export LD_LIBRARY_PATH="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage:${LD_LIBRARY_PATH}"
+export LIBRARY_PATH="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage"
+export CACHE_CLIENT_LIB_DIR="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage"
+export CACHE_CLIENT_HEADER_FILE="${REPOSITORY_ROOT}/src/subsystems/storage/cache_client/CacheClient.h"
+
+eval "cargo run"
+if [ $? -ne 0 ];
+then
+    echo "Rust cache client integration test failed"
+    exit 1
+fi
+popd
+echo ""
+
+stop_cache_server
+#### END : Tests against cache server with snapshot and auth disabled ####
+
+#### BEGIN : Tests against cache server with auth enabled but snapshot disabled ####
+export CACHESERVER_AUTH_ENABLED="true"
+export CACHESERVER_AUTH_ACCOUNTNAME="us3rn@m3"
+export CACHESERVER_AUTH_ACCOUNTKEY="p@ssw0rd"
+start_cache_server
+sleep 10
+
+echo "Running cache client lib test with authentication enabled"
+cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
+eval "ctest -V --no-tests=error -j -1 -R CacheClientLibTests"
+if [ $? -ne 0 ]
+then
+    echo "cache client lib unit test with authentication failed"
+    exit 1
+fi
+echo ""
+
+stop_cache_server
+unset CACHESERVER_AUTH_ENABLED
+unset CACHESERVER_AUTH_ACCOUNTNAME
+unset CACHESERVER_AUTH_ACCOUNTKEY
+echo ""
+#### END : Tests against cache server with auth enabled but snapshot disabled ####
+
+#### BEGIN : Tests against cache server with snapshot enabled but auth disabled ####
 # Start cache server in the background, with continuous snapshotting every second
 export CACHESERVER_HOSTNAME="testhost"
 export CACHESERVER_SNAPSHOT_INTERVAL="1"
@@ -488,6 +534,7 @@ echo ""
 
 reset_local_ssd_cache
 stop_cache_server
+#### END : Tests against cache server with snapshot enabled but auth disabled ####
 
 echo "Running snapshot validation tests"
 source "$SCRIPT_DIR/snapshot_integration_test.sh"

@@ -1,5 +1,5 @@
 [package]
-name = "cache_interface"
+name = "cache_client_lib_rust_test"
 version = "0.1.0"
 edition = "2021"
 

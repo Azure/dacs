@@ -48,7 +48,7 @@ namespace cacheutils
         return totalWritten == nBytes;
     }
 //---------------------------------------------------------------------------------------------------------------------
-    bool WriteAllFinal(IConnection* connection, void *buffer, size_t nBytes)
+    bool WriteAllFinal(IConnection* connection, const void *buffer, size_t nBytes)
     {
         uint64_t totalWritten = connection->SendAndFinalize(static_cast<const char*>(buffer), nBytes);
         return totalWritten == nBytes;
@@ -161,11 +161,11 @@ namespace cacheutils
         return true;
     }
 //---------------------------------------------------------------------------------------------------------------------
-    uint32_t GetServerIndex(const std::string& filePath, uint32_t numServers)
+    uint32_t GetServerIndex(const char* filePath, uint32_t numServers)
     {        
         if (numServers > 1)
         {
-            static thread_local hash<string> hasher;
+            static thread_local hash<string_view> hasher;
             auto hash_val = hasher(filePath);
             return hash_val % numServers;            
         }
@@ -259,6 +259,12 @@ namespace cacheutils
                 std::to_string(timestamp);
             authParams = request.mutable_ibinitrequest()->mutable_authparams();
         }
+        else if(request.type_case() == Request::kDeleterequest)
+        {
+            serializedHeaders = std::string("Del") + request.mutable_deleterequest()->filename() +
+                                request.mutable_deleterequest()->groupid() + std::to_string(timestamp);
+            authParams = request.mutable_deleterequest()->mutable_authparams();
+        }
         else
         {
             LOG_ERROR("unkown req type: {}", request.type_case());
@@ -292,7 +298,7 @@ namespace cacheutils
 //---------------------------------------------------------------------------------------------------------------------
     std::string GetCorrelationId()
     {
-        static char buf[36];
+        static thread_local char buf[36];
 
         int offset = 0;
         for(int i = 0; i < 3; i++)
@@ -303,6 +309,7 @@ namespace cacheutils
 
         return std::string(buf);
     }
+
 //---------------------------------------------------------------------------------------------------------------------
 }
 //---------------------------------------------------------------------------------------------------------------------

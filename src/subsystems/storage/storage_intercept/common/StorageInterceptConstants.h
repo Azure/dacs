@@ -92,5 +92,11 @@ namespace StorageInterceptConstants
     // Config for avoiding remote downloads when cache lock is not held
     const char* const ConfigNameRemoteDownloadOnlyWhenLockHeldEnabled = "remoteDownloadOnlyWhenLockHeldEnabled";
     const char* const ConfigNameRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs = "remoteDownloadOnlyWhenLockHeldPollingIntervalInSeconds";
+
+    // Constants for file metadata
+    const char* const CACHE_META_FILE_ISDIR = "FILE_ISDIR";
+    const char* const CACHE_META_FILE_SIZE = "FILE_SIZE";
+    const char* const CACHE_META_FILE_ATIME = "FILE_ATIME";
+    const char* const CACHE_META_FILE_MTIME = "FILE_MTIME";
 };
 //---------------------------------------------------------------------------------------------------------------------

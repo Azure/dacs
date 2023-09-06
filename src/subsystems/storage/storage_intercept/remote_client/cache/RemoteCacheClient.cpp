@@ -2,27 +2,33 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "RemoteCacheClient.h"
-#include "StorageInterceptLogger.h"
-#include "cache.pb.h"
-#include "CacheUtils.h"
-#include "StorageLibcApiWrapper.h"
-#include "StorageInterceptConfig.h"
-#include "StorageInterceptUtils.h"
-#include <dirent.h>
+
 #include <boost/algorithm/string.hpp>
+#include <dirent.h>
+#include <map>
+
+#include "CacheUtils.h"
+#include "StorageInterceptConfig.h"
+#include "StorageInterceptConstants.h"
+#include "StorageInterceptLogger.h"
+#include "StorageInterceptUtils.h"
+#include "StorageLibcApiWrapper.h"
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cache;
 using namespace cacheutils;
 using namespace std;
+using namespace StorageInterceptConstants;
 //---------------------------------------------------------------------------------------------------------------------
-RemoteCacheClient::RemoteCacheClient()
+RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
 {
     int serverPort = StorageInterceptConfig::GetInstance().GetCacheServerPort();
     bool enableRemoteCache = StorageInterceptConfig::GetInstance().GetCacheEnableRemote();
     int numUploadThreads = StorageInterceptConfig::GetInstance().GetCacheNumUploadThreadsPerProcess();
     bool bCacheAuthEnabled = StorageInterceptConfig::GetInstance().GetCacheAuthEnabled();
-    const std::string strCacheAccountName = bCacheAuthEnabled ? StorageInterceptConfig::GetInstance().GetCacheAuthAccountName() : "";
-    const std::string strCacheAccountKey = bCacheAuthEnabled ? StorageInterceptConfig::GetInstance().GetCacheAuthAccountKey() : "";
+    const std::string strCacheAccountName =
+        bCacheAuthEnabled ? StorageInterceptConfig::GetInstance().GetCacheAuthAccountName() : "";
+    const std::string strCacheAccountKey =
+        bCacheAuthEnabled ? StorageInterceptConfig::GetInstance().GetCacheAuthAccountKey() : "";
     int nMaxConnectionsReuseSize = StorageInterceptConfig::GetInstance().GetCacheMaxConnectionsReuseSize();
     bool bReuseServerConnections = StorageInterceptConfig::GetInstance().GetCacheReuseServerConnections();
     bool bUseInfiniband = StorageInterceptConfig::GetInstance().GetCacheIBEnabled();
@@ -31,20 +37,20 @@ RemoteCacheClient::RemoteCacheClient()
         StorageInterceptConfig::GetInstance().GetCacheMaxUploadBufferSizePerProcessGB() * 1024ULL * 1024 * 1024;
 
     // max size of 0 means unlimited
-    if (maxUploadBufferSizePerProcess == 0)
+    if(maxUploadBufferSizePerProcess == 0)
     {
         maxUploadBufferSizePerProcess = std::numeric_limits<uint64_t>::max();
     }
 
     vector<string> vsServerNodes;
-    if (enableRemoteCache)
+    if(enableRemoteCache)
     {
         string cacheServerList = StorageInterceptConfig::GetInstance().GetCacheServerList();
         boost::trim(cacheServerList);
 
         // using '#' as separator as ',' does not work when variables are passed using e2etest tool.
         boost::split(vsServerNodes, cacheServerList, boost::is_any_of("#"));
-        if (!cacheServerList.empty() && vsServerNodes.size() > 0)
+        if(!cacheServerList.empty() && vsServerNodes.size() > 0)
         {
             m_numServerNodes = vsServerNodes.size();
         }
@@ -53,7 +59,7 @@ RemoteCacheClient::RemoteCacheClient()
             // if server list is not configured, we derive it using node-* convention used for instances within a job
             m_numServerNodes = StorageInterceptConfig::GetInstance().GetCacheNumServers();
             vsServerNodes.clear();
-            for (int index = 0; index < m_numServerNodes; index++)
+            for(int index = 0; index < m_numServerNodes; index++)
             {
                 vsServerNodes.push_back(string("node-") + to_string(index));
             }
@@ -64,262 +70,193 @@ RemoteCacheClient::RemoteCacheClient()
         m_numServerNodes = 1;
     }
 
-    m_spConnectionManager = make_unique<ConnectionManager>(serverPort,
-                                                           !enableRemoteCache,
-                                                           vsServerNodes,
-                                                           bCacheAuthEnabled,
-                                                           strCacheAccountName,
-                                                           strCacheAccountKey,
-                                                           nMaxConnectionsReuseSize,
-                                                           bReuseServerConnections,
-                                                           bUseInfiniband);
-    m_spUploadManager = make_unique<CacheUploadManager>(
-        *(m_spConnectionManager.get()),
-        numUploadThreads,
-        maxUploadBufferSizePerProcess);
+    bool bAuthEnabled = StorageInterceptConfig::GetInstance().GetCacheAuthEnabled();
+    std::string accountName = bAuthEnabled ? StorageInterceptConfig::GetInstance().GetCacheAuthAccountName() : "";
+    std::string accountKey = bAuthEnabled ? StorageInterceptConfig::GetInstance().GetCacheAuthAccountKey() : "";
+
+    m_spCacheClientImpl = make_shared<CacheClientImpl>();
+
+    const char** arrServers = new const char*[vsServerNodes.size()];
+    for(size_t index = 0; index < vsServerNodes.size(); index++)
+    {
+        arrServers[index] = vsServerNodes[index].c_str();
+    }
+
+    auto cacheStatus = m_spCacheClientImpl->Initialize(arrServers,
+                                                       vsServerNodes.size(),
+                                                       serverPort,
+                                                       bUseInfiniband,
+                                                       nMaxConnectionsReuseSize,
+                                                       bAuthEnabled,
+                                                       accountName.c_str(),
+                                                       accountKey.c_str(),
+                                                       !enableRemoteCache,
+                                                       bReuseServerConnections,
+                                                       nMaxBufferSize);
+    STORAGE_ASSERT(cacheStatus == CacheClientStatus::SUCCESS, "Failed to initialize CacheClientImpl");
+    delete[] arrServers;
+
+    m_spUploadManager =
+        make_unique<CacheUploadManager>(m_spCacheClientImpl, numUploadThreads, maxUploadBufferSizePerProcess);
 
     LoadMultiMountConfig();
 
     LOG_INFO("Configured RemoteCacheClient. numMounts: {}, numServers: {}, uploadThreads: {},"
-        " buffersize: {} bytes",
-        m_mapEncryptionUtil.size(),
-        m_numServerNodes,
-        numUploadThreads,
-        maxUploadBufferSizePerProcess);
+             " buffersize: {} bytes",
+             m_mapEncryptionKey.size(),
+             m_numServerNodes,
+             numUploadThreads,
+             maxUploadBufferSizePerProcess);
 }
 //---------------------------------------------------------------------------------------------------------------------
 RemoteCacheClient::~RemoteCacheClient()
 {
 }
 //---------------------------------------------------------------------------------------------------------------------
-CacheStatus RemoteCacheClient::DownloadSync(
-    const std::string& mountName,
-    const std::string& filePath,
-    off64_t fileOffset,
-    uint64_t startOffset,
-    uint64_t length,
-    char* buffer,
-    uint64_t& readLength)
+CacheStatus RemoteCacheClient::DownloadSync(const std::string& mountName,
+                                            const std::string& filePath,
+                                            off64_t fileOffset,
+                                            uint64_t startOffset,
+                                            uint64_t length,
+                                            char* buffer,
+                                            uint64_t& readLength)
 {
     const std::string cacheKey = GetCacheKey(mountName, filePath, fileOffset);
     return DownloadWithMetadataSync(mountName, cacheKey, startOffset, length, buffer, readLength, nullptr);
 }
 //---------------------------------------------------------------------------------------------------------------------
-CacheStatus RemoteCacheClient::DownloadWithMetadataSync(
-    const std::string& mountName,
-    const std::string& cacheKey,
-    uint64_t startOffset,
-    uint64_t length,
-    char* buffer,
-    uint64_t& readLength,
-    ::FileAttributes* fileAttributes)
+CacheStatus RemoteCacheClient::DownloadWithMetadataSync(const std::string& mountName,
+                                                        const std::string& cacheKey,
+                                                        uint64_t startOffset,
+                                                        uint64_t length,
+                                                        char* buffer,
+                                                        uint64_t& readLength,
+                                                        ::FileAttributes* fileAttributes)
 {
+    string strReqID = GetCorrelationId();
     CacheStatus cacheStatus = CacheStatus::INTERNAL_ERROR;
 
     // Encryption isn't supported for attribute download, initialize encryptionUtil for other cases
-    const bool isAttrDownload = (fileAttributes != nullptr && readLength == 0);
-    EncryptionUtil encryptionDisabledUtil(false, "");
-    EncryptionUtil& encryptionUtil = isAttrDownload ? encryptionDisabledUtil : GetEncryptionUtilForMount(mountName);
+    const bool isAttrDownload = (fileAttributes != nullptr && length == 0);
+    string strEncryptionKey = isAttrDownload ? "" : GetEncryptionKeyForMount(mountName);
 
-    if (encryptionUtil.IsEncryptionEnabled())
+    Metadata entryMetadata;
+    CacheClientStatus cacheClientStatus =
+        m_spCacheClientImpl->Download(cacheKey.c_str(),
+                                      buffer,
+                                      &length,
+                                      &entryMetadata,
+                                      strEncryptionKey.empty() ? nullptr : strEncryptionKey.c_str(),
+                                      startOffset,
+                                      true /* enableLock */,
+                                      strReqID.c_str());
+    readLength = length;
+
+    if(fileAttributes && cacheClientStatus == CacheClientStatus::SUCCESS)
     {
-        if (startOffset != 0)
+        map<string, string> fileMetadata;
+        for(int index = 0; index < entryMetadata.nKeyValuePairs; index++)
         {
-            // TODO: This can be supported by decrypting a full remote chunk and then returning only the subset.
-            //       This requires a buffer copy too. 
-            //       The interception client currently does not read partial chunks and hence we don't need this.
-            LOG_ERROR("Partial download not supported with encryption, key: {}", cacheKey);
-            return CacheStatus::INTERNAL_ERROR;
+            fileMetadata.emplace(entryMetadata.arrKeyValuePairs[index].strKey,
+                                 entryMetadata.arrKeyValuePairs[index].strValue);
+
+            free((void*)entryMetadata.arrKeyValuePairs[index].strKey);
+            free((void*)entryMetadata.arrKeyValuePairs[index].strValue);
         }
-    }
 
-    Request request;
-    DownloadRequest* downloadRequest = request.mutable_downloadrequest();
-    downloadRequest->set_requestid(cacheutils::GetCorrelationId());
-    downloadRequest->set_filename(cacheKey);
-    downloadRequest->set_offset(startOffset);
-    downloadRequest->set_length(length);
-    downloadRequest->set_enablelock(true);
-    LOG_DEBUG_REQID("Creating DownloadRequest filename: {}, offset: {}, length: {}, enablelock: true",
-        *downloadRequest, cacheKey, startOffset, length);
+        free((void*)(entryMetadata.arrKeyValuePairs));
+        entryMetadata.arrKeyValuePairs = nullptr;
+        entryMetadata.nKeyValuePairs = 0;
 
-    static bool bCacheAuthEnabled = StorageInterceptConfig::GetInstance().GetCacheAuthEnabled();
-    if(bCacheAuthEnabled)
-    {
-        static const std::string strCacheAccountName = StorageInterceptConfig::GetInstance().GetCacheAuthAccountName();
-        static const std::string strCacheAccountKey = StorageInterceptConfig::GetInstance().GetCacheAuthAccountKey();
-        if(!AddAuthParams(request, strCacheAccountName, strCacheAccountKey))
+        auto strDirFlag = fileMetadata.find(CACHE_META_FILE_ISDIR);
+        if(strDirFlag == fileMetadata.end())
         {
-            LOG_WARN_REQID("failed to create auth request, key: {}", *downloadRequest, cacheKey);
-            return CacheStatus::AUTH_FAILED;
-        }
-    }
-
-    int serverIndex = GetServerIndex(cacheKey, m_numServerNodes);
-    auto serverConnection = move(m_spConnectionManager->GetConnection(serverIndex));
-    if (!serverConnection.get())
-    {
-        LOG_WARN_REQID("couldn't get server connection, key: {}", *downloadRequest, cacheKey);
-        return cacheStatus;
-    }
-
-    if (!SendMessageToRemoteFinal(serverConnection.get(), request))
-    {
-        LOG_WARN_REQID("couldn't send message to server, key: {}", *downloadRequest, cacheKey);
-        m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
-        return cacheStatus;
-    }
-
-    string responseMessage;
-    if (!ReadMessageFromRemote(serverConnection.get(), responseMessage))
-    {
-        LOG_WARN_REQID("couldn't read message from server, key: {}", *downloadRequest, cacheKey);
-        m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
-        return cacheStatus;
-    }
-
-    DownloadResponse response;
-    if (!response.ParseFromString(responseMessage))
-    {
-        LOG_WARN_REQID("error: Failed to parse protobuf message, key: {}", *downloadRequest, cacheKey);
-        m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
-        return cacheStatus;
-    }
-
-    LOG_DEBUG_REQID("Download response from server: {}, key: {}, filesize: {}",
-         *downloadRequest, response.result(), cacheKey, response.filesize());
-    if (response.result() == DownloadResponse::SUCCESS)
-    {
-        readLength = response.filesize();
-        if (length > 0 && readLength > length)
-        {
-            LOG_WARN_REQID("Received invalid length from server, key: {}, got: {}, expected: {}",
-                *downloadRequest, cacheKey, readLength, length);
-            m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
+            LOG_WARN_REQID_STR("File Attributes isDir not set for the cache key {}", strReqID, cacheKey);
             return cacheStatus;
         }
 
-        if (readLength > 0)
-        {
-            if (!buffer)
-            {
-                LOG_ERROR_REQID("readLength > 0 but no read buffer supplied, key: {}", *downloadRequest,  cacheKey);
-                m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
-                return cacheStatus;
-            }
+        fileAttributes->isDir = (strDirFlag->second == "true");
 
-            bool bRet = encryptionUtil.DoDecrypt(response, serverConnection.get(), buffer, readLength);
-            if (!bRet)
-            {
-                LOG_WARN_REQID("Failed to complete read from server, key: {}", *downloadRequest,  cacheKey);
-                m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
-                return cacheStatus;
-            }
+        auto strSize = fileMetadata.find(CACHE_META_FILE_SIZE);
+        if(strSize == fileMetadata.end())
+        {
+            LOG_WARN_REQID_STR("File Attributes size not set for the cache key {}", strReqID, cacheKey);
+            return cacheStatus;
         }
 
-        if (fileAttributes)
+        fileAttributes->size = std::strtoull(strSize->second.c_str(), nullptr, 0);
+
+        auto strATime = fileMetadata.find(CACHE_META_FILE_ATIME);
+        if(strATime == fileMetadata.end())
         {
-            // fetch file metadata from response
-            auto& fileMetadata = response.metadata();
-
-            auto strDirFlag = fileMetadata.find(CACHE_META_FILE_ISDIR);
-            if (strDirFlag == fileMetadata.end())
-            {
-                LOG_WARN_REQID("File Attributes isDir not set for the cache key", *downloadRequest);
-                m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
-                return cacheStatus;
-            }
-
-            fileAttributes->isDir = (strDirFlag->second == "true");
-
-            auto strSize = fileMetadata.find(CACHE_META_FILE_SIZE);
-            if (strSize == fileMetadata.end())
-            {
-                LOG_WARN_REQID("File Attributes size not set for the cache key", *downloadRequest);
-                m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
-                return cacheStatus;
-            }
-
-            fileAttributes->size = std::strtoull(strSize->second.c_str(), nullptr, 0);
-
-            auto strATime = fileMetadata.find(CACHE_META_FILE_ATIME);
-            if (strATime == fileMetadata.end())
-            {
-                LOG_WARN_REQID("File Attributes atime not set for the cache key", *downloadRequest);
-                m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
-                return cacheStatus;
-            }
-
-            fileAttributes->aTime.tv_sec = std::strtoull(strATime->second.c_str(), nullptr, 0);
-
-            auto strMTime = fileMetadata.find(CACHE_META_FILE_MTIME);
-            if (strMTime == fileMetadata.end())
-            {
-                LOG_WARN_REQID("File Attributes mtime not set for the cache key", *downloadRequest);
-                m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
-                return cacheStatus;
-            }
-
-            fileAttributes->cTime.tv_sec = fileAttributes->mTime.tv_sec = std::strtoull(strMTime->second.c_str(), nullptr, 0);
+            LOG_WARN_REQID_STR("File Attributes atime not set for the cache key {}", strReqID, cacheKey);
+            return cacheStatus;
         }
 
+        fileAttributes->aTime.tv_sec = std::strtoull(strATime->second.c_str(), nullptr, 0);
+
+        auto strMTime = fileMetadata.find(CACHE_META_FILE_MTIME);
+        if(strMTime == fileMetadata.end())
+        {
+            LOG_WARN_REQID_STR("File Attributes mtime not set for the cache key {}", strReqID, cacheKey);
+            return cacheStatus;
+        }
+
+        fileAttributes->cTime.tv_sec = fileAttributes->mTime.tv_sec =
+            std::strtoull(strMTime->second.c_str(), nullptr, 0);
+    }
+
+    switch(cacheClientStatus)
+    {
+    case CacheClientStatus::SUCCESS:
         cacheStatus = CacheStatus::SUCCESS;
-    }
-    else if (response.result() == DownloadResponse::NOT_FOUND_GOT_LOCK)
-    {
-        cacheStatus = CacheStatus::NOTFOUND_LOCKED;
-    }
-    else if (response.result() == DownloadResponse::NOT_FOUND_ALREADY_LOCKED
-        || response.result() == DownloadResponse::NOT_FOUND)
-    {
-        cacheStatus = CacheStatus::NOTFOUND;
-    }
-    else if (response.result() == DownloadResponse::AUTH_FAILED)
-    {
-        cacheStatus = CacheStatus::AUTH_FAILED;
-    }
-    else
-    {
-        LOG_WARN_REQID("Server returned internal failure for key: {}", *downloadRequest, cacheKey);
+        break;
+
+    case CacheClientStatus::INTERNAL_ERROR:
         cacheStatus = CacheStatus::INTERNAL_ERROR;
+        break;
+
+    case CacheClientStatus::NOTFOUND:
+        cacheStatus = CacheStatus::NOTFOUND;
+        break;
+
+    case CacheClientStatus::NOTFOUND_LOCKED:
+        cacheStatus = CacheStatus::NOTFOUND_LOCKED;
+        break;
+
+    case CacheClientStatus::AUTH_FAILED:
+        cacheStatus = CacheStatus::AUTH_FAILED;
+        break;
+
+    default:
+        cacheStatus = CacheStatus::INTERNAL_ERROR;
+        break;
     }
 
-    m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), false);
     return cacheStatus;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool RemoteCacheClient::Upload(
-    const std::string& mountName,
-    const std::string& filePath,
-    off64_t fileOffset,
-    std::shared_ptr<const FileReadData> fileData)
+bool RemoteCacheClient::Upload(const std::string& mountName,
+                               const std::string& filePath,
+                               off64_t fileOffset,
+                               std::shared_ptr<const FileReadData> fileData)
 {
     const std::string cacheKey = GetCacheKey(mountName, filePath, fileOffset);
-    int serverIndex = GetServerIndex(cacheKey, m_numServerNodes);
-    return m_spUploadManager->Upload(
-        mountName,
-        serverIndex,
-        cacheKey,
-        fileData,
-        &GetEncryptionUtilForMount(mountName),
-        nullptr);
+    return m_spUploadManager->Upload(mountName, cacheKey, fileData, GetEncryptionKeyForMount(mountName), nullptr);
 }
 //---------------------------------------------------------------------------------------------------------------------
-CacheStatus RemoteCacheClient::Get(
-    const std::string& path,
-    ::FileAttributes& fileAttributes)
+CacheStatus RemoteCacheClient::Get(const std::string& path, ::FileAttributes& fileAttributes)
 {
     // First check in memory cache
-    if (m_inMemAttributeCache.Get(path, fileAttributes) == CacheStatus::SUCCESS)
+    if(m_inMemAttributeCache.Get(path, fileAttributes) == CacheStatus::SUCCESS)
     {
         return CacheStatus::SUCCESS;
     }
 
     const string cacheKey = GetAttributeCacheKey(path);
     uint64_t readLength = 0;
-    CacheStatus cacheStatus = DownloadWithMetadataSync(
-        "", cacheKey, 0, 0, nullptr, readLength, &fileAttributes);
-    if (cacheStatus == CacheStatus::SUCCESS)
+    CacheStatus cacheStatus = DownloadWithMetadataSync("", cacheKey, 0, 0, nullptr, readLength, &fileAttributes);
+    if(cacheStatus == CacheStatus::SUCCESS)
     {
         m_inMemAttributeCache.Put(path, fileAttributes);
     }
@@ -327,24 +264,20 @@ CacheStatus RemoteCacheClient::Get(
     return cacheStatus;
 }
 //---------------------------------------------------------------------------------------------------------------------
-void RemoteCacheClient::Put(
-    const std::string& path,
-    const ::FileAttributes& fileAttributes)
+void RemoteCacheClient::Put(const std::string& path, const ::FileAttributes& fileAttributes)
 {
     m_inMemAttributeCache.Put(path, fileAttributes);
     const string cacheKey = GetAttributeCacheKey(path);
-    int serverIndex = GetServerIndex(cacheKey, m_numServerNodes);
-    m_spUploadManager->Upload("", serverIndex, cacheKey, nullptr, nullptr,
-        make_unique<::FileAttributes>(fileAttributes));
+    const string strEcncryptionKey = "";
+    m_spUploadManager->Upload("", cacheKey, nullptr, strEcncryptionKey, make_unique<::FileAttributes>(fileAttributes));
 }
 //---------------------------------------------------------------------------------------------------------------------
-void RemoteCacheClient::PutAll(
-    const std::string& pathPrefix,
-    const std::vector<DirectoryEntry>& dirEntries,
-    const size_t startIndex)
+void RemoteCacheClient::PutAll(const std::string& pathPrefix,
+                               const std::vector<DirectoryEntry>& dirEntries,
+                               const size_t startIndex)
 {
     int numEntries = dirEntries.size() - startIndex;
-    if (numEntries <= 0)
+    if(numEntries <= 0)
     {
         return;
     }
@@ -352,7 +285,7 @@ void RemoteCacheClient::PutAll(
     m_inMemAttributeCache.PutAll(pathPrefix, dirEntries, startIndex);
 
     LOG_DEBUG("Adding {} entries to remote attribute cache", numEntries);
-    for (size_t index = startIndex; index < dirEntries.size(); index++)
+    for(size_t index = startIndex; index < dirEntries.size(); index++)
     {
         const DirectoryEntry& dirEntry = dirEntries[index];
         ::FileAttributes fileAttributes;
@@ -363,32 +296,31 @@ void RemoteCacheClient::PutAll(
         fileAttributes.cTime = fileAttributes.mTime;
 
         const string cacheKey = GetAttributeCacheKey(StorageInterceptUtils::CombinePath(pathPrefix, dirEntry.d_name));
-        int serverIndex = GetServerIndex(cacheKey, m_numServerNodes);
-        m_spUploadManager->Upload("", serverIndex, cacheKey, nullptr, nullptr,
-            make_unique<::FileAttributes>(fileAttributes));
+        const string strEcncryptionKey = "";
+        m_spUploadManager->Upload(
+            "", cacheKey, nullptr, strEcncryptionKey, make_unique<::FileAttributes>(fileAttributes));
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
 void RemoteCacheClient::LoadMultiMountConfig()
 {
-    m_mapEncryptionUtil.clear();
+    m_mapEncryptionKey.clear();
     m_strCachePrefixMap.clear();
 
-    if (StorageInterceptConfig::GetInstance().GetMultipleMountEnabled())
+    if(StorageInterceptConfig::GetInstance().GetMultipleMountEnabled())
     {
         std::vector<std::string> mountNames = StorageInterceptConfig::GetInstance().GetMountNames();
-        for (const std::string& mountName : mountNames)
+        for(const std::string& mountName : mountNames)
         {
             bool enableEncryption = StorageInterceptConfig::GetInstance().GetCacheEncryptionEnabled(mountName);
-            const std::string encKey = StorageInterceptConfig::GetInstance().GetCacheEncryptionKey(mountName);
+            const std::string encKey =
+                enableEncryption ? StorageInterceptConfig::GetInstance().GetCacheEncryptionKey(mountName) : "";
 
-            m_mapEncryptionUtil.try_emplace(mountName, enableEncryption, encKey);
+            m_mapEncryptionKey.try_emplace(mountName, encKey);
 
             // If encryption is enabled then the file contents will be different depending on the encryption
             // key used by the client, hence treating the same file if encryted using different keys as different.
-            m_strCachePrefixMap.emplace(
-                mountName, 
-                enableEncryption ? encKey : "");
+            m_strCachePrefixMap.emplace(mountName, enableEncryption ? encKey : "");
         }
     }
     else
@@ -396,31 +328,27 @@ void RemoteCacheClient::LoadMultiMountConfig()
         bool enableEncryption = StorageInterceptConfig::GetInstance().GetCacheEncryptionEnabled("");
         const std::string encKey = StorageInterceptConfig::GetInstance().GetCacheEncryptionKey("");
 
-        m_mapEncryptionUtil.try_emplace("", enableEncryption, encKey);
+        m_mapEncryptionKey.try_emplace("", enableEncryption ? encKey : "");
 
-        m_strCachePrefixMap.emplace(
-            "", 
-            enableEncryption ? encKey : "");
+        m_strCachePrefixMap.emplace("", enableEncryption ? encKey : "");
     }
 
     // Log the loaded config
-    for (auto const& mountEncryptionUtil : m_mapEncryptionUtil)
+    for(auto const& mountEncryptionUtil : m_mapEncryptionKey)
     {
-        LOG_INFO("Mount {} has encryption enabled={}",
-            mountEncryptionUtil.first,
-            mountEncryptionUtil.second.IsEncryptionEnabled());
+        LOG_INFO("Mount {} has encryption enabled={}", mountEncryptionUtil.first, !mountEncryptionUtil.second.empty());
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-EncryptionUtil& RemoteCacheClient::GetEncryptionUtilForMount(const std::string& mountName)
+std::string& RemoteCacheClient::GetEncryptionKeyForMount(const std::string& mountName)
 {
-    return m_mapEncryptionUtil.at(mountName);
+    return m_mapEncryptionKey.at(mountName);
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::string RemoteCacheClient::GetCacheKey(
-    const std::string& mountName, const std::string& filePath, off64_t fileOffset)
+std::string
+RemoteCacheClient::GetCacheKey(const std::string& mountName, const std::string& filePath, off64_t fileOffset)
 {
-    // To uniquely identify a chunk within a cluster we need 
+    // To uniquely identify a chunk within a cluster we need
     // <account name>/<container name>/<filepath within the container>:<file offset>
     return GetSHA256Hex(m_strCachePrefixMap.at(mountName) + "/" + filePath + ":" + std::to_string(fileOffset));
 }
