@@ -108,6 +108,10 @@ if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
   # we should cleanup the tmp repo
   cleanup_build "non_cuda"
 
+  if [[ -z "$DISABLE_PROFILER_LIB" || "$DISABLE_PROFILER_LIB" == "false" ]]; then
+    cleanup_build "cuda_agnostic"
+  fi
+
   if [[ ! -z "$BUILD_CUDA_VERSION" ]]; then
     cleanup_build "$BUILD_CUDA_VERSION"
   else
@@ -147,6 +151,11 @@ else
   for pythonVersion in "3.6" "3.7" "3.8" "3.9"; do
     execute_build "non_cuda" "$pythonVersion"
   done
+fi
+
+if [[ -z "$DISABLE_PROFILER_LIB" || "$DISABLE_PROFILER_LIB" == "false" ]]; then
+  pythonVersion="3.6"
+  execute_build "cuda_agnostic" $pythonVersion
 fi
 
 if [[ ! -z "$BUILD_CUDA_VERSION" ]]; then

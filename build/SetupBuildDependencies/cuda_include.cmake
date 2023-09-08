@@ -62,6 +62,13 @@ elseif(${CUDA_VERSION} MATCHES "cuda_11_0")
     set(ENV{CUDNN_ROOT} "/opt/conda-cuda-110/pkgs/cudnn-8.0.5.39-ha5ca753_1/")
 
     link_directories("$ENV{CUDA_ROOT}/targets/x86_64-linux/lib/stubs")
+elseif(${CUDA_VERSION} MATCHES "cuda_agnostic")
+    message("Set Variables for cuda_agnostic ${CMAKE_SOURCE_DIR}")
+    set(ENV{CUDA_ROOT} "/opt/conda-cuda-113/pkgs/cuda-toolkit/")
+    set(ENV{NCCL_ROOT} "/opt/conda-cuda-113/pkgs/nccl-2.9.9.1-hdc17891_0/")
+    set(ENV{CUDNN_ROOT} "/opt/conda-cuda-113/pkgs/cudnn-8.2.1.32-h86fa8c9_0/")
+
+    link_directories("$ENV{CUDA_ROOT}/targets/x86_64-linux/lib/stubs")
 endif()
 
 set(CUDAToolkit_ROOT "$ENV{CUDA_ROOT}")

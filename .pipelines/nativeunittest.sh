@@ -6,7 +6,7 @@ function execute_test() {
 
   if [[ -e "$DIR/../build/SetupNativeUnitTestDependencies/setup_${cuda_deps}.sh" ]]; then
       . "$DIR/../build/SetupNativeUnitTestDependencies/setup_${cuda_deps}.sh"
-  elif [[ ${cuda_deps} != "non_cuda" ]]; then
+  elif [[ ${cuda_deps} != "non_cuda" && ${cuda_deps} != "cuda_agnostic" ]]; then
       echo "Failed to find setup script for cuda dependencies ${cuda_deps}"
       exit 1
   fi
@@ -49,6 +49,8 @@ echo "Start running native unit tests"
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 execute_test "non_cuda"
+
+execute_test "cuda_agnostic"
 
 execute_test "cuda_11_1"
 
