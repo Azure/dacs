@@ -56,3 +56,31 @@ add_custom_command(
     TARGET DeleteClient POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/DeleteClient
         ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/cache-test)
+
+
+# ---------------------------------------------------------------------------------------------------------------------#
+# Perf Client
+# ---------------------------------------------------------------------------------------------------------------------#
+set(Boost_USE_STATIC_LIBS ON)
+set(Boost_USE_STATIC_RUNTIME ON)
+find_package(Boost COMPONENTS program_options system REQUIRED)
+include_directories(${Boost_INCLUDE_DIR})
+
+add_executable(PerfClient
+    perf_tests/PerfClient.cpp)
+
+add_dependencies(PerfClient CacheClientLib ClientConnections storage_utils)
+
+target_link_libraries(PerfClient PRIVATE CacheClientLib ClientConnections storage_utils pthread diagnostics stdc++fs Boost::program_options Boost::system)
+
+target_include_directories(PerfClient PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}
+    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/
+)
+
+add_custom_command(
+    TARGET PerfClient POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/PerfClient
+        ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/cache-test)
+
+# ---------------------------------------------------------------------------------------------------------------------#
