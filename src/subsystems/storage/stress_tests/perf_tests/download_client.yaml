@@ -1,0 +1,44 @@
+# Download data from cache server. Use with stress_tests/batch_job_runner.sh.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: downloadclient
+spec:
+  manualSelector: true
+  selector:
+    matchLabels:
+      app: downloadclient
+  parallelism: %PARALLELISM%
+  template:
+    metadata:
+      labels:
+        app: downloadclient
+    spec:
+      imagePullSecrets:
+      - name: dacs-regcred
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: dacs.azure.com/processing-unit
+                operator: NotIn
+                values:
+                - 'cpu'
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100  # The higher the weight, the stronger the preference
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app  # Label to use for anti-affinity
+                  operator: In
+                  values:
+                  - downloadclient
+              topologyKey: kubernetes.io/hostname  # Use the node's hostname for anti-affinity
+      containers:
+      - name: job
+        image: dacs.azurecr.io/storage-perf-client:1694507606
+        command: ['/app/PerfClient']
+        args: ['--server-port', '9065', '--server-hostname', '%SERVER_LIST%', '--num-threads', '64', '--data-size-GiB', '440', '--prefix', '%FILE_PREFIX%', '--mode', 'download', '--num-iterations', '1']
+      restartPolicy: Never

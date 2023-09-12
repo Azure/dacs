@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cacheserver
+spec:
+  selector:
+    matchLabels:
+      app: cacheserver
+  serviceName: cacheserver
+  replicas: 7
+  volumeClaimTemplates:
+    - metadata:
+        name: cacheserver-storage-ultradisk-pvc
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: cacheserver-storage-ultradisk
+        resources:
+          requests:
+            storage: 4096Gi
+  template:
+    metadata:
+      labels:
+        app: cacheserver
+    spec:
+      terminationGracePeriodSeconds: 10
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: dacs.azure.com/processing-unit
+                operator: In
+                values:
+                - cpu
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - cacheserver
+            topologyKey: kubernetes.io/hostname
+      imagePullSecrets:
+      - name: regcred
+      containers:
+      - name: cacheserver
+        image: dacs.azurecr.io/dacs/cache-server:0.0.1522
+        imagePullPolicy: Always
+        env:
+        - name: CACHESERVER_THREADPOOL_SIZE
+          value: "400"
+        - name: TEST_CHECK_LIVENESS
+          value: "true"
+        - name: TEST_CACHESERVER_ADDR_PORT
+          value: "9065"
+        - name: CACHESERVER_METRICS_PORT
+          value: "9096"
+        ports:
+        - containerPort: 9065
+          name : cacheserver
+        - containerPort: 9096
+          name : metrics
+        command: [
+          '/bin/sh',
+          '-c',
+          'CACHESERVER_HOSTNAME=$HOSTNAME /root/CacheServer 9065 /host/mnt/ssd0/cache 4396972769280' ]
+        volumeMounts:
+        - mountPath: /host/mnt/ssd0
+          name: cacheserver-storage-ultradisk-pvc
+        livenessProbe:
+          exec:
+            command: [
+            '/bin/sh',
+            '-c',
+            '/root/LivenessProbe' ]
+          initialDelaySeconds: 300
+          periodSeconds: 120
+          failureThreshold : 10
