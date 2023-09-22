@@ -16,7 +16,11 @@ RUN \
     ibverbs-providers \
     sysstat \
     tar \
-    net-tools
+    net-tools \
+    pciutils \
+    ethtool \
+    iproute2 \
+    vim
 
 # Where the storage containers will be mounted to
 RUN mkdir -p /app/mounts
