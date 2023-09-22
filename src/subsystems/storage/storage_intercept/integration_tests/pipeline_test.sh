@@ -378,9 +378,9 @@ if ! [[ -x $(command -v "cargo") ]]; then
 fi
 
 pushd ${REPOSITORY_ROOT}/src/subsystems/storage/cache_client/rust_tests
-export LD_LIBRARY_PATH="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage:${LD_LIBRARY_PATH}"
-export LIBRARY_PATH="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage"
-export CACHE_CLIENT_LIB_DIR="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage"
+export LD_LIBRARY_PATH="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage-cache-client:${LD_LIBRARY_PATH}"
+export LIBRARY_PATH="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage-cache-client"
+export CACHE_CLIENT_LIB_DIR="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage-cache-client"
 export CACHE_CLIENT_HEADER_FILE="${REPOSITORY_ROOT}/src/subsystems/storage/cache_client/CacheClient.h"
 
 eval "cargo run"
