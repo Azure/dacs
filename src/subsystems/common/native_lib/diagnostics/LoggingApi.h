@@ -79,7 +79,7 @@ private:
 class LoggingApi
 {
 public:
-    static void Init();
+    static void Init(/*[in]*/ bool bIgnoreRankInFileName = false);
     static void Shutdown();
     static void Flush();
 

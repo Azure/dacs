@@ -8,7 +8,7 @@
 class FileLogger: public ILogger
 {
 public:
-    FileLogger(std::string outputFileName, std::string errorFileName);
+    FileLogger(std::string outputFileName, std::string errorFileName, /*[in]*/ bool bIgnoreRankInFileName = false);
 
     ~FileLogger();
 
@@ -18,7 +18,7 @@ public:
     void LogError(std::string logContent);
     void FlushCachedLogInfo();
 private:
-    void FormatFileName(/*[inout]*/ std::string& strFileName);
+    void FormatFileName(/*[inout]*/ std::string& strFileName, /*[in]*/ bool bIgnoreRankInFileName = false);
 
     std::ofstream m_outputStream;
     std::ofstream m_errStream;
