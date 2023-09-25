@@ -5,10 +5,10 @@
 //--------------------------------------------------------------------------------------------------------------------------------------------
 #include "FileLogger.h"
 //-------------------------------------------------------------------------------------------------------------------------------------------
-FileLogger::FileLogger(std::string outputFileName, std::string errorFileName)
+FileLogger::FileLogger(std::string outputFileName, std::string errorFileName, /*[in]*/ bool bIgnoreRankInFileName)
 {
-    FormatFileName(outputFileName);
-    FormatFileName(errorFileName);
+    FormatFileName(outputFileName, bIgnoreRankInFileName);
+    FormatFileName(errorFileName, bIgnoreRankInFileName);
 
     m_outputStream.open(outputFileName, std::ios_base::app);
     if (m_outputStream.fail())
@@ -28,7 +28,7 @@ FileLogger::~FileLogger()
     Shutdown();
 }
 //-------------------------------------------------------------------------------------------------------------------------------------------
-void FileLogger::FormatFileName(/*[inout]*/ std::string& strFileName)
+void FileLogger::FormatFileName(/*[inout]*/ std::string& strFileName, /*[in]*/ bool bIgnoreRankInFileName)
 {
     const std::string strRankMarker = "{{RANK}}";
     std::size_t nRankMarkerPosition = strFileName.find(strRankMarker);
@@ -36,7 +36,7 @@ void FileLogger::FormatFileName(/*[inout]*/ std::string& strFileName)
     {
         char* rank = std::getenv("RANK");
 
-        if(rank)
+        if(rank && !bIgnoreRankInFileName)
         {
             strFileName.replace(nRankMarkerPosition, strRankMarker.length(), rank);
         }

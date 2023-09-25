@@ -17,7 +17,7 @@ std::atomic<bool> LoggingApi::m_bIsInitialized{false};
 std::atomic<bool> LoggingApi::m_bIsInitializing{false};
 std::recursive_mutex LoggingApi::m_lock;
 //-------------------------------------------------------------------------------------------------------------------------------------------
-void LoggingApi::Init()
+void LoggingApi::Init(/*[in]*/ bool bIgnoreRankInFileName)
 {
     std::lock_guard<std::recursive_mutex> lock(m_lock);
 
@@ -45,7 +45,7 @@ void LoggingApi::Init()
     }
     else
     {
-        m_upLogger = std::make_shared<FileLogger>(fileStandardOutput, fileErrorOutput);
+        m_upLogger = std::make_shared<FileLogger>(fileStandardOutput, fileErrorOutput, bIgnoreRankInFileName);
     }
 
     m_upLogger->Flush();
