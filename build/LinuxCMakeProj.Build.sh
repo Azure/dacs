@@ -110,6 +110,7 @@ if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
 
   if [[ -z "$DISABLE_PROFILER_LIB" || "$DISABLE_PROFILER_LIB" == "false" ]]; then
     cleanup_build "cuda_agnostic"
+    cleanup_build "cuda_agnostic_interception"
   fi
 
   if [[ ! -z "$BUILD_CUDA_VERSION" ]]; then
@@ -156,6 +157,7 @@ fi
 if [[ -z "$DISABLE_PROFILER_LIB" || "$DISABLE_PROFILER_LIB" == "false" ]]; then
   pythonVersion="3.6"
   execute_build "cuda_agnostic" $pythonVersion
+  execute_build "cuda_agnostic_interception" $pythonVersion
 fi
 
 if [[ ! -z "$BUILD_CUDA_VERSION" ]]; then
