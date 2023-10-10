@@ -526,11 +526,6 @@ int ContentHandler::OpenInternal(const char* path, int flags, mode_t mode, bool 
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t ContentHandler::HandleRead(int fd, void *buf, size_t nBytes)
 {
-    static char __log_git_commit_once = ({
-        LOG_INFO("Storage Intercept build commit hash " BUILD_GIT_COMMIT_HASH " built on " __DATE__);
-        0;
-    });
-
     if (!IsFdInRange(fd))
     {
         return StorageLibcApiWrapper::read(fd, buf, nBytes);

@@ -97,7 +97,7 @@ StreamingClient::StreamingClient(
 
     LOG_INFO("StreamingClient initialized. MountName={}, RemotePathPrefix={} ChunkSize={}, chunk cache={},"
              " attribute cache={} readChunkParallelism={}, maxReadChunkConcurrency={},"
-             " enableLargePrefetch={}, prefetchWindowSizeInBytes={}",
+             " enableLargePrefetch={}, prefetchWindowSizeInBytes={}, Commit hash={} built on {}",
         mountName,
         m_strRemotePathPrefix,
         m_nChunkSize,
@@ -106,7 +106,9 @@ StreamingClient::StreamingClient(
         m_bEnableReadChunkParallelism,
         m_nMaxReadChunkConcurrency,
         m_bEnableLargePrefetch,
-        m_nPrefetchWindowSize);
+        m_nPrefetchWindowSize,
+        BUILD_GIT_COMMIT_HASH,
+        __DATE__);
 }
 //---------------------------------------------------------------------------------------------------------------------
 StreamingClient::~StreamingClient()
