@@ -23,6 +23,8 @@ else
   BUILD_CONFIGURATION=$1
 fi
 
+STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/libStorageIntercept.so"
+
 function append_interception_config_blob_prefix() {
     STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
     MOUNT_PATH=$1
@@ -237,6 +239,27 @@ function reset_local_ssd_cache() {
   echo "Cleared local ssd cache"
 }
 
+# Verify no logs are emitted for non-intercepted file read
+function __verify_nologs_unintercepted_() {
+  testFile=/tmp/intcptLogsTest
+  outFile=/tmp/intcptLogsTestOut
+
+  rm -f $testFile
+  echo "abcd" > $testFile
+
+  add_interception_config_blob /mnt/quiverfs
+
+  echo ""  
+  echo "Running test to verify no logs are emitted for non-intercepted file read"
+  echo "LD_PRELOAD=${STORAGE_INTERCEPTOR} cat $testFile > $outFile"
+  LD_PRELOAD="${STORAGE_INTERCEPTOR}" cat $testFile > $outFile
+
+  if grep -q "DACS" $outFile; then
+    echo "Storage Interception logs emitted for non-intercepted file read"
+    exit 1
+  fi
+}
+
 function __run_perf_benchmark__() {
   echo "Running perf tracker benchmark"
   stop_cache_server
@@ -294,6 +317,8 @@ then
     echo "Cache server unit tests failed"
     exit 1
 fi
+
+__verify_nologs_unintercepted_
 
 echo "Running unit tests against blob"
 add_interception_config_blob /mnt/dataPathIntcpt
