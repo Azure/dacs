@@ -198,9 +198,7 @@ function stop_cache_server() {
 
 function test_liveness() {
   export TEST_CACHESERVER_ADDR_PORT="${CACHE_SERVER_PORT}"
-  export TEST_CHECK_LIVENESS="true"
-  TEST_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/cacheServerTestClient "
-  TEST_CLIENT_CMD="${TEST_CLIENT_EXE}"
+  TEST_CLIENT_CMD="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/LivenessProbe"
   echo "Starting Cache Server Liveness test with command: ${TEST_CLIENT_CMD}"
   eval "${TEST_CLIENT_CMD}"
   if [ $? -ne 0 ]
@@ -451,9 +449,9 @@ export CACHESERVER_SNAPSHOT_INTERVAL="1"
 start_cache_server
 unset CACHESERVER_HOSTNAME
 unset CACHESERVER_SNAPSHOT_INTERVAL
-echo "Sleeping 30 secs to allow cache server to start and initialize"
+echo "Sleeping 10 secs to allow cache server to start and initialize"
 echo ""
-sleep 30
+sleep 10
 
 #test liveness of the cache server
 test_liveness
