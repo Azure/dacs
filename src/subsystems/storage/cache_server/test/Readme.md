@@ -24,10 +24,6 @@ Address of the cache server to run tests against (default is ""127.0.0.1"")
 #### TEST_CACHESERVER_ADDR_PORT
 Port of the cache server to run tests against (default is 20000)
 
-#### TEST_CHECK_LIVENESS
-Values: true or false (default is false).
-Run a small ping like test to check if the cache server is alive
-
 #### TEST_IB
 Values: true or false (default is false).
 Enable Infiniband tests

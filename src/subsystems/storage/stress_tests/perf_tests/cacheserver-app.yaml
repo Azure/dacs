@@ -9,14 +9,14 @@ spec:
   serviceName: cacheserver
   replicas: 7
   volumeClaimTemplates:
-    - metadata:
-        name: cacheserver-storage-ultradisk-pvc
-      spec:
-        accessModes: [ReadWriteOnce]
-        storageClassName: cacheserver-storage-ultradisk
-        resources:
-          requests:
-            storage: 4096Gi
+  - metadata:
+      name: cacheserver-storage-ultradisk-pvc
+    spec:
+      accessModes: [ReadWriteOnce]
+      storageClassName: cacheserver-storage-ultradisk
+      resources:
+        requests:
+          storage: 4096Gi
   template:
     metadata:
       labels:
@@ -50,30 +50,22 @@ spec:
         env:
         - name: CACHESERVER_THREADPOOL_SIZE
           value: "400"
-        - name: TEST_CHECK_LIVENESS
-          value: "true"
         - name: TEST_CACHESERVER_ADDR_PORT
           value: "9065"
         - name: CACHESERVER_METRICS_PORT
           value: "9096"
         ports:
         - containerPort: 9065
-          name : cacheserver
+          name: cacheserver
         - containerPort: 9096
-          name : metrics
-        command: [
-          '/bin/sh',
-          '-c',
-          'CACHESERVER_HOSTNAME=$HOSTNAME /root/CacheServer 9065 /host/mnt/ssd0/cache 4396972769280' ]
+          name: metrics
+        command: ['/bin/sh', '-c', 'CACHESERVER_HOSTNAME=$HOSTNAME /root/CacheServer 9065 /host/mnt/ssd0/cache 4396972769280']
         volumeMounts:
         - mountPath: /host/mnt/ssd0
           name: cacheserver-storage-ultradisk-pvc
         livenessProbe:
           exec:
-            command: [
-            '/bin/sh',
-            '-c',
-            '/root/LivenessProbe' ]
+            command: ['/bin/sh', '-c', '/root/LivenessProbe']
           initialDelaySeconds: 300
           periodSeconds: 120
-          failureThreshold : 10
+          failureThreshold: 10
