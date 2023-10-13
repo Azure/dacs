@@ -212,7 +212,6 @@ function test_liveness() {
 
 function run_cacheserver_test() {
   export TEST_CACHESERVER_ADDR_PORT="${CACHE_SERVER_PORT}"
-  export TEST_CHECK_LIVENESS="false"
   TEST_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/cacheServerTestClient"
   TEST_CLIENT_CMD="${TEST_CLIENT_EXE}"
 
