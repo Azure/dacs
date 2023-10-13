@@ -1740,17 +1740,6 @@ void TestIB()
     RUNTEST(TestIBAPIParallel());
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool TestLiveness()
-{
-    string file1 = GetUniqueFilename("livenessTest");
-    bool result = false;
-
-    result = TestDownloadAPI(file1, 0, 1024 * 1024, false, DownloadResponse::NOT_FOUND, nullptr);
-    cout<< "Result for TestDownloadAPI: " << result << endl;
-
-    return result;
-}
-//---------------------------------------------------------------------------------------------------------------------
 /** Invoked to check & run if being used as a cli-application to make requests for integration tests 
  * 
  *  @param isCli [out] true if being used as a cli-application, false otherwise
@@ -1844,21 +1833,6 @@ int main(int argc, char *argv[])
         if(isCli)
         {
             return result;
-        }
-    }
-
-    char* checkLiveness = std::getenv("TEST_CHECK_LIVENESS");
-    if(checkLiveness != nullptr)
-    {
-        if(strcmp(checkLiveness, "true") == 0)
-        {
-            bool result = TestLiveness();
-            cout << "result of Liveness is " << result << endl;
-            if(result)
-            {
-                return 0;
-            }
-            return 1;
         }
     }
 
