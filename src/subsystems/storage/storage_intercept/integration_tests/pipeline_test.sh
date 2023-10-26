@@ -74,12 +74,12 @@ function add_interception_config_blob() {
     then
       echo "multiMountEnabled true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
       echo "mountName0 mount1" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-      append_interception_config_blob_prefix ${STORAGE_INTERCEPT_PATH} surkriseastus "mount1" STORAGE_INTCPT_SAS_TOKEN true
+      append_interception_config_blob_prefix ${STORAGE_INTERCEPT_PATH} storageinterceptionpr1 "mount1" STORAGE_INTCPT_SAS_TOKEN true
 
       echo "mountName1 mount2" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-      append_interception_config_blob_prefix "${STORAGE_INTERCEPT_PATH}2" surkriseastus2 "mount2" STORAGE_INTCPT_SAS_TOKEN2 true
+      append_interception_config_blob_prefix "${STORAGE_INTERCEPT_PATH}2" storageinterceptionpr2 "mount2" STORAGE_INTCPT_SAS_TOKEN2 true
     else
-      append_interception_config_blob_prefix ${STORAGE_INTERCEPT_PATH} surkriseastus "" STORAGE_INTCPT_SAS_TOKEN false
+      append_interception_config_blob_prefix ${STORAGE_INTERCEPT_PATH} storageinterceptionpr1 "" STORAGE_INTCPT_SAS_TOKEN false
     fi
 
     echo "Created the storage interception config file. Its contents are =>"
