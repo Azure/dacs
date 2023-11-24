@@ -273,14 +273,16 @@ int main(int argc, char* argv[])
     CacheClientImpl client;
     client.Initialize(vecCstrHostnames.data(),
                       vecCstrHostnames.size(),
-                      nPort,
-                      false,
-                      nNumThreads * 2,
-                      false,
-                      nullptr,
-                      nullptr,
-                      false,
-                      true);
+                      nPort,            /*nCacheServerPort*/
+                      false,            /*bEnableIB*/
+                      false,             /*bEnableCalculateChecksum*/
+                      false,            /*bEnableValidateChecksum*/
+                      nNumThreads * 2,  /*nConnectionPoolSize*/
+                      false,            /*bEnableAuth*/
+                      nullptr,          /*strAccountName*/
+                      nullptr,          /*strAccountKey*/
+                      false,            /*bUseLocalServer*/
+                      true);            /*bReuseConnections*/
 
     std::size_t nDataSizeBytes = nDataSizeGiB * 1024 * 1024 * 1024;
 

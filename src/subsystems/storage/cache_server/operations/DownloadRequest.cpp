@@ -126,6 +126,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
 
     // update download filesize and metadata
     uint64_t downloadFileSize = 0;
+
     if (cacheInfo.m_status == CacheManager::CacheStatus::COMPLETED)
     {
         if (downloadRequest.offset() > cacheInfo.m_fileSize)
@@ -150,6 +151,9 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
     }
 
     downloadResponse.set_filesize(downloadFileSize);
+    
+    downloadResponse.set_isfulldownload(cacheInfo.m_fileSize == downloadFileSize);
+
     if (cacheInfo.m_status == CacheManager::CacheStatus::COMPLETED && downloadFileSize > 0) 
     {
         if (!SendMessageToRemote(clientConnection, downloadResponse, requestid))

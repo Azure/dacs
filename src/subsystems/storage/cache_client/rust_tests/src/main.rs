@@ -85,6 +85,8 @@ fn test_initialize() {
     let port: u32 = std::env::var("CACHE_SERVER_PORT").unwrap().parse().unwrap();
     println!("Using port {port}");
     let enable_ib = false;
+    let enable_calculate_crc = false;
+    let enable_validate_crc = false;
 
     let accountName = "admin";
     let accountKey = "1234";
@@ -103,6 +105,8 @@ fn test_initialize() {
             num_servers,
             port,
             enable_ib,
+            enable_calculate_crc,
+            enable_validate_crc,
             &auth_credentials as *const AuthCredentials,
         );
 

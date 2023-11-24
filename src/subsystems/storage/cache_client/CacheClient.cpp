@@ -20,12 +20,16 @@ extern "C" CacheClientStatus Initialize(
     /*[in]*/ uint32_t nServers,
     /*[in]*/ uint32_t nPort,
     /*[in]*/ bool bEnableIB,
+    /*[in]*/ bool bEnableCalculateChecksum,
+    /*[in]*/ bool bEnableValidateChecksum,
     /*[in]*/ const AuthCredentials* pAuthCredentials)
 {
     return GetImplInstance()->Initialize(arrServers,
                                          nServers,
                                          nPort,
                                          bEnableIB,
+                                         bEnableCalculateChecksum,
+                                         bEnableValidateChecksum,
                                          0,                             /* nConnectionPoolSize */
                                          (pAuthCredentials != nullptr), /* bEnableAuth */
                                          pAuthCredentials ? pAuthCredentials->m_strAccountKey : nullptr,

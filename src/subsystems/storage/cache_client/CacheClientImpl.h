@@ -25,6 +25,8 @@ class CacheClientImpl
         /*[in]*/ uint32_t nNumServers,
         /*[in]*/ uint32_t nPort,
         /*[in]*/ bool bEnableIB,
+        /*[in]*/ bool bEnableCalculateChecksum,
+        /*[in]*/ bool bEnableValidateChecksum,
         /*[in]*/ uint32_t nConnectionPoolSize,
         /*[in]*/ bool bEnableAuth,
         /*[in]*/ const char* strAccountName,
@@ -60,6 +62,7 @@ class CacheClientImpl
     bool IsInitialized() const;
 
   private:
+    const char* const CACHE_META_CHUNK_CHECKSUM_KEY = "CHUNK_CHECKSUM";
     std::atomic<bool> m_bInitialized;
     std::mutex m_mtxInitialization;
     std::vector<std::string> m_vecServers;
@@ -67,12 +70,16 @@ class CacheClientImpl
     uint32_t m_nPort;
     bool m_bEnableIB;
     bool m_bEnableAuth;
+    bool m_bEnableCalculateChecksum;
+    bool m_bEnableValidateChecksum;
     std::string m_strAccountName;
     std::string m_strAccountKey;
     uint32_t m_nConnectionPoolSize;
     std::unique_ptr<ConnectionManager> m_spConnectionManager;
     static std::size_t nDefaultConnectionPoolSize;
     size_t m_nMaxBufferSizeBytes;
+
+    uint32_t CalculateChecksum(const void* pBuffer, const std::size_t nBufferLength);
 
     // Friends for testing
     FRIEND_TEST(CacheClientTests, ForceReuseConnections);

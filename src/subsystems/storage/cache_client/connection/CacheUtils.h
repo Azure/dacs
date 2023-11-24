@@ -9,7 +9,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 namespace cacheutils
 {
-    enum class CacheStatus {SUCCESS, NOTFOUND, NOTFOUND_LOCKED, AUTH_FAILED, INTERNAL_ERROR};
+    enum class CacheStatus {SUCCESS, NOTFOUND, NOTFOUND_LOCKED, AUTH_FAILED, INTERNAL_ERROR, CHECKSUM_MISMATCH};
 
     bool WriteAll(IConnection* connection, void *buf, size_t nByte);
     bool WriteAllFinal(IConnection* connection, const void *buf, size_t nByte);

@@ -41,6 +41,8 @@ int main(int argc, char** argv)
                            1, /*nServers*/
                            nCacheServerPort,
                            false,   /*bEnableIB*/
+                           false,   /*bEnableCalculateChecksum*/
+                           false,   /*bEnableValidateChecksum*/
                            0,       /*nConnectionPoolSize*/
                            false,   /*bEnableAuth*/
                            nullptr, /*strAccountName*/

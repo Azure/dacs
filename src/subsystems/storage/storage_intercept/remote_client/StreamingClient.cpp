@@ -514,9 +514,13 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
                 remoteReadData->BufferSize = readLength;
                 m_nReadChunksRemoteCache++;
             }
-            else if (cacheStatus == CacheStatus::INTERNAL_ERROR)
+            else if (cacheStatus == CacheStatus::INTERNAL_ERROR )
             {
                 LOG_WARN("Got server internal error for cache key: {}, ignore and continue blob download", cacheFilePath);
+            }
+            else if (cacheStatus == CacheStatus::CHECKSUM_MISMATCH)
+            {
+                LOG_WARN("Got checksum mismatch for cache key: {}, ignore and continue blob download", cacheFilePath);
             }
 
             nIterations++;
