@@ -118,6 +118,8 @@ cacheAuthEnabled [true or false - Required when cache server APIs have authentic
 cacheAuthAccountName [Account name to be used for authenticatio]
 cacheAuthAccountKey [Shared key used for authentication]
 cacheIBEnabled [true or false - Use infiniband for cache client-server communication]
+cacheCalculateChecksumEnabled [true or false - Enable checksum calculation for chunks before uploading them to cache server]
+cacheValidateChecksumEnabled [true or false - Enable checksum validation for chunks downloaded from cache server]
 prefetchCacheTotalSizeInMB [Max in-memory data cache size]
 prefetchCachePerFileSizeInMB [Max in-memory data cache size per file]
 cacheEnableSyncUpload [After downloading chunk from remote blob on a cache miss upload to cache server synchronously in critical path. Note: This will increase client IO latency. default - false]

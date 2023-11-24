@@ -9,6 +9,9 @@
 #include "EncryptionUtil.h"
 #include "LogUtils.h"
 #include "cache.pb.h"
+
+#include <boost/crc.hpp>
+
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cacheutils;
 using namespace cache;
@@ -25,6 +28,8 @@ CacheClientStatus CacheClientImpl::Initialize(
     /*[in]*/ uint32_t nNumServers,
     /*[in]*/ uint32_t nPort,
     /*[in]*/ bool bEnableIB,
+    /*[in]*/ bool bEnableCalculateChecksum,
+    /*[in]*/ bool bEnableValidateChecksum,
     /*[in]*/ uint32_t nConnectionPoolSize,
     /*[in]*/ bool bEnableAuth,
     /*[in]*/ const char* strAccountName,
@@ -86,6 +91,8 @@ CacheClientStatus CacheClientImpl::Initialize(
     m_bEnableIB = bEnableIB;
     m_nConnectionPoolSize = nConnectionPoolSize == 0 ? nDefaultConnectionPoolSize : nConnectionPoolSize;
     m_bEnableAuth = bEnableAuth;
+    m_bEnableCalculateChecksum = bEnableCalculateChecksum;
+    m_bEnableValidateChecksum = bEnableValidateChecksum;
     m_strAccountName = strAccountName == nullptr ? "" : std::string(strAccountName);
     m_strAccountKey = strAccountKey == nullptr ? "" : std::string(strAccountKey);
     m_spConnectionManager = std::make_unique<ConnectionManager>(nPort,
@@ -98,12 +105,13 @@ CacheClientStatus CacheClientImpl::Initialize(
                                                                 bReuseConnections,
                                                                 bEnableIB);
     m_bInitialized = true;
-
-    LOG_INFO("CacheClientImpl initialized. Num servers = {}. Port = {}. Enable IB = {}. Connection pool size = {}",
+    LOG_INFO("CacheClientImpl initialized. Num servers = {}. Port = {}. Enable IB = {}. Connection pool size = {}, Enable Calculate checksum = {}, Enable Validate checksum = {}",
              nNumServers,
              nPort,
              bEnableIB,
-             m_nConnectionPoolSize);
+             m_nConnectionPoolSize,
+             m_bEnableCalculateChecksum,
+             m_bEnableValidateChecksum);
     return CacheClientStatus::SUCCESS;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -196,15 +204,28 @@ CacheClientStatus CacheClientImpl::Upload(
         uploadRequest->set_expiryseconds(nExpirySeconds);
     }
 
-    if(pMetadata != nullptr)
+    if(pMetadata != nullptr || m_bEnableCalculateChecksum)
     {
         auto& fileMetadata = *(uploadRequest->mutable_metadata());
-        for(int metadataIdx = 0; metadataIdx < pMetadata->nKeyValuePairs; metadataIdx++)
+        if(pMetadata != nullptr)
         {
-            fileMetadata[pMetadata->arrKeyValuePairs[metadataIdx].strKey] =
-                pMetadata->arrKeyValuePairs[metadataIdx].strValue;
+            for(int metadataIdx = 0; metadataIdx < pMetadata->nKeyValuePairs; metadataIdx++)
+            {
+                fileMetadata[pMetadata->arrKeyValuePairs[metadataIdx].strKey] =
+                    pMetadata->arrKeyValuePairs[metadataIdx].strValue;
+            }
         }
+
+        if (m_bEnableCalculateChecksum && nBufferLength > 0)
+        {
+            std::string bufferChecksum = std::to_string(CalculateChecksum(pBuffer, nBufferLength));
+
+            fileMetadata[(char*)CACHE_META_CHUNK_CHECKSUM_KEY] = bufferChecksum;
+            LOG_DEBUG_REQID("Checksum for file: {}, checksum: {}", *uploadRequest, strCacheKey, bufferChecksum);
+        }
+        
     }
+
 
     if(m_bEnableAuth && !AddAuthParams(request, m_strAccountName, m_strAccountKey))
     {
@@ -412,11 +433,12 @@ CacheClientStatus CacheClientImpl::Download(
         return cacheClientStatus;
     }
 
-    LOG_DEBUG_REQID("Download response from server: {}, key: {}, filesize: {}",
+    LOG_DEBUG_REQID("Download response from server: {}, key: {}, filesize: {}, isFullDownload: {}",
                     *downloadRequest,
                     response.result(),
                     strCacheKey,
-                    response.filesize());
+                    response.filesize(),
+                    response.isfulldownload());
 
     std::size_t actualReadLen = -1;
     if(response.result() == DownloadResponse::SUCCESS)
@@ -449,6 +471,41 @@ CacheClientStatus CacheClientImpl::Download(
                 LOG_WARN_REQID("Failed to complete read from server, key: {}", *downloadRequest, strCacheKey);
                 m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
                 return cacheClientStatus;
+            }
+        }
+
+        if(m_bEnableValidateChecksum && response.isfulldownload())
+        {
+            LOG_DEBUG_REQID("Validate Checksum enabled, key: {}", *downloadRequest, strCacheKey);
+            auto& metadata = response.metadata();
+            auto checksumIter = metadata.find(CACHE_META_CHUNK_CHECKSUM_KEY);
+
+            if(checksumIter != metadata.end())
+            {
+                uint32_t calculatedChecksum = CalculateChecksum(pOutBuffer, actualReadLen);
+                
+                uint32_t receivedChecksum = std::stoul(checksumIter->second);
+                LOG_DEBUG_REQID("Checksum for file: {}, receivedChecksum: {}, calculatedChecksum {}",
+                                *downloadRequest,
+                                strCacheKey,
+                                receivedChecksum,
+                                calculatedChecksum);
+                if(receivedChecksum != calculatedChecksum)
+                {
+                    LOG_ERROR_REQID("Checksum mismatch, key: {}, received: {}, calculated: {}",
+                                   *downloadRequest,
+                                   strCacheKey,
+                                   receivedChecksum,
+                                   calculatedChecksum);
+
+                    cacheClientStatus = CacheClientStatus::CHECKSUM_MISMATCH;
+                    m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), false);
+                    return cacheClientStatus;
+                }
+            }
+            else
+            {
+                LOG_DEBUG_REQID("Checksum not found in metadata, key: {}", *downloadRequest, strCacheKey);
             }
         }
 
@@ -609,5 +666,18 @@ CacheClientStatus CacheClientImpl::DeleteGroup(/*[in]*/ const char* groupID,
 bool CacheClientImpl::IsInitialized() const
 {
     return m_bInitialized;
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint32_t CacheClientImpl::CalculateChecksum(/*[in]*/ const void* pBuffer, /*[in]*/ const std::size_t nBufferLength)
+{
+    if(pBuffer == nullptr || nBufferLength == 0)
+    {
+        LOG_INFO("Invalid buffer or length passed to CalculateChecksum");
+        return 0;
+    }
+    boost::crc_32_type crc;
+    crc.process_bytes(pBuffer, nBufferLength);
+    uint32_t crcChecksum = crc.checksum();
+    return crcChecksum;
 }
 //---------------------------------------------------------------------------------------------------------------------

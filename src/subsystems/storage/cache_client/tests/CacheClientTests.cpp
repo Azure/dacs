@@ -2,7 +2,6 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //------------------------------------------------------------------------------------------------------------
 #include "CacheClientTests.h"
-
 #include "gtest/gtest.h"
 #include <chrono>  // For std::chrono::seconds
 #include <cstring> // For memcmp function
@@ -23,7 +22,7 @@
 using namespace std;
 using namespace cacheutils;
 //---------------------------------------------------------------------------------------------------------------------
-void CacheClientTests::InitializeClient(CacheClientImpl& client)
+void CacheClientTests::InitializeClient(CacheClientImpl& client, bool bEnableCalculateChecksum, bool bEnableValidateChecksum )
 {
     static uint32_t nPort = atoi(getenv("CACHE_SERVER_PORT"));
     static char* authAccountName = getenv("CACHESERVER_AUTH_ACCOUNTNAME");
@@ -32,12 +31,16 @@ void CacheClientTests::InitializeClient(CacheClientImpl& client)
     const char* arrServers[] = {"127.0.0.1"};
     uint32_t nServers = 1;
     bool enableIB = false;
+    bool enableCalculateChecksum = bEnableCalculateChecksum;
+    bool enableValidateChecksum = bEnableValidateChecksum;
     bool enableAuth = authAccountKey != nullptr && authAccountName != nullptr;
 
     client.Initialize(arrServers,
                       nServers,
                       nPort,
                       enableIB,
+                      enableCalculateChecksum,
+                      enableValidateChecksum,
                       0,
                       enableAuth,
                       authAccountName ? authAccountName : "",
@@ -57,6 +60,11 @@ void CacheClientTests::SetUp()
     {
         InitializeClient(m_cacheClientImpl);
     }
+
+    if(!m_cacheClientImplCRC.IsInitialized())
+    {
+        InitializeClient(m_cacheClientImplCRC, true, true);
+    }   
 }
 //---------------------------------------------------------------------------------------------------------------------
 void CacheClientTests::TearDown()
@@ -143,24 +151,26 @@ TEST_F(CacheClientTests, Initialization)
     uint32_t nServers = 1;
     uint32_t nPort = 9065;
     bool enableIB = false;
+    bool enableCalculateChecksum = false;
+    bool enableValidateChecksum = false;
     const char* accountName = "my_account";
     const char* accountKey = "my_secret_key";
     {
         CacheClientImpl client;
         // First initialization
         ASSERT_EQ(CacheClientStatus::SUCCESS,
-                  client.Initialize(arrServers, nServers, nPort, enableIB, 0, true, accountName, accountKey));
+                  client.Initialize(arrServers, nServers, nPort, enableIB, enableCalculateChecksum, enableValidateChecksum, 0, true, accountName, accountKey));
 
         // Re-initialization
         ASSERT_EQ(CacheClientStatus::INTERNAL_ERROR,
-                  client.Initialize(arrServers, nServers, nPort, enableIB, 0, true, accountName, accountKey));
+                  client.Initialize(arrServers, nServers, nPort, enableIB, enableCalculateChecksum, enableValidateChecksum, 0, true, accountName, accountKey));
     }
 
     {
         CacheClientImpl client;
         // No auth credentials
         ASSERT_EQ(CacheClientStatus::SUCCESS,
-                  client.Initialize(arrServers, nServers, nPort, enableIB, 0, true, "", ""));
+                  client.Initialize(arrServers, nServers, nPort, enableIB, enableCalculateChecksum, enableValidateChecksum, 0, true, "", ""));
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -267,6 +277,87 @@ TEST_F(CacheClientTests, DownloadFilesWithEncryption)
     ASSERT_EQ(readLength, nLength);
     ASSERT_EQ(CacheClientStatus::SUCCESS, status);
     ASSERT_EQ(memcmp(pBuffer, pBuffer2, nLength), 0);
+
+    free((void*)pBuffer);
+    free((void*)pBuffer2);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(CacheClientTests, DownloadFilesWithChecksum)
+{
+    string filename = GetCorrelationId();
+    uint64_t nLength = 1024;
+    const void* pBuffer = GetRandomBuffer(nLength);
+
+    auto status = m_cacheClientImplCRC.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    void* pBuffer2 = malloc(nLength);
+    uint64_t readLength = nLength;
+    status = m_cacheClientImplCRC.Download(filename.c_str(), pBuffer2, &readLength, nullptr, nullptr);
+    ASSERT_EQ(readLength, nLength);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+    ASSERT_EQ(memcmp(pBuffer, pBuffer2, nLength), 0);
+
+    free((void*)pBuffer);
+    free((void*)pBuffer2);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(CacheClientTests, DownloadFilesWithMissingChecksum)
+{
+    string filename = GetCorrelationId();
+    uint64_t nLength = 1024;
+    const void* pBuffer = GetRandomBuffer(nLength);
+
+    auto status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    void* pBuffer2 = malloc(nLength);
+    uint64_t readLength = nLength;
+    status = m_cacheClientImplCRC.Download(filename.c_str(), pBuffer2, &readLength, nullptr, nullptr);
+    ASSERT_EQ(readLength, nLength);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+    ASSERT_EQ(memcmp(pBuffer, pBuffer2, nLength), 0);
+
+    free((void*)pBuffer);
+    free((void*)pBuffer2);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(CacheClientTests, DownloadPartialFileWithChecksumEnabled)
+{
+    string filename = GetCorrelationId();
+    uint64_t nLength = 1024;
+    const void* pBuffer = GetRandomBuffer(nLength);
+
+    auto status = m_cacheClientImplCRC.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    void* pBuffer2 = malloc(nLength);
+    uint64_t readLength = nLength-10;
+    status = m_cacheClientImplCRC.Download(filename.c_str(), pBuffer2, &readLength, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    free((void*)pBuffer);
+    free((void*)pBuffer2);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(CacheClientTests, DownloadFileWithChecksumMismatch)
+{
+    string filename = GetCorrelationId();
+    uint64_t nLength = 1024;
+    const void* pBuffer = GetRandomBuffer(nLength);
+    Metadata* pMetadata = new Metadata;
+    pMetadata->arrKeyValuePairs = new KeyValuePair[1];
+    pMetadata->nKeyValuePairs = 1;
+    pMetadata->arrKeyValuePairs[0].strKey = strdup("CHUNK_CHECKSUM");
+    pMetadata->arrKeyValuePairs[0].strValue = strdup("1234567890");
+
+    auto status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, pMetadata, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    void* pBuffer2 = malloc(nLength);
+    uint64_t readLength = nLength;
+    status = m_cacheClientImplCRC.Download(filename.c_str(), pBuffer2, &readLength, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::CHECKSUM_MISMATCH, status);
 
     free((void*)pBuffer);
     free((void*)pBuffer2);

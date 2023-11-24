@@ -32,6 +32,8 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
     int nMaxConnectionsReuseSize = StorageInterceptConfig::GetInstance().GetCacheMaxConnectionsReuseSize();
     bool bReuseServerConnections = StorageInterceptConfig::GetInstance().GetCacheReuseServerConnections();
     bool bUseInfiniband = StorageInterceptConfig::GetInstance().GetCacheIBEnabled();
+    bool bEnableCalculateChecksum = StorageInterceptConfig::GetInstance().IsCacheCalculateChecksumEnabled();
+    bool bEnableValidateChecksum = StorageInterceptConfig::GetInstance().IsCacheValidateChecksumEnabled();
 
     uint64_t maxUploadBufferSizePerProcess =
         StorageInterceptConfig::GetInstance().GetCacheMaxUploadBufferSizePerProcessGB() * 1024ULL * 1024 * 1024;
@@ -86,6 +88,8 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
                                                        vsServerNodes.size(),
                                                        serverPort,
                                                        bUseInfiniband,
+                                                       bEnableCalculateChecksum,
+                                                       bEnableValidateChecksum,
                                                        nMaxConnectionsReuseSize,
                                                        bAuthEnabled,
                                                        accountName.c_str(),
@@ -226,6 +230,10 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(const std::string& mount
 
     case CacheClientStatus::AUTH_FAILED:
         cacheStatus = CacheStatus::AUTH_FAILED;
+        break;
+
+    case CacheClientStatus::CHECKSUM_MISMATCH:
+        cacheStatus = CacheStatus::CHECKSUM_MISMATCH;
         break;
 
     default:

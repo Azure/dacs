@@ -64,6 +64,8 @@ class StorageInterceptConfig
         uint32_t GetCacheMaxConnectionsReuseSize();
         uint32_t GetCacheKeyExpirySeconds();
         std::string GetCacheKeyGroupId();
+        bool IsCacheCalculateChecksumEnabled();
+        bool IsCacheValidateChecksumEnabled();
 
         // Getters for attribute cache
         bool GetAttributesCacheEnable(const std::string& mountName);

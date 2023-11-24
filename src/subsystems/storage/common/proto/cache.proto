@@ -167,6 +167,7 @@ message DownloadResponse
     Result result = 1;
     uint64 filesize = 2;
     map<string, bytes> metadata = 3;
+    bool isFullDownload = 4;
 }
 //---------------------------------------------------------------------------------------------------------------------
 // Delete file entry from cache

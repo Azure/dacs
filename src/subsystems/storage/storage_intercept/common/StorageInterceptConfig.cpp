@@ -695,6 +695,22 @@ bool StorageInterceptConfig::GetCacheIBEnabled()
         false);
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::IsCacheCalculateChecksumEnabled()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheCalculateChecksumEnabled,
+        false);
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::IsCacheValidateChecksumEnabled()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheValidateChecksumEnabled,
+        false);
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::IsRemoteDownloadOnlyWhenLockHeldEnabled()
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(
