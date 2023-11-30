@@ -12,6 +12,9 @@ CacheManagerTest::CacheManagerTest()
     // Set environment variables
     ::setenv("CACHESERVER_HOSTNAME", "unittesthost", 1);
     ::setenv("CACHESERVER_METRICS_PORT", "9096", 1);
+    ::setenv("CACHESERVER_EVICTION_ENABLED", "true", 1);
+    ::setenv("CACHESERVER_EVICTION_LAST_ACCESS_THRESHOLD", "5s", 1);
+    ::setenv("CACHESERVER_EVICTION_PASS_FREQUENCY", "1s", 1);
     SetCacheRootPath("/tmp/cacheManagerUnitTest");
     InitializeUtils();
 }
@@ -99,7 +102,11 @@ TEST_F(CacheManagerTest, TakeAndLoadSnapshot)
     ASSERT_NE(snapshot, nullptr);
 
     // Reset cache manager data. The cache entry should be removed
-    RESET_CACHE_MANAGER();
+    // Take the eviction thread mutex to prevent races
+    {
+        std::lock_guard<std::mutex> lock(CacheManager::GetInstance().m_mutexEviction);
+        RESET_CACHE_MANAGER();
+    }
     ValidateCacheEntryNotExists(fileName);
     ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize, 0);
 
@@ -113,7 +120,11 @@ TEST_F(CacheManagerTest, TakeAndLoadSnapshot)
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(CacheManagerTest, RembemberPendingGroupIdDeletionAfterSnapshotLoad)
 {
-    RESET_CACHE_MANAGER();
+    // Take the eviction thread mutex to prevent races
+    {
+        std::lock_guard<std::mutex> lock(CacheManager::GetInstance().m_mutexEviction);
+        RESET_CACHE_MANAGER();
+    }
     CacheManager::GetInstance().m_groupIdQueue.push("testGroup1");
     CacheManager::GetInstance().m_groupIdQueue.push("testGroup2");
     ASSERT_EQ(CacheManager::GetInstance().m_groupIdQueue.size(), 2);
@@ -121,7 +132,11 @@ TEST_F(CacheManagerTest, RembemberPendingGroupIdDeletionAfterSnapshotLoad)
     // Take snapshot
     std::shared_ptr<snapshot::Snapshot> snapshot = CacheManager::GetInstance().TakeSnapshot();
     ASSERT_NE(snapshot, nullptr);
-    RESET_CACHE_MANAGER();
+    // Take the eviction thread mutex to prevent races
+    {
+        std::lock_guard<std::mutex> lock(CacheManager::GetInstance().m_mutexEviction);
+        RESET_CACHE_MANAGER();
+    }
 
     // Load snapshot
     CacheManager::GetInstance().InitializeFromSnapshot(*snapshot);
@@ -131,5 +146,93 @@ TEST_F(CacheManagerTest, RembemberPendingGroupIdDeletionAfterSnapshotLoad)
     ASSERT_EQ(CacheManager::GetInstance().m_groupIdQueue.front(), "testGroup1");
     CacheManager::GetInstance().m_groupIdQueue.pop();
     ASSERT_EQ(CacheManager::GetInstance().m_groupIdQueue.front(), "testGroup2");
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(CacheManagerTest, TestParseTimeIntervalString)
+{
+    uint64_t nValue = CacheManager::GetInstance().ParseTimeIntervalString("1s");
+    ASSERT_EQ(1, nValue);
+    nValue = CacheManager::GetInstance().ParseTimeIntervalString("3m15s");
+    ASSERT_EQ(195, nValue);
+    nValue = CacheManager::GetInstance().ParseTimeIntervalString("15s3m");
+    ASSERT_EQ(195, nValue);
+    nValue = CacheManager::GetInstance().ParseTimeIntervalString("20d15h2m19s");
+    ASSERT_EQ(1782139, nValue);
+
+    // Test invalid strings
+    nValue = CacheManager::GetInstance().ParseTimeIntervalString("hdsm");
+    ASSERT_EQ(0, nValue);
+    nValue = CacheManager::GetInstance().ParseTimeIntervalString("20dh2m12s");
+    ASSERT_EQ(0, nValue);
+    nValue = CacheManager::GetInstance().ParseTimeIntervalString("2ms");
+    ASSERT_EQ(0, nValue);
+    nValue = CacheManager::GetInstance().ParseTimeIntervalString("hd15m2s");
+    ASSERT_EQ(0, nValue);
+    nValue = CacheManager::GetInstance().ParseTimeIntervalString("2m?&16s");
+    ASSERT_EQ(0, nValue);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(CacheManagerTest, TestAccessTimeUpdates)
+{
+    std::string fileName = "/test/access";
+    uint64_t fileSize = 100;
+    time_t expiryTime = 0;
+    std::string groupId = "accessGroup";
+
+    AddCacheEntry(fileName, fileSize, expiryTime, groupId);
+    ValidateCacheEntry(fileName, fileSize, expiryTime, groupId);
+
+    time_t lastAccessTime = CacheManager::GetInstance().GetCacheInfo(fileName).m_accessTimestamp;
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    time_t newAccessTime = CacheManager::GetInstance().GetCacheInfo(fileName).m_accessTimestamp;
+    ASSERT_NE(lastAccessTime, newAccessTime);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(CacheManagerTest, TestEviction)
+{
+    // Take the eviction thread mutex to prevent races
+    {
+        std::lock_guard<std::mutex> lock(CacheManager::GetInstance().m_mutexEviction);
+        RESET_CACHE_MANAGER();
+    }
+
+    std::string fileNamePrefix = "/test/eviction";
+    uint64_t fileSize = 100;
+    time_t expiryTime = 0;
+    std::string groupId = "evictionGroup";
+
+    // Add 5 files to the cache
+    for (int i = 0; i < 5; i++)
+    {
+        AddCacheEntry(fileNamePrefix + std::to_string(i), fileSize, expiryTime, groupId);
+        ValidateCacheEntry(fileNamePrefix + std::to_string(i), fileSize, expiryTime, groupId);
+        ASSERT_GT(CacheManager::GetInstance().m_totalCachedSize, 0);
+    }
+
+    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize, 5 * fileSize);
+
+    // We have set eviction window=5s and interval=1s via env variables
+    // Sleep for an interval < eviction window, and touch all files
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize, 5 * fileSize);
+    for (int i = 0; i < 5; i++)
+    {
+        ValidateCacheEntry(fileNamePrefix + std::to_string(i), fileSize, expiryTime, groupId);
+    }
+
+    // Sleep for an interval < eviction window, and touch a subset of the files
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    ValidateCacheEntry(fileNamePrefix + "1", fileSize, expiryTime, groupId);
+    ValidateCacheEntry(fileNamePrefix + "2", fileSize, expiryTime, groupId);
+
+    // Now sleep the remaining seconds left in the eviction window
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    ValidateCacheEntryNotExists(fileNamePrefix + "0");
+    ValidateCacheEntry(fileNamePrefix + "1", fileSize, expiryTime, groupId);
+    ValidateCacheEntry(fileNamePrefix + "2", fileSize, expiryTime, groupId);
+    ValidateCacheEntryNotExists(fileNamePrefix + "3");
+    ValidateCacheEntryNotExists(fileNamePrefix + "4");
+
+    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize, 2 * fileSize);
 }
 //---------------------------------------------------------------------------------------------------------------------

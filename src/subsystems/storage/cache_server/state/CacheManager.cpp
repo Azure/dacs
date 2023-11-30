@@ -20,13 +20,24 @@ CacheManager::CacheManager()
   m_vCacheGroupIDMap(NUM_MAPS),
   m_vCacheGroupIDMapMutex(NUM_MAPS),
   m_stopCleanupThread(false),
+  m_bStopEvictionThread(false),
+  m_bEvictionEnabled(false),
   m_ttlWindowSizeSeconds(DefaultCacheTTLWindowSizeSeconds),
   m_cacheSizeLimitBytes(DefaultCacheSizeLimitBytes),
   m_totalCachedSize(0)
 {
+    InitializeEviction();
+
     m_cleanupThread = make_unique<thread>([this]() {
         this->CacheCleanupWorker();
     });
+
+    if (m_bEvictionEnabled)
+    {
+        m_evictionThread = make_unique<thread>([this]() {
+            this->EvictionWorker();
+        });
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 CacheManager::~CacheManager()
@@ -34,6 +45,13 @@ CacheManager::~CacheManager()
     m_stopCleanupThread = true;
     m_cvQueue.notify_all();
     m_cleanupThread->join();
+
+    if (m_bEvictionEnabled)
+    {
+        m_bStopEvictionThread.store(true);
+        m_cvEviction.notify_all();
+        m_evictionThread->join();
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 CacheManager& CacheManager::GetInstance()
@@ -66,11 +84,15 @@ CacheManager::CacheInfo CacheManager::GetAndInitCacheInfo(const std::string& fil
     }
     else
     {
+        // Update access time
+        time_t now = time(NULL);
+        iter->second.m_accessTimestamp = now;
+
         // If the previous init happened a while ago, we can reset it for new uploads to proceed
         if (iter->second.m_status == CacheStatus::INITIATED &&
             iter->second.m_initTimestamp + CACHE_INIT_EXPIRY_SECONDS < time(NULL))
         {
-            iter->second.m_initTimestamp = time(NULL);
+            iter->second.m_initTimestamp = now;
             return prevCacheStatus;
         }
 
@@ -89,6 +111,7 @@ CacheManager::CacheInfo CacheManager::GetCacheInfo(const std::string& fileName)
     auto iter = m_vCacheInfoMap[index].find(fileName);
     if (iter != m_vCacheInfoMap[index].end())
     {
+        iter->second.m_accessTimestamp = time(NULL);
         prevCacheStatus = iter->second;
     }
 
@@ -97,7 +120,7 @@ CacheManager::CacheInfo CacheManager::GetCacheInfo(const std::string& fileName)
 //---------------------------------------------------------------------------------------------------------------------
 bool CacheManager::InitCacheInfo(const std::string& fileName, bool ignoreLock, uint64_t fileSize)
 {
-    if (fileSize > 0 && (m_totalCachedSize.fetch_add(fileSize) + fileSize) > m_cacheSizeLimitBytes)
+    if (fileSize > 0 && m_totalCachedSize.fetch_add(fileSize) > m_cacheSizeLimitBytes)
     {
         LOG_RARELY(30, WARN, "TotalCachedSize: {}, exceeds limit: {}", m_totalCachedSize, m_cacheSizeLimitBytes);
         m_totalCachedSize.fetch_sub(fileSize);
@@ -114,6 +137,8 @@ bool CacheManager::InitCacheInfo(const std::string& fileName, bool ignoreLock, u
             // Some other upload for same file has already succeeded, ignore this one.
             LOG_WARN("File already uploaded by another thread: {}", fileName);
             m_totalCachedSize.fetch_sub(fileSize);
+            // Update access time
+            iter->second.m_accessTimestamp = time(NULL);
             return false;
         }
         iter->second = CacheInfo(CacheStatus::STARTED);
@@ -144,6 +169,31 @@ bool CacheManager::ResetCacheInfo(const std::string& fileName, uint64_t fileSize
     auto iter = m_vCacheInfoMap[index].find(fileName);
     if (iter != m_vCacheInfoMap[index].end())
     {
+        if (iter->second.m_status == CacheStatus::COMPLETED)
+        {
+            // Clear TTLMap entry
+            if (iter->second.m_expiryTime != 0)
+            {
+                auto ttlMapIter = m_vCacheTTLMap[index].find(iter->second.m_expiryTime);
+                if (ttlMapIter != m_vCacheTTLMap[index].end())
+                {
+                    ttlMapIter->second.remove(iter->first);
+                }
+            }
+
+            // Clear groupIdMap entry
+            if (!iter->second.m_groupId.empty())
+            {
+                auto groupIndex = GetHashBucket(iter->second.m_groupId);
+                lock_guard groupIdBucketLock(m_vCacheGroupIDMapMutex[groupIndex]);
+                auto groupIdMapIter = m_vCacheGroupIDMap[groupIndex].find(iter->second.m_groupId);
+                if (groupIdMapIter != m_vCacheGroupIDMap[groupIndex].end())
+                {
+                    groupIdMapIter->second.remove(iter->first);
+                }
+            }
+        }
+
         m_vCacheInfoMap[index].erase(iter);
     }
     
@@ -173,8 +223,10 @@ bool CacheManager::UpdateCacheInfo(const std::string& fileName, uint64_t fileSiz
             // Some other upload for same file has already succeeded, ignore this one.
             LOG_WARN("File already uploaded by another thread: {}", fileName);
             m_totalCachedSize.fetch_sub(fileSize);
+            iter->second.m_accessTimestamp = time(NULL);
             return false;
         }
+
         iter->second = CacheInfo(fileSize, metadata, CacheStatus::COMPLETED, expiryTimeBucket, groupId);
     }
     else
@@ -259,7 +311,6 @@ shared_ptr<Snapshot> CacheManager::TakeSnapshot() const
     shared_ptr<Snapshot> snapshot = make_shared<Snapshot>();
     snapshot->set_version(SNAPSHOT_VERSION);
     snapshot->set_hostname(GetServerHostName());
-    snapshot->set_savetimestamp(time(NULL));
     int nEntries = 0;
 
     for (int bucket = 0; bucket < NUM_MAPS; bucket++)
@@ -284,6 +335,7 @@ shared_ptr<Snapshot> CacheManager::TakeSnapshot() const
 
             fileEntry->set_expirytimestamp(iter->second.m_expiryTime);
             fileEntry->set_groupid(iter->second.m_groupId);
+            fileEntry->set_accesstimestamp(iter->second.m_accessTimestamp);
         }
     }
 
@@ -298,6 +350,9 @@ shared_ptr<Snapshot> CacheManager::TakeSnapshot() const
         snapshot->add_todeletegroups(groupId);
     }
 
+    // Set save timestamp at the end, this is to ensure that 
+    // savetimestamp > accesstimestamp for all files in snapshot
+    snapshot->set_savetimestamp(time(NULL));
     LOG_INFO("Completed taking a snapshot. num entries: {}. toDeleteGroups: {} Snapshot size: {}",
       nEntries,
       snapshot->todeletegroups_size(),
@@ -328,17 +383,41 @@ void CacheManager::InitializeFromSnapshot(const Snapshot& snapshot)
                     snapshotBucket.entries(fileIndex).filename());
                 continue;
             }
+            else if (snapshotBucket.entries(fileIndex).accesstimestamp() > 0 &&
+                    (snapshot.savetimestamp() - snapshotBucket.entries(fileIndex).accesstimestamp()) >= m_nEvictionLastAccessThresholdSeconds)
+            {
+                LOG_INFO("Skipping stale file from snapshot. bucket: {}, filename: {} Access timestamp: {} Snapshot savetimestamp: {} last access threshold: {} seconds ago",
+                    bucket,
+                    snapshotBucket.entries(fileIndex).filename(),
+                    snapshotBucket.entries(fileIndex).accesstimestamp(),
+                    snapshot.savetimestamp(),
+                    m_nEvictionLastAccessThresholdSeconds);
+                continue;
+            }
 
             nEntries++;
             const auto& fileEntry = snapshotBucket.entries(fileIndex);
 
-            m_vCacheInfoMap[bucket].insert(make_pair(fileEntry.filename(),
+           auto insertedItemIter = m_vCacheInfoMap[bucket].insert(make_pair(fileEntry.filename(),
                 CacheInfo(
                     fileEntry.filesize(),
                     fileEntry.metadata(),
                     CacheStatus::COMPLETED,
                     fileEntry.expirytimestamp(),
-                    fileEntry.groupid())));
+                    fileEntry.groupid()))).first;
+
+            time_t accessTimestamp = fileEntry.accesstimestamp();
+            // Backwards compatibility with older snapshots
+            // If access timestamp was not available, then all
+            // files in the snapshot are given the current time as access time
+            // This is not ideal, but better than giving them all 0 as access time
+            if (accessTimestamp == 0)
+            {
+                accessTimestamp = now;
+            }
+
+            insertedItemIter->second.m_accessTimestamp = accessTimestamp;
+
             if (fileEntry.expirytimestamp() > 0)
             {
                 m_vCacheTTLMap[bucket][fileEntry.expirytimestamp()].emplace_back(fileEntry.filename());
@@ -614,6 +693,8 @@ void CacheManager::CacheCleanupWorker()
         {
             for (auto filename : filesToDelete[bucket])
             {
+                // In the download path, we gracefully handle the case where cache entry
+                // is present in the map, but absent on disk
                 DeleteFile(filename);
             }
         }
@@ -625,5 +706,213 @@ void CacheManager::CacheCleanupWorker()
 std::size_t CacheManager::GetCacheServerSize() const
 {
     return (std::size_t)m_totalCachedSize.load();
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint64_t CacheManager::ParseTimeIntervalString(const char* timeInterval)
+{
+    if(timeInterval == nullptr)
+    {
+        LOG_WARN("Expected non-null time interval string");
+        return 0;
+    }
+
+    // Time interval string in the format [[0-9]+[d|h|m|s]]+
+    char* ptr = (char*)timeInterval;
+    uint64_t totalSeconds = 0;
+    while(*ptr != '\0')
+    {
+        char* pEndPtr = nullptr;
+        uint64_t nValue = std::strtoul(ptr, &pEndPtr, 10);
+        if (pEndPtr == ptr || nValue < 0 )
+        {
+            LOG_WARN("Invalid time interval string: {}", timeInterval);
+            return 0;
+        }
+
+        // pEndPtr points to the character after the number
+        ptr = pEndPtr;
+        switch(*ptr)
+        {
+            case 'd':
+                totalSeconds += (nValue * 86400);
+                break;
+            case 'h':
+                totalSeconds += (nValue * 3600);
+                break;
+            case 'm':
+                totalSeconds += (nValue * 60);
+                break;
+            case 's':
+                totalSeconds += nValue;
+                break;
+            default:
+                LOG_WARN("Invalid time interval string: {}", timeInterval);
+                return 0;
+        }
+
+        ptr++;
+    }
+
+    // Not checking for overflow, uint64_t should be large enough
+    return totalSeconds;
+}
+//---------------------------------------------------------------------------------------------------------------------
+void CacheManager::InitializeEviction()
+{
+    char* evictionEnabled = std::getenv("CACHESERVER_EVICTION_ENABLED");
+    if (evictionEnabled != NULL && strcasecmp(evictionEnabled, "true") == 0)
+    {
+        m_bEvictionEnabled = true;
+        LOG_INFO("Cache stale items eviction enabled");
+    }
+
+    char* evictionLastAccessThreshold = std::getenv("CACHESERVER_EVICTION_LAST_ACCESS_THRESHOLD");
+    if (evictionLastAccessThreshold != NULL && strlen(evictionLastAccessThreshold) > 0)
+    {
+        uint64_t nValue = ParseTimeIntervalString(evictionLastAccessThreshold);
+        if (nValue == 0)
+        {
+            m_nEvictionLastAccessThresholdSeconds = DefaultEvictionLastAccessThresholdSeconds;
+            LOG_WARN("Invalid last access threshold set, using default: {}", m_nEvictionLastAccessThresholdSeconds);
+        }
+        else
+        {
+            m_nEvictionLastAccessThresholdSeconds = nValue;
+            LOG_INFO("Last access threshold seconds: {}", m_nEvictionLastAccessThresholdSeconds);
+        }
+    }
+    else
+    {
+        m_nEvictionLastAccessThresholdSeconds = DefaultEvictionLastAccessThresholdSeconds;
+        LOG_INFO("Last access threshold seconds not set, using default: {}", m_nEvictionLastAccessThresholdSeconds);
+    }
+
+    char* evictionPassFrequency = std::getenv("CACHESERVER_EVICTION_PASS_FREQUENCY");
+    if (evictionPassFrequency != NULL && strlen(evictionPassFrequency) > 0)
+    {
+        uint64_t nValue = ParseTimeIntervalString(evictionPassFrequency);
+        if (nValue == 0)
+        {
+            m_nEvictionPassFrequencySeconds = DefaultEvictionPassFrequencySeconds;
+            LOG_WARN("Invalid eviction pass frequency set, using default: {}", m_nEvictionPassFrequencySeconds);
+        }
+        else
+        {
+            m_nEvictionPassFrequencySeconds = nValue;
+            LOG_INFO("Eviction pass frequency seconds: {}", m_nEvictionPassFrequencySeconds);
+        }
+    }
+    else
+    {
+        m_nEvictionPassFrequencySeconds = DefaultEvictionPassFrequencySeconds;
+        LOG_INFO("Eviction pass frequency seconds not set, using default: {}", m_nEvictionPassFrequencySeconds);
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void CacheManager::EvictionWorker()
+{
+    LOG_INFO("Started EvictionWorker. Sleep timer in seconds: {}", m_nEvictionPassFrequencySeconds);
+    while (!m_bStopEvictionThread.load())
+    {
+        // wait until timeout or shutdown notification
+        std::unique_lock<std::mutex> evictionLock(m_mutexEviction);
+        if (m_cvEviction.wait_for(
+            evictionLock,
+            m_nEvictionPassFrequencySeconds * 1s,
+            [this]
+            {
+                return (this->m_bStopEvictionThread.load() == true);
+            }) == true)
+        {
+            break;
+        }
+
+        uint64_t nDeleteFileSize = 0;
+        int nNumFilesDeleted = 0;
+        vector<string> vecFilesToDelete;
+
+        time_t now = time(NULL);
+        for(int bucket = 0; bucket < NUM_MAPS; bucket++)
+        {
+            // Each entry in each map points from GroupId -> list of filenames
+            vector<unordered_map<string, list<string>>> vecGroupIdFilesToDelete(NUM_MAPS);
+            lock_guard lock(m_vCacheInfoMapMutex[bucket]);
+
+            // iter points to a [fileName, CacheInfo] entry
+            auto iter = m_vCacheInfoMap[bucket].begin();
+            while (iter != m_vCacheInfoMap[bucket].end())
+            {
+                if(iter->second.m_status == CacheStatus::COMPLETED &&
+                    ((now - iter->second.m_accessTimestamp) >= m_nEvictionLastAccessThresholdSeconds))
+                {
+                    // Need to make sure TTL map and GroupID map are consistent
+                    // Clear TTL map entry first
+                    if (iter->second.m_expiryTime != 0)
+                    {
+                        auto ttlMapIter = m_vCacheTTLMap[bucket].find(iter->second.m_expiryTime);
+                        if (ttlMapIter != m_vCacheTTLMap[bucket].end())
+                        {
+                            ttlMapIter->second.remove(iter->first);
+                        }
+                    }
+
+                    // Remember this entry for deleting from the groupId map
+                    if (!iter->second.m_groupId.empty())
+                    {
+                        vecGroupIdFilesToDelete[GetHashBucket(iter->second.m_groupId)]\
+                        [iter->second.m_groupId].emplace_back(iter->first);
+                    }
+
+                    // Remove the cache entry
+                    nNumFilesDeleted++;
+                    nDeleteFileSize += iter->second.m_fileSize;
+                    vecFilesToDelete.emplace_back(iter->first);
+
+                    iter = m_vCacheInfoMap[bucket].erase(iter);
+                }
+                else
+                {
+                    iter++;
+                }
+            }
+
+            // Before releasing the cacheInfoMap bucket lock, remove entries
+            // from the groupId map buckets, these are two different sets of locks
+            // so to minimize the number of times we acquire the GroupIdMapBucketLocks
+            // we do it this way, and this also lets us avoid race conditions with
+            // request processing threads
+            for(int groupIdMapBucket = 0; groupIdMapBucket < NUM_MAPS; groupIdMapBucket++)
+            {
+                if (vecGroupIdFilesToDelete[groupIdMapBucket].empty())
+                {
+                    continue;
+                }
+
+                lock_guard groupIdBucketLock(m_vCacheGroupIDMapMutex[groupIdMapBucket]);
+                for (auto& [groupId, filesToDelete] : vecGroupIdFilesToDelete[groupIdMapBucket])
+                {
+                    auto groupIdIter = m_vCacheGroupIDMap[groupIdMapBucket].find(groupId);
+                    if (groupIdIter != m_vCacheGroupIDMap[groupIdMapBucket].end())
+                    {
+                        for (auto& fileName : filesToDelete)
+                        {
+                            groupIdIter->second.remove(fileName);
+                        }
+                    }
+                }
+            }
+        }
+
+        m_totalCachedSize.fetch_sub(nDeleteFileSize);
+        LOG_INFO("Delete files. num files: {}, size: {}", nNumFilesDeleted, nDeleteFileSize);
+        for (auto& filename : vecFilesToDelete)
+        {
+            // In the download path, we gracefully handle the case where cache entry
+            // is present in the map, but absent on disk
+            DeleteFile(filename);
+        }
+    }
+
+    LOG_INFO("Shutdown EvictionWorker");
 }
 //---------------------------------------------------------------------------------------------------------------------

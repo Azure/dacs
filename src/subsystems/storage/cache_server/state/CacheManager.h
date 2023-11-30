@@ -12,6 +12,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <unordered_map>
+#include <unordered_set>
 #include <map>
 #include <list>
 #include <queue>
@@ -24,6 +25,8 @@ class CacheManager
     // Friends for testing
     FRIEND_TEST(CacheManagerTest, TakeAndLoadSnapshot);
     FRIEND_TEST(CacheManagerTest, RembemberPendingGroupIdDeletionAfterSnapshotLoad);
+    FRIEND_TEST(CacheManagerTest, TestParseTimeIntervalString);
+    FRIEND_TEST(CacheManagerTest, TestEviction);
 
     public:
         static CacheManager& GetInstance();
@@ -43,20 +46,26 @@ class CacheManager
                 , m_expiryTime(expiryTime)
                 , m_groupId(groupId)
                 , m_initTimestamp(time(NULL))
+                , m_accessTimestamp(m_initTimestamp)
                 {}
             CacheInfo(CacheStatus status)
                 : m_fileSize(0)
                 , m_status(status)
                 , m_expiryTime(0)
                 , m_groupId("")
-                , m_initTimestamp(time(NULL)) {}
+                , m_initTimestamp(time(NULL))
+                , m_accessTimestamp(m_initTimestamp)
+                {}
 
             uint64_t m_fileSize;
             ::google::protobuf::Map<std::string, std::string> m_metadata;
             CacheStatus m_status;
             time_t m_expiryTime;
             std::string m_groupId;
+            // Declaration order lets us reuse initTimestamp for accessTimestamp
+            // in initializer list
             time_t m_initTimestamp;
+            time_t m_accessTimestamp;
         };
 
         // Fetch cached info and initialize (to coordinate multiple updates from clients) if it does not exist
@@ -117,11 +126,23 @@ class CacheManager
         time_t GetExpiryTimeBucket(
             /*[in] */ uint32_t cacheExpirySeconds) const;
 
+        // Determine if eviction feature flag is turned on
+        // Read the env var to set the eviction last access threshold.
+        // Read the env var to set the eviction pass frequency.
+        // Value of the envvar must be a string of the format
+        // [[0-9]+[s|m|h|d]]+ where s=seconds, m=minutes, h=hours, d=days
+        // Example: CACHESERVER_EVICTION_LAST_ACCESS_THRESHOLD="30d12h41m29s"
+        void InitializeEviction();
+
+        static uint64_t ParseTimeIntervalString(const char* timeInterval);
+
         // Delete file path from local disk
         void DeleteFile(
             /*[in] */ const std::string& filename);
 
         void CacheCleanupWorker();
+
+        void EvictionWorker();
 
         // Setting some default expiry time to ensure one client doesn't permanently lock a cache key
         static constexpr uint32_t CACHE_INIT_EXPIRY_SECONDS = 60;
@@ -141,6 +162,19 @@ class CacheManager
 
         // The ttl bucket window size. All files with expiry time failing within this bucket will expire together
         std::atomic_uint m_ttlWindowSizeSeconds;
+
+        // Eviction related members
+        bool m_bEvictionEnabled;
+        // Parameter used by the eviction thread to determine which items to evict.
+        // All items last accessed within this number of seconds ago are considered active.
+        // i.e lastAccessTime < m_nEvictionLastAccessThresholdSeconds => Active
+        uint64_t m_nEvictionLastAccessThresholdSeconds;
+        // Parameter used by the eviction thread to determine how often to run.
+        uint32_t m_nEvictionPassFrequencySeconds;
+        std::atomic_bool m_bStopEvictionThread;
+        std::mutex m_mutexEviction; // really only used by the wait_for
+        std::condition_variable m_cvEviction;
+        std::unique_ptr<std::thread> m_evictionThread;
 
         // keys stored in buckets based on its group-id
         std::vector<std::unordered_map<std::string, std::list<std::string>>> m_vCacheGroupIDMap;

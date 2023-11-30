@@ -381,7 +381,7 @@ TEST_F(CacheClientTests, FileExpiry)
     ASSERT_EQ(CacheClientStatus::SUCCESS, status);
 
     // Requirement: Server TTL window configured to be <= 5 seconds.
-    std::this_thread::sleep_for(std::chrono::seconds(nExpirySeconds + 1));
+    std::this_thread::sleep_for(std::chrono::seconds(nExpirySeconds + 2));
 
     void* pBuffer3 = malloc(nLength);
     readLength = nLength;
@@ -486,5 +486,48 @@ TEST_F(CacheClientTests, ParallelUploadDownload)
     }
 
     free((void*)pBuffer);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(CacheClientTests, StaleItemExpiry)
+{
+    char* evictionEnabled = std::getenv("CACHESERVER_EVICTION_ENABLED");
+    if (evictionEnabled == NULL || strcasecmp(evictionEnabled, "true") != 0)
+    {
+        LOG_INFO("Server does not have eviction enabled, skipping test...");
+        GTEST_SKIP();
+    }
+
+    // Get the eviction last access threshold that the server was configured with
+    // Skipping sanity checks
+    char* strEvictionLastAccessThreshold = std::getenv("CACHESERVER_EVICTION_LAST_ACCESS_THRESHOLD");
+    uint64_t evictionLastAccessThresholdSeconds = std::strtoull(strEvictionLastAccessThreshold, NULL, 10);
+
+    // Upload a small file
+    uint64_t nLength = 4 * 1024 * 1024;
+    const char* pBuffer = GetRandomBuffer(nLength);
+    std::string fileName = GetCorrelationId();
+
+    auto status = m_cacheClientImpl.Upload(
+        fileName.c_str(), pBuffer, nLength, 0, nullptr, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    // Download this file before eviction window elapses
+    void* pDownloadBuffer = malloc(nLength);
+    uint64_t readLength = nLength;
+    status = m_cacheClientImpl.Download(fileName.c_str(), pDownloadBuffer, &readLength, nullptr, nullptr);
+    ASSERT_EQ(readLength, nLength);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+    ASSERT_EQ(memcmp(pBuffer, pDownloadBuffer, nLength), 0);
+
+    memset(pDownloadBuffer, 0, nLength);
+
+    // Wait for the eviction last access threshold to pass
+    std::this_thread::sleep_for(std::chrono::seconds(evictionLastAccessThresholdSeconds + 1));
+    readLength = nLength;
+    status = m_cacheClientImpl.Download(fileName.c_str(), pDownloadBuffer, &readLength, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::NOTFOUND_LOCKED, status);
+
+    free((void*)pBuffer);
+    free(pDownloadBuffer);
 }
 //---------------------------------------------------------------------------------------------------------------------

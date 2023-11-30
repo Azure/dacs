@@ -20,6 +20,10 @@ constexpr uint32_t SNAPSHOT_MAX_AGE_IN_SECONDS = 7 * 24 * 60 * 60; // 1 week
 // Window size for cache expiry cleanup
 constexpr uint32_t DefaultCacheTTLWindowSizeSeconds = 60;
 
+// Eviction related settings
+constexpr uint64_t DefaultEvictionLastAccessThresholdSeconds = 2592000; // 30 days
+constexpr uint32_t DefaultEvictionPassFrequencySeconds = 3630; // ~ 1hr
+
 // 1TB cache size
 constexpr uint64_t DefaultCacheSizeLimitBytes = 1024ull * 1024 * 1024 * 1024; 
 

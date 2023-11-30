@@ -443,11 +443,17 @@ echo ""
 
 #### BEGIN : Tests against cache server with snapshot enabled but auth disabled ####
 # Start cache server in the background, with continuous snapshotting every second
+# as well as eviction enabled, and eviction pass frequency set to 30s
+# last access threshold defaults to 30 days however
 export CACHESERVER_HOSTNAME="testhost"
 export CACHESERVER_SNAPSHOT_INTERVAL="1"
+export CACHESERVER_EVICTION_ENABLED="true"
+export CACHESERVER_EVICTION_PASS_FREQUENCY="30s"
 start_cache_server
 unset CACHESERVER_HOSTNAME
 unset CACHESERVER_SNAPSHOT_INTERVAL
+unset CACHESERVER_EVICTION_ENABLED
+unset CACHESERVER_EVICTION_PASS_FREQUENCY
 echo "Sleeping 10 secs to allow cache server to start and initialize"
 echo ""
 sleep 10
@@ -567,5 +573,11 @@ __test_upload_download_snapshot_in_parallel__
 __test_no_crash_on_truncated_snapshot__
 echo "Snapshot validation tests passed"
 
+echo "Running cache eviction validation tests"
+source "$SCRIPT_DIR/eviction_integration_test.sh"
+__run_cache_client_lib_test_with_eviction__
+__run_eviction_test_with_parallel_upload_download__
+__run_eviction_test_with_restart_snapshot__
+echo "Cache eviction validation tests passed"
 # TODO: add tests for adls
 echo "All Storage interception integration tests completed"
