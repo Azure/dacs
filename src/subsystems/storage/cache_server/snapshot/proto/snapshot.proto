@@ -11,6 +11,7 @@ message SnapshotEntry
     map<string, bytes> metadata = 3;
     uint64 expiryTimestamp = 4;
     bytes groupId = 5;
+    uint64 accessTimestamp = 6;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message SnapshotBucket
