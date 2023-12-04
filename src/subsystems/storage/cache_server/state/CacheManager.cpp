@@ -831,12 +831,14 @@ void CacheManager::EvictionWorker()
         int nNumFilesDeleted = 0;
         vector<string> vecFilesToDelete;
 
-        time_t now = time(NULL);
         for(int bucket = 0; bucket < NUM_MAPS; bucket++)
         {
             // Each entry in each map points from GroupId -> list of filenames
             vector<unordered_map<string, list<string>>> vecGroupIdFilesToDelete(NUM_MAPS);
             lock_guard lock(m_vCacheInfoMapMutex[bucket]);
+            // Update now timestamp after taking the bucket lock
+            // this ensures that now >= accessTimestamp for any item in that bucket
+            time_t now = time(NULL);
 
             // iter points to a [fileName, CacheInfo] entry
             auto iter = m_vCacheInfoMap[bucket].begin();

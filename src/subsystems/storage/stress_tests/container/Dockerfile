@@ -1,4 +1,4 @@
-ARG ARG_DACS_BASE_CONTAINER=ubuntu:20.04
+ARG ARG_DACS_BASE_CONTAINER=mcr.microsoft.com/oss/mirror/docker.io/library/ubuntu:20.04
 
 FROM $ARG_DACS_BASE_CONTAINER
 
