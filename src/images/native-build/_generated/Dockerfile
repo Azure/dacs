@@ -6,7 +6,7 @@
 # Make changes to Dockerfile.template 
 #
 # =============================================================================
-ARG ARG_DACS_BASE_CONTAINER=$(ContainerImageRepository).azurecr.io/cdpxlinux/global/ubuntu-1804-node10:1.0
+ARG ARG_DACS_BASE_CONTAINER=$(ContainerImageRepository).azurecr.io/cdpxlinux/global/ubuntu-2004:2023041600
 #
 # Main Container phase
 #
@@ -44,8 +44,8 @@ RUN \
   build-essential \
   gnupg2 \
   ca-certificates \
-  gcc \
-  g++ \
+  gcc-7 \
+  g++-7 \
   gdb \
   git-lfs \
   clang \
@@ -55,25 +55,28 @@ RUN \
   libprotobuf-dev \
   wget \
   curl \
-  git=1:2.17.0-1ubuntu1 \
+  git=1:2.25.1-1ubuntu3.11 \
   ntpdate \
   locales \
   locales-all \
-  python3.6 \
-  python3.6-dev \
-  python3.6-distutils \
+  python3.8 \
+  python3.8-dev \
   python3-pip && \
-  wget -q https://packages.microsoft.com/config/ubuntu/18.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb && \
+  ln -s /bin/gcc-7 /usr/bin/gcc-temp && mv -f /usr/bin/gcc-temp /usr/bin/gcc && \
+  ln -s /bin/g++-7 /usr/bin/g++-temp && mv -f /usr/bin/g++-temp /usr/bin/g++ && \
+  wget -q https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb && \
   dpkg -i packages-microsoft-prod.deb && \
   rm packages-microsoft-prod.deb && \
   add-apt-repository universe && \
-  curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | tee /etc/apt/trusted.gpg.d/microsoft.asc.gpg && \
-  add-apt-repository "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli $(lsb_release -cs) main" && \
+  mkdir -p /etc/apt/keyrings && \
+  curl -sLS https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/keyrings/microsoft.gpg > /dev/null && \
+  chmod go+r /etc/apt/keyrings/microsoft.gpg && \
+  echo "deb [arch=`dpkg --print-architecture` signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/azure-cli/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/azure-cli.list && \
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add - && \
   add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" && \
-  wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | sudo tee /etc/apt/trusted.gpg.d/kitware.gpg >/dev/null && \
-  sudo apt-add-repository 'deb https://apt.kitware.com/ubuntu/ bionic main' && \
-  apt-get update && \
+  wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null && \
+  echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ focal main' | sudo tee /etc/apt/sources.list.d/kitware.list >/dev/null && \
+  apt-get update -y && \
   apt-get install -yq --no-install-recommends \
   cmake \
   apt-transport-https \
@@ -82,8 +85,8 @@ RUN \
   gnupg-agent \
   software-properties-common \
   lsb-release \
-  dotnet-sdk-6.0=6.0.100-1 \
-  azure-cli=2.28.0-1~bionic \
+  dotnet-sdk-6.0=6.0.414-1 \
+  azure-cli \
   powershell \
   docker-ce && \
   curl -L "https://github.com/docker/compose/releases/download/1.25.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/bin/docker-compose && \
@@ -92,24 +95,23 @@ RUN \
   pip3 install lxml && \
   apt-get update && apt-get install -y --no-install-recommends \
   gnupg2 && \
-  wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/datacenter-gpu-manager_2.1.7_amd64.deb && \
-  dpkg -i datacenter-gpu-manager_2.1.7_amd64.deb && \
+  wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.0-1_all.deb && \
+  dpkg -i cuda-keyring_1.0-1_all.deb && \
+  apt-get update -y && \
+  apt-get install datacenter-gpu-manager -y && \
   apt-get install libboost-all-dev -y && \
-  apt-get install python3.7-dev -y && apt-get install python3.8-dev -y && \
   apt-get install libgoogle-perftools-dev -y && \
   sudo ln -s /usr/lib/x86_64-linux-gnu/libprofiler.so /usr/lib/libprofiler.so && \
   apt-get install ninja-build -y && \
   add-apt-repository ppa:deadsnakes/ppa -y && \
   apt-get update -y && \
-  sudo apt-get install -y wget build-essential checkinstall && \
-  sudo apt-get install -y libreadline-gplv2-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libffi-dev zlib1g-dev && \
-  sudo wget https://www.python.org/ftp/python/3.9.16/Python-3.9.16.tgz && \
-  tar xzf Python-3.9.16.tgz   && \
-  cd Python-3.9.16  && \  
-  sudo ./configure --enable-optimizations --enable-shared && \
-  sudo make altinstall  && \
-  sudo rm -f Python-3.9.6.tgz  && \
-  cd .. && \
+  apt-get install python3.6 python3.6-dev python3.6-venv -y && \
+  apt-get install python3.7 python3.7-dev python3.7-venv -y && \
+  apt-get install python3.9 python3.9-dev python3.9-venv -y && \
+  apt-get install python3.10 python3.10-dev python3.10-venv -y && \
+  apt-get install python3.11 python3.11-dev python3.11-venv -y && \
+  apt-get install python3.12 python3.12-dev python3.12-venv -y && \
+# Dependencies for storage
   apt-get update && apt-get install -y --no-install-recommends \
   libssl-dev libcurl4-openssl-dev curl libjsoncpp-dev uuid-dev && \
 # Following is used to prebuild all DACS dependencies
@@ -225,7 +227,7 @@ RUN sudo apt-get install -yq --no-install-recommends \
 
 # Install AMD rocm-5.2.3, includes rccl, miopen, roctracer etc.
 RUN echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/5.2.3 ubuntu main' | sudo tee -a /etc/apt/sources.list.d/rocm.list && \
-  wget https://repo.radeon.com/amdgpu-install/22.20.3/ubuntu/bionic/amdgpu-install_22.20.50203-1_all.deb -O /tmp/rocm_5.2.3_setup.deb && \
+  wget https://repo.radeon.com/amdgpu-install/22.20.3/ubuntu/focal/amdgpu-install_22.20.50203-1_all.deb -O /tmp/rocm_5.2.3_setup.deb && \
   sudo apt-get install -y /tmp/rocm_5.2.3_setup.deb && \
   sudo apt update && \
   sudo amdgpu-install -y --usecase=hiplibsdk,rocm --no-dkms --rocmrelease=5.2.3

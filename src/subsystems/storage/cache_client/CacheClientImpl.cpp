@@ -642,7 +642,7 @@ CacheClientStatus CacheClientImpl::DeleteGroup(/*[in]*/ const char* groupID,
         {
         case DeleteResponse::SUCCESS:
             m_spConnectionManager->ReleaseConnection(i, move(connection), false);
-            return CacheClientStatus::SUCCESS;
+            continue;
 
         case DeleteResponse::AUTH_FAILED:
             LOG_ERROR_REQID("Delete request failed due to auth failure for server: {}", *deleteGroupRequest, hostname);
@@ -661,6 +661,8 @@ CacheClientStatus CacheClientImpl::DeleteGroup(/*[in]*/ const char* groupID,
             return CacheClientStatus::INTERNAL_ERROR;
         }
     }
+
+    return CacheClientStatus::SUCCESS;
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool CacheClientImpl::IsInitialized() const
