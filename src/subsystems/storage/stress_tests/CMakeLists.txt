@@ -61,8 +61,6 @@ add_custom_command(
 # ---------------------------------------------------------------------------------------------------------------------#
 # Perf Client
 # ---------------------------------------------------------------------------------------------------------------------#
-set(Boost_USE_STATIC_LIBS ON)
-set(Boost_USE_STATIC_RUNTIME ON)
 find_package(Boost COMPONENTS program_options system REQUIRED)
 include_directories(${Boost_INCLUDE_DIR})
 

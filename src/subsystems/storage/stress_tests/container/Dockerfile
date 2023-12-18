@@ -11,6 +11,7 @@ RUN \
     libcurl4-openssl-dev \
     libibverbs-dev \
     libssl-dev \
+    libboost-program-options-dev \
     curl \
     uuid-dev \
     ibverbs-providers \

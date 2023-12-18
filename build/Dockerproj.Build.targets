@@ -343,7 +343,7 @@
   <Target Name="DockerBuild"
           Condition=" '$(LocalDockerImage)' == '' and '$(ExistingRepositoryImage)' == '' ">
     <PropertyGroup>
-      <EnableDockerBuildKit>1</EnableDockerBuildKit>
+      <EnableDockerBuildKit>0</EnableDockerBuildKit>
       <EnableDockerBuildKit Condition=" '$(ContainerImagePlatform)' == 'Windows' ">0</EnableDockerBuildKit>
     </PropertyGroup>
     <Message Text="Running Command 'docker build -t $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value) .' from directory '$(OutDir)'" />
