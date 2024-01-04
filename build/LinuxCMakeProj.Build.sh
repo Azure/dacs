@@ -149,28 +149,29 @@ fi
 if [[ ! -z "$BUILD_PYTHON_VERSION" ]]; then
   execute_build "non_cuda" "$BUILD_PYTHON_VERSION"
 else
-  for pythonVersion in "3.6" "3.7" "3.8" "3.9"; do
-    execute_build "non_cuda" "$pythonVersion"
+  execute_build "non_cuda" "3.8"
+  for pythonVersion in "3.6" "3.7" "3.9" "3.10" "3.11" "3.12"; do
+    execute_build "python_only" "$pythonVersion"
   done
 fi
 
 if [[ -z "$DISABLE_PROFILER_LIB" || "$DISABLE_PROFILER_LIB" == "false" ]]; then
-  pythonVersion="3.6"
+  pythonVersion="3.8"
   execute_build "cuda_agnostic" $pythonVersion
   execute_build "cuda_agnostic_interception" $pythonVersion
 fi
 
 if [[ ! -z "$BUILD_CUDA_VERSION" ]]; then
-  pythonVersion="3.6"
+  pythonVersion="3.8"
   execute_build "$BUILD_CUDA_VERSION" $pythonVersion
 else
   for cudaVersion in "11_1" "11_3" "11_4" "11_5" "11_6" "11_7"; do
-    pythonVersion="3.6"
+    pythonVersion="3.8"
     execute_build "cuda_$cudaVersion" $pythonVersion
   done
 
   for rocmVersion in "5_2_3"; do
-    pythonVersion="3.6"
+    pythonVersion="3.8"
     execute_build "rocm_$rocmVersion" $pythonVersion
   done
 fi
