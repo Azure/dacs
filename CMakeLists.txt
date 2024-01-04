@@ -89,6 +89,7 @@ include(CTest)
 include_directories(src/subsystems/common/native_lib/diagnostics/)
 include_directories(src/subsystems/common/native_lib/utils/)
 include_directories(src/subsystems/reliability/callstack_utils/)
+include_directories(src/subsystems/reliability/callstack_utils/python_callstacks/)
 
 # Enable testing at the root level
 enable_testing()
@@ -101,16 +102,19 @@ enable_testing()
 add_subdirectory(src/subsystems/common/native_lib/diagnostics)
 add_subdirectory(src/subsystems/common/native_lib/diagnostics.tests)
 add_subdirectory(src/subsystems/reliability/common/native/)
+
+message("PYTHON_VERSION: ${PYTHON_VERSION}")
+add_subdirectory(src/subsystems/reliability/callstack_utils/python_callstacks/)
 add_subdirectory(src/subsystems/reliability/callstack_utils/)
 
 message("CUDA_VERSION: ${CUDA_VERSION}")
 
-if(NOT CUDA_VERSION OR NOT ("${CUDA_VERSION}" MATCHES "non_cuda"))
+if(NOT ("${CUDA_VERSION}" MATCHES "non_cuda") AND NOT ("${CUDA_VERSION}" MATCHES "python_only"))
     message("add CUDA dependant projects")
     add_subdirectory(src/subsystems/reliability/device_proxy/)
 endif()
 
-if(NOT CUDA_VERSION OR "${CUDA_VERSION}" MATCHES "non_cuda")
+if("${CUDA_VERSION}" MATCHES "non_cuda")
     message("add non CUDA dependant projects")
     add_subdirectory(src/subsystems/reliability/criu_deduper/)
     add_subdirectory(src/subsystems/reliability/lfs_ckpt/)
