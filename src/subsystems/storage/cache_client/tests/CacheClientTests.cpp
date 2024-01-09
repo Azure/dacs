@@ -127,9 +127,7 @@ TEST_F(CacheClientTests, UploadDuplicateFiles)
 
     status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, nullptr, nullptr);
 
-    // Server closes connection when duplicate download is attempted,
-    // so we are never able to read the `UploadResponse::FILE_EXISTS` response.
-    ASSERT_EQ(CacheClientStatus::INTERNAL_ERROR, status);
+    ASSERT_EQ(CacheClientStatus::KEY_EXISTS, status);
 
     free((void*)pBuffer);
 }

@@ -14,7 +14,7 @@ IncludeIsMainRegex: "$"
 NamespaceIndentation: All
 PointerAlignment: "Left"
 ReflowComments: false
-SpaceBeforeParens: Never
+SpaceBeforeParens: ControlStatements
 IncludeCategories:
   - Regex:           '<[[:alnum:_].]+>'
     Priority:        0

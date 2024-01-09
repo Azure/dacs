@@ -35,4 +35,7 @@ constexpr uint64_t UPLOAD_FILESIZE_LIMIT = (uint64_t)4 * 1024 * 1024 * 1024;
 
 // Linux has filename limit of 255, due to hex encoding we can only support source filenames of length 127
 constexpr int UPLOAD_FILENAME_LIMIT = 127;
+
+// Max amount of data to read & discard from client for invalid uploads (4MiB)
+constexpr uint64_t MaxReadDiscardSizeBytes = (uint64_t) 4 * 1024 * 1024;
 //---------------------------------------------------------------------------------------------------------------------
