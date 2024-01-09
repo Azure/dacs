@@ -62,6 +62,137 @@ bool AuthenticateRequest(const UploadRequest& request)
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
+/**
+ * Read client connection to a temp file, or discard it if temp filename is empty.
+ * In case of errors, send final response to client and close connection.
+ * 
+ * @param clientConnection client connection to read from
+ * @param uploadRequest upload request message
+ * @param strTempFileName file name to write to temporarily, if empty, don't write to disc and discard the data.
+ * @param eResponseCode response code, will be set only in case of error
+ * @param uploadResponse upload response message, will be set only in case of error
+ * @param totalRead gets updated with total bytes read from client connection
+ * 
+ * @return true if read was successful, false in case of errors
+*/
+bool ReadFileData(/*[in]*/ IConnection& clientConnection,
+                  /*[in]*/ const cache::UploadRequest& uploadRequest,
+                  /*[inopt]*/ const std::string& strTempFileName,
+                  /*[out]*/ ResponseCode& eResponseCode,
+                  /*[out]*/ cache::UploadResponse& uploadResponse,
+                  /*[out]*/ uint64_t& totalRead)
+{
+    const bool bNoDiscard = (!strTempFileName.empty());
+
+    if (uploadRequest.filesize() == 0)
+    {
+        LOG_INFO_REQID("No data to read for file: '{}'", uploadRequest, uploadRequest.filename());
+        return true;
+    }
+
+    LOG_DEBUG_REQID("Reading file data for file: {}", uploadRequest, uploadRequest.filename());
+
+    // TODO: Verify if sufficient disk space is available for this write and reserve it
+
+    const uint64_t writeBufferSize = 4 * 1024 * 1024;
+    char buffer[writeBufferSize];
+    std::ofstream fileOutput;
+
+    if (bNoDiscard)
+    {
+        fileOutput = std::ofstream(strTempFileName, ofstream::out | ofstream::binary | ofstream::trunc);
+    }
+
+    // TODO: we can try sendfile() for uploads too
+    while (totalRead < uploadRequest.filesize())
+    {
+        int bufferPos = 0;
+        while (true)
+        {
+            int temp = clientConnection.Read(buffer + bufferPos,
+                                             min(writeBufferSize, uploadRequest.filesize() - totalRead) - bufferPos);
+            if (temp <= 0)
+            {
+                LOG_WARN_REQID("read failed for file: {}. errno: {}:{}, Bytes expected: {}, read: {}",
+                               uploadRequest,
+                               uploadRequest.filename(),
+                               errno,
+                               strerror(errno),
+                               uploadRequest.filesize(),
+                               totalRead);
+
+                if (bNoDiscard)
+                {
+                    fileOutput.close();
+                    remove(strTempFileName.c_str());
+                }
+
+                CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
+                SET_RESULT(uploadResponse, eResponseCode, UploadResponse::INTERNAL_ERROR);
+                SendMessageToRemoteFinal(clientConnection, uploadResponse, uploadRequest.requestid());
+                return false;
+            }
+
+            bufferPos += temp;
+
+            if (bufferPos >= writeBufferSize || totalRead + bufferPos >= uploadRequest.filesize())
+            {
+                break;
+            }
+        }
+
+        totalRead += bufferPos;
+
+        if (bNoDiscard)
+        {
+            fileOutput.write(buffer, bufferPos);
+        }
+    }
+
+    if (bNoDiscard)
+    {
+        fileOutput.flush();
+        fileOutput.close();
+    }
+
+    STORAGE_ASSERT(totalRead == uploadRequest.filesize(),
+                   "Read more bytes than expected. expected: {}. read: {}",
+                   uploadRequest.filesize(),
+                   totalRead);
+    LOG_DEBUG_REQID("Successfully read file data for file: {}", uploadRequest, uploadRequest.filename());
+
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+/* Params & return code same as `ReadData` with `strTempFileName` passed empty */
+inline bool ReadAndDiscardFileData(IConnection& clientConnection,
+                                   const UploadRequest& uploadRequest,
+                                   ResponseCode& eResponseCode,
+                                   UploadResponse& uploadResponse)
+{
+    std::string strEmptyFileName = "";
+    uint64_t _nTotalRead = 0;
+
+    LOG_INFO_REQID("Reading and discarding file data for file: {}, limit {} bytes",
+                   uploadRequest,
+                   uploadRequest.filename(),
+                   MaxReadDiscardSizeBytes);
+
+    if (uploadRequest.filesize() > MaxReadDiscardSizeBytes)
+    {
+        LOG_WARN_REQID("file: '{}' size {} greater than limit {} for invalid uploads. Closing connection.",
+                       uploadRequest,
+                       uploadRequest.filename(),
+                       uploadRequest.filesize(),
+                       MaxReadDiscardSizeBytes);
+        SET_RESULT(uploadResponse, eResponseCode, UploadResponse::INTERNAL_ERROR);
+        SendMessageToRemoteFinal(clientConnection, uploadResponse, uploadRequest.requestid());
+        return false;
+    }
+
+    return ReadFileData(clientConnection, uploadRequest, strEmptyFileName, eResponseCode, uploadResponse, _nTotalRead);
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool UploadFile(IConnection& clientConnection,
                 const cache::UploadRequest& uploadRequest,
                 ResponseCode& eResponseCode,
@@ -74,8 +205,12 @@ bool UploadFile(IConnection& clientConnection,
     if (!AuthenticateRequest(uploadRequest))
     {
         LOG_WARN_REQID("Failed to authenticate request", uploadRequest);
-        SET_RESULT(uploadResponse, eResponseCode, UploadResponse::AUTH_FAILED);
-        SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
+        if (ReadAndDiscardFileData(
+               clientConnection, uploadRequest, eResponseCode, uploadResponse))
+        {
+            SET_RESULT(uploadResponse, eResponseCode, UploadResponse::AUTH_FAILED);
+            return SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
+        }
         return false;
     }
 
@@ -85,7 +220,7 @@ bool UploadFile(IConnection& clientConnection,
     // before even parsing the server's response - this means the file's contents are in flight before the server can properly
     // parse the request message.
     // This has a few implications:
-    // 1. If server encounters an error while parsing the request message, it must tear down the connection, lest the in-flight
+    // 1. If server encounters an error while parsing the request message, read the entire request payload before return, lest the in-flight
     // data be misinterpreted as a new request 
     // 2. Once the request has been parsed, and validated - the server begins to read the actual in-flight data of the file.
     // After all the data has been read, barring any genuine transmission/receive errors, encountered errors do not require the connection
@@ -95,18 +230,29 @@ bool UploadFile(IConnection& clientConnection,
     if (uploadRequest.filename().size() > UPLOAD_FILENAME_LIMIT)
     {
         LOG_WARN_REQID("filename too large, size: {}", uploadRequest, uploadRequest.filename().size());
-        SET_RESULT(uploadResponse, eResponseCode, UploadResponse::BAD_REQUEST);
-        SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
+        if (ReadAndDiscardFileData(
+               clientConnection, uploadRequest, eResponseCode, uploadResponse))
+        {
+            SET_RESULT(uploadResponse, eResponseCode, UploadResponse::BAD_REQUEST);
+            return SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
+        }
         return false;
     }
 
     CacheManager::CacheInfo cacheInfo = CacheManager::GetInstance().GetCacheInfo(uploadRequest.filename());
+
+    // Duplicate file upload
     if (cacheInfo.m_status == CacheManager::CacheStatus::COMPLETED)
     {
-        LOG_WARN_REQID("file already uploaded {}", uploadRequest, uploadRequest.filename());
+        LOG_WARN_REQID("Duplicate upload - file '{}' already exists in cache", uploadRequest, uploadRequest.filename());
+        if (!ReadAndDiscardFileData(
+               clientConnection, uploadRequest, eResponseCode, uploadResponse))
+        {
+            return false;
+        }
+
         SET_RESULT(uploadResponse, eResponseCode, UploadResponse::FILE_EXISTS);
-        SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
-        return false;
+        return SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
     }
 
     // Note: we let the client try to upload if another client has also started for a few reasons:
@@ -151,49 +297,14 @@ bool UploadFile(IConnection& clientConnection,
         }
 
         LOG_DEBUG_REQID("Using temp file {} for uploading {}", uploadRequest, tempFilename, uploadRequest.filename());
-        std::ofstream fileOutput(tempFilename, ofstream::out | ofstream::binary | ofstream::trunc);
 
-        // TODO: Verify if sufficient disk space is available for this write and reserve it
-
-        const int writeBufferSize = 4 * 1024 * 1024;
-        char buffer[writeBufferSize];
         uint64_t totalRead = 0;
 
-        // TODO: we can try sendfile() for uploads too 
-        while (totalRead < uploadRequest.filesize())
+        // Read upload data to temp file
+        if (!ReadFileData(clientConnection, uploadRequest, tempFilename, eResponseCode, uploadResponse, totalRead))
         {
-            int bufferPos = 0;
-            while (true)
-            {
-                int temp = clientConnection.Read(buffer + bufferPos, writeBufferSize - bufferPos);
-                if (temp <= 0)
-                {
-                    LOG_WARN_REQID("read failed for file: {}. errno: {}:{}, Bytes expected: {}, read: {}",
-                        uploadRequest,
-                        uploadRequest.filename(),
-                        errno,
-                        strerror(errno),
-                        uploadRequest.filesize(),
-                        totalRead);
-                    fileOutput.close();
-                    remove(tempFilename.c_str());
-                    CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
-                    SET_RESULT(uploadResponse, eResponseCode, UploadResponse::INTERNAL_ERROR);
-                    SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
-                    return false;
-                }
-                bufferPos += temp;
-                if (bufferPos >= writeBufferSize || totalRead + bufferPos >= uploadRequest.filesize())
-                {
-                    break;
-                }
-            }
-            totalRead += bufferPos;
-            fileOutput.write(buffer, bufferPos);
+            return false;
         }
-
-        fileOutput.flush();
-        fileOutput.close();
 
         if (totalRead != uploadRequest.filesize())
         {
