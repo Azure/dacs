@@ -62,7 +62,7 @@ add_custom_command(
 # Perf Client
 # ---------------------------------------------------------------------------------------------------------------------#
 find_package(Boost COMPONENTS program_options system REQUIRED)
-include_directories(${Boost_INCLUDE_DIR})
+include_directories(${Boost_INCLUDE_DIRS})
 
 add_executable(PerfClient
     perf_tests/PerfClient.cpp)

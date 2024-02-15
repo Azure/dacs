@@ -34,7 +34,7 @@ link_libraries(${CMAKE_DL_LIBS})
 
 # Add boost headers
 find_package(Boost REQUIRED)
-include_directories(${Boost_INCLUDE_DIR})
+include_directories(${Boost_INCLUDE_DIRS})
 
 # Enable referencing git projects dependencies
 include(ExternalProject)
