@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //--------------------------------------------------------------------------------------------------------------------------------------------
 #include "FileLogger.h"
+#include <experimental/filesystem>
 #include <iostream>
 #include "gtest/gtest.h"
 //--------------------------------------------------------------------------------------------------------------------------------------------
@@ -26,3 +27,34 @@ TEST(FileLoggerTest, LogOutputToFileTest)
     std::getline (testErrFile, fileContent);
     ASSERT_EQ(fileContent, "error test");
 }
+//--------------------------------------------------------------------------------------------------------------------------------------------
+TEST(FileLoggerTest, FileNameWithRankAvailable)
+{
+    char envRank[] = "RANK=0";
+    putenv(envRank);
+    FileLogger logger = FileLogger("./test{{RANK}}.out", "./test{{RANK}}.err");
+    logger.Shutdown();
+
+    ASSERT_TRUE(std::experimental::filesystem::exists("./test0.out"));
+    ASSERT_TRUE(std::experimental::filesystem::exists("./test0.err"));
+}
+//--------------------------------------------------------------------------------------------------------------------------------------------
+TEST(FileLoggerTest, FileNameWithNoRankAvailable)
+{
+    FileLogger logger = FileLogger("./test{{RANK}}.out", "./test{{RANK}}.err");
+    logger.Shutdown();
+
+    const std::string strPid = std::to_string(::getpid());
+    ASSERT_TRUE(std::experimental::filesystem::exists("./test" + strPid + ".out"));
+    ASSERT_TRUE(std::experimental::filesystem::exists("./test" + strPid + ".err"));
+}
+//--------------------------------------------------------------------------------------------------------------------------------------------
+TEST(FileLoggerTest, FileNameWithIgnoreRank)
+{
+    FileLogger logger = FileLogger("./test{{RANK}}.out", "./test{{RANK}}.err", /*bIgnoreRankInFileName*/ true);
+    logger.Shutdown();
+
+    ASSERT_TRUE(std::experimental::filesystem::exists("./test.out"));
+    ASSERT_TRUE(std::experimental::filesystem::exists("./test.err"));
+}
+//--------------------------------------------------------------------------------------------------------------------------------------------

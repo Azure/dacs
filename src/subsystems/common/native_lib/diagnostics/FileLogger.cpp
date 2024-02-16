@@ -4,6 +4,7 @@
 // This file implements the LoggingApi
 //--------------------------------------------------------------------------------------------------------------------------------------------
 #include "FileLogger.h"
+#include <unistd.h>
 //-------------------------------------------------------------------------------------------------------------------------------------------
 FileLogger::FileLogger(std::string outputFileName, std::string errorFileName, /*[in]*/ bool bIgnoreRankInFileName)
 {
@@ -34,11 +35,17 @@ void FileLogger::FormatFileName(/*[inout]*/ std::string& strFileName, /*[in]*/ b
     std::size_t nRankMarkerPosition = strFileName.find(strRankMarker);
     if (nRankMarkerPosition != std::string::npos)
     {
-        char* rank = std::getenv("RANK");
-
-        if(rank && !bIgnoreRankInFileName)
+        if(!bIgnoreRankInFileName)
         {
-            strFileName.replace(nRankMarkerPosition, strRankMarker.length(), rank);
+            char* rank = std::getenv("RANK");
+            if(rank == nullptr)
+            {
+                strFileName.replace(nRankMarkerPosition, strRankMarker.length(), std::to_string(::getpid()));
+            }
+            else
+            {
+                strFileName.replace(nRankMarkerPosition, strRankMarker.length(), rank);
+            }
         }
         else
         {
