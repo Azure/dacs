@@ -144,6 +144,8 @@ class CacheManager
 
         void EvictionWorker();
 
+        double GetCacheServerUtilizationPercentage() const;
+
         // Setting some default expiry time to ensure one client doesn't permanently lock a cache key
         static constexpr uint32_t CACHE_INIT_EXPIRY_SECONDS = 60;
 
@@ -171,6 +173,8 @@ class CacheManager
         uint64_t m_nEvictionLastAccessThresholdSeconds;
         // Parameter used by the eviction thread to determine how often to run.
         uint32_t m_nEvictionPassFrequencySeconds;
+        // Parameter used by the eviction thread to determine the cache size threshold for eviction.
+        double m_dEvictionSizeThreshold;
         std::atomic_bool m_bStopEvictionThread;
         std::mutex m_mutexEviction; // really only used by the wait_for
         std::condition_variable m_cvEviction;

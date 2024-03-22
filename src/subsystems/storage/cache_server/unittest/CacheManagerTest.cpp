@@ -15,6 +15,7 @@ CacheManagerTest::CacheManagerTest()
     ::setenv("CACHESERVER_EVICTION_ENABLED", "true", 1);
     ::setenv("CACHESERVER_EVICTION_LAST_ACCESS_THRESHOLD", "5s", 1);
     ::setenv("CACHESERVER_EVICTION_PASS_FREQUENCY", "1s", 1);
+    ::setenv("CACHESERVER_EVICTION_SIZE_THRESHOLD", "0.5", 1);
     SetCacheRootPath("/tmp/cacheManagerUnitTest");
     InitializeUtils();
 }
@@ -197,7 +198,7 @@ TEST_F(CacheManagerTest, TestEviction)
     }
 
     std::string fileNamePrefix = "/test/eviction";
-    uint64_t fileSize = 100;
+    uint64_t fileSize = 1024*1024*1024;
     time_t expiryTime = 0;
     std::string groupId = "evictionGroup";
 
@@ -221,18 +222,36 @@ TEST_F(CacheManagerTest, TestEviction)
     }
 
     // Sleep for an interval < eviction window, and touch a subset of the files
-    std::this_thread::sleep_for(std::chrono::seconds(3));
+    std::this_thread::sleep_for(std::chrono::seconds(4));
     ValidateCacheEntry(fileNamePrefix + "1", fileSize, expiryTime, groupId);
     ValidateCacheEntry(fileNamePrefix + "2", fileSize, expiryTime, groupId);
 
     // Now sleep the remaining seconds left in the eviction window
-    std::this_thread::sleep_for(std::chrono::seconds(3));
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    //No Eviction should happen as cache size is below threshold
+    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize, 5 * fileSize);
+
+    // Add two more files to the cache, so that the total size exceeds the threshold
+    for (int i = 5; i < 7; i++)
+    {
+        AddCacheEntry(fileNamePrefix + std::to_string(i), fileSize, expiryTime, groupId);
+    }
+
+    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize, 7 * fileSize);
+
+    //Now sleep for another eviction pass to happen
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    //Older files should be evicted now as both the size and time threshold are met
     ValidateCacheEntryNotExists(fileNamePrefix + "0");
     ValidateCacheEntry(fileNamePrefix + "1", fileSize, expiryTime, groupId);
     ValidateCacheEntry(fileNamePrefix + "2", fileSize, expiryTime, groupId);
     ValidateCacheEntryNotExists(fileNamePrefix + "3");
     ValidateCacheEntryNotExists(fileNamePrefix + "4");
+    ValidateCacheEntry(fileNamePrefix + "5", fileSize, expiryTime, groupId);
+    ValidateCacheEntry(fileNamePrefix + "6", fileSize, expiryTime, groupId);
 
-    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize, 2 * fileSize);
+    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize, 4 * fileSize);
 }
 //---------------------------------------------------------------------------------------------------------------------
