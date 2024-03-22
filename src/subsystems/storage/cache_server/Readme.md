@@ -28,3 +28,19 @@ Note: If not specified, snapshot will not be enabled
 
 #### CACHESERVER_METRICS_PORT
 The port to be used for exposing the cache server metrics (default is "")
+
+### CACHESERVER_EVICTION_ENABLED
+Values: true or false (default is false)
+Enable Cache Eviction for items exceeding cache size and cache age thresholds
+
+### CACHESERVER_EVICTION_LAST_ACCESS_THRESHOLD
+Values: Last Access threshold for cache eviction, example "30d12h41m29s"
+Default is set to 30d
+
+### CACHESERVER_EVICTION_SIZE_THRESHOLD
+Values: Size threshold for cache eviction in percentage
+Default is set to 60
+
+### CACHESERVER_EVICTION_PASS_FREQUENCY
+Values: Frequency of running eviction pass, example "1h30m"
+Default is set to 1 hour

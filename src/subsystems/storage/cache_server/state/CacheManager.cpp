@@ -773,18 +773,18 @@ void CacheManager::InitializeEviction()
         if (nValue == 0)
         {
             m_nEvictionLastAccessThresholdSeconds = DefaultEvictionLastAccessThresholdSeconds;
-            LOG_WARN("Invalid last access threshold set, using default: {}", m_nEvictionLastAccessThresholdSeconds);
+            LOG_WARN("Invalid eviction last access threshold set, using default: {}", m_nEvictionLastAccessThresholdSeconds);
         }
         else
         {
             m_nEvictionLastAccessThresholdSeconds = nValue;
-            LOG_INFO("Last access threshold seconds: {}", m_nEvictionLastAccessThresholdSeconds);
+            LOG_INFO("Eviction last access threshold seconds: {}", m_nEvictionLastAccessThresholdSeconds);
         }
     }
     else
     {
         m_nEvictionLastAccessThresholdSeconds = DefaultEvictionLastAccessThresholdSeconds;
-        LOG_INFO("Last access threshold seconds not set, using default: {}", m_nEvictionLastAccessThresholdSeconds);
+        LOG_INFO("Eviction last access threshold seconds not set, using default: {}", m_nEvictionLastAccessThresholdSeconds);
     }
 
     char* evictionPassFrequency = std::getenv("CACHESERVER_EVICTION_PASS_FREQUENCY");
@@ -807,6 +807,27 @@ void CacheManager::InitializeEviction()
         m_nEvictionPassFrequencySeconds = DefaultEvictionPassFrequencySeconds;
         LOG_INFO("Eviction pass frequency seconds not set, using default: {}", m_nEvictionPassFrequencySeconds);
     }
+
+    char* evictionSizeThreshold = std::getenv("CACHESERVER_EVICTION_SIZE_THRESHOLD");
+    if (evictionSizeThreshold != NULL && strlen(evictionSizeThreshold) > 0)
+    {
+        double dValue = std::stod(evictionSizeThreshold);
+        if (dValue >= 0 && dValue <= 100)
+        {
+            m_dEvictionSizeThreshold = dValue;
+            LOG_INFO("Eviction size threshold: {} Percent", m_dEvictionSizeThreshold);
+        }
+        else
+        {
+            m_dEvictionSizeThreshold = DefaultEvictionSizeThresholdPecentage;
+            LOG_WARN("Invalid eviction size threshold set, using default: {} Percent", m_dEvictionSizeThreshold);
+        }
+    }
+    else
+    {
+        m_dEvictionSizeThreshold = DefaultEvictionSizeThresholdPecentage;
+        LOG_INFO("Eviction size threshold not set, using default: {} Percent", m_dEvictionSizeThreshold);
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 void CacheManager::EvictionWorker()
@@ -825,6 +846,16 @@ void CacheManager::EvictionWorker()
             }) == true)
         {
             break;
+        }
+
+        //Check if the cache server utilization is below the threshold
+        double dCacheServerUtilization = GetCacheServerUtilizationPercentage();
+        if(dCacheServerUtilization < m_dEvictionSizeThreshold)
+        {
+            LOG_INFO("Skipping Eviction, Cache server utilization:{} is below eviction threshold: {}",
+                     dCacheServerUtilization,
+                     m_dEvictionSizeThreshold);
+            continue;
         }
 
         uint64_t nDeleteFileSize = 0;
@@ -916,5 +947,10 @@ void CacheManager::EvictionWorker()
     }
 
     LOG_INFO("Shutdown EvictionWorker");
+}
+//---------------------------------------------------------------------------------------------------------------------
+double CacheManager::GetCacheServerUtilizationPercentage() const
+{
+    return (double)m_totalCachedSize.load() * 100.0 / m_cacheSizeLimitBytes;
 }
 //---------------------------------------------------------------------------------------------------------------------

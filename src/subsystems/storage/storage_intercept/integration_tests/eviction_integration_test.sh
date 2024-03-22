@@ -28,6 +28,7 @@ function __run_cache_client_lib_test_with_eviction__()
     export CACHESERVER_EVICTION_ENABLED="true"
     export CACHESERVER_EVICTION_LAST_ACCESS_THRESHOLD="5s"
     export CACHESERVER_EVICTION_PASS_FREQUENCY="1s"
+    export CACHESERVER_EVICTION_SIZE_THRESHOLD="0.00000005"
 
     stop_cache_server
     start_cache_server
@@ -58,6 +59,7 @@ function __run_eviction_test_with_parallel_upload_download__()
     export CACHESERVER_EVICTION_ENABLED="true"
     export CACHESERVER_EVICTION_LAST_ACCESS_THRESHOLD="10s"
     export CACHESERVER_EVICTION_PASS_FREQUENCY="2s"
+    export CACHESERVER_EVICTION_SIZE_THRESHOLD="0.00000005"
 
     stop_cache_server
     start_cache_server
@@ -115,6 +117,7 @@ function __run_eviction_test_with_restart_snapshot__()
     export CACHESERVER_EVICTION_ENABLED="true"
     export CACHESERVER_EVICTION_LAST_ACCESS_THRESHOLD="10s"
     export CACHESERVER_EVICTION_PASS_FREQUENCY="2s"
+    export CACHESERVER_EVICTION_SIZE_THRESHOLD="0.00000005"
 
     stop_cache_server
     start_cache_server
