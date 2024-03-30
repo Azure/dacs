@@ -25,6 +25,9 @@
     LOG_INFO("TIMER: {} took {} ms", #timerName, timerName##_duration.count());                                     \
 } while (0)
 
+#define DURATION_START(durationName) auto durationName##_start = std::chrono::high_resolution_clock::now();
+#define DURATION_MS_GET(durationName) std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - durationName##_start).count();
+
 #define STORAGE_ASSERT_NOTHROW(condition, ...) do {                                                                 \
     if (!(condition))                                                                                               \
     {                                                                                                               \

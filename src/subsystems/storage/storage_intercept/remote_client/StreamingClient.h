@@ -103,6 +103,13 @@ class StreamingClient
         std::atomic_uint64_t               m_nGetPropertiesCache;
         std::atomic_uint64_t               m_nGetPropertiesRemoteClient;
 
+        // Stats for download latencies
+        static constexpr unsigned          m_nLatencySamplesVecSize = 1000;
+        std::vector<unsigned>              m_vecCacheDownloadLatencies;
+        std::vector<unsigned>              m_vecRemoteDownloadLatencies;
+        std::atomic<uint64_t>              m_nTotalCacheDownloadLatencySamples;
+        std::atomic<uint64_t>              m_nTotaRemotelDownloadLatencySamples;
+
         // Stats for application requested/serviced reads
         // Index 0 is for application requested reads and 1 is for final serviced reads
         std::array<std::atomic_uint64_t, 2> m_nReadFileTotal;
@@ -182,6 +189,11 @@ class StreamingClient
 
         void LogReadChunkStats(bool forceLog = false);
         void LogGetPropertiesStats(bool forceLog = false);
+        void LogDownloadLatencyStats(bool forceLog = false);
+        void LogDownloadLatencyStatsInner(const std::vector<unsigned>& vecLatencies,
+                                          unsigned nNumSamples,
+                                          const char* strSource,
+                                          bool bForceLog);
 
         // Given a relative remote path, construct a unique locally addressable path
         std::string GetCacheFilePath(/*[in] */ const std::string& path) const;

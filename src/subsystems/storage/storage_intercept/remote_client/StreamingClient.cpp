@@ -13,6 +13,7 @@
 #include "RemoteClientException.h"
 #include <cstring>
 #include <algorithm>
+#include <numeric>
 #include <pthread.h>
 #include <future>
 //---------------------------------------------------------------------------------------------------------------------
@@ -62,6 +63,10 @@ StreamingClient::StreamingClient(
     , m_nGetPropertiesTotal(0)
     , m_nGetPropertiesCache(0)
     , m_nGetPropertiesRemoteClient(0)
+    , m_vecCacheDownloadLatencies(m_nLatencySamplesVecSize, UINT_MAX)
+    , m_vecRemoteDownloadLatencies(m_nLatencySamplesVecSize, UINT_MAX)
+    , m_nTotalCacheDownloadLatencySamples(0)
+    , m_nTotaRemotelDownloadLatencySamples(0)
     , m_nReadFileTotal({0, 0})
     , m_nReadTotalBytes({0, 0})
     , m_nRead128K({0, 0})
@@ -500,6 +505,7 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
             }
 
             uint64_t readLength = 0;
+            DURATION_START(cacheDownload);
             cacheStatus = cacheClient->DownloadSync(
                 m_strMountName,
                 cacheFilePath,
@@ -513,6 +519,8 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
                 LOG_DEBUG("Read file: {}, offset: {}, length: {} from cache", remotePath, chunkOffset, readLength);
                 remoteReadData->BufferSize = readLength;
                 m_nReadChunksRemoteCache++;
+                m_vecCacheDownloadLatencies[m_nTotalCacheDownloadLatencySamples.fetch_add(1) % m_nLatencySamplesVecSize] = DURATION_MS_GET(cacheDownload);
+                LogDownloadLatencyStats();
             }
             else if (cacheStatus == CacheStatus::INTERNAL_ERROR )
             {
@@ -539,6 +547,7 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
     if (cacheStatus != CacheStatus::SUCCESS)
     {
         // Fetch from remote storage   
+        DURATION_START(remoteDownload);
         ssize_t nBytesFromRemote = std::atomic_load(&m_spRemoteClient)->ReadChunkSync(
             remotePath,
             remoteReadData->Buffer.get(),
@@ -552,7 +561,9 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
                 chunkOffset);
             return nullptr;
         }
-        
+
+        m_vecRemoteDownloadLatencies[m_nTotaRemotelDownloadLatencySamples.fetch_add(1) % m_nLatencySamplesVecSize] = DURATION_MS_GET(remoteDownload);
+        LogDownloadLatencyStats();
         LOG_DEBUG("Read file: {}, offset: {}, length: {} from remote server",
             remotePath, chunkOffset, nBytesFromRemote);
         remoteReadData->BufferSize = nBytesFromRemote;
@@ -760,6 +771,7 @@ void StreamingClient::LogStats(bool forceLog)
 {
     LogReadChunkStats(forceLog);
     LogGetPropertiesStats(forceLog);
+    LogDownloadLatencyStats(forceLog);
 }
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::LogReadChunkStats(bool forceLog)
@@ -799,6 +811,46 @@ void StreamingClient::LogReadChunkStats(bool forceLog)
             m_nReadLarge[1],
             m_nReadTotalBytes[1],
             m_nReadMax[1]);
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void StreamingClient::LogDownloadLatencyStats(bool forceLog)
+{
+    unsigned nNumCachdeDownloadLatencySamples =
+        std::min((uint64_t)m_nTotalCacheDownloadLatencySamples, (uint64_t)m_nLatencySamplesVecSize);
+    unsigned nNumRemoteDownloadLatencySamples =
+        std::min((uint64_t)m_nTotaRemotelDownloadLatencySamples, (uint64_t)m_nLatencySamplesVecSize);
+
+    LogDownloadLatencyStatsInner(m_vecCacheDownloadLatencies, nNumCachdeDownloadLatencySamples, "Cache", forceLog);
+    LogDownloadLatencyStatsInner(m_vecRemoteDownloadLatencies, nNumRemoteDownloadLatencySamples, "Remote", forceLog);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void StreamingClient::LogDownloadLatencyStatsInner(const std::vector<unsigned>& vecLatencies,
+                                                   unsigned nNumSamples,
+                                                   const char* strSource,
+                                                   bool bForceLog)
+{
+    if (nNumSamples == 0)
+    {
+        return;
+    }
+
+    if (nNumSamples < 10 || (nNumSamples < 200 && nNumSamples % 10 == 0) || (nNumSamples % 200 == 0) || bForceLog)
+    {
+        std::vector<unsigned> vecLatenciesCopy(nNumSamples, UINT_MAX);
+        std::copy_n(vecLatencies.begin(), nNumSamples, vecLatenciesCopy.begin());
+        std::sort(vecLatenciesCopy.begin(), vecLatenciesCopy.end());
+
+        unsigned nAvgLatency = std::accumulate(vecLatenciesCopy.begin(), vecLatenciesCopy.end(), 0ULL) / nNumSamples;
+        LOG_INFO("Download latencies (ms) from {} MountName={} Samples={} Min={} Max={} Avg={} P50={} P95={}",
+                 strSource,
+                 m_strMountName,
+                 nNumSamples,
+                 vecLatenciesCopy.front(),
+                 vecLatenciesCopy.back(),
+                 nAvgLatency,
+                 vecLatenciesCopy[nNumSamples * 0.5],
+                 vecLatenciesCopy[nNumSamples * 0.95]);
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
