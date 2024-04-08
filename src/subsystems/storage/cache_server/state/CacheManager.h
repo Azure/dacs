@@ -102,6 +102,9 @@ class CacheManager
         bool DeleteCacheEntryByGroupID(
             /*[in] */ const std::string& groupId);
 
+        bool DeleteCacheEntryByLastAccessThreshold(
+            /*[in] */ const std::string& lastAccessThreshold);
+
         void SetCacheSizeLimit(
             /*[in] */ const uint64_t limitCacheSizeBytes);
 
@@ -136,6 +139,8 @@ class CacheManager
 
         static uint64_t ParseTimeIntervalString(const char* timeInterval);
 
+        time_t ParseAndConvertToTime(const std::string& timeString);
+
         // Delete file path from local disk
         void DeleteFile(
             /*[in] */ const std::string& filename);
@@ -143,6 +148,8 @@ class CacheManager
         void CacheCleanupWorker();
 
         void EvictionWorker();
+
+        void EvictByAccessTime(time_t nLastAccessThresholdTime);
 
         double GetCacheServerUtilizationPercentage() const;
 

@@ -22,6 +22,7 @@ namespace cacheutils
     bool ReadMessageFromRemote(IConnection* connection, std::string& message);
     uint32_t GetServerIndex(const char* filePath, uint32_t numServers);
     bool AddAuthParams(cache::Request& request, const std::string& strCacheAccountName, const std::string& strCacheAccountKey);
+    bool IsValidLastAccessThreshold(const char* lastAccessThreshold);
     std::string GetSHA256Hex(const std::string& message);
 
     // Generate a globally-unique ID. Takes ~4ms for 10K invocations.

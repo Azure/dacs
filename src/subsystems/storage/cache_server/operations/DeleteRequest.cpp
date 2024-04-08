@@ -29,6 +29,7 @@ bool AuthenticateRequest(const DeleteRequest& request)
         std::string("Del") + 
         request.filename() + 
         request.groupid() + 
+        request.lastaccessthreshold() +
         std::to_string(timestamp);
 
     if (!ValidateAuthSignature(
@@ -46,8 +47,8 @@ bool AuthenticateRequest(const DeleteRequest& request)
 //---------------------------------------------------------------------------------------------------------------------
 bool DeleteFile(IConnection& clientConnection, const DeleteRequest& deleteRequest, enum ResponseCode& eResponseCode)
 {
-    LOG_INFO_REQID("filename: {}, group-id: {}",
-        deleteRequest, deleteRequest.filename(), deleteRequest.groupid());
+    LOG_INFO_REQID("filename: {}, group-id: {} lastaccessthreshold: {}",
+        deleteRequest, deleteRequest.filename(), deleteRequest.groupid(), deleteRequest.lastaccessthreshold());
 
     DeleteResponse deleteResponse;
     const std::string& requestid = deleteRequest.requestid();
@@ -58,23 +59,55 @@ bool DeleteFile(IConnection& clientConnection, const DeleteRequest& deleteReques
         return SendMessageToRemoteFinal(clientConnection, deleteResponse, requestid);
     }
 
-    if (deleteRequest.type_case() != DeleteRequest::kGroupid || deleteRequest.groupid().empty())
+    if (deleteRequest.type_case() == DeleteRequest::kGroupid)
     {
-        LOG_WARN_REQID("Delete failed: groupid cannot be empty", deleteRequest);
+        if (deleteRequest.groupid().empty())
+       {
+            LOG_WARN_REQID("Delete failed: groupid cannot be empty", deleteRequest);
+            SET_RESULT(deleteResponse, eResponseCode, DeleteResponse::INTERNAL_ERROR);
+            return SendMessageToRemoteFinal(clientConnection, deleteResponse, requestid);
+        }
+
+        if (CacheManager::GetInstance().DeleteCacheEntryByGroupID(deleteRequest.groupid()))
+        {
+            LOG_INFO_REQID("Delete successful. groupId: {}", deleteRequest, deleteRequest.groupid());
+            SET_RESULT(deleteResponse, eResponseCode, DeleteResponse::SUCCESS);
+        }
+        else
+        {
+            LOG_WARN_REQID("Failed to delete. groupId: {}", deleteRequest, deleteRequest.groupid());
+            SET_RESULT(deleteResponse, eResponseCode, DeleteResponse::INTERNAL_ERROR);
+        }
+    }
+    else if (deleteRequest.type_case() == DeleteRequest::kLastaccessthreshold)
+    {
+        if (deleteRequest.lastaccessthreshold().empty())
+        {
+            LOG_WARN_REQID("Delete failed: lastaccessthreshold cannot be empty", deleteRequest);
+            SET_RESULT(deleteResponse, eResponseCode, DeleteResponse::INTERNAL_ERROR);
+            return SendMessageToRemoteFinal(clientConnection, deleteResponse, requestid);
+        }
+
+        bool result =
+            CacheManager::GetInstance().DeleteCacheEntryByLastAccessThreshold(deleteRequest.lastaccessthreshold());
+        if (result)
+        {
+            LOG_INFO_REQID("Delete successful. lastaccessthreshold: {}", deleteRequest, deleteRequest.lastaccessthreshold());
+            SET_RESULT(deleteResponse, eResponseCode, DeleteResponse::SUCCESS);
+        }
+        else
+        {
+            LOG_WARN_REQID("Failed to delete. lastaccessthreshold: {}", deleteRequest, deleteRequest.lastaccessthreshold());
+            SET_RESULT(deleteResponse, eResponseCode, DeleteResponse::INTERNAL_ERROR);
+        }
+    }
+    else
+    {
+        LOG_WARN_REQID("Invalid delete request", deleteRequest);
         SET_RESULT(deleteResponse, eResponseCode, DeleteResponse::INTERNAL_ERROR);
         return SendMessageToRemoteFinal(clientConnection, deleteResponse, requestid);
     }
 
-    if (CacheManager::GetInstance().DeleteCacheEntryByGroupID(deleteRequest.groupid()))
-    {
-        LOG_INFO_REQID("Delete successful. groupId: {}", deleteRequest, deleteRequest.groupid());
-        SET_RESULT(deleteResponse, eResponseCode, DeleteResponse::SUCCESS);
-    }
-    else
-    {
-        LOG_WARN_REQID("Failed to delete. groupId: {}", deleteRequest, deleteRequest.groupid());
-        SET_RESULT(deleteResponse, eResponseCode, DeleteResponse::INTERNAL_ERROR);
-    }
 
     if (!SendMessageToRemoteFinal(clientConnection, deleteResponse, requestid))
     {

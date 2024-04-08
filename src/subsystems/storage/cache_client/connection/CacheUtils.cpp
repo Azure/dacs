@@ -11,6 +11,7 @@
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
 #include <map>
+#include <regex>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cache;
 using namespace std;
@@ -262,7 +263,8 @@ namespace cacheutils
         else if(request.type_case() == Request::kDeleterequest)
         {
             serializedHeaders = std::string("Del") + request.mutable_deleterequest()->filename() +
-                                request.mutable_deleterequest()->groupid() + std::to_string(timestamp);
+                                request.mutable_deleterequest()->groupid() +
+                                request.mutable_deleterequest()->lastaccessthreshold() + std::to_string(timestamp);
             authParams = request.mutable_deleterequest()->mutable_authparams();
         }
         else
@@ -278,6 +280,24 @@ namespace cacheutils
 
         return authParams->signature().length() > 0;
     }
+//---------------------------------------------------------------------------------------------------------------------
+bool IsValidLastAccessThreshold(const char* lastAccessThreshold)
+{
+
+    std::string thresholdStr(lastAccessThreshold);
+    int day, month, year, hour, minute, second, milliseconds;
+    char timezoneIndicator;
+
+    if (sscanf(lastAccessThreshold, "%d-%d-%dT%d:%d:%d.%d%c", &year, &month, &day, &hour, &minute, &second, &milliseconds, &timezoneIndicator) != 8 ||
+        timezoneIndicator != 'Z') {
+        return false;
+    }
+
+    LOG_DEBUG("Parsed date: {}/{}/{}-{}:{}:{}:{}", day, month, year, hour, minute, second, milliseconds);
+
+    return (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 0 && hour >= 0 && hour <= 23 &&
+            minute >= 0 && minute <= 59 && second >= 0 && second <= 59 && milliseconds >= 0 && milliseconds <= 999);
+}
 //---------------------------------------------------------------------------------------------------------------------
     std::string GetSHA256Hex(const std::string& message)
     {

@@ -12,6 +12,9 @@
 #include <thread>
 #include <thread> // For std::this_thread
 #include <unordered_map>
+#include <iomanip>
+#include <sstream>
+#include <ctime>
 
 #include "CacheClient.h"
 #include "CacheClientImpl.h"
@@ -418,6 +421,57 @@ TEST_F(CacheClientTests, TestDeleteGroup)
     status = m_cacheClientImpl.DeleteGroup(groupId.c_str());
     ASSERT_EQ(CacheClientStatus::SUCCESS, status);
     std::this_thread::sleep_for(std::chrono::seconds(6));
+
+    void* pBuffer2 = malloc(nLength);
+    uint64_t readLength = nLength;
+    status = m_cacheClientImpl.Download(GetCorrelationId().c_str(), pBuffer2, &readLength, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::NOTFOUND_LOCKED, status);
+
+    free((void*)pBuffer);
+    free((void*)pBuffer2);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(CacheClientTests, TestDeleteByLastAccessThreshold)
+{
+    string lastAcessTimestamp = "";
+    // Empty Timestamp
+    auto status = m_cacheClientImpl.DeleteByLastAccessThreshold(lastAcessTimestamp.c_str());
+    ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT, status);
+
+    // Null Timestamp
+    status = m_cacheClientImpl.DeleteByLastAccessThreshold(nullptr);
+    ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT, status);
+
+    //Invalid Timestamp
+    lastAcessTimestamp = "4:00:00";
+    status = m_cacheClientImpl.DeleteByLastAccessThreshold(lastAcessTimestamp.c_str());
+    ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT, status);
+
+    //Invalid Timestamp
+    lastAcessTimestamp = "2024-13-02T20:00:00.000Z";
+    status = m_cacheClientImpl.DeleteByLastAccessThreshold(lastAcessTimestamp.c_str());
+    ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT, status);
+
+    //Invalid Timestamp
+    lastAcessTimestamp = "2024-12-02T20:00:00.000+05:30";
+    status = m_cacheClientImpl.DeleteByLastAccessThreshold(lastAcessTimestamp.c_str());
+    ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT, status);
+
+    // Valid Timestamp
+    uint64_t nLength = 1024;
+    const void* pBuffer = GetRandomBuffer(nLength);
+    status = m_cacheClientImpl.Upload(GetCorrelationId().c_str(), pBuffer, nLength, 0, nullptr, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    time_t timestamp = time(nullptr);
+    std::ostringstream oss;
+    std::tm* tm = gmtime(&timestamp); // Use gmtime to get UTC time    
+    oss << std::put_time(tm, "%Y-%m-%dT%H:%M:%S") << ".456Z";
+    lastAcessTimestamp = oss.str();
+    status = m_cacheClientImpl.DeleteByLastAccessThreshold(lastAcessTimestamp.c_str());
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    this_thread::sleep_for(chrono::seconds(3));
 
     void* pBuffer2 = malloc(nLength);
     uint64_t readLength = nLength;

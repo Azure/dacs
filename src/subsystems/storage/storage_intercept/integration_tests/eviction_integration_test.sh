@@ -169,3 +169,58 @@ function __run_eviction_test_with_restart_snapshot__()
     echo "${FUNCNAME[0]} passed"
 }
 ########################################################################################################################
+# Test delete by last access threshold
+function __run_delete_by_last_access_threshold__()
+{
+    echo "Running ${FUNCNAME[0]}"
+    export CACHESERVER_HOSTNAME="testhost"
+
+
+    stop_cache_server
+    start_cache_server
+    __logsleep__ 10
+    export TEST_CACHESERVER_ADDR_PORT="${CACHE_SERVER_PORT}"
+ 
+    $TEST_CLIENT_EXE uploadfile file0 group1
+    $TEST_CLIENT_EXE uploadfile file1 group1
+    $TEST_CLIENT_EXE uploadfile file2 group1
+    current_datetime=$(date -u +"%Y-%m-%dT%H:%M:%S").000Z
+    __logsleep__ 8
+    # Touch file2 again
+    eval "$TEST_CLIENT_EXE downloadfile file2"
+    if [ $? -ne 0 ]; then
+        echo "Expected file2 to be available"
+        stop_cache_server
+        exit 1
+    fi
+
+    __logsleep__ 2
+
+    $TEST_CLIENT_EXE deletebylastaccessthreshold $current_datetime
+
+    __logsleep__ 5
+
+    eval "$TEST_CLIENT_EXE downloadfile file0"
+    if [ $? -eq 0 ]; then
+        stop_cache_server
+        echo "Expected file0 to have been deleted"
+        exit 1
+    fi
+
+    eval "$TEST_CLIENT_EXE downloadfile file1"
+    if [ $? -eq 0 ]; then
+        stop_cache_server
+        echo "Expected file1 to have been deleted"
+        exit 1
+    fi
+    
+    eval "$TEST_CLIENT_EXE downloadfile file2"
+    if [ $? -ne 0 ]; then
+        stop_cache_server
+        echo "Expected file2 to be available"
+        exit 1
+    fi
+
+    stop_cache_server
+    echo "${FUNCNAME[0]} passed"
+}
