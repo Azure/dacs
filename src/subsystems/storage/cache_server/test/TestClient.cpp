@@ -31,6 +31,9 @@
 #include <list>
 #include <xxhash.h>
 #include <atomic>
+#include <iomanip>
+#include <sstream>
+#include <ctime>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <infiniband/verbs.h>
@@ -432,6 +435,7 @@ bool TestDownloadAPI(
 //---------------------------------------------------------------------------------------------------------------------
 bool TestDeleteAPI(
     const string& groupid,
+    const string& lastaccessthreshold,
     DeleteResponse_Result expectedResult)
 {
     unique_ptr<IConnection> serverConnection  = GetConnection();
@@ -442,8 +446,14 @@ bool TestDeleteAPI(
     Request request;
 
     DeleteRequest* deleteRequest = request.mutable_deleterequest();
-    deleteRequest->set_groupid(groupid.c_str());
-
+    if (!groupid.empty())
+    {
+        deleteRequest->set_groupid(groupid.c_str());
+    }
+    else if (!lastaccessthreshold.empty())
+    {
+        deleteRequest->set_lastaccessthreshold(lastaccessthreshold.c_str());
+    }
     if (!SendMessageToRemote(serverConnection.get(), request))
     {
         cout << "couldn't send message to server" << endl;
@@ -909,7 +919,7 @@ int TestLimits()
     RUNTEST(TestUploadAPI(extraFileName, 1024*1024, true, UploadResponse::SUCCESS, &hashValue) == false);
     RUNTEST(TestDownloadAPI(extraFileName, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, &hashValue));
 
-    RUNTEST(TestDeleteAPI("groupid1", DeleteResponse::SUCCESS));
+    RUNTEST(TestDeleteAPI("groupid1", std::string(), DeleteResponse::SUCCESS));
 
     std::this_thread::sleep_for(std::chrono::seconds(3));
 
@@ -931,7 +941,7 @@ int TestLimits()
     RUNTEST(TestUploadAPI(fileName2, 1024*1024, true, UploadResponse::SUCCESS, &hashValue, "groupid2") == false);
     RUNTEST(TestDownloadAPI(fileName2, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, &hashValue));
 
-    RUNTEST(TestDeleteAPI("groupid2", DeleteResponse::SUCCESS));
+    RUNTEST(TestDeleteAPI("groupid2", std::string(), DeleteResponse::SUCCESS));
     std::this_thread::sleep_for(std::chrono::seconds(3));
 
     RUNTEST(TestDownloadAPI(fileName1, 0, 1024*1024, false, DownloadResponse::NOT_FOUND));
@@ -1287,7 +1297,7 @@ void TestDeletes()
     RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(99), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
 
     // Delete groupid1, should reflect after a few seconds
-    RUNTEST(TestDeleteAPI(groupid1, DeleteResponse::SUCCESS));
+    RUNTEST(TestDeleteAPI(groupid1, std::string(), DeleteResponse::SUCCESS));
 
     RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(1), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
     RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(50), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
@@ -1309,7 +1319,7 @@ void TestDeletes()
     RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(99), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
 
     // Delete groupid2, should reflect after a few seconds
-    RUNTEST(TestDeleteAPI(groupid2, DeleteResponse::SUCCESS));
+    RUNTEST(TestDeleteAPI(groupid2, std::string(), DeleteResponse::SUCCESS));
 
     RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(1), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
         nullptr));
@@ -1339,7 +1349,7 @@ void TestDeletes()
     // Should be able to upload the same file immediately after it is deleted
     RUNTEST(TestUploadAPI(deleteFilename1 + to_string(1), 1024*1024, true, UploadResponse::SUCCESS, nullptr,
         groupid1));
-    RUNTEST(TestDeleteAPI(groupid1, DeleteResponse::SUCCESS));
+    RUNTEST(TestDeleteAPI(groupid1, std::string(), DeleteResponse::SUCCESS));
 
     int retryCount = 1;
     while (true)
@@ -1358,8 +1368,7 @@ void TestDeletes()
         retryCount++;
     }
 
-    RUNTEST(TestDeleteAPI(groupid1, DeleteResponse::SUCCESS));
-
+    RUNTEST(TestDeleteAPI(groupid1, std::string(), DeleteResponse::SUCCESS));
     retryCount = 1;
     while (true)
     {
@@ -1376,7 +1385,39 @@ void TestDeletes()
         }
         retryCount++;
     }
-}
+
+    for (int i = 100; i < 120; i++)
+    {
+        TestUploadAPI(deleteFilename1 + to_string(i), 1024*1024, true, UploadResponse::SUCCESS, nullptr,
+            std::string());
+    }
+
+    time_t timestamp = time(nullptr);
+    std::ostringstream oss;
+    std::tm* tm = gmtime(&timestamp);    
+    oss << std::put_time(tm, "%Y-%m-%dT%H:%M:%S") << ".456Z";
+    string lastAccessThreshold = oss.str();
+    // test last access time based deletion
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    for (int i = 120; i < 140; i++)
+    {
+        TestUploadAPI(deleteFilename1 + to_string(i), 1024*1024, true, UploadResponse::SUCCESS, nullptr,
+            std::string());
+    }
+
+    RUNTEST(TestDeleteAPI(std::string(), lastAccessThreshold.c_str(), DeleteResponse::SUCCESS));
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(100), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
+        nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(119), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
+        nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(120), 0, 1024*1024, false, DownloadResponse::SUCCESS,
+        nullptr));
+    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(139), 0, 1024*1024, false, DownloadResponse::SUCCESS,
+        nullptr));
+
+    }
 //---------------------------------------------------------------------------------------------------------------------
 void TestExpiry()
 {
@@ -1775,7 +1816,17 @@ bool cli(int argc, char* argv[], bool& /*[out]*/ isCli)
         isCli = true;
         cout << "deletegroup command" << endl;
         std::string groupid = argc > 2 ? std::string(argv[2]) : GetUniqueFilename("groupid");
-        return !TestDeleteAPI(groupid, DeleteResponse::SUCCESS);
+        return !TestDeleteAPI(groupid, std::string(), DeleteResponse::SUCCESS);
+    }
+
+    if(command == "deletebylastaccessthreshold")
+    {
+        isCli = true;
+        cout << "deletebylastaccessthreshold command" << endl;
+        // lastaccessthreshold is string in the format YYYY-MM-DDThh:mm:ss.msecZ
+        // Example: "2024-04-02T20:00:00.000Z"
+        std::string lastaccessthreshold = argc > 2 ? std::string(argv[2]) : std::string();
+        return !TestDeleteAPI(std::string(), lastaccessthreshold, DeleteResponse::SUCCESS);
     }
 
     if(command == "downloadfile")

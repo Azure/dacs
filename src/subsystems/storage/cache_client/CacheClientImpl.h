@@ -59,6 +59,9 @@ class CacheClientImpl
     CacheClientStatus DeleteGroup(/*[in]*/ const char* groupID,
                                   /*[inopt]*/ const char* strCorrelationId = nullptr);
 
+    CacheClientStatus DeleteByLastAccessThreshold(/*[in]*/ const char* lastAcessThreshold,
+                                  /*[inopt]*/ const char* strCorrelationId = nullptr);
+
     bool IsInitialized() const;
 
   private:

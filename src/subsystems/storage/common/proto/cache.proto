@@ -181,6 +181,9 @@ message DeleteRequest
 
         // if groupid is selected, all files belonging to the group will be deleted
         bytes groupid = 2;
+
+        // if lastaccessthreshold is selected, all files older than lastaccessthreshold will be deleted
+        bytes lastaccessthreshold = 4; 
     }
     AuthParams authparams = 3;
 }

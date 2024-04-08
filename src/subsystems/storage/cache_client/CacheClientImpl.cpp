@@ -665,6 +665,128 @@ CacheClientStatus CacheClientImpl::DeleteGroup(/*[in]*/ const char* groupID,
     return CacheClientStatus::SUCCESS;
 }
 //---------------------------------------------------------------------------------------------------------------------
+CacheClientStatus CacheClientImpl::DeleteByLastAccessThreshold(/*[in]*/ const char* lastAcessThreshold,
+                                               /*[inopt]*/ const char* strCorrelationId)
+{
+    std::string strRandId;
+    if(strCorrelationId == nullptr)
+    {
+        strRandId = cacheutils::GetCorrelationId();
+        strCorrelationId = strRandId.c_str();
+    }
+
+    if(!m_bInitialized)
+    {
+        LOG_ERROR_REQID_STR("Cache client impl not initialized", strCorrelationId);
+        return CacheClientStatus::INTERNAL_ERROR;
+    }
+
+    std::size_t lastAcessThresholdLen = (lastAcessThreshold == nullptr) ? 0 : strlen(lastAcessThreshold);
+    if(lastAcessThresholdLen == 0)
+    {
+        LOG_ERROR_REQID_STR("Invalid or empty empty lastAcessThreshold", strCorrelationId);
+        return CacheClientStatus::INVALID_ARGUMENT;
+    }
+
+    if(!cacheutils::IsValidLastAccessThreshold(lastAcessThreshold))
+    {
+        LOG_ERROR_REQID_STR("Invalid last access threshold format {}", strCorrelationId, lastAcessThreshold);
+        return CacheClientStatus::INVALID_ARGUMENT;
+    }
+
+    // Loop through each server, setup a connection and issue the delete request
+    for(std::size_t i = 0; i < m_nNumServers; i++)
+    {
+
+        Request request;
+        DeleteRequest* deleteByLastAccessThresholdRequest = request.mutable_deleterequest();
+        deleteByLastAccessThresholdRequest->set_requestid(strCorrelationId);
+        deleteByLastAccessThresholdRequest->set_lastaccessthreshold(lastAcessThreshold);
+
+        if(m_bEnableAuth && !AddAuthParams(request, m_strAccountName, m_strAccountKey))
+        {
+            LOG_ERROR_REQID(
+                "Failed to set auth for delete by last access request for lastAcessThreshold: {}", *deleteByLastAccessThresholdRequest, lastAcessThreshold);
+            return CacheClientStatus::AUTH_FAILED;
+        }
+
+        std::unique_ptr<IConnection> connection = move(m_spConnectionManager->GetConnection(i));
+        const std::string& hostname = m_vecServers[i];
+
+        if(!connection || !connection.get())
+        {
+            LOG_ERROR_REQID("Couldn't get server connection {}, delete by last access request for lastAcessThreshold: {}",
+                            *deleteByLastAccessThresholdRequest,
+                            hostname,
+                            lastAcessThreshold);
+            m_spConnectionManager->ReleaseConnection(i, move(connection), true);
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
+
+        if(!SendMessageToRemote(connection.get(), request))
+        {
+            LOG_ERROR_REQID("Couldn't send message to server {}, delete by last access request for lastAcessThreshold: {}",
+                            *deleteByLastAccessThresholdRequest,
+                            hostname,
+                            lastAcessThreshold);
+            m_spConnectionManager->ReleaseConnection(i, move(connection), true);
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
+
+        std::string requestMessage;
+        if(!ReadMessageFromRemote(connection.get(), requestMessage))
+        {
+            LOG_ERROR_REQID("Couldn't read message from server {}, delete by last access request for lastAcessThreshold: {}",
+                            *deleteByLastAccessThresholdRequest,
+                            hostname,
+                            lastAcessThreshold);
+            m_spConnectionManager->ReleaseConnection(i, move(connection), true);
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
+
+        DeleteResponse response;
+        if(!response.ParseFromString(requestMessage))
+        {
+            LOG_ERROR_REQID("Error: Failed to parse protobuf message from server {}, delete by last access request for lastAcessThreshold: {}",
+                            *deleteByLastAccessThresholdRequest,
+                            hostname,
+                            lastAcessThreshold);
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
+
+        LOG_INFO_REQID("Delete by last access request for time {} completed with response: {}, for server: {}",
+                            *deleteByLastAccessThresholdRequest,
+                            lastAcessThreshold,
+                            response.result(),
+                            hostname);
+
+        switch(response.result())
+        {
+        case DeleteResponse::SUCCESS:
+            m_spConnectionManager->ReleaseConnection(i, move(connection), false);
+            continue;
+
+        case DeleteResponse::AUTH_FAILED:
+            LOG_ERROR_REQID("Delete by last access request failed due to auth failure for server: {}", *deleteByLastAccessThresholdRequest, hostname);
+            return CacheClientStatus::AUTH_FAILED;
+
+        case DeleteResponse::INTERNAL_ERROR:
+            LOG_ERROR_REQID(
+                "Delete by last access request failed due to internal error for server: {}", *deleteByLastAccessThresholdRequest, hostname);
+            return CacheClientStatus::INTERNAL_ERROR;
+
+        default:
+            LOG_ERROR_REQID("Delete by last access request failed due to unknown response: {}, for server: {}",
+                            *deleteByLastAccessThresholdRequest,
+                            response.result(),
+                            hostname);
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
+    }
+
+    return CacheClientStatus::SUCCESS;
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool CacheClientImpl::IsInitialized() const
 {
     return m_bInitialized;

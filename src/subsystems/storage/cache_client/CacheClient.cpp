@@ -64,3 +64,8 @@ extern "C" CacheClientStatus DeleteGroup(/*[in]*/ const char* strGroupId)
     return GetImplInstance()->DeleteGroup(strGroupId);
 }
 //---------------------------------------------------------------------------------------------------------------------
+extern "C" CacheClientStatus DeleteByLastAccessThreshold(/*[in]*/ const char* strLastAcessThreshold)
+{
+    return GetImplInstance()->DeleteByLastAccessThreshold(strLastAcessThreshold);
+}
+//---------------------------------------------------------------------------------------------------------------------

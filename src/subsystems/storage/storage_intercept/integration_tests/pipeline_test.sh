@@ -379,6 +379,21 @@ echo ""
 start_cache_server
 sleep 10
 
+# Ensure eviction client is wired up correctly
+EVICTION_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/cache-test/PerfClient "
+eval "${EVICTION_CLIENT_EXE} --eviction-client --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT} --last-access-threshold "2024-04-02T20:00:00.000Z" | tee /tmp/eviction.log"
+if [ $? -ne 0 ]
+then
+    echo "Eviction client test failed"
+    exit 1
+fi
+
+if ! grep -q "Successfully requested eviction" /tmp/eviction.log; then
+    echo "Eviction client test failed"
+    exit 1
+fi
+# END: Ensure eviction client is wired up correctly 
+
 echo "Running cache client lib test"
 cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
 eval "ctest -V --no-tests=error -j -1 -R CacheClientLibTests"
@@ -578,6 +593,7 @@ source "$SCRIPT_DIR/eviction_integration_test.sh"
 __run_cache_client_lib_test_with_eviction__
 __run_eviction_test_with_parallel_upload_download__
 __run_eviction_test_with_restart_snapshot__
+__run_delete_by_last_access_threshold__
 echo "Cache eviction validation tests passed"
 # TODO: add tests for adls
 echo "All Storage interception integration tests completed"

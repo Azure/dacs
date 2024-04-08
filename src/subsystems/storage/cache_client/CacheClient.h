@@ -173,6 +173,22 @@ CacheClientStatus Download(
  */
 CacheClientStatus DeleteGroup(/*[in]*/ const char* strGroupId);
 //---------------------------------------------------------------------------------------------------------------------
+/**
+ * Delete all cache entries having accesstime <= datetime(strLastAcessThreshold) from all cache servers.
+ * Deletion happens asynchronously in the background on all cache servers.
+ * 
+ * @param strLastAcessThreshold  last access time threshold as string in the ISO 8601 datetime format
+ * ending with Z (zero UTC offset). The format is as follows:
+ * YYYY-MM-DDThh:mm:ss.msecZ  Example: "2024-04-02T20:00:00.000Z"
+ * 
+ * @returns CacheClientStatus indicating the status of the delete operation
+ * 1. SUCCESS -- The delete operation was successfully initiated
+ * 2. INTERNAL_ERROR -- The delete operation could not be initiated due to an internal error
+ * 3. INVALID_ARGUMENT -- If the input parameters are invalid or null
+ * 4. AUTH_FAILED -- If the request is not authenticated
+ */
+CacheClientStatus DeleteByLastAccessThreshold(/*[in]*/ const char* strLastAcessThreshold);
+//---------------------------------------------------------------------------------------------------------------------
 #ifdef __cplusplus
 }
 #endif

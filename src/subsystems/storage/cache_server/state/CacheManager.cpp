@@ -7,6 +7,9 @@
 #include "Logger.h"
 #include <chrono>
 #include <dirent.h>
+#include <sstream>
+#include <iomanip>
+#include <ctime>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cache;
 using namespace snapshot;
@@ -284,6 +287,20 @@ bool CacheManager::DeleteCacheEntryByGroupID(const std::string& groupId)
     // Add groupid entry to the delete queue
     std::lock_guard lockGuard(m_mutexQueue);
     m_groupIdQueue.push(groupId);
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool CacheManager::DeleteCacheEntryByLastAccessThreshold(const std::string& lastAccessThreshold)
+{
+    time_t lastAccessThresholdTime = ParseAndConvertToTime(lastAccessThreshold);
+    if (lastAccessThresholdTime <= 0)
+    {
+        LOG_WARN("Invalid lastAccessThreshold: {}", lastAccessThreshold);
+        return false;
+    }
+    std::lock_guard lockGuard(m_mutexEviction);
+    std::thread delByLastAccessThread(&CacheManager::EvictByAccessTime, this, lastAccessThresholdTime);
+    delByLastAccessThread.detach();
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -858,95 +875,114 @@ void CacheManager::EvictionWorker()
             continue;
         }
 
-        uint64_t nDeleteFileSize = 0;
-        int nNumFilesDeleted = 0;
-        vector<string> vecFilesToDelete;
+        LOG_INFO("Starting eviction, Cache server utilization:{} is above eviction threshold: {} last access threshold: {} seconds",
+                 dCacheServerUtilization,
+                 m_dEvictionSizeThreshold,
+                 m_nEvictionLastAccessThresholdSeconds);
+        time_t now = time(NULL);
+        EvictByAccessTime(now - m_nEvictionLastAccessThresholdSeconds);
+    }
+    LOG_INFO("Shutdown EvictionWorker");
+}
+//---------------------------------------------------------------------------------------------------------------------
+void CacheManager::EvictByAccessTime(time_t nEvictionLastAccessTime)
+{
+    uint64_t nDeleteFileSize = 0;
+    int nNumFilesDeleted = 0;
+    vector<string> vecFilesToDelete;
+    LOG_INFO("Started evict by access time, Eviction last access time: {}", ctime(&nEvictionLastAccessTime));
 
-        for(int bucket = 0; bucket < NUM_MAPS; bucket++)
+    for(int bucket = 0; bucket < NUM_MAPS; bucket++)
+    {
+        // Each entry in each map points from GroupId -> list of filenames
+        vector<unordered_map<string, list<string>>> vecGroupIdFilesToDelete(NUM_MAPS);
+        lock_guard lock(m_vCacheInfoMapMutex[bucket]);
+
+        // iter points to a [fileName, CacheInfo] entry
+        auto iter = m_vCacheInfoMap[bucket].begin();
+        while (iter != m_vCacheInfoMap[bucket].end())
         {
-            // Each entry in each map points from GroupId -> list of filenames
-            vector<unordered_map<string, list<string>>> vecGroupIdFilesToDelete(NUM_MAPS);
-            lock_guard lock(m_vCacheInfoMapMutex[bucket]);
-            // Update now timestamp after taking the bucket lock
-            // this ensures that now >= accessTimestamp for any item in that bucket
-            time_t now = time(NULL);
-
-            // iter points to a [fileName, CacheInfo] entry
-            auto iter = m_vCacheInfoMap[bucket].begin();
-            while (iter != m_vCacheInfoMap[bucket].end())
+            if(iter->second.m_status == CacheStatus::COMPLETED &&
+                ((iter->second.m_accessTimestamp) <= nEvictionLastAccessTime))
             {
-                if(iter->second.m_status == CacheStatus::COMPLETED &&
-                    ((now - iter->second.m_accessTimestamp) >= m_nEvictionLastAccessThresholdSeconds))
+                // Need to make sure TTL map and GroupID map are consistent
+                // Clear TTL map entry first
+                if (iter->second.m_expiryTime != 0)
                 {
-                    // Need to make sure TTL map and GroupID map are consistent
-                    // Clear TTL map entry first
-                    if (iter->second.m_expiryTime != 0)
+                    auto ttlMapIter = m_vCacheTTLMap[bucket].find(iter->second.m_expiryTime);
+                    if (ttlMapIter != m_vCacheTTLMap[bucket].end())
                     {
-                        auto ttlMapIter = m_vCacheTTLMap[bucket].find(iter->second.m_expiryTime);
-                        if (ttlMapIter != m_vCacheTTLMap[bucket].end())
-                        {
-                            ttlMapIter->second.remove(iter->first);
-                        }
+                        ttlMapIter->second.remove(iter->first);
                     }
-
-                    // Remember this entry for deleting from the groupId map
-                    if (!iter->second.m_groupId.empty())
-                    {
-                        vecGroupIdFilesToDelete[GetHashBucket(iter->second.m_groupId)]\
-                        [iter->second.m_groupId].emplace_back(iter->first);
-                    }
-
-                    // Remove the cache entry
-                    nNumFilesDeleted++;
-                    nDeleteFileSize += iter->second.m_fileSize;
-                    vecFilesToDelete.emplace_back(iter->first);
-
-                    iter = m_vCacheInfoMap[bucket].erase(iter);
                 }
-                else
+
+                // Remember this entry for deleting from the groupId map
+                if (!iter->second.m_groupId.empty())
                 {
-                    iter++;
+                    vecGroupIdFilesToDelete[GetHashBucket(iter->second.m_groupId)]\
+                    [iter->second.m_groupId].emplace_back(iter->first);
                 }
+
+                // Remove the cache entry
+                nNumFilesDeleted++;
+                nDeleteFileSize += iter->second.m_fileSize;
+                vecFilesToDelete.emplace_back(iter->first);
+
+                iter = m_vCacheInfoMap[bucket].erase(iter);
             }
-
-            // Before releasing the cacheInfoMap bucket lock, remove entries
-            // from the groupId map buckets, these are two different sets of locks
-            // so to minimize the number of times we acquire the GroupIdMapBucketLocks
-            // we do it this way, and this also lets us avoid race conditions with
-            // request processing threads
-            for(int groupIdMapBucket = 0; groupIdMapBucket < NUM_MAPS; groupIdMapBucket++)
+            else
             {
-                if (vecGroupIdFilesToDelete[groupIdMapBucket].empty())
-                {
-                    continue;
-                }
-
-                lock_guard groupIdBucketLock(m_vCacheGroupIDMapMutex[groupIdMapBucket]);
-                for (auto& [groupId, filesToDelete] : vecGroupIdFilesToDelete[groupIdMapBucket])
-                {
-                    auto groupIdIter = m_vCacheGroupIDMap[groupIdMapBucket].find(groupId);
-                    if (groupIdIter != m_vCacheGroupIDMap[groupIdMapBucket].end())
-                    {
-                        for (auto& fileName : filesToDelete)
-                        {
-                            groupIdIter->second.remove(fileName);
-                        }
-                    }
-                }
+                iter++;
             }
         }
 
-        m_totalCachedSize.fetch_sub(nDeleteFileSize);
-        LOG_INFO("Delete files. num files: {}, size: {}", nNumFilesDeleted, nDeleteFileSize);
-        for (auto& filename : vecFilesToDelete)
+        // Before releasing the cacheInfoMap bucket lock, remove entries
+        // from the groupId map buckets, these are two different sets of locks
+        // so to minimize the number of times we acquire the GroupIdMapBucketLocks
+        // we do it this way, and this also lets us avoid race conditions with
+        // request processing threads
+        for(int groupIdMapBucket = 0; groupIdMapBucket < NUM_MAPS; groupIdMapBucket++)
         {
-            // In the download path, we gracefully handle the case where cache entry
-            // is present in the map, but absent on disk
-            DeleteFile(filename);
+            if (vecGroupIdFilesToDelete[groupIdMapBucket].empty())
+            {
+                continue;
+            }
+
+            lock_guard groupIdBucketLock(m_vCacheGroupIDMapMutex[groupIdMapBucket]);
+            for (auto& [groupId, filesToDelete] : vecGroupIdFilesToDelete[groupIdMapBucket])
+            {
+                auto groupIdIter = m_vCacheGroupIDMap[groupIdMapBucket].find(groupId);
+                if (groupIdIter != m_vCacheGroupIDMap[groupIdMapBucket].end())
+                {
+                    for (auto& fileName : filesToDelete)
+                    {
+                        groupIdIter->second.remove(fileName);
+                    }
+                }
+            }
         }
     }
 
-    LOG_INFO("Shutdown EvictionWorker");
+    m_totalCachedSize.fetch_sub(nDeleteFileSize);
+    LOG_INFO("Delete files by access time, num files: {}, size: {}", nNumFilesDeleted, nDeleteFileSize);
+    for (auto& filename : vecFilesToDelete)
+    {
+        // In the download path, we gracefully handle the case where cache entry
+        // is present in the map, but absent on disk
+        DeleteFile(filename);
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+time_t CacheManager::ParseAndConvertToTime(const std::string& dateTimeString) {
+
+    std::stringstream ss(dateTimeString);
+    std::tm tm_struct = {};  
+    std::locale loc;
+    ss.imbue(loc);
+    ss >> std::get_time(&tm_struct, "%Y-%m-%dT%H:%M:%S");
+    time_t time = std::mktime(&tm_struct);
+
+    return time;
 }
 //---------------------------------------------------------------------------------------------------------------------
 double CacheManager::GetCacheServerUtilizationPercentage() const
