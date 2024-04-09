@@ -29,7 +29,7 @@ bool AuthenticateRequest(const DeleteRequest& request)
         std::string("Del") + 
         request.filename() + 
         request.groupid() + 
-        request.lastaccessthreshold() +
+        request.lastaccesstime() +
         std::to_string(timestamp);
 
     if (!ValidateAuthSignature(
@@ -47,8 +47,8 @@ bool AuthenticateRequest(const DeleteRequest& request)
 //---------------------------------------------------------------------------------------------------------------------
 bool DeleteFile(IConnection& clientConnection, const DeleteRequest& deleteRequest, enum ResponseCode& eResponseCode)
 {
-    LOG_INFO_REQID("filename: {}, group-id: {} lastaccessthreshold: {}",
-        deleteRequest, deleteRequest.filename(), deleteRequest.groupid(), deleteRequest.lastaccessthreshold());
+    LOG_INFO_REQID("filename: {}, group-id: {} lastaccesstime: {}",
+        deleteRequest, deleteRequest.filename(), deleteRequest.groupid(), deleteRequest.lastaccesstime());
 
     DeleteResponse deleteResponse;
     const std::string& requestid = deleteRequest.requestid();
@@ -79,25 +79,25 @@ bool DeleteFile(IConnection& clientConnection, const DeleteRequest& deleteReques
             SET_RESULT(deleteResponse, eResponseCode, DeleteResponse::INTERNAL_ERROR);
         }
     }
-    else if (deleteRequest.type_case() == DeleteRequest::kLastaccessthreshold)
+    else if (deleteRequest.type_case() == DeleteRequest::kLastaccesstime)
     {
-        if (deleteRequest.lastaccessthreshold().empty())
+        if (deleteRequest.lastaccesstime().empty())
         {
-            LOG_WARN_REQID("Delete failed: lastaccessthreshold cannot be empty", deleteRequest);
+            LOG_WARN_REQID("Delete failed: lastaccesstime cannot be empty", deleteRequest);
             SET_RESULT(deleteResponse, eResponseCode, DeleteResponse::INTERNAL_ERROR);
             return SendMessageToRemoteFinal(clientConnection, deleteResponse, requestid);
         }
 
         bool result =
-            CacheManager::GetInstance().DeleteCacheEntryByLastAccessThreshold(deleteRequest.lastaccessthreshold());
+            CacheManager::GetInstance().DeleteCacheEntryByLastAccessTime(deleteRequest.lastaccesstime());
         if (result)
         {
-            LOG_INFO_REQID("Delete successful. lastaccessthreshold: {}", deleteRequest, deleteRequest.lastaccessthreshold());
+            LOG_INFO_REQID("Delete successful. lastaccesstime: {}", deleteRequest, deleteRequest.lastaccesstime());
             SET_RESULT(deleteResponse, eResponseCode, DeleteResponse::SUCCESS);
         }
         else
         {
-            LOG_WARN_REQID("Failed to delete. lastaccessthreshold: {}", deleteRequest, deleteRequest.lastaccessthreshold());
+            LOG_WARN_REQID("Failed to delete. lastaccesstime: {}", deleteRequest, deleteRequest.lastaccesstime());
             SET_RESULT(deleteResponse, eResponseCode, DeleteResponse::INTERNAL_ERROR);
         }
     }

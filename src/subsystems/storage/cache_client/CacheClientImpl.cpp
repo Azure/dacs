@@ -665,7 +665,143 @@ CacheClientStatus CacheClientImpl::DeleteGroup(/*[in]*/ const char* groupID,
     return CacheClientStatus::SUCCESS;
 }
 //---------------------------------------------------------------------------------------------------------------------
-CacheClientStatus CacheClientImpl::DeleteByLastAccessThreshold(/*[in]*/ const char* lastAcessThreshold,
+CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
+    /*[in]*/ uint64_t nDistributionBucketSizeInHours,
+    /*[out]*/ LastAccessTimeDistribution* pLastAccessTimeDistribution,
+    /*[inopt]*/ const char* strCorrelationId)
+{
+    std::string strRandId;
+    if(strCorrelationId == nullptr)
+    {
+        strRandId = cacheutils::GetCorrelationId();
+        strCorrelationId = strRandId.c_str();
+    }
+
+    if(!m_bInitialized)
+    {
+        LOG_ERROR_REQID_STR("Cache client impl not initialized", strCorrelationId);
+        return CacheClientStatus::INTERNAL_ERROR;
+    }
+
+
+    if(nDistributionBucketSizeInHours <= 0)
+    {
+        LOG_ERROR_REQID_STR("Invalid distribution window", strCorrelationId);
+        return CacheClientStatus::INVALID_ARGUMENT;
+    }
+
+    if(pLastAccessTimeDistribution == nullptr)
+    {
+        LOG_ERROR_REQID_STR("Null output parameter", strCorrelationId)
+        return CacheClientStatus::INVALID_ARGUMENT;
+    }
+
+    std::map<int64_t, uint64_t> lastAccessTimeDistribution;
+
+    for(std::size_t i = 0; i < m_nNumServers; i++)
+    {
+        Request request;
+        std::string hostname = m_vecServers[i];
+        GetCacheLastAccessTimeDistributionRequest* lastAccessTimeDistributionRequest = request.mutable_getcachelastaccesstimedistributionrequest();
+        lastAccessTimeDistributionRequest->set_requestid(strCorrelationId);
+        lastAccessTimeDistributionRequest->set_distributionbucketsizeinhours(nDistributionBucketSizeInHours);
+
+        if(m_bEnableAuth && !AddAuthParams(request, m_strAccountName, m_strAccountKey))
+        {
+            LOG_ERROR_REQID("Failed to set auth for Last access time distribution request for server: {}",
+                            *lastAccessTimeDistributionRequest,
+                            hostname);
+            return CacheClientStatus::AUTH_FAILED;
+        }
+
+        std::unique_ptr<IConnection> connection = move(m_spConnectionManager->GetConnection(i));
+        if(!connection || !connection.get())
+        {
+            LOG_ERROR_REQID("Couldn't get server connection, access time distribution request for server: {}",
+                            *lastAccessTimeDistributionRequest,
+                            hostname);
+            m_spConnectionManager->ReleaseConnection(i, move(connection), true);
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
+
+        if(!SendMessageToRemote(connection.get(), request))
+        {
+            LOG_ERROR_REQID("Couldn't send message to server, access time distribution request for server: {}",
+                            *lastAccessTimeDistributionRequest,
+                            hostname);
+            m_spConnectionManager->ReleaseConnection(i, move(connection), true);
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
+
+        std::string requestMessage;
+        if(!ReadMessageFromRemote(connection.get(), requestMessage))
+        {
+            LOG_ERROR_REQID("Couldn't read message from server, access time distribution request for server: {}",
+                            *lastAccessTimeDistributionRequest,
+                            hostname);
+            m_spConnectionManager->ReleaseConnection(i, move(connection), true);
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
+
+        GetCacheLastAccessTimeDistributionResponse response;
+        if(!response.ParseFromString(requestMessage))
+        {
+            LOG_ERROR_REQID("Error: Failed to parse protobuf message from server, access time distribution request for server: {}",
+                            *lastAccessTimeDistributionRequest,
+                            hostname);
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
+
+        LOG_INFO_REQID("Last access time distribution response from server: {}, for server: {}",
+                       *lastAccessTimeDistributionRequest,
+                       response.result(),
+                       hostname);
+
+        switch (response.result())
+        {
+        case GetCacheLastAccessTimeDistributionResponse::SUCCESS:
+            for (auto& entry : response.distributionmap())
+            {
+                lastAccessTimeDistribution[entry.first] += entry.second;
+            }
+            m_spConnectionManager->ReleaseConnection(i, move(connection), false);
+            continue;
+
+        case GetCacheLastAccessTimeDistributionResponse::AUTH_FAILED:
+            LOG_ERROR_REQID("Last access time distribution request failed due to auth failure for server: {}",
+                            *lastAccessTimeDistributionRequest,
+                            hostname);
+            return CacheClientStatus::AUTH_FAILED;
+
+        case GetCacheLastAccessTimeDistributionResponse::INTERNAL_ERROR:
+            LOG_ERROR_REQID("Last access time distribution request failed due to internal error for server: {}",
+                            *lastAccessTimeDistributionRequest,
+                            hostname);
+            return CacheClientStatus::INTERNAL_ERROR;
+
+        default:
+            LOG_ERROR_REQID("Last access time distribution request failed due to unknown response: {}, for server: {}",
+                            *lastAccessTimeDistributionRequest,
+                            response.result(),
+                            hostname);
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
+    }
+
+    pLastAccessTimeDistribution->nKeyValuePairs = lastAccessTimeDistribution.size();
+    pLastAccessTimeDistribution->arrKeyValuePairs = new DistKeyValuePair[pLastAccessTimeDistribution->nKeyValuePairs];
+    uint64_t entryIndex = 0;
+    for(auto& entry : lastAccessTimeDistribution)
+    {
+        pLastAccessTimeDistribution->arrKeyValuePairs[entryIndex].nKey = entry.first;
+        pLastAccessTimeDistribution->arrKeyValuePairs[entryIndex].nValue = entry.second;
+        entryIndex++;
+    }
+
+    return CacheClientStatus::SUCCESS;
+}
+//---------------------------------------------------------------------------------------------------------------------
+CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* lastAccessTime,
                                                /*[inopt]*/ const char* strCorrelationId)
 {
     std::string strRandId;
@@ -681,16 +817,16 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessThreshold(/*[in]*/ const ch
         return CacheClientStatus::INTERNAL_ERROR;
     }
 
-    std::size_t lastAcessThresholdLen = (lastAcessThreshold == nullptr) ? 0 : strlen(lastAcessThreshold);
-    if(lastAcessThresholdLen == 0)
+    std::size_t lastAccessTimeLen = (lastAccessTime == nullptr) ? 0 : strlen(lastAccessTime);
+    if(lastAccessTimeLen == 0)
     {
-        LOG_ERROR_REQID_STR("Invalid or empty empty lastAcessThreshold", strCorrelationId);
+        LOG_ERROR_REQID_STR("Invalid or empty empty lastAccessTime", strCorrelationId);
         return CacheClientStatus::INVALID_ARGUMENT;
     }
 
-    if(!cacheutils::IsValidLastAccessThreshold(lastAcessThreshold))
+    if(!cacheutils::IsValidLastAccessTime(lastAccessTime))
     {
-        LOG_ERROR_REQID_STR("Invalid last access threshold format {}", strCorrelationId, lastAcessThreshold);
+        LOG_ERROR_REQID_STR("Invalid last access time format {}", strCorrelationId, lastAccessTime);
         return CacheClientStatus::INVALID_ARGUMENT;
     }
 
@@ -699,14 +835,14 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessThreshold(/*[in]*/ const ch
     {
 
         Request request;
-        DeleteRequest* deleteByLastAccessThresholdRequest = request.mutable_deleterequest();
-        deleteByLastAccessThresholdRequest->set_requestid(strCorrelationId);
-        deleteByLastAccessThresholdRequest->set_lastaccessthreshold(lastAcessThreshold);
+        DeleteRequest* deleteByLastAccessTimeRequest = request.mutable_deleterequest();
+        deleteByLastAccessTimeRequest->set_requestid(strCorrelationId);
+        deleteByLastAccessTimeRequest->set_lastaccesstime(lastAccessTime);
 
         if(m_bEnableAuth && !AddAuthParams(request, m_strAccountName, m_strAccountKey))
         {
             LOG_ERROR_REQID(
-                "Failed to set auth for delete by last access request for lastAcessThreshold: {}", *deleteByLastAccessThresholdRequest, lastAcessThreshold);
+                "Failed to set auth for delete by last access request for lastAccessTime: {}", *deleteByLastAccessTimeRequest, lastAccessTime);
             return CacheClientStatus::AUTH_FAILED;
         }
 
@@ -715,20 +851,20 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessThreshold(/*[in]*/ const ch
 
         if(!connection || !connection.get())
         {
-            LOG_ERROR_REQID("Couldn't get server connection {}, delete by last access request for lastAcessThreshold: {}",
-                            *deleteByLastAccessThresholdRequest,
+            LOG_ERROR_REQID("Couldn't get server connection {}, delete by last access request for lastAccessTime: {}",
+                            *deleteByLastAccessTimeRequest,
                             hostname,
-                            lastAcessThreshold);
+                            lastAccessTime);
             m_spConnectionManager->ReleaseConnection(i, move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
         if(!SendMessageToRemote(connection.get(), request))
         {
-            LOG_ERROR_REQID("Couldn't send message to server {}, delete by last access request for lastAcessThreshold: {}",
-                            *deleteByLastAccessThresholdRequest,
+            LOG_ERROR_REQID("Couldn't send message to server {}, delete by last access request for lastAccessTime: {}",
+                            *deleteByLastAccessTimeRequest,
                             hostname,
-                            lastAcessThreshold);
+                            lastAccessTime);
             m_spConnectionManager->ReleaseConnection(i, move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
@@ -736,10 +872,10 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessThreshold(/*[in]*/ const ch
         std::string requestMessage;
         if(!ReadMessageFromRemote(connection.get(), requestMessage))
         {
-            LOG_ERROR_REQID("Couldn't read message from server {}, delete by last access request for lastAcessThreshold: {}",
-                            *deleteByLastAccessThresholdRequest,
+            LOG_ERROR_REQID("Couldn't read message from server {}, delete by last access request for lastAccessTime: {}",
+                            *deleteByLastAccessTimeRequest,
                             hostname,
-                            lastAcessThreshold);
+                            lastAccessTime);
             m_spConnectionManager->ReleaseConnection(i, move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
@@ -747,16 +883,16 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessThreshold(/*[in]*/ const ch
         DeleteResponse response;
         if(!response.ParseFromString(requestMessage))
         {
-            LOG_ERROR_REQID("Error: Failed to parse protobuf message from server {}, delete by last access request for lastAcessThreshold: {}",
-                            *deleteByLastAccessThresholdRequest,
+            LOG_ERROR_REQID("Error: Failed to parse protobuf message from server {}, delete by last access request for lastAccessTime: {}",
+                            *deleteByLastAccessTimeRequest,
                             hostname,
-                            lastAcessThreshold);
+                            lastAccessTime);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
         LOG_INFO_REQID("Delete by last access request for time {} completed with response: {}, for server: {}",
-                            *deleteByLastAccessThresholdRequest,
-                            lastAcessThreshold,
+                            *deleteByLastAccessTimeRequest,
+                            lastAccessTime,
                             response.result(),
                             hostname);
 
@@ -767,17 +903,17 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessThreshold(/*[in]*/ const ch
             continue;
 
         case DeleteResponse::AUTH_FAILED:
-            LOG_ERROR_REQID("Delete by last access request failed due to auth failure for server: {}", *deleteByLastAccessThresholdRequest, hostname);
+            LOG_ERROR_REQID("Delete by last access request failed due to auth failure for server: {}", *deleteByLastAccessTimeRequest, hostname);
             return CacheClientStatus::AUTH_FAILED;
 
         case DeleteResponse::INTERNAL_ERROR:
             LOG_ERROR_REQID(
-                "Delete by last access request failed due to internal error for server: {}", *deleteByLastAccessThresholdRequest, hostname);
+                "Delete by last access request failed due to internal error for server: {}", *deleteByLastAccessTimeRequest, hostname);
             return CacheClientStatus::INTERNAL_ERROR;
 
         default:
             LOG_ERROR_REQID("Delete by last access request failed due to unknown response: {}, for server: {}",
-                            *deleteByLastAccessThresholdRequest,
+                            *deleteByLastAccessTimeRequest,
                             response.result(),
                             hostname);
             return CacheClientStatus::INTERNAL_ERROR;

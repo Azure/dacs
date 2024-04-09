@@ -182,8 +182,8 @@ message DeleteRequest
         // if groupid is selected, all files belonging to the group will be deleted
         bytes groupid = 2;
 
-        // if lastaccessthreshold is selected, all files older than lastaccessthreshold will be deleted
-        bytes lastaccessthreshold = 4; 
+        // if lastaccesstime is selected, all files older than lastaccesstime will be deleted
+        bytes lastaccesstime = 4; 
     }
     AuthParams authparams = 3;
 }
@@ -298,6 +298,25 @@ message IBInitResponse
     // The server created qp identifiers which is connected to the client qps in the order it was sent in the request
     repeated uint32 serverqpn = 5;
 }
+//----------------------------------------------------------------------------------------------------------------------
+message GetCacheLastAccessTimeDistributionRequest
+{
+    string requestid = 999;
+    uint64 distributionbucketsizeinhours = 1;
+    AuthParams authparams = 2;
+}
+//-----------------------------------------------------------------------------------------------------------------------
+message GetCacheLastAccessTimeDistributionResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        AUTH_FAILED = 1;
+        INTERNAL_ERROR = 2;
+    }
+    Result result = 1;
+    map<int64, uint64> distributionmap = 2;
+}
 //---------------------------------------------------------------------------------------------------------------------
 message EndMarker
 {
@@ -315,7 +334,8 @@ message Request
         PutAttributeRequest putattributerequest = 5;
         DeleteRequest deleterequest = 6;
         IBInitRequest ibinitrequest = 7;
-        EndMarker endmarker = 8;
+        GetCacheLastAccessTimeDistributionRequest getcachelastaccesstimedistributionrequest = 8;
+        EndMarker endmarker = 9;
     }
 }
 //---------------------------------------------------------------------------------------------------------------------

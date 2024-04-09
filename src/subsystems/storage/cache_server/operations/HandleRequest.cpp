@@ -11,6 +11,7 @@
 #include "GetAttributeRequest.h"
 #include "DeleteRequest.h"
 #include "IBInitRequest.h"
+#include "GetCacheLastAccessTimeDistributionRequest.h"
 #include "IConnection.h"
 #include "cache.pb.h"
 #include "Logger.h"
@@ -77,6 +78,10 @@ bool HandleRequest(IConnection& clientConnection,
     else if (eRequestType == Request::kIbinitrequest)
     {
         bRet = IBInitializeClient(clientConnection, request.ibinitrequest(), eResponseCode);
+    }
+    else if (eRequestType == Request::kGetcachelastaccesstimedistributionrequest)
+    {
+        bRet = GetLastAccessTimeDistribution(clientConnection, request.getcachelastaccesstimedistributionrequest(), eResponseCode);
     }
     else
     {

@@ -6,6 +6,7 @@
 #include "Utils.h"
 #include "Logger.h"
 #include <chrono>
+#include <ctime>
 #include <dirent.h>
 #include <sstream>
 #include <iomanip>
@@ -290,16 +291,16 @@ bool CacheManager::DeleteCacheEntryByGroupID(const std::string& groupId)
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool CacheManager::DeleteCacheEntryByLastAccessThreshold(const std::string& lastAccessThreshold)
+bool CacheManager::DeleteCacheEntryByLastAccessTime(const std::string& strLastAccessTime)
 {
-    time_t lastAccessThresholdTime = ParseAndConvertToTime(lastAccessThreshold);
-    if (lastAccessThresholdTime <= 0)
+    time_t lastAccessTime = ParseAndConvertToTime(strLastAccessTime);
+    if (lastAccessTime <= 0)
     {
-        LOG_WARN("Invalid lastAccessThreshold: {}", lastAccessThreshold);
+        LOG_WARN("Invalid lastAccessTime: {}", strLastAccessTime);
         return false;
     }
     std::lock_guard lockGuard(m_mutexEviction);
-    std::thread delByLastAccessThread(&CacheManager::EvictByAccessTime, this, lastAccessThresholdTime);
+    std::thread delByLastAccessThread(&CacheManager::EvictByAccessTime, this, lastAccessTime);
     delByLastAccessThread.detach();
     return true;
 }
@@ -983,6 +984,36 @@ time_t CacheManager::ParseAndConvertToTime(const std::string& dateTimeString) {
     time_t time = std::mktime(&tm_struct);
 
     return time;
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool CacheManager::GetLastAccessTimeDistribution(
+    uint64_t distributionBucketIntervalInHours,
+    ::google::protobuf::Map<int64_t, uint64_t>& lastAccessTimeDistribution) const
+{
+    TIMER_START(GetLastAccessTimeDistribution);
+
+    // Initialize the distribution vector
+    for (int bucket = 0; bucket < NUM_MAPS; bucket++)
+    {
+        lock_guard lock(m_vCacheInfoMapMutex[bucket]);
+        for (auto& [filename, cacheInfo] : m_vCacheInfoMap[bucket])
+        {
+            if (cacheInfo.m_status == CacheStatus::COMPLETED)
+            {
+                long intervalInSeconds = 3600 * distributionBucketIntervalInHours;
+                int64_t lastAccessTimeBucket = (cacheInfo.m_accessTimestamp / intervalInSeconds) * intervalInSeconds;
+                lastAccessTimeDistribution[lastAccessTimeBucket] += cacheInfo.m_fileSize;
+            }
+        }
+    }   
+
+    for (auto it = lastAccessTimeDistribution.begin(); it != lastAccessTimeDistribution.end(); ++it)
+    {
+        LOG_DEBUG("Last access time: {}, size: {}", ctime(&it->first), it->second);
+    }
+
+    TIMER_STOP_AND_LOG(GetLastAccessTimeDistribution);
+    return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
 double CacheManager::GetCacheServerUtilizationPercentage() const

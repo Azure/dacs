@@ -92,16 +92,16 @@ function __run_eviction_test_with_parallel_upload_download__()
     # should have been evicted
     eval "$TEST_CLIENT_EXE downloadfile file0"
     if [ $? -eq 0 ]; then
-        echo "Expected file0 to have been deleted"
-        stop_cache_server
-        exit 1
+    echo "Expected file0 to have been deleted"
+    stop_cache_server
+    exit 1
     fi
 
     eval "$TEST_CLIENT_EXE downloadfile file1"
     if [ $? -eq 0 ]; then
-        echo "Expected file1 to have been deleted"
-        stop_cache_server
-        exit 1
+    echo "Expected file1 to have been deleted"
+    stop_cache_server
+    exit 1
     fi
 
     stop_cache_server
@@ -169,8 +169,8 @@ function __run_eviction_test_with_restart_snapshot__()
     echo "${FUNCNAME[0]} passed"
 }
 ########################################################################################################################
-# Test delete by last access threshold
-function __run_delete_by_last_access_threshold__()
+# Test delete by last access time
+function __run_delete_by_last_access_time__()
 {
     echo "Running ${FUNCNAME[0]}"
     export CACHESERVER_HOSTNAME="testhost"
@@ -196,7 +196,7 @@ function __run_delete_by_last_access_threshold__()
 
     __logsleep__ 2
 
-    $TEST_CLIENT_EXE deletebylastaccessthreshold $current_datetime
+    $TEST_CLIENT_EXE deletebylastaccesstime $current_datetime
 
     __logsleep__ 5
 

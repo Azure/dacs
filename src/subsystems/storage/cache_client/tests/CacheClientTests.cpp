@@ -431,30 +431,54 @@ TEST_F(CacheClientTests, TestDeleteGroup)
     free((void*)pBuffer2);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, TestDeleteByLastAccessThreshold)
+TEST_F(CacheClientTests, TestGetLastAccessTimeDistribution)
 {
-    string lastAcessTimestamp = "";
+    uint64_t distributionBucketSizeInHours;
+    LastAccessTimeDistribution* pLastAccessTimeDistribution = new LastAccessTimeDistribution;
+    pLastAccessTimeDistribution->arrKeyValuePairs = nullptr;
+    pLastAccessTimeDistribution->nKeyValuePairs = 0;
+
+    // distribution window <= 0
+    distributionBucketSizeInHours = 0;
+    auto status = m_cacheClientImpl.GetLastAccessTimeDistribution(distributionBucketSizeInHours, pLastAccessTimeDistribution, nullptr);
+    ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT, status);
+
+    uint64_t nLength = 1024;
+    const void* pBuffer = GetRandomBuffer(nLength);
+    status =
+        m_cacheClientImpl.Upload(GetCorrelationId().c_str(), pBuffer, nLength, 0, nullptr, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+    // Valid correlation ID
+    distributionBucketSizeInHours = 1;
+    status = m_cacheClientImpl.GetLastAccessTimeDistribution(distributionBucketSizeInHours, pLastAccessTimeDistribution, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+    ASSERT_EQ(pLastAccessTimeDistribution->nKeyValuePairs, 1);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(CacheClientTests, TestDeleteByLastAccessTime)
+{
+    string lastAccessTimestamp = "";
     // Empty Timestamp
-    auto status = m_cacheClientImpl.DeleteByLastAccessThreshold(lastAcessTimestamp.c_str());
+    auto status = m_cacheClientImpl.DeleteByLastAccessTime(lastAccessTimestamp.c_str());
     ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT, status);
 
     // Null Timestamp
-    status = m_cacheClientImpl.DeleteByLastAccessThreshold(nullptr);
+    status = m_cacheClientImpl.DeleteByLastAccessTime(nullptr);
     ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT, status);
 
     //Invalid Timestamp
-    lastAcessTimestamp = "4:00:00";
-    status = m_cacheClientImpl.DeleteByLastAccessThreshold(lastAcessTimestamp.c_str());
+    lastAccessTimestamp = "4:00:00";
+    status = m_cacheClientImpl.DeleteByLastAccessTime(lastAccessTimestamp.c_str());
     ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT, status);
 
     //Invalid Timestamp
-    lastAcessTimestamp = "2024-13-02T20:00:00.000Z";
-    status = m_cacheClientImpl.DeleteByLastAccessThreshold(lastAcessTimestamp.c_str());
+    lastAccessTimestamp = "2024-13-02T20:00:00.000Z";
+    status = m_cacheClientImpl.DeleteByLastAccessTime(lastAccessTimestamp.c_str());
     ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT, status);
 
     //Invalid Timestamp
-    lastAcessTimestamp = "2024-12-02T20:00:00.000+05:30";
-    status = m_cacheClientImpl.DeleteByLastAccessThreshold(lastAcessTimestamp.c_str());
+    lastAccessTimestamp = "2024-12-02T20:00:00.000+05:30";
+    status = m_cacheClientImpl.DeleteByLastAccessTime(lastAccessTimestamp.c_str());
     ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT, status);
 
     // Valid Timestamp
@@ -467,8 +491,8 @@ TEST_F(CacheClientTests, TestDeleteByLastAccessThreshold)
     std::ostringstream oss;
     std::tm* tm = gmtime(&timestamp); // Use gmtime to get UTC time    
     oss << std::put_time(tm, "%Y-%m-%dT%H:%M:%S") << ".456Z";
-    lastAcessTimestamp = oss.str();
-    status = m_cacheClientImpl.DeleteByLastAccessThreshold(lastAcessTimestamp.c_str());
+    lastAccessTimestamp = oss.str();
+    status = m_cacheClientImpl.DeleteByLastAccessTime(lastAccessTimestamp.c_str());
     ASSERT_EQ(CacheClientStatus::SUCCESS, status);
 
     this_thread::sleep_for(chrono::seconds(3));

@@ -311,8 +311,8 @@ cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
 eval "ctest -V --no-tests=error -j -1 -R CacheServer"
 if [ $? -ne 0 ]
 then
-    echo "Cache server unit tests failed"
-    exit 1
+echo "Cache server unit tests failed"
+exit 1
 fi
 
 __verify_nologs_unintercepted_
@@ -324,8 +324,8 @@ cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
 eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
 if [ $? -ne 0 ]
 then
-    echo "Unit tests against blob failed"
-    exit 1
+echo "Unit tests against blob failed"
+exit 1
 fi
 echo ""
 
@@ -345,8 +345,8 @@ pushd ${SCRIPT_DIR}
 LD_LIBRARY_PATH=$DACS_PATH CGO_CFLAGS="-I $DACS_PATH/include" CGO_LDFLAGS="-L $DACS_PATH" go run main.go
 if [ $? -ne 0 ];
 then
-    echo "Go integration test failed"
-    exit 1
+echo "Go integration test failed"
+exit 1
 fi
 popd
 unset SI_azBlobSASToken
@@ -358,8 +358,8 @@ add_interception_config_blob /mnt/quiverfs true
 eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d largeMultiMountDynamic -s -n 20 -p 4"
 if [ $? -ne 0 ]
 then
-    echo "Blob Integration test failed"
-    exit 1
+echo "Blob Integration test failed"
+exit 1
 fi
 echo ""
 
@@ -368,8 +368,8 @@ add_dynamic_mount_config /mnt/quiverfs
 eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d largeDynamicAccount -s -n 20 -p 4"
 if [ $? -ne 0 ]
 then
-    echo "Blob Integration test failed"
-    exit 1
+echo "Blob Integration test failed"
+exit 1
 fi
 echo ""
 
@@ -381,7 +381,7 @@ sleep 10
 
 # Ensure eviction client is wired up correctly
 EVICTION_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/cache-test/PerfClient "
-eval "${EVICTION_CLIENT_EXE} --eviction-client --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT} --last-access-threshold "2024-04-02T20:00:00.000Z" | tee /tmp/eviction.log"
+eval "${EVICTION_CLIENT_EXE} --eviction-client --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT} --last-access-time "2024-04-02T20:00:00.000Z" | tee /tmp/eviction.log"
 if [ $? -ne 0 ]
 then
     echo "Eviction client test failed"
@@ -392,26 +392,42 @@ if ! grep -q "Successfully requested eviction" /tmp/eviction.log; then
     echo "Eviction client test failed"
     exit 1
 fi
-# END: Ensure eviction client is wired up correctly 
+#END: Ensure eviction client is wired up correctly 
+
+#Ensure last access distribution client is wired up correctly
+LAST_ACCESS_DISTRIBUTION_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/cache-test/PerfClient "
+eval "${LAST_ACCESS_DISTRIBUTION_CLIENT_EXE} --last-access-time-distribution-client --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT}  --distribution-bucket-size-in-hours 1 | tee /tmp/lastAccessDistribution.log"
+
+if [ $? -ne 0 ]
+then
+    echo "Last access distribution client test failed"
+    exit 1
+fi
+
+if ! grep -q "Successfully requested get last access distribution" /tmp/lastAccessDistribution.log; then
+    echo "Last access distribution client test failed"
+    exit 1
+fi
+#END: Ensure last access distribution client is wired up correctly
 
 echo "Running cache client lib test"
 cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
 eval "ctest -V --no-tests=error -j -1 -R CacheClientLibTests"
 if [ $? -ne 0 ]
 then
-    echo "cache client lib unit test failed"
-    exit 1
+echo "cache client lib unit test failed"
+exit 1
 fi
 echo ""
 
 echo "Running rust cache client integration test"
 # TODO: Move to build container
 if ! [[ -x $(command -v "cargo") ]]; then
-    pushd /tmp
-    curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y
-    [[ ! -f "$HOME/.cargo/env" ]] && echo "Failed to install rust" && exit 1
-    source "$HOME/.cargo/env"
-    popd
+pushd /tmp
+curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y
+[[ ! -f "$HOME/.cargo/env" ]] && echo "Failed to install rust" && exit 1
+source "$HOME/.cargo/env"
+popd
 fi
 
 pushd ${REPOSITORY_ROOT}/src/subsystems/storage/cache_client/rust_tests
@@ -423,8 +439,8 @@ export CACHE_CLIENT_HEADER_FILE="${REPOSITORY_ROOT}/src/subsystems/storage/cache
 eval "cargo run"
 if [ $? -ne 0 ];
 then
-    echo "Rust cache client integration test failed"
-    exit 1
+echo "Rust cache client integration test failed"
+exit 1
 fi
 popd
 echo ""
@@ -444,8 +460,8 @@ cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
 eval "ctest -V --no-tests=error -j -1 -R CacheClientLibTests"
 if [ $? -ne 0 ]
 then
-    echo "cache client lib unit test with authentication failed"
-    exit 1
+echo "cache client lib unit test with authentication failed"
+exit 1
 fi
 echo ""
 
@@ -485,8 +501,8 @@ cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
 eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
 if [ $? -ne 0 ]
 then
-    echo "Unit tests against blob with cache failed"
-    exit 1
+echo "Unit tests against blob with cache failed"
+exit 1
 fi
 echo ""
 
@@ -495,8 +511,8 @@ add_interception_config_blob_with_cache /mnt/quiverfs
 eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large -s -n 20 -p 4"
 if [ $? -ne 0 ]
 then
-    echo "Blob Integration test with cache failed"
-    exit 1
+echo "Blob Integration test with cache failed"
+exit 1
 fi
 echo ""
 
@@ -506,8 +522,8 @@ cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
 eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
 if [ $? -ne 0 ]
 then
-    echo "Unit tests against blob with cache and encryption failed"
-    exit 1
+echo "Unit tests against blob with cache and encryption failed"
+exit 1
 fi
 echo ""
 
@@ -516,8 +532,8 @@ add_interception_config_blob_with_cache_encryption /mnt/quiverfs true
 eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d largeMultiMountDynamic -s -n 20 -p 4"
 if [ $? -ne 0 ]
 then
-    echo "Blob Integration test with cache and encryption failed"
-    exit 1
+echo "Blob Integration test with cache and encryption failed"
+exit 1
 fi
 echo ""
 
@@ -527,8 +543,8 @@ cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
 eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
 if [ $? -ne 0 ]
 then
-    echo "Unit tests against blob with remote attribute and data cache failed"
-    exit 1
+echo "Unit tests against blob with remote attribute and data cache failed"
+exit 1
 fi
 echo ""
 
@@ -537,8 +553,8 @@ add_interception_config_blob_with_remote_cache /mnt/quiverfs
 eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large -s -n 20 -p 4"
 if [ $? -ne 0 ]
 then
-    echo "Blob Integration test with remote attribute and data cache failed"
-    exit 1
+echo "Blob Integration test with remote attribute and data cache failed"
+exit 1
 fi
 echo ""
 
@@ -547,8 +563,8 @@ add_interception_config_blob_with_remote_cache /mnt/quiverfs true
 eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d largeMultiMountDynamic -s -n 20 -p 4"
 if [ $? -ne 0 ]
 then
-    echo "Blob Integration test with multi-mount and remote attribute and data cache failed"
-    exit 1
+echo "Blob Integration test with multi-mount and remote attribute and data cache failed"
+exit 1
 fi
 echo ""
 
@@ -559,8 +575,8 @@ cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
 eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
 if [ $? -ne 0 ]
 then
-    echo "Unit tests against blob with local ssd cache failed"
-    exit 1
+echo "Unit tests against blob with local ssd cache failed"
+exit 1
 fi
 echo ""
 
@@ -570,8 +586,8 @@ add_interception_config_blob_with_localssdcache /mnt/quiverfs
 eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large -s -n 20 -p 4"
 if [ $? -ne 0 ]
 then
-    echo "Blob Integration test with local ssd cache failed"
-    exit 1
+echo "Blob Integration test with local ssd cache failed"
+exit 1
 fi
 echo ""
 
@@ -593,7 +609,12 @@ source "$SCRIPT_DIR/eviction_integration_test.sh"
 __run_cache_client_lib_test_with_eviction__
 __run_eviction_test_with_parallel_upload_download__
 __run_eviction_test_with_restart_snapshot__
-__run_delete_by_last_access_threshold__
-echo "Cache eviction validation tests passed"
+__run_delete_by_last_access_time__
+ echo "Cache eviction validation tests passed"
+
+ source "$SCRIPT_DIR/last_access_distribution_integration_test.sh"
+__run__test__last_access_time_distribution__
+
+
 # TODO: add tests for adls
 echo "All Storage interception integration tests completed"

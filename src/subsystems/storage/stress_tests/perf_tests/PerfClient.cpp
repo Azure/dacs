@@ -4,7 +4,8 @@
 // This file is a container for varions types of clients - currently, PerfClient and EvictionClient.
 // PerfClient: generates random data and uploads/downloads it to/from the cache server. It measures the throughput of the
 // cache server.
-// EvictionClient: requests the cache server to delete files based on last access time threshold.
+// EvictionClient: requests the cache server to delete files based on last access time time.
+// LastAccessTimeDistributionClient: requests the cache server to provide the distribution of last access times of cache.
 //---------------------------------------------------------------------------------------------------------------------
 #include <atomic>
 #include <boost/algorithm/string.hpp>
@@ -18,6 +19,8 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
+#include <iomanip>
+#include <ctime>
 
 #include "CacheClientImpl.h"
 #include "CacheUtils.h"
@@ -244,7 +247,7 @@ po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-// Eviction args: only server-port server-hostname last-access-threshold(string)
+// Eviction args: only server-port server-hostname last-access-time(string)
 po::variables_map parse_eviction_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
 {
     try
@@ -253,9 +256,9 @@ po::variables_map parse_eviction_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
         description.add_options()("help", "produce help message")(
             "server-port", po::value<int>(), "Port to connect to the cache servers")(
             "server-hostname", po::value<std::string>(), "Hostname(s) of cache server, '#' separated")(
-            "last-access-threshold",
+            "last-access-time",
             po::value<std::string>(),
-            "Last access time threshold as string in the ISO 8601 datetime format ending with Z (zero UTC offset): "
+            "Last access time time as string in the ISO 8601 datetime format ending with Z (zero UTC offset): "
             "YYYY-MM-DDThh:mm:ss.msecZ Example: 2024-04-02T20:00:00.000Z");
 
         po::variables_map vm;
@@ -268,7 +271,50 @@ po::variables_map parse_eviction_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
             exit(0);
         }
 
-        if (!(vm.count("server-port") > 0 && vm.count("server-hostname") > 0 && vm.count("last-access-threshold") > 0))
+        if (!(vm.count("server-port") > 0 && vm.count("server-hostname") > 0 && vm.count("last-access-time") > 0))
+        {
+            std::cout << description << std::endl;
+            exit(1);
+        }
+
+        return vm;
+    }
+    catch (std::exception& e)
+    {
+        LOG_CRITICAL("Error: {}", e.what());
+        exit(2);
+    }
+    catch (...)
+    {
+        LOG_CRITICAL("Exception of unknown type!");
+        exit(3);
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Last access time distribution args: only server-port server-hostname distribution-bucket-size-in-hours(int)
+po::variables_map parse_last_access_dist_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
+{
+    try
+    {
+        po::options_description description("Last access time distribution client options");
+        description.add_options()("help", "produce help message")(
+            "server-port", po::value<int>(), "Port to connect to the cache servers")(
+            "server-hostname", po::value<std::string>(), "Hostname(s) of cache server, '#' separated")(
+            "distribution-bucket-size-in-hours",
+            po::value<int>(),
+            "Size of the distribution bucket in hours");
+
+        po::variables_map vm;
+        po::store(po::command_line_parser(argc, argv).options(description).allow_unregistered().run(), vm);
+        po::notify(vm);
+
+        if (vm.count("help") > 0)
+        {
+            std::cout << description << std::endl;
+            exit(0);
+        }
+
+        if (!(vm.count("server-port") > 0 && vm.count("server-hostname") > 0 && vm.count("distribution-bucket-size-in-hours") > 0))
         {
             std::cout << description << std::endl;
             exit(1);
@@ -344,7 +390,7 @@ int EvictionClient(int argc, char* argv[])
     std::vector<std::string> vecHostnames;
     boost::split(vecHostnames, strHostnames, boost::is_any_of("#"));
     uint16_t nPort = args["server-port"].as<int>();
-    std::string strLastAcessThreshold = args["last-access-threshold"].as<std::string>();
+    std::string strLastAccessTime = args["last-access-time"].as<std::string>();
     std::vector<const char*> vecCstrHostnames;
     for (const std::string& hostname : vecHostnames)
     {
@@ -365,10 +411,10 @@ int EvictionClient(int argc, char* argv[])
                       false,                       /*bUseLocalServer*/
                       true);                       /*bReuseConnections*/
 
-    LOG_INFO("Requesting eviction from cache servers based on last access time threshold: {}",
-             strLastAcessThreshold.c_str());
+    LOG_INFO("Requesting eviction from cache servers based on last access time time: {}",
+             strLastAccessTime.c_str());
 
-    CacheClientStatus status = client.DeleteByLastAccessThreshold(strLastAcessThreshold.c_str());
+    CacheClientStatus status = client.DeleteByLastAccessTime(strLastAccessTime.c_str());
 
     if (status != CacheClientStatus::SUCCESS)
     {
@@ -378,6 +424,62 @@ int EvictionClient(int argc, char* argv[])
     else
     {
         LOG_INFO("Successfully requested eviction");
+        return 0;
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+int LastAccessTimeDistributionClient(int argc, char* argv[])
+{
+    auto args = parse_last_access_dist_args(argc, argv);
+    auto strHostnames = args["server-hostname"].as<std::string>();
+    std::vector<std::string> vecHostnames;
+    boost::split(vecHostnames, strHostnames, boost::is_any_of("#"));
+    uint16_t nPort = args["server-port"].as<int>();
+    uint64_t nDistributionBucketSizeInHours = args["distribution-bucket-size-in-hours"].as<int>();
+    std::vector<const char*> vecCstrHostnames;
+    for (const std::string& hostname : vecHostnames)
+    {
+        vecCstrHostnames.push_back(hostname.c_str());
+    }
+
+    CacheClientImpl client;
+    client.Initialize(vecCstrHostnames.data(),
+                      vecCstrHostnames.size(),
+                      nPort,                       /*nCacheServerPort*/
+                      false,                       /*bEnableIB*/
+                      false,                       /*bEnableCalculateChecksum*/
+                      false,                       /*bEnableValidateChecksum*/
+                      vecCstrHostnames.size() * 2, /*nConnectionPoolSize*/
+                      false,                       /*bEnableAuth*/
+                      nullptr,                     /*strAccountName*/
+                      nullptr,                     /*strAccountKey*/
+                      false,                       /*bUseLocalServer*/
+                      true);                       /*bReuseConnections*/
+
+    
+    LastAccessTimeDistribution *pLastAccessTimeDistribution = new LastAccessTimeDistribution();
+    pLastAccessTimeDistribution->arrKeyValuePairs = nullptr;
+    pLastAccessTimeDistribution->nKeyValuePairs = 0;
+    LOG_INFO("Requesting get last access time distribution of cache chunks from cache servers");
+    CacheClientStatus status = client.GetLastAccessTimeDistribution(nDistributionBucketSizeInHours, pLastAccessTimeDistribution);
+
+    if (status != CacheClientStatus::SUCCESS)
+    {
+        LOG_CRITICAL("Failed to get last access distribution, return code: {}", status);
+        return static_cast<int>(status);
+    }
+    else
+    {
+        LOG_INFO("Successfully requested get last access distribution");
+        for (int i = 0; i < pLastAccessTimeDistribution->nKeyValuePairs; i++)
+        {
+            std::tm* tm = std::gmtime(&pLastAccessTimeDistribution->arrKeyValuePairs[i].nKey);
+            std::ostringstream oss;
+            oss << std::put_time(tm, "%FT%T");
+            oss << ".000Z";
+            std::string timestamp = oss.str();
+            LOG_INFO("Last access time distribution for time: {} size: {} bytes", timestamp, pLastAccessTimeDistribution->arrKeyValuePairs[i].nValue);
+        }
         return 0;
     }
 }
@@ -397,6 +499,10 @@ int main(int argc, char* argv[])
     if (std::string(argv[1]) == std::string("--eviction-client"))
     {
         return EvictionClient(argc, argv);
+    }
+    else if (std::string(argv[1]) == std::string("--last-access-time-distribution-client"))
+    {
+        return LastAccessTimeDistributionClient(argc, argv);
     }
     else
     {
