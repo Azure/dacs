@@ -59,7 +59,12 @@ class CacheClientImpl
     CacheClientStatus DeleteGroup(/*[in]*/ const char* groupID,
                                   /*[inopt]*/ const char* strCorrelationId = nullptr);
 
-    CacheClientStatus DeleteByLastAccessThreshold(/*[in]*/ const char* lastAcessThreshold,
+    CacheClientStatus GetLastAccessTimeDistribution(
+        /*[in]*/ uint64_t nDistributionBucketSizeInHours,
+        /*[out]*/ LastAccessTimeDistribution* pLastAccessTimeDistribution,
+        /*[inopt]*/ const char* strCorrelationId = nullptr);
+
+    CacheClientStatus DeleteByLastAccessTime(/*[in]*/ const char* lastAccessTime,
                                   /*[inopt]*/ const char* strCorrelationId = nullptr);
 
     bool IsInitialized() const;

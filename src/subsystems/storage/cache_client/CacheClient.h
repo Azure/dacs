@@ -47,6 +47,18 @@ typedef struct
     char* m_strAccountKey;
 } AuthCredentials;
 //---------------------------------------------------------------------------------------------------------------------
+typedef struct
+{
+    int64_t nKey;
+    uint64_t nValue;
+} DistKeyValuePair;
+//---------------------------------------------------------------------------------------------------------------------
+typedef struct
+{
+    DistKeyValuePair* arrKeyValuePairs;
+    uint64_t nKeyValuePairs;
+} LastAccessTimeDistribution;
+//---------------------------------------------------------------------------------------------------------------------
 /**
  * Initialize cache client, setting up configurations parameters.
  * 
@@ -174,10 +186,28 @@ CacheClientStatus Download(
 CacheClientStatus DeleteGroup(/*[in]*/ const char* strGroupId);
 //---------------------------------------------------------------------------------------------------------------------
 /**
- * Delete all cache entries having accesstime <= datetime(strLastAcessThreshold) from all cache servers.
+ * Get the last access time distribution of cache chunks in the cache server grouped by the given distribution bucket size.
+ * The distribution bucket is the time interval in hours.
+ * Last access time distribution provides the total size of cache chunks that were accessed in each distribution bucket.
+ * 
+ * @param nDistributionBucketSizeInHours Distribution bucket size in hours.
+ * @param pLastAccessTimeDistribution Key-Value pairs of cache chunk size mapped to distribution bucket start timestamp.
+ * 
+ * @returns CacheClientStatus indicating the status of the get access time distribution operation
+ * 1. SUCCESS -- The access time distribution was successfully retrieved
+ * 2. INTERNAL_ERROR -- The access time distribution could not be retrieved due to an internal error
+ * 3. INVALID_ARGUMENT -- If the input parameters are invalid or out of range, e.g., nDistributionBucketSizeInHours <= 0
+ * 4. AUTH_FAILED -- If the request failed to authenticate
+ */
+CacheClientStatus GetLastAccessTimeDistribution(
+    /*[in]*/ uint64_t nDistributionBucketSizeInHours,
+    /*[out]*/ LastAccessTimeDistribution* pLastAccessTimeDistribution);
+
+//---------------------------------------------------------------------------------------------------------------------
+ /* Delete all cache entries having accesstime <= datetime(strLastAccessTime) from all cache servers.
  * Deletion happens asynchronously in the background on all cache servers.
  * 
- * @param strLastAcessThreshold  last access time threshold as string in the ISO 8601 datetime format
+ * @param strLastAccessTime  last access time as string in the ISO 8601 datetime format
  * ending with Z (zero UTC offset). The format is as follows:
  * YYYY-MM-DDThh:mm:ss.msecZ  Example: "2024-04-02T20:00:00.000Z"
  * 
@@ -187,7 +217,7 @@ CacheClientStatus DeleteGroup(/*[in]*/ const char* strGroupId);
  * 3. INVALID_ARGUMENT -- If the input parameters are invalid or null
  * 4. AUTH_FAILED -- If the request is not authenticated
  */
-CacheClientStatus DeleteByLastAccessThreshold(/*[in]*/ const char* strLastAcessThreshold);
+CacheClientStatus DeleteByLastAccessTime(/*[in]*/ const char* strLastAccessTime);
 //---------------------------------------------------------------------------------------------------------------------
 #ifdef __cplusplus
 }

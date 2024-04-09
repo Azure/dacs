@@ -264,8 +264,15 @@ namespace cacheutils
         {
             serializedHeaders = std::string("Del") + request.mutable_deleterequest()->filename() +
                                 request.mutable_deleterequest()->groupid() +
-                                request.mutable_deleterequest()->lastaccessthreshold() + std::to_string(timestamp);
+                                request.mutable_deleterequest()->lastaccesstime() + std::to_string(timestamp);
             authParams = request.mutable_deleterequest()->mutable_authparams();
+        }
+        else if(request.type_case() == Request::kGetcachelastaccesstimedistributionrequest)
+        {
+            serializedHeaders = std::string("GATD") +
+                                std::to_string(request.mutable_getcachelastaccesstimedistributionrequest()->distributionbucketsizeinhours()) +
+                                std::to_string(timestamp);
+            authParams = request.mutable_getcachelastaccesstimedistributionrequest()->mutable_authparams();
         }
         else
         {
@@ -281,14 +288,14 @@ namespace cacheutils
         return authParams->signature().length() > 0;
     }
 //---------------------------------------------------------------------------------------------------------------------
-bool IsValidLastAccessThreshold(const char* lastAccessThreshold)
+bool IsValidLastAccessTime(const char* lastAccessTime)
 {
 
-    std::string thresholdStr(lastAccessThreshold);
+    std::string timeStr(lastAccessTime);
     int day, month, year, hour, minute, second, milliseconds;
     char timezoneIndicator;
 
-    if (sscanf(lastAccessThreshold, "%d-%d-%dT%d:%d:%d.%d%c", &year, &month, &day, &hour, &minute, &second, &milliseconds, &timezoneIndicator) != 8 ||
+    if (sscanf(lastAccessTime, "%d-%d-%dT%d:%d:%d.%d%c", &year, &month, &day, &hour, &minute, &second, &milliseconds, &timezoneIndicator) != 8 ||
         timezoneIndicator != 'Z') {
         return false;
     }

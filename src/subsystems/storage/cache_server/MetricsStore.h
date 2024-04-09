@@ -27,7 +27,8 @@ class MetricsStore
         "Getattribute",
         "Putattribute",
         "Delete",
-        "Ibinit",   
+        "Ibinit",
+        "Getcachelastaccesstimedistributionrequest",
     };
     constexpr static std::array<const char*, (int)ResponseCode::END_MARKER> m_arrResponseCodes = {
       "Success",

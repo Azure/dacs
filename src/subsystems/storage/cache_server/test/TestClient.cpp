@@ -31,6 +31,7 @@
 #include <list>
 #include <xxhash.h>
 #include <atomic>
+#include <ctime>
 #include <iomanip>
 #include <sstream>
 #include <ctime>
@@ -435,7 +436,7 @@ bool TestDownloadAPI(
 //---------------------------------------------------------------------------------------------------------------------
 bool TestDeleteAPI(
     const string& groupid,
-    const string& lastaccessthreshold,
+    const string& lastaccesstime,
     DeleteResponse_Result expectedResult)
 {
     unique_ptr<IConnection> serverConnection  = GetConnection();
@@ -450,9 +451,9 @@ bool TestDeleteAPI(
     {
         deleteRequest->set_groupid(groupid.c_str());
     }
-    else if (!lastaccessthreshold.empty())
+    else if (!lastaccesstime.empty())
     {
-        deleteRequest->set_lastaccessthreshold(lastaccessthreshold.c_str());
+        deleteRequest->set_lastaccesstime(lastaccesstime.c_str());
     }
     if (!SendMessageToRemote(serverConnection.get(), request))
     {
@@ -479,6 +480,66 @@ bool TestDeleteAPI(
         std::cout << "error: delete failed: response.result() != expectedResult:" << response.result() << ", " <<
             expectedResult << endl;
         return false;
+    }
+
+    ReleaseConnection(serverConnection);
+    return true;
+}
+//--------------------------------------------------------------------------------------------------------------------
+bool TestLastAccessTimeDistribution(uint64_t distributionbucketsizeinhours)
+{
+    unique_ptr<IConnection> serverConnection  = GetConnection();
+    if (!serverConnection)
+    {
+        return false;
+    }
+
+    Request request;
+    std::cout << "distributionbucketsizeinhours:" << distributionbucketsizeinhours << endl;
+    GetCacheLastAccessTimeDistributionRequest* getCacheLastAccessTimeDistributionRequest = request.mutable_getcachelastaccesstimedistributionrequest();
+    getCacheLastAccessTimeDistributionRequest->set_distributionbucketsizeinhours(distributionbucketsizeinhours);
+
+    if (!SendMessageToRemote(serverConnection.get(), request))
+    {
+        cout << "couldn't send message to server" << endl;
+        return false;
+    }
+
+    cout<<"sent message to server"<<endl;
+
+    string requestMessage;
+    if (!ReadMessageFromRemote(serverConnection.get(), requestMessage))
+    {
+        cout << "couldn't read message from server" << endl;
+        return false;
+    }
+
+    cout<<"read message from server"<<endl;
+
+    GetCacheLastAccessTimeDistributionResponse response;
+    if (!response.ParseFromString(requestMessage))
+    {
+        std::cout << "error: Failed to parse protobuf message" << endl;
+        return false;
+    }
+
+    if (response.result() != GetCacheLastAccessTimeDistributionResponse::SUCCESS)
+    {
+        std::cout << "error: getcachelastaccesstimedistribution failed: response.result() != SUCCESS:" << response.result() << endl;
+        return false;
+    }
+
+    cout<<"distirbution map size: "<<response.distributionmap().size()<<endl;
+
+    if (response.distributionmap().size() == 0)
+    {
+        std::cout << "error: getcacheaccesstimedistribution failed: distributionmap size is 0" << endl;
+        return false;
+    }
+
+    for (auto it = response.distributionmap().begin(); it != response.distributionmap().end(); it++)
+    {
+        cout<<"Time: "<<std::ctime(&it->first)<<" , cache-size: "<<it->second<<endl;
     }
 
     ReleaseConnection(serverConnection);
@@ -1369,6 +1430,7 @@ void TestDeletes()
     }
 
     RUNTEST(TestDeleteAPI(groupid1, std::string(), DeleteResponse::SUCCESS));
+
     retryCount = 1;
     while (true)
     {
@@ -1385,7 +1447,6 @@ void TestDeletes()
         }
         retryCount++;
     }
-
     for (int i = 100; i < 120; i++)
     {
         TestUploadAPI(deleteFilename1 + to_string(i), 1024*1024, true, UploadResponse::SUCCESS, nullptr,
@@ -1396,7 +1457,7 @@ void TestDeletes()
     std::ostringstream oss;
     std::tm* tm = gmtime(&timestamp);    
     oss << std::put_time(tm, "%Y-%m-%dT%H:%M:%S") << ".456Z";
-    string lastAccessThreshold = oss.str();
+    string lastAccessTime = oss.str();
     // test last access time based deletion
     std::this_thread::sleep_for(std::chrono::seconds(5));
     for (int i = 120; i < 140; i++)
@@ -1405,7 +1466,7 @@ void TestDeletes()
             std::string());
     }
 
-    RUNTEST(TestDeleteAPI(std::string(), lastAccessThreshold.c_str(), DeleteResponse::SUCCESS));
+    RUNTEST(TestDeleteAPI(std::string(), lastAccessTime.c_str(), DeleteResponse::SUCCESS));
     std::this_thread::sleep_for(std::chrono::seconds(5));
 
     RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(100), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
@@ -1417,7 +1478,42 @@ void TestDeletes()
     RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(139), 0, 1024*1024, false, DownloadResponse::SUCCESS,
         nullptr));
 
-    }
+
+}
+//---------------------------------------------------------------------------------------------------------------------
+//  Test cache distribution
+void TestDistribution()
+{
+    cout << "Test cache distribution" << endl;
+    string file1 = GetUniqueFilename("file1");
+    string file2 = GetUniqueFilename("file2");
+    string file3 = GetUniqueFilename("file3");
+    string file4 = GetUniqueFilename("file4");
+    string file5 = GetUniqueFilename("file5");
+    string file6 = GetUniqueFilename("file6");
+    string file7 = GetUniqueFilename("file7");
+    string file8 = GetUniqueFilename("file8");
+
+    TestUploadAPI(file1, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 0);
+    TestUploadAPI(file2, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 1);
+    TestUploadAPI(file3, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 2);
+    TestUploadAPI(file4, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 3);
+    TestUploadAPI(file5, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 4);
+    TestUploadAPI(file6, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 5);
+    TestUploadAPI(file7, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 6);
+    TestUploadAPI(file8, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 7);
+
+    RUNTEST(TestDownloadAPI(file1, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(file2, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(file3, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(file4, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(file5, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+    RUNTEST(TestDownloadAPI(file6, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
+
+    RUNTEST(TestLastAccessTimeDistribution(1));
+}
+//---------------------------------------------------------------------------------------------------------------------
+
 //---------------------------------------------------------------------------------------------------------------------
 void TestExpiry()
 {
@@ -1819,14 +1915,14 @@ bool cli(int argc, char* argv[], bool& /*[out]*/ isCli)
         return !TestDeleteAPI(groupid, std::string(), DeleteResponse::SUCCESS);
     }
 
-    if(command == "deletebylastaccessthreshold")
+    if(command == "deletebylastaccesstime")
     {
         isCli = true;
-        cout << "deletebylastaccessthreshold command" << endl;
-        // lastaccessthreshold is string in the format YYYY-MM-DDThh:mm:ss.msecZ
+        cout << "deletebylastaccesstime command" << endl;
+        // lastaccesstime is string in the format YYYY-MM-DDThh:mm:ss.msecZ
         // Example: "2024-04-02T20:00:00.000Z"
-        std::string lastaccessthreshold = argc > 2 ? std::string(argv[2]) : std::string();
-        return !TestDeleteAPI(std::string(), lastaccessthreshold, DeleteResponse::SUCCESS);
+        std::string lastaccesstime = argc > 2 ? std::string(argv[2]) : std::string();
+        return !TestDeleteAPI(std::string(), lastaccesstime, DeleteResponse::SUCCESS);
     }
 
     if(command == "downloadfile")
@@ -1852,6 +1948,15 @@ bool cli(int argc, char* argv[], bool& /*[out]*/ isCli)
         cout << "measureperf command" << endl;
         MeasurePerf(16, 10, 200);
         return true;
+    }
+
+
+    if(command == "getaccesstimedistribution")
+    {
+        isCli = true;
+        std::cout << "getaccesstimedistribution command" << endl;
+        uint64_t distibutionWindow = argc > 2 ? std::stoi(argv[2]) : 1;
+        return !TestLastAccessTimeDistribution(distibutionWindow);
     }
 
     cout << "Not a cli command invocation" << endl;
@@ -1908,6 +2013,7 @@ int main(int argc, char *argv[])
     TestParallelism();
     TestCacheMetadata();
     TestDeletes();
+    TestDistribution();
     TestExpiry();
 
     if (runIBTests)

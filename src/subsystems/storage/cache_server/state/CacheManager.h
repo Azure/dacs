@@ -102,8 +102,8 @@ class CacheManager
         bool DeleteCacheEntryByGroupID(
             /*[in] */ const std::string& groupId);
 
-        bool DeleteCacheEntryByLastAccessThreshold(
-            /*[in] */ const std::string& lastAccessThreshold);
+        bool DeleteCacheEntryByLastAccessTime(
+            /*[in] */ const std::string& strLastAccessTime);
 
         void SetCacheSizeLimit(
             /*[in] */ const uint64_t limitCacheSizeBytes);
@@ -121,7 +121,10 @@ class CacheManager
 
         std::size_t GetCacheServerSize() const;
 
-    private:
+        bool GetLastAccessTimeDistribution(uint64_t distributionBucketIntervalInHours,
+                                           ::google::protobuf::Map<int64_t, uint64_t>& lastAccessTimeDistributionMap) const;
+
+      private:
         CacheManager();
         ~CacheManager();
 
@@ -139,7 +142,7 @@ class CacheManager
 
         static uint64_t ParseTimeIntervalString(const char* timeInterval);
 
-        time_t ParseAndConvertToTime(const std::string& timeString);
+        static time_t ParseAndConvertToTime(const std::string& timeString);
 
         // Delete file path from local disk
         void DeleteFile(
@@ -149,7 +152,7 @@ class CacheManager
 
         void EvictionWorker();
 
-        void EvictByAccessTime(time_t nLastAccessThresholdTime);
+        void EvictByAccessTime(time_t nLastAccessTime);
 
         double GetCacheServerUtilizationPercentage() const;
 

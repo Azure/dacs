@@ -64,8 +64,14 @@ extern "C" CacheClientStatus DeleteGroup(/*[in]*/ const char* strGroupId)
     return GetImplInstance()->DeleteGroup(strGroupId);
 }
 //---------------------------------------------------------------------------------------------------------------------
-extern "C" CacheClientStatus DeleteByLastAccessThreshold(/*[in]*/ const char* strLastAcessThreshold)
+extern "C" CacheClientStatus GetLastAccessTimeDistribution(/*[in]*/ uint64_t nDistributionBucketSizeInHours,
+                                                       /*[out]*/ LastAccessTimeDistribution* pLastAccessTimeDistribution)
 {
-    return GetImplInstance()->DeleteByLastAccessThreshold(strLastAcessThreshold);
+    return GetImplInstance()->GetLastAccessTimeDistribution(nDistributionBucketSizeInHours, pLastAccessTimeDistribution);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" CacheClientStatus DeleteByLastAccessTime(/*[in]*/ const char* strLastAccessTime)
+{
+    return GetImplInstance()->DeleteByLastAccessTime(strLastAccessTime);
 }
 //---------------------------------------------------------------------------------------------------------------------
