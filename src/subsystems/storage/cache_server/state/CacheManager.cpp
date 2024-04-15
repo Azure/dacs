@@ -721,11 +721,6 @@ void CacheManager::CacheCleanupWorker()
     LOG_INFO("Shutdown CacheCleanupWorker");
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::size_t CacheManager::GetCacheServerSize() const
-{
-    return (std::size_t)m_totalCachedSize.load();
-}
-//---------------------------------------------------------------------------------------------------------------------
 uint64_t CacheManager::ParseTimeIntervalString(const char* timeInterval)
 {
     if(timeInterval == nullptr)
@@ -1014,10 +1009,5 @@ bool CacheManager::GetLastAccessTimeDistribution(
 
     TIMER_STOP_AND_LOG(GetLastAccessTimeDistribution);
     return true;
-}
-//---------------------------------------------------------------------------------------------------------------------
-double CacheManager::GetCacheServerUtilizationPercentage() const
-{
-    return (double)m_totalCachedSize.load() * 100.0 / m_cacheSizeLimitBytes;
 }
 //---------------------------------------------------------------------------------------------------------------------
