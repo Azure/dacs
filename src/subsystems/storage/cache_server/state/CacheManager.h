@@ -119,7 +119,20 @@ class CacheManager
         void ScanForSnapshotConsistency(
             /*[in] */ const snapshot::Snapshot& snapshot);
 
-        std::size_t GetCacheServerSize() const;
+        inline std::size_t GetCacheServerSize() const
+        {
+            return (std::size_t)m_totalCachedSize.load();
+        }
+
+        std::size_t GetCacheServerSizeLimit() const
+        {
+            return (std::size_t)m_cacheSizeLimitBytes.load();
+        }
+
+        inline double GetCacheServerUtilizationPercentage() const
+        {
+            return (double)m_totalCachedSize.load() * 100.0 / m_cacheSizeLimitBytes;
+        }
 
         bool GetLastAccessTimeDistribution(uint64_t distributionBucketIntervalInHours,
                                            ::google::protobuf::Map<int64_t, uint64_t>& lastAccessTimeDistributionMap) const;
@@ -153,8 +166,6 @@ class CacheManager
         void EvictionWorker();
 
         void EvictByAccessTime(time_t nLastAccessTime);
-
-        double GetCacheServerUtilizationPercentage() const;
 
         // Setting some default expiry time to ensure one client doesn't permanently lock a cache key
         static constexpr uint32_t CACHE_INIT_EXPIRY_SECONDS = 60;

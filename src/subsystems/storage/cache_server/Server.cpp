@@ -244,7 +244,12 @@ void CacheServerSizeBackgroundThread()
     {
         std::this_thread::sleep_for(std::chrono::seconds(60));
         size_t cacheSize = CacheManager::GetInstance().GetCacheServerSize();
-        LOG_INFO("Cache server size: {}", cacheSize);
+        size_t cacheSizeLimit = CacheManager::GetInstance().GetCacheServerSizeLimit();
+        double cacheSizePercentage = CacheManager::GetInstance().GetCacheServerUtilizationPercentage();
+        LOG_INFO("{{CacheSize: {}, CacheSizeLimit: {}, CacheSizePercentage: {}}}",
+                 cacheSize,
+                 cacheSizeLimit,
+                 cacheSizePercentage);
         Metrics::UpdateCacheSize(cacheSize);
     }
 }
