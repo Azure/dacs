@@ -194,14 +194,17 @@ void RunPerfTest(/*[in]*/ int nParallelism,
     LOG_INFO("=============================================================");
 
     // Single line summary for easy parsing
-    LOG_INFO("Summary: mode {} start_timestamp {} end_timestamp {} duration_ms {} total_bytes_transferred {} "
-             "throughput_Mbps {}",
+    LOG_INFO("Summary: mode {},start_timestamp {},end_timestamp {},duration_ms {},total_bytes_transferred {},"
+             "throughput_Mbps {},total_individual_failures {},expected_chunks_to_transfer {},chuncks_successfully_transferred {}",
              strMode,
              std::chrono::duration_cast<std::chrono::milliseconds>(startTime.time_since_epoch()).count(),
              std::chrono::duration_cast<std::chrono::milliseconds>(endTime.time_since_epoch()).count(),
              durationMs,
              nBytesTransferred,
-             nThroughputMbps);
+             nThroughputMbps,
+             nGlobalFailureCounter.load(),
+             nTotalChunksToTransfer,
+             nChunksSuccessfullyTransferred);
 }
 //---------------------------------------------------------------------------------------------------------------------
 po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
@@ -474,15 +477,21 @@ int LastAccessTimeDistributionClient(int argc, char* argv[])
     else
     {
         LOG_INFO("Successfully requested get last access distribution");
+        std::cout << "=== Output Start (CSV of bucket start timestamp,size in bytes, size in GiB) ===" << std::endl;
         for (int i = 0; i < pLastAccessTimeDistribution->nKeyValuePairs; i++)
         {
             std::tm* tm = std::gmtime(&pLastAccessTimeDistribution->arrKeyValuePairs[i].nKey);
+
             std::ostringstream oss;
             oss << std::put_time(tm, "%FT%T");
             oss << ".000Z";
-            std::string timestamp = oss.str();
-            LOG_INFO("Last access time distribution for time: {} size: {} bytes", timestamp, pLastAccessTimeDistribution->arrKeyValuePairs[i].nValue);
+
+            std::string strTimestamp = oss.str();
+            uint64_t nSizeBytes = pLastAccessTimeDistribution->arrKeyValuePairs[i].nValue;
+            uint64_t nSizeGiB = nSizeBytes / (1024 * 1024 * 1024);
+            std::cout << strTimestamp << "," << nSizeBytes << " bytes," << nSizeGiB << " GiB" << std::endl;
         }
+        std::cout << "=== Output End ===";
         return 0;
     }
 }
