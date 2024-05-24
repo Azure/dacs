@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
@@ -16,6 +17,8 @@ var clientset *kubernetes.Clientset
 
 // Constants
 const (
+	MaxRetries                  = 3
+	RetryInterval               = 5 * time.Second
 	ProcessingUnitLabelKey      = "dacs.azure.com/processing-unit"
 	ProcessingUnitLabelValueCpu = "cpu"
 	ProcessingUnitLabelValueGpu = "gpu"
@@ -79,7 +82,7 @@ func sanityCheckPod(pod v1.Pod) bool {
 		}
 	} else {
 		// Ephemeral storage pods should not use custom scheduler
-		if pod.Spec.SchedulerName != "" {
+		if pod.Spec.SchedulerName == SchedulerName {
 			log.Errorf("Pod %s should not have custom scheduler name if it uses ephemeral storage", pod.Name)
 			return false
 		}
@@ -132,10 +135,23 @@ func lazyInit() {
 func GetNodesFromK8s() ([]Node, error) {
 	lazyInit()
 
-	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		log.Errorf("Kubernetes client encountered error getting nodes: %s", err.Error())
-		return nil, err
+	nodes := &v1.NodeList{}
+	retryCount := 0
+	for retryCount < MaxRetries {
+		var err error
+		nodes, err = clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			log.Warnf("Kubernetes client encountered error getting nodes: %s", err.Error())
+			if retryCount < MaxRetries {
+				log.Warnf("Retrying k8s get nodes in %s", RetryInterval)
+				retryCount++
+				time.Sleep(RetryInterval)
+				continue
+			} else {
+				log.Errorf("Max retries exceeded for k8s get nodes")
+				return nil, err
+			}
+		}
 	}
 
 	nodeList := []Node{}
@@ -155,14 +171,27 @@ func GetNodesFromK8s() ([]Node, error) {
 func GetPodsFromK8s() ([]Pod, error) {
 	lazyInit()
 
-	pods, err := clientset.CoreV1().Pods(CacheserverNamespace).List(
-		context.TODO(),
-		metav1.ListOptions{
-			LabelSelector: PodLabelSelectorStr,
-		})
-	if err != nil {
-		log.Errorf("Kubernetes client encountered error getting pods: %s", err.Error())
-		return nil, err
+	pods := &v1.PodList{}
+	retryCount := 0
+	for retryCount < MaxRetries {
+		var err error
+		pods, err = clientset.CoreV1().Pods(CacheserverNamespace).List(
+			context.TODO(),
+			metav1.ListOptions{
+				LabelSelector: PodLabelSelectorStr,
+			})
+		if err != nil {
+			log.Errorf("Kubernetes client encountered error getting pods: %s", err.Error())
+			if retryCount < MaxRetries {
+				log.Warnf("Retrying k8s get pods in %s", RetryInterval)
+				retryCount++
+				time.Sleep(RetryInterval)
+				continue
+			} else {
+				log.Errorf("Max retries exceeded for k8s get pods")
+				return nil, err
+			}
+		}
 	}
 
 	podList := []Pod{}

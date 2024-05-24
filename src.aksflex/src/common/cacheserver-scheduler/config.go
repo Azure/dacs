@@ -46,7 +46,7 @@ func GetConfig() *Config {
 	if configInstance == nil {
 		pwd := filepath.Dir(os.Args[0])
 		configFilePath := path.Join(pwd, DefaultConfigFilePath)
-		log.Warnf("InitConfig is not called, will load it from default path: %s", configFilePath)
+		log.Infof("InitConfig is not called, will load it from default path: %s", configFilePath)
 		InitConfig(configFilePath)
 	}
 	return configInstance
