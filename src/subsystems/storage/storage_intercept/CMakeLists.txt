@@ -44,11 +44,11 @@ ADD_LIBRARY(static-azurestorage STATIC IMPORTED)
 SET_TARGET_PROPERTIES(static-azurestorage PROPERTIES
         IMPORTED_LOCATION /opt/azure-storage-cpplite-0.3.0/lib/libazure-storage-lite.a)
 
-set(CommonDeps CacheClientLib StorageCommon CacheProto ClientConnections EncryptionUtils diagnostics curl static-azurestorage jsoncpp dl uuid crypto staticprotobuf ibverbs)
+set(CommonDeps CacheClientLib StorageCommon CacheProto ClientConnections EncryptionUtils diagnostics curl static-azurestorage jsoncpp dl uuid crypto staticprotobuf)
 
 add_dependencies(StorageIntercept StorageLibcDlsymWrapper StorageCommon CacheProto ClientConnections EncryptionUtils)
 
-target_link_libraries(StorageIntercept StorageLibcDlsymWrapper ${CommonDeps})
+target_link_libraries(StorageIntercept StorageLibcDlsymWrapper ${CommonDeps} ibverbs)
 
 add_dependencies(CacheClient StorageLibcDirectWrapper StorageCommon CacheProto ClientConnections EncryptionUtils)
 

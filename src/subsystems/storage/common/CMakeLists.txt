@@ -8,6 +8,6 @@ add_library(StorageCommon ${CLIENT_UTILS_SOURCES})
 
 target_include_directories(StorageCommon PUBLIC ${CMAKE_CURRENT_LIST_DIR})
 
-add_dependencies(StorageCommon diagnostics)
+add_dependencies(StorageCommon IbverbsDlsym diagnostics)
 
-target_link_libraries(StorageCommon diagnostics curl jsoncpp dl uuid crypto ibverbs)
+target_link_libraries(StorageCommon IbverbsDlsym diagnostics curl jsoncpp dl uuid crypto)

@@ -23,14 +23,14 @@ add_library(CacheClientLib STATIC
     CacheClientImpl.cpp
 )
 
-set(CommonDeps StorageCommon StorageLibcDlsymWrapper ClientConnections CacheProto EncryptionUtils)
+set(CommonDeps StorageCommon StorageLibcDlsymWrapper IbverbsDlsym ClientConnections CacheProto EncryptionUtils)
 set(CommonLinks StorageLibcDlsymWrapper
+    IbverbsDlsym
     ClientConnections
     CacheProto
     EncryptionUtils
     diagnostics
     pthread
-    ibverbs
     xxhash)
 
 add_dependencies(CacheClientSharedLib ${CommonDeps})
