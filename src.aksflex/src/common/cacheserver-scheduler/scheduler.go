@@ -195,6 +195,11 @@ func updatePodMap(pods []Pod) (pendingPods []Pod, stuckPods []Pod, nodesWithPods
 			if existingPodStateFound && podState.NodeName == pod.NodeName && podState.State == pod.State {
 				podState.LastHitTimestamp = time.Now()
 			} else {
+				if existingPodStateFound {
+					log.Infof("Pod %s moved from node %s to node %s or state changed from %s to %s",
+						pod.PodName, podState.NodeName, pod.NodeName, podState.State, pod.State)
+				}
+
 				podState = schedulerPodInfo{
 					PodName:           pod.PodName,
 					NodeName:          pod.NodeName,
