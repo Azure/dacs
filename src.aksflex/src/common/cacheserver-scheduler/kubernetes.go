@@ -151,6 +151,8 @@ func GetNodesFromK8s() ([]Node, error) {
 				log.Errorf("Max retries exceeded for k8s get nodes")
 				return nil, err
 			}
+		} else {
+			break
 		}
 	}
 
@@ -191,6 +193,8 @@ func GetPodsFromK8s() ([]Pod, error) {
 				log.Errorf("Max retries exceeded for k8s get pods")
 				return nil, err
 			}
+		} else {
+			break
 		}
 	}
 
