@@ -630,7 +630,7 @@ uint64_t StorageInterceptConfig::GetAttributesCacheMaxEntries()
     return StorageInterceptConfig::GetOptionalConfigUint64(
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameAttributesCacheMaxEntries,
-        1000000);
+        10000000);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetAttributesCacheUseLocalServer()

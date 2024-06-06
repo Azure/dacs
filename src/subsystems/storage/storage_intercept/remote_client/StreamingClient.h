@@ -31,7 +31,8 @@ class StreamingClient
             /*[in] */ const std::string& remotePath,
             /*[out]*/ void *buf,
             /*[in] */ size_t readSize,
-            /*[in] */ off64_t readOffset);
+            /*[in] */ off64_t readOffset,
+            /*[in] */ off64_t fileSize);
 
         std::string ReadDirectory(
             /*[in] */ const std::string& remotePath,
@@ -165,7 +166,8 @@ class StreamingClient
         void EnsurePrefetchCacheWindowPopulated(
             /*[in] */ const std::string& remotePath,
             /*[in] */ size_t readSize,
-            /*[in] */ off64_t readOffset);
+            /*[in] */ off64_t readOffset,
+            /*[in] */ off64_t fileSize);
         
         // Function to be called before starting any read chunk (sync or async).
         // It increments the counter for concurrent read chunks and waits till the concurrency is below the allowed

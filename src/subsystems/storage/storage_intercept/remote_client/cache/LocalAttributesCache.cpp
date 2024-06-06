@@ -61,7 +61,7 @@ CacheStatus LocalAttributesCache::Get(const std::string& path, FileAttributes& f
     getAttributeRequest->set_requestid(cacheutils::GetCorrelationId());
     getAttributeRequest->set_filename(path);
     getAttributeRequest->set_enablelock(true);
-    LOG_INFO_REQID("Creating GetAttributeRequest for path: {}", *getAttributeRequest, path);
+    LOG_DEBUG_REQID("Creating GetAttributeRequest for path: {}", *getAttributeRequest, path);
 
     auto serverConnection = move(m_spConnectionManager->GetConnection(0));
     if (serverConnection.get() == nullptr)
@@ -224,7 +224,7 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
         attr->set_accessedtime(queueEntry->m_fileAttributes.aTime.tv_sec);
         attr->set_modifiedtime(queueEntry->m_fileAttributes.mTime.tv_sec);
     }
-    LOG_INFO_REQID("Creating PutAttributeRequest with {} entries", *putAttributeRequest, putAttributeRequest->fileattributes_size());
+    LOG_DEBUG_REQID("Creating PutAttributeRequest with {} entries", *putAttributeRequest, putAttributeRequest->fileattributes_size());
 
     auto serverConnection = move(m_spConnectionManager->GetConnection(0));
     if (serverConnection.get() == nullptr)

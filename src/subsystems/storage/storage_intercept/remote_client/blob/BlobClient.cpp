@@ -157,8 +157,48 @@ std::string BlobClient::ReadDirectory(
   const std::string& continuationToken,
   std::vector<DirectoryEntry>& dirEntries)
 {
+    /* Case of ls on mount point for dynamic container mounts - we need to list containers insted of blobs Performing automatic code translation */
+    if (m_bIsDynamicContainer && remotePath.empty())
+    {
+        auto listContainersOutcome = GetBlobClient(remotePath).list_containers_segmented(
+            "", /* prefix */
+            continuationToken,
+            DIRENTS_BATCH_SIZE).get();
+        if (!listContainersOutcome.success())
+        {
+            LOG_ERROR(
+                "Failed to list containers from remote for path={}"
+                " status-code={}, code-name={}, error-msg={}",
+                remotePath,
+                listContainersOutcome.error().code,
+                listContainersOutcome.error().code_name,
+                listContainersOutcome.error().message);
+            throw RemoteClientException("BlobClientError: " + listContainersOutcome.error().code_name + ", " + listContainersOutcome.error().message);
+        }
+
+        for (const auto& container : listContainersOutcome.response().containers)
+        {
+            dirEntries.push_back(DirectoryEntry());
+
+            dirEntries.back().d_ino = D_INO_VAL;
+            dirEntries.back().d_off = dirEntries.size() - 1;
+            dirEntries.back().d_reclen = sizeof(DirectoryEntry);
+            dirEntries.back().d_type = DT_DIR;
+            strncpy(dirEntries.back().d_name, container.name.c_str(), D_NAME_LEN);
+            dirEntries.back().d_size = DIRECTORY_SIZE;
+
+            struct tm mTime;
+            strptime(container.last_modified.c_str(), "%a, %d %b %Y %H:%M:%S", &mTime);
+            // Response from blob only contains mTime
+            dirEntries.back().d_atime = dirEntries.back().d_mtime = timegm(&mTime);
+        }
+
+        return listContainersOutcome.response().next_marker;
+    }
+
     const std::string blobPath = GetBlobName(remotePath);
     const std::string containerName = GetContainerName(remotePath);
+
     auto blobOutcome =
         GetBlobClient(remotePath).list_blobs_segmented(
             containerName,
@@ -226,6 +266,13 @@ std::string BlobClient::ReadDirectory(
 //---------------------------------------------------------------------------------------------------------------------
 int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& attr)
 {
+    /* Case of stat on mount point for dynamic container mounts */
+    if (m_bIsDynamicContainer && remotePath.empty())
+    {
+        MakeDirectoryAttr(attr);
+        return 0;
+    }
+
     azBlobClient_t& blobClient = GetBlobClient(remotePath);
     const std::string blobPath = GetBlobName(remotePath);
     const std::string containerName = GetContainerName(remotePath);

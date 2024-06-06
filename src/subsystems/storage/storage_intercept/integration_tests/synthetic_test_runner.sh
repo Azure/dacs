@@ -19,10 +19,13 @@ _usage()
     echo
     echo "Usage synthetictest.sh -b Debug|Release [-h] | [-s] -d <OPTION> -n <NUM> -p <NUM>"
     echo "options:"
+    echo "-b Debug|Release Build configuration to use"
     echo "-s (stacking-enabled) Enables the stacked interception in test, along with LfsInterceptor"
     echo "-d "OPTION" Type of dataset to test against [small | large]"
     echo "-n NUM Number of files to include in the test"
     echo "-p NUM Number of concurrent threads accessing the files in the test"
+    echo "-f Use fuse version of storageinterception"
+    echo "-h Print this Help."
     echo
 }
 
@@ -55,6 +58,7 @@ _test_runner()
     _SAMPLES_DIR=$4
     _NUM_FILES=$5
     _PARALLELISM=$6
+    _USE_FUSE=$7
 
     if [ ${_STACKING} = true ]
     then
@@ -63,9 +67,55 @@ _test_runner()
     else
         STORAGE_INTERCEPT_LD_PRELOAD="LD_PRELOAD=${STORAGE_INTERCEPTOR}"
     fi
+    unset DACS_LOG_OUTPUT_FILE
+    unset DACS_LOG_ERROR_FILE
 
-    echo "Starting the python io test"
+    if [ ${_USE_FUSE} = true ]
+    then
+        STORAGE_INTERCEPT_LD_PRELOAD=""
+        export DACS_LOG_OUTPUT_FILE="${REPOSITORY_ROOT}/dacsfs.log"
+        export DACS_LOG_ERROR_FILE="${REPOSITORY_ROOT}/dacsfs.err"
+
+        STORAGE_FUSE_MOUNT="${REPOSITORY_ROOT}/bin/${build_configuration}/native-storage/storage/dacsfs"
+
+        echo "Doing mount1"
+        umount /mnt/quiverfs
+        mkdir -p /mnt/quiverfs
+        echo "$STORAGE_FUSE_MOUNT /mnt/quiverfs -o allow_other -o ro -o attr_timeout=36000 -o entry_timeout=36000 -o negative_timeout=36000"
+        $STORAGE_FUSE_MOUNT /mnt/quiverfs -o allow_other -o ro -o attr_timeout=36000 -o entry_timeout=36000 -o negative_timeout=36000
+        if [ $? -ne 0 ]
+        then
+            echo "Mount failed"
+            exit 1
+        fi
+        echo "Mount done. Testing stat /mnt/quiverfs"
+        stat /mnt/quiverfs
+
+        second_mount_enabled=false
+        if grep -q 'mount2' /tmp/storageIntercept.config; then
+            echo "Mount2 enabled"
+            mv /tmp/storageIntercept.config /tmp/storageIntercept.config.bak
+            grep -v 'mount1' /tmp/storageIntercept.config.bak > /tmp/storageIntercept.config
+            sed -i 's/mountName1/mountName0/g' /tmp/storageIntercept.config
+
+            umount /mnt/quiverfs2
+            mkdir -p /mnt/quiverfs2
+            echo "$STORAGE_FUSE_MOUNT /mnt/quiverfs2 -o allow_other -o ro -o attr_timeout=36000 -o entry_timeout=36000 -o negative_timeout=36000"
+            $STORAGE_FUSE_MOUNT /mnt/quiverfs2 -o allow_other -o ro -o attr_timeout=36000 -o entry_timeout=36000 -o negative_timeout=36000
+            if [ $? -ne 0 ]
+            then
+                echo "Mount2 failed"
+                exit 1
+            fi
+
+            second_mount_enabled=true
+        else
+            echo "Mount2 disabled"
+        fi
+    fi
+
     runTestCmd="${STORAGE_INTERCEPT_LD_PRELOAD} python3 ${PYTHON_IO_TEST} --folder_path ${_IO_TEST_FOLDER_PATH} --compressed_tar_path ${_IO_TEST_TAR_PATH} --compressed_zip_path ${_IO_TEST_ZIP_PATH}"
+    echo "Starting the python io test => ${runTestCmd}"
     eval $runTestCmd
     if [ $? -ne 0 ]
     then
@@ -88,6 +138,17 @@ _test_runner()
     unset STORAGE_INTEG_TESTCASE_FILE
     echo "Synthetic test completed"
     echo
+
+    if [ ${_USE_FUSE} = true ]
+    then
+        echo "umount /mnt/quiverfs"
+        umount /mnt/quiverfs
+        if [ ${second_mount_enabled} = true ]
+        then
+            echo "umount /mnt/quiverfs2"
+            umount /mnt/quiverfs2
+        fi
+    fi
 }
 
 # ==================================================
@@ -99,21 +160,23 @@ mount_path="/mnt/quiverfs"
 num_files_to_test=100
 parallelism=4
 build_configuration=Debug
+use_fuse=false
 
 # ==================================================
 # Parse command line args
 # ==================================================
-while getopts :b:d:n:p:sh flag
+while getopts :b:d:n:p:fsh flag
 do
     case "${flag}" in
         h) _usage;
             exit 0;;
         b) build_configuration=${OPTARG};;
         d) dataset=${OPTARG};;
+        f) use_fuse=true;;
         n) num_files_to_test=${OPTARG};;
         p) parallelism=${OPTARG};;
         s) enable_stacking=true;;
-        *) _synthetic_test_help; 
+        *) _usage; 
             exit 1;;
     esac
 done
@@ -160,7 +223,7 @@ echo "$(readlink -f ${EXE_TEST})"
 # Call the test runner
 echo "Starting the integration test"
 ioTestArgs="declare -p io_test_args"
-_test_runner $enable_stacking "$($ioTestArgs)" $mount_path $samples_file $num_files_to_test $parallelism
+_test_runner $enable_stacking "$($ioTestArgs)" $mount_path $samples_file $num_files_to_test $parallelism $use_fuse
 if [ $? -ne 0 ]
 then
     echo "Integration test failed"
