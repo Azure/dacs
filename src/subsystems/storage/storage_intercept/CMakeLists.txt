@@ -63,6 +63,22 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/src/subsystems/storage/storage_intercept/interceptors/CacheClientInterface.h
         ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/include)
 
+# FUSE implementation
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(FUSE3 REQUIRED fuse3 IMPORTED_TARGET)
+
+file(GLOB DACSFS_SOURCES ${STORAGE_INTERCEPT_SOURCES_COMMON} fuse/fuse.cpp)
+
+add_executable(dacsfs ${DACSFS_SOURCES})
+target_compile_definitions(dacsfs PRIVATE FUSE_USE_VERSION=31 STORAGE_INTERCEPT_FUSE=1)
+target_link_libraries(dacsfs PRIVATE
+        PkgConfig::FUSE3 StorageLibcDirectWrapper ${CommonDeps})
+
+add_custom_command(
+    TARGET dacsfs POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/dacsfs
+        ${CMAKE_REMOTE_PUBLISH_DIRECTORY})
+
 #StorageIntercept Unit Tests
 enable_testing()
 

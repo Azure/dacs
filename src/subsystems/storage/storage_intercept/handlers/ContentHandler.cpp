@@ -86,8 +86,39 @@ ContentHandler::MountInfo* ContentHandler::CheckInterceptionForPath(
     const char* path,
     std::string& outRelativePath)
 {
+#ifdef STORAGE_INTERCEPT_FUSE
+    const bool m_bIsFuseMount = true;
+#else
+    const bool m_bIsFuseMount = false;
+#endif
+
     for (const std::unique_ptr<MountInfo>& mountInfo : m_vecMountInfo)
     {
+        if (m_bIsFuseMount)
+        {
+            outRelativePath = "";
+            int pathLen = strlen(path);
+            int pathIdx = 0;
+            const char SEPARATOR_CHAR = '/';
+
+            if (pathLen == 0) {
+                return mountInfo.get();
+            }
+
+            // Don't include starting separator in relative path
+            while (pathIdx < pathLen && path[pathIdx] == SEPARATOR_CHAR) pathIdx++;
+
+            // Append rest of path to relative path (ignoring consecutive separators)
+            while (pathIdx < pathLen) {
+                outRelativePath += path[pathIdx];
+
+                while (path[pathIdx] == SEPARATOR_CHAR && pathIdx + 1 < pathLen && path[pathIdx+1] == SEPARATOR_CHAR) pathIdx++;
+                pathIdx++;
+            }
+
+            return mountInfo.get();
+        }
+
         const bool isRelative = StorageInterceptUtils::GetRelativePath(mountInfo->MountPath, path, outRelativePath);
         if (isRelative) return mountInfo.get();
     }
@@ -486,6 +517,7 @@ int ContentHandler::OpenValidatedPathInternal(
         return -1;
     }
 
+    LOG_DEBUG("Alloted fd={} for mountName={}, relativePath={}", fd, mountInfo.MountName, relativePath);
     return fd;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -552,20 +584,7 @@ ssize_t ContentHandler::HandleRead(int fd, void *buf, size_t nBytes)
         nBytes,
         readOffset);
 
-    if (readOffset >= fileSize)
-    {
-        LOG_DEBUG("Reading beyond end of file, returning 0 bytes, fd={} mountName={} path={} offset={} fileSize={}",
-            fd, mountInfo.MountName, path, readOffset, fileSize);
-        return 0;
-    }
-
-    if (readOffset + nBytes > fileSize)
-    {
-        // re-adjust nBytes to ensure we don't unnecessarily attempt to read beyond file size
-        nBytes = fileSize - readOffset;
-    }
-
-    ssize_t result = GetStreamingClient(mountInfo).ReadFile(path, buf, nBytes, readOffset);
+    ssize_t result = GetStreamingClient(mountInfo).ReadFile(path, buf, nBytes, readOffset, fileSize);
     if (result < 0)
     {
         LOG_ERROR("StreamingClient read returned error for fd={} mountName={} path={} nBytes={} readOffset={}",
@@ -616,6 +635,7 @@ ssize_t ContentHandler::HandlePRead(int fd, void *buf, size_t nBytes, off64_t of
     }
 
     const std::string path = fdIt->second->RemotePath;
+    off64_t fileSize = fdIt->second->Attributes.size;
     MountInfo& mountInfo = GetMountInfo(fdIt->second->MountName);
     openHandlesLock.unlock();
 
@@ -626,7 +646,7 @@ ssize_t ContentHandler::HandlePRead(int fd, void *buf, size_t nBytes, off64_t of
         nBytes,
         offset);
 
-    ssize_t result = GetStreamingClient(mountInfo).ReadFile(path, buf, nBytes, offset);
+    ssize_t result = GetStreamingClient(mountInfo).ReadFile(path, buf, nBytes, offset, fileSize);
     if (result < 0)
     {
         LOG_ERROR("StreamingClient read returned error for fd={} mountName={} path={} nBytes={} offset={}",

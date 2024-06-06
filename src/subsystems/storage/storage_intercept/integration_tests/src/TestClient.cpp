@@ -35,6 +35,11 @@ void TestFileReadWithSeek(const std::string& mountPath)
   int expectedFileSize = 324089;
 
   int fd = ::open(remoteFilePath.c_str(), O_RDONLY, 0777);
+  if (fd < 0)
+  {
+    std::cout << "ERROR: failed to open file: " << remoteFilePath.c_str() << " err=" << strerror(errno) << std::endl;
+    throw "open file failed";
+  }
 
   std::unique_ptr<char[]> writeAddr(new char[expectedFileSize]);
   size_t readSize = 0;
@@ -453,13 +458,32 @@ void TestReaddir(
     {
       while ((dir = ::readdir64(d)) != NULL)
       {
-        if (dir->d_type == DT_DIR)
+        if (dir->d_type != DT_UNKNOWN)
         {
-          nDirs++;
+          if ((dir->d_type & DT_DIR) == DT_DIR)
+          {
+            nDirs++;
+          }
+          else if ((dir->d_type & DT_REG) == DT_REG)
+          {
+            nFiles++;
+          }
         }
-        else if (dir->d_type == DT_REG)
+        else
         {
-          nFiles++;
+          struct stat st;
+          std::string fullPath = dirPath + "/" + dir->d_name;
+          if (::stat(fullPath.c_str(), &st) == 0)
+          {
+            if (S_ISDIR(st.st_mode))
+            {
+              nDirs++;
+            }
+            else if (S_ISREG(st.st_mode))
+            {
+              nFiles++;
+            }
+          }
         }
       }
       ::closedir(d);
@@ -469,10 +493,12 @@ void TestReaddir(
 
   if (nDirs != expectedDirCount)
   {
+    std::cout << "No of dir entries for path=" << dirPath << " nDirs=" << nDirs << " expectedDirCount=" << expectedDirCount << std::endl;
     throw "Incorrect number of dir entries returned";
   }
   if (nFiles != expectedFileCount)
   {
+    std::cout << "No of dir entries for path=" << dirPath << " nFiles=" << nFiles << " expectedFileCount=" << expectedFileCount << std::endl;
     throw "Incorrect number of file entries returned";
   }
 
@@ -495,7 +521,7 @@ void TestIfStreamInterception(const std::string& mountPath)
   std::ifstream in(remoteFilePath, std::ios::in | std::ios::binary);
   if (!in)
   {
-    std::cout << "couldn't open remote file: " << remoteFilePath.c_str() << std::endl;
+    std::cout << "couldn't open remote file: " << remoteFilePath.c_str() << " error:" << strerror(errno) << std::endl;
     throw "couldn't open remote file";
   }
 

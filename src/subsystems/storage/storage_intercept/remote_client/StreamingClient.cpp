@@ -186,9 +186,21 @@ ssize_t StreamingClient::ReadFile(
     const std::string& remotePath,
     void *buf,
     size_t readSize,
-    off64_t readOffset)
+    off64_t readOffset,
+    off64_t fileSize)
 {
     UpdateReadStats(readSize, false);
+
+    if (readOffset >= fileSize)
+    {
+        return 0; // EOF reached.
+    }
+
+    if (readOffset + readSize > fileSize)
+    {
+        // Trim readSize so that we don't trigger unnecessary reads beyond file size.
+        readSize = (fileSize - readOffset);
+    }
 
     // If large prefetch is enabled and read size less than prefetch window size,
     // prefetch the window first and then read and return.
@@ -197,7 +209,7 @@ ssize_t StreamingClient::ReadFile(
     if (m_bEnableLargePrefetch
         && readSize < m_nPrefetchWindowSize)
     {
-        EnsurePrefetchCacheWindowPopulated(remotePath, readSize, readOffset);
+        EnsurePrefetchCacheWindowPopulated(remotePath, readSize, readOffset, fileSize);
 
         // All data for this read is now in prefetchCache,
         // reading chunks parallely won't speed-up as there won't be remote store calls.
@@ -590,7 +602,8 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
 void StreamingClient::EnsurePrefetchCacheWindowPopulated(
     const std::string& remotePath,
     size_t readSize,
-    off64_t readOffset)
+    off64_t readOffset,
+    off64_t fileSize)
 {    
     const std::string cacheFilePath = GetCacheFilePath(remotePath);
     off64_t startWindowOffset = readOffset - (readOffset % m_nPrefetchWindowSize);
@@ -601,7 +614,7 @@ void StreamingClient::EnsurePrefetchCacheWindowPopulated(
 
     // check cached offsets to see how much of prefetch window(s) is already in cache
     off64_t prefetchStart = startWindowOffset;
-    off64_t prefetchEnd = endWindowOffset + m_nPrefetchWindowSize;
+    off64_t prefetchEnd = min(off64_t(endWindowOffset + m_nPrefetchWindowSize), fileSize);
     std::vector<off64_t> uncachedOffsets;
     for (off64_t chunkOffset = prefetchStart; chunkOffset < prefetchEnd; chunkOffset += m_nChunkSize)
     {
@@ -781,7 +794,7 @@ void StreamingClient::LogReadChunkStats(bool forceLog)
     if (forceLog || 
         (totalReadChunks < 10) || 
         (totalReadChunks < 200 && totalReadChunks % 10 == 0) ||
-        totalReadChunks % 200 == 0)
+        (totalReadChunks % 200 == 0))
     {        
         LOG_INFO("ReadChunk stats: MountName={} Total={} PrefetchCache={} RemoteCache={} RemoteClient={}",
             m_strMountName,
@@ -861,7 +874,7 @@ void StreamingClient::LogGetPropertiesStats(bool forceLog)
     if (forceLog ||
         (totalGetProperties < 10) || 
         (totalGetProperties < 200 && totalGetProperties % 10 == 0) ||
-        totalGetProperties % 200 == 0)
+        (totalGetProperties % 200 == 0))
     {        
         LOG_INFO("GetProperties stats: MountName={} Total={} CacheHit={} CacheMiss={}",
             m_strMountName,

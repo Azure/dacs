@@ -32,6 +32,7 @@ function append_interception_config_blob_prefix() {
     MOUNT_PREFIX=$3
     MOUNT_SAS_TOKEN_NAME=$4
     IS_DYNAMIC=$5
+    IS_FUSE_ENABLED=$6
 
     echo "${MOUNT_PREFIX}storagePath ${MOUNT_PATH}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "${MOUNT_PREFIX}type blob" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
@@ -39,11 +40,19 @@ function append_interception_config_blob_prefix() {
     echo "${MOUNT_PREFIX}azBlobSASToken \${${MOUNT_SAS_TOKEN_NAME}}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "${MOUNT_PREFIX}azBlobStorageEndpoint https://${ACCOUNT_NAME}.blob.core.windows.net" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "${MOUNT_PREFIX}azBlobContainerName dataset" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "${MOUNT_PREFIX}maxConnsPerBlobClient 30" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "${MOUNT_PREFIX}maxConnsPerBlobClient 200" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
     if [ "$IS_DYNAMIC" = true ]
     then
       echo "${MOUNT_PREFIX}azBlobDynamicContainer true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    fi
+
+    if [ "$IS_FUSE_ENABLED" = true ]
+    then
+      # Important to enable large prefetch for fuse mount as fuse reads are small (4k)
+      # and large prefetch helps in reducing the number of requests to the cache\blob
+      echo "${MOUNT_PREFIX}enableLargePrefetch true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+      echo "${MOUNT_PREFIX}prefetchWindowSizeInMB 32" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     fi
 }
 
@@ -63,6 +72,7 @@ function add_interception_config_blob() {
     STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
     STORAGE_INTERCEPT_PATH=$1
     TEST_MULTI_MOUNT=${2:false}
+    IS_FUSE_ENABLED=${3:false}
 
     rm ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
@@ -74,12 +84,12 @@ function add_interception_config_blob() {
     then
       echo "multiMountEnabled true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
       echo "mountName0 mount1" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-      append_interception_config_blob_prefix ${STORAGE_INTERCEPT_PATH} storageinterceptionpr1 "mount1" STORAGE_INTCPT_SAS_TOKEN true
+      append_interception_config_blob_prefix ${STORAGE_INTERCEPT_PATH} storageinterceptionpr1 "mount1" STORAGE_INTCPT_SAS_TOKEN true $IS_FUSE_ENABLED
 
       echo "mountName1 mount2" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-      append_interception_config_blob_prefix "${STORAGE_INTERCEPT_PATH}2" storageinterceptionpr2 "mount2" STORAGE_INTCPT_SAS_TOKEN2 true
+      append_interception_config_blob_prefix "${STORAGE_INTERCEPT_PATH}2" storageinterceptionpr2 "mount2" STORAGE_INTCPT_SAS_TOKEN2 true $IS_FUSE_ENABLED
     else
-      append_interception_config_blob_prefix ${STORAGE_INTERCEPT_PATH} storageinterceptionpr1 "" STORAGE_INTCPT_SAS_TOKEN false
+      append_interception_config_blob_prefix ${STORAGE_INTERCEPT_PATH} storageinterceptionpr1 "" STORAGE_INTCPT_SAS_TOKEN false $IS_FUSE_ENABLED
     fi
 
     echo "Created the storage interception config file. Its contents are =>"
@@ -110,17 +120,24 @@ function add_interception_config_blob_with_cache() {
 
 function add_interception_config_blob_with_cache_encryption() {
     add_interception_config_blob_with_cache $1 $2
+    TEST_MULTI_MOUNT=${2:false}
 
     STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
-    echo "cacheEncryptionEnabled true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "cacheEncryptionKey somedummykey" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    if [ "$TEST_MULTI_MOUNT" = true ]
+    then
+      echo "mount1cacheEncryptionEnabled true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+      echo "mount1cacheEncryptionKey somedummykey" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    else
+      echo "cacheEncryptionEnabled true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+      echo "cacheEncryptionKey somedummykey" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    fi
 
     echo "Created the storage interception config file with encryption enabled. Its contents are =>"
     eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
 }
 
 function add_interception_config_blob_with_remote_cache() {
-    add_interception_config_blob $1 $2
+    add_interception_config_blob $1 $2 $3
     TEST_MULTI_MOUNT=${2:false}
 
     STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
@@ -354,8 +371,8 @@ echo ""
 
 echo "Running integration test against blob with dynamic container mount"
 pip3 install h5py
-add_interception_config_blob /mnt/quiverfs true
-eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d largeMultiMountDynamic -s -n 20 -p 4"
+add_interception_config_blob /mnt/quiverfs true true
+eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d largeMultiMountDynamic -s -n 20 -p 4 -f"
 if [ $? -ne 0 ]
 then
 echo "Blob Integration test failed"
@@ -549,8 +566,8 @@ fi
 echo ""
 
 echo "Running integration test against blob with remote attribute and data cache enabled"
-add_interception_config_blob_with_remote_cache /mnt/quiverfs
-eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large -s -n 20 -p 4"
+add_interception_config_blob_with_remote_cache /mnt/quiverfs false true
+eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large -s -n 20 -p 4 -f"
 if [ $? -ne 0 ]
 then
 echo "Blob Integration test with remote attribute and data cache failed"

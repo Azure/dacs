@@ -65,8 +65,8 @@ TEST_F(StreamingClientTest, ReadFilePartialTest)
         m_strRemoteFilePath,
         readBuf.data(),
         readBuf.size(),
-        10 /* offset */
-    );
+        10, /* offset */
+        REMOTE_FILE_SIZE);
     ASSERT_EQ(nBytesRead, REMOTE_FILE_SIZE / 2);
     // Data integrity check
     ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 10, 0, nBytesRead)));
@@ -79,8 +79,8 @@ TEST_F(StreamingClientTest, ReadChunkFullFileTest)
         m_strRemoteFilePath,
         readBuf.data(),
         readBuf.size(),
-        0 /* offset */
-    );
+        0, /* offset */
+        REMOTE_FILE_SIZE);
     ASSERT_EQ(nBytesRead, REMOTE_FILE_SIZE);
     /* Data integrity check */
     ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEquals(m_vecBuffer, readBuf)));
@@ -95,8 +95,8 @@ TEST_F(StreamingClientTest, ReadFileTinyReadsTest)
         m_strRemoteFilePath,
         readBuf.data(),
         readBuf.size(),
-        0 /* offset */
-    );
+        0, /* offset */
+        REMOTE_FILE_SIZE);
     ASSERT_EQ(nBytesRead, 50);
     // Data integrity check
     ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 0, 0, 50)));
@@ -106,8 +106,8 @@ TEST_F(StreamingClientTest, ReadFileTinyReadsTest)
         m_strRemoteFilePath,
         readBuf.data(),
         readBuf.size(),
-        50 /* offset */
-    );
+        50, /* offset */
+        REMOTE_FILE_SIZE);
     ASSERT_EQ(nBytesRead, 50);
     // Data integrity check
     ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 50, 0, 50)));
@@ -117,8 +117,8 @@ TEST_F(StreamingClientTest, ReadFileTinyReadsTest)
         m_strRemoteFilePath,
         readBuf.data(),
         readBuf.size(),
-        100 /* offset */
-    );
+        100, /* offset */
+        REMOTE_FILE_SIZE);
     ASSERT_EQ(nBytesRead, 50);
     // Data integrity check
     ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 100, 0, 50)));
@@ -132,8 +132,8 @@ TEST_F(StreamingClientTest, ReadSizeLargerThanFileSizeTest)
         m_strRemoteFilePath,
         readBuf.data(),
         readBuf.size(),
-        0 /* offset */
-    );
+        0, /* offset */
+        REMOTE_FILE_SIZE);
     ASSERT_EQ(nBytesRead, REMOTE_FILE_SIZE);
     // Data integrity check
     ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 0, 0, REMOTE_FILE_SIZE)));

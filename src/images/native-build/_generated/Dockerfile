@@ -113,7 +113,7 @@ RUN \
   apt-get install python3.12 python3.12-dev python3.12-venv -y && \
 # Dependencies for storage
   apt-get update && apt-get install -y --no-install-recommends \
-  libssl-dev libcurl4-openssl-dev curl libjsoncpp-dev uuid-dev && \
+  libfuse3-dev libssl-dev libcurl4-openssl-dev curl libjsoncpp-dev uuid-dev && \
 # Following is used to prebuild all DACS dependencies
   cd $CMAKE_DEP_INSTALL_DIR && \
   cmake -DCMAKE_BUILD_TYPE=Release -G Ninja $CMAKE_DEP_INSTALL_DIR/cmake && \
