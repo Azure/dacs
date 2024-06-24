@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"gotest.tools/v3/assert"
-	v1 "k8s.io/api/core/v1"
 )
 
 func init() {
@@ -27,7 +26,7 @@ func createMockNodeList(nodeCount int) []Node {
 	return nodes
 }
 
-func createMockPod(podIdx int, nodeName string, state v1.PodPhase, runOnCpu bool) Pod {
+func createMockPod(podIdx int, nodeName string, state PodStatus, runOnCpu bool) Pod {
 	var allowedProcessingUnits []string
 	if runOnCpu {
 		allowedProcessingUnits = []string{"cpu"}
@@ -108,13 +107,13 @@ func assertPodDeleted(
 
 // helper to mark pod as pending
 func (pod *Pod) markPodAsPending() {
-	pod.State = v1.PodPending
+	pod.State = PodStatusPending
 	pod.NodeName = ""
 }
 
 // helper to mark pod as running
 func (pod *Pod) markPodAsRunning(nodeName string) {
-	pod.State = v1.PodRunning
+	pod.State = PodStatusRunning
 	pod.NodeName = nodeName
 }
 
@@ -132,9 +131,9 @@ func TestPodSticksToNode(t *testing.T) {
 	nodes := createMockNodeList(12)
 
 	pods := []Pod{}
-	pods = append(pods, createMockPod(0, "node-8", v1.PodRunning, true))
-	pods = append(pods, createMockPod(1, "node-0", v1.PodRunning, true))
-	pods = append(pods, createMockPod(2, "node-10", v1.PodRunning, true))
+	pods = append(pods, createMockPod(0, "node-8", PodStatusRunning, true))
+	pods = append(pods, createMockPod(1, "node-0", PodStatusRunning, true))
+	pods = append(pods, createMockPod(2, "node-10", PodStatusRunning, true))
 
 	// Initial, all pods running - should not get any schedule instructions
 	schedulerInstructions := SchedulerPeriodicStep(pods, nodes)
@@ -202,9 +201,9 @@ func TestPodAffinityHonoredProcessingUnit(t *testing.T) {
 
 	// create 3 pending pods, all with node affinity for cpu
 	pods := []Pod{}
-	pods = append(pods, createMockPod(0, "", v1.PodPending, true))
-	pods = append(pods, createMockPod(1, "", v1.PodPending, true))
-	pods = append(pods, createMockPod(2, "", v1.PodPending, true))
+	pods = append(pods, createMockPod(0, "", PodStatusPending, true))
+	pods = append(pods, createMockPod(1, "", PodStatusPending, true))
+	pods = append(pods, createMockPod(2, "", PodStatusPending, true))
 
 	// Initial, all pods pending - should get scheduled to cpu nodes
 	schedulerInstructions := SchedulerPeriodicStep(pods, nodes)
@@ -234,9 +233,9 @@ func TestPodAffinityHonoredAgentpool(t *testing.T) {
 
 	// create 3 pending pods, all with node affinity for agentpool "user"
 	pods := []Pod{}
-	pods = append(pods, createMockPod(0, "", v1.PodPending, true))
-	pods = append(pods, createMockPod(1, "", v1.PodPending, true))
-	pods = append(pods, createMockPod(2, "", v1.PodPending, true))
+	pods = append(pods, createMockPod(0, "", PodStatusPending, true))
+	pods = append(pods, createMockPod(1, "", PodStatusPending, true))
+	pods = append(pods, createMockPod(2, "", PodStatusPending, true))
 	pods[0].AllowedAgentpools = []string{"user"}
 	pods[1].AllowedAgentpools = []string{"user"}
 	pods[2].AllowedAgentpools = []string{"user"}
@@ -263,17 +262,17 @@ func TestContinousStuckPod(t *testing.T) {
 
 	// create 3 pods, all running on different cpu nodes
 	pods := []Pod{}
-	pods = append(pods, createMockPod(0, "node-0", v1.PodRunning, true))
-	pods = append(pods, createMockPod(1, "node-1", v1.PodRunning, true))
-	pods = append(pods, createMockPod(2, "node-2", v1.PodRunning, true))
+	pods = append(pods, createMockPod(0, "node-0", PodStatusRunning, true))
+	pods = append(pods, createMockPod(1, "node-1", PodStatusRunning, true))
+	pods = append(pods, createMockPod(2, "node-2", PodStatusRunning, true))
 
 	// Initial, all pods running - should not get any schedule instructions
 	schedulerInstructions := SchedulerPeriodicStep(pods, nodes)
 	assert.Equal(t, len(schedulerInstructions), 0)
 
 	for podStuckCount := 1; podStuckCount <= 3; podStuckCount++ {
-		// Mark pod-1 in Unknown state, and reprocess. We shouldn't get any schedule instructions yet
-		pods[1].State = v1.PodUnknown
+		// Mark pod-1 in Terminating state, and reprocess. We shouldn't get any schedule instructions yet
+		pods[1].State = PodStatusTerminating
 		schedulerInstructions = SchedulerPeriodicStep(pods, nodes)
 		assert.Equal(t, len(schedulerInstructions), 0)
 
@@ -283,7 +282,7 @@ func TestContinousStuckPod(t *testing.T) {
 		schedulerState.PodMap["cacheserver-1"] = podState
 		schedulerInstructions = SchedulerPeriodicStep(pods, nodes)
 		assert.Equal(t, len(schedulerInstructions), 1)
-		assertPodDeleted(t, schedulerInstructions, "cacheserver-1", "Pod cacheserver-1 is stuck on node node-1 in Unknown state for more than 5m0s")
+		assertPodDeleted(t, schedulerInstructions, "cacheserver-1", "Pod cacheserver-1 is stuck on node node-1 in Terminating state for more than 5m0s")
 
 		// Mark pod-1 as pending, and reprocess. Pod-1 should get rescheduled on "node-1" first 2 times, and then on "node-3" the 3rd time
 		pods[1].markPodAsPending()
@@ -319,9 +318,9 @@ func TestTransientStuckPod(t *testing.T) {
 
 	// create 3 pods, all running on different cpu nodes
 	pods := []Pod{}
-	pods = append(pods, createMockPod(0, "node-0", v1.PodRunning, true))
-	pods = append(pods, createMockPod(1, "node-1", v1.PodRunning, true))
-	pods = append(pods, createMockPod(2, "node-2", v1.PodRunning, true))
+	pods = append(pods, createMockPod(0, "node-0", PodStatusRunning, true))
+	pods = append(pods, createMockPod(1, "node-1", PodStatusRunning, true))
+	pods = append(pods, createMockPod(2, "node-2", PodStatusRunning, true))
 
 	// Initial, all pods running - should not get any schedule instructions
 	schedulerInstructions := SchedulerPeriodicStep(pods, nodes)
@@ -330,7 +329,7 @@ func TestTransientStuckPod(t *testing.T) {
 	// In a loop, simulate pod-1 getting stuck in Unknown state, and then recovering on same node
 	for i := 1; i <= 5; i++ {
 		// Mark pod-1 in Unknown state, and reprocess. We shouldn't get any schedule instructions yet
-		pods[1].State = v1.PodUnknown
+		pods[1].State = PodStatusUnknown
 		schedulerInstructions = SchedulerPeriodicStep(pods, nodes)
 		assert.Equal(t, len(schedulerInstructions), 0)
 
@@ -372,9 +371,9 @@ func TestNodeCordon(t *testing.T) {
 
 	// create 3 pods, all running on different cpu nodes
 	pods := []Pod{}
-	pods = append(pods, createMockPod(0, "node-0", v1.PodRunning, true))
-	pods = append(pods, createMockPod(1, "node-1", v1.PodRunning, true))
-	pods = append(pods, createMockPod(2, "node-2", v1.PodRunning, true))
+	pods = append(pods, createMockPod(0, "node-0", PodStatusRunning, true))
+	pods = append(pods, createMockPod(1, "node-1", PodStatusRunning, true))
+	pods = append(pods, createMockPod(2, "node-2", PodStatusRunning, true))
 
 	// Initial, all pods running - should not get any schedule instructions
 	schedulerInstructions := SchedulerPeriodicStep(pods, nodes)
@@ -408,15 +407,15 @@ func TestInsufficientNodes(t *testing.T) {
 
 	// create 2 pods, both running on different cpu nodes
 	pods := []Pod{}
-	pods = append(pods, createMockPod(0, "node-0", v1.PodRunning, true))
-	pods = append(pods, createMockPod(1, "node-1", v1.PodRunning, true))
+	pods = append(pods, createMockPod(0, "node-0", PodStatusRunning, true))
+	pods = append(pods, createMockPod(1, "node-1", PodStatusRunning, true))
 
 	// Initial, all pods running - should not get any schedule instructions
 	schedulerInstructions := SchedulerPeriodicStep(pods, nodes)
 	assert.Equal(t, len(schedulerInstructions), 0)
 
 	// Add new pod-2 as pending, and reprocess. We should get an error instruction for pod-2
-	pods = append(pods, createMockPod(2, "", v1.PodPending, true))
+	pods = append(pods, createMockPod(2, "", PodStatusPending, true))
 	schedulerInstructions = SchedulerPeriodicStep(pods, nodes)
 	assert.Equal(t, len(schedulerInstructions), 1)
 	checkSchedulerInstructionForPod(
@@ -438,7 +437,7 @@ func TestPodWithSchedulerBypass(t *testing.T) {
 
 	// create 1 pod in pending state with scheduler bypass
 	pods := []Pod{}
-	pods = append(pods, createMockPod(0, "", v1.PodPending, true))
+	pods = append(pods, createMockPod(0, "", PodStatusPending, true))
 	pods[0].SchedulerBypassed = true
 
 	// Process the nodes and pods, should not get any schedule instruction as scheduler is bypassed

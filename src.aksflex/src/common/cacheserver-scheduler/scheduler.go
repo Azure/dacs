@@ -5,7 +5,6 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	v1 "k8s.io/api/core/v1"
 )
 
 // Constant
@@ -21,6 +20,9 @@ const (
 	SuccessivePodStuckEventThreshold = 3
 )
 
+// List of states in which a pod can be considered stuck
+var podStuckStates = []PodStatus{PodStatusPending, PodStatusFailed, PodStatusUnknown, PodStatusTerminating, PodStatusNotReady}
+
 // Information about cacheserver pod maintained by scheduler
 type schedulerPodInfo struct {
 	// Name of the cacheserver pod
@@ -28,7 +30,7 @@ type schedulerPodInfo struct {
 	// Name of the node
 	NodeName string `json:"nodeName"`
 	// State of the pod
-	State v1.PodPhase `json:"state"`
+	State PodStatus `json:"state"`
 	// Latest timestamp this state was recorded
 	LastHitTimestamp time.Time `json:"timestamp"`
 	// Earliest timestamp this state was recorded
@@ -39,7 +41,7 @@ type podStuckEvent struct {
 	// Name of the cacheserver pod
 	PodName string `json:"podName"`
 	// State of the pod
-	State v1.PodPhase `json:"state"`
+	State PodStatus `json:"state"`
 	// Timestamp when the pod got stuck
 	StuckTimestamp time.Time `json:"stuckTimestamp"`
 }
@@ -218,9 +220,15 @@ func updatePodMap(pods []Pod) (pendingPods []Pod, stuckPods []Pod, nodesWithPods
 				"firstHitTimestamp": podState.FirstHitTimestamp,
 			}).Debugf("Scheduler processed pod %s", pod.PodName)
 
-			// Conside pod as stuck if it has been in failed or unknown state for more than PodStableStateDurationThreshold
-			isPodStuck := (pod.State == v1.PodFailed || pod.State == v1.PodUnknown) &&
-				(time.Since(podState.FirstHitTimestamp) > PodStableStateDurationThreshold)
+			// Conside pod as stuck if it has been in one of podStuckStates for more than PodStableStateDurationThreshold
+			isPodStuck := false
+			for _, stuckState := range podStuckStates {
+				if pod.State == stuckState && (time.Since(podState.FirstHitTimestamp) > PodStableStateDurationThreshold) {
+					isPodStuck = true
+					break
+				}
+			}
+
 			if isPodStuck {
 				log.Warnf("Pod %s is stuck on node %s in %s state", pod.PodName, pod.NodeName, pod.State)
 
@@ -234,7 +242,7 @@ func updatePodMap(pods []Pod) (pendingPods []Pod, stuckPods []Pod, nodesWithPods
 			}
 
 			// If pod is running for more than PodStableStateDurationThreshold, clear the node's stuck events
-			if pod.State == v1.PodRunning && (time.Since(podState.FirstHitTimestamp) > PodStableStateDurationThreshold) {
+			if pod.State == PodStatusRunning && (time.Since(podState.FirstHitTimestamp) > PodStableStateDurationThreshold) {
 				nodeInfo, nodeInfoFound := schedulerState.NodeMap[pod.NodeName]
 				if nodeInfoFound && len(nodeInfo.PodsStuckEvents) > 0 {
 					log.Infof("Pod %s is running on node %s. Clearing node's stuck events", pod.PodName, pod.NodeName)
