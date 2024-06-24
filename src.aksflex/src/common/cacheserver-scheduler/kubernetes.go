@@ -115,6 +115,36 @@ func getPodAllowedAgentpools(pod v1.Pod) []string {
 	return allowedAgentpools
 }
 
+func getPodState(pod v1.Pod) PodStatus {
+	if pod.ObjectMeta.DeletionTimestamp != nil {
+		log.Infof("Pod %s is terminating", pod.Name)
+		return PodStatusTerminating
+	}
+
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if !containerStatus.Ready {
+			log.Infof("Pod %s has container %s not ready", pod.Name, containerStatus.Name)
+			return PodStatusNotReady
+		}
+	}
+
+	switch pod.Status.Phase {
+	case v1.PodPending:
+		return PodStatusPending
+	case v1.PodRunning:
+		return PodStatusRunning
+	case v1.PodSucceeded:
+		return PodStatusSucceeded
+	case v1.PodFailed:
+		return PodStatusFailed
+	case v1.PodUnknown:
+		return PodStatusUnknown
+	default:
+		log.Errorf("Unknown pod state: %s", pod.Status.Phase)
+		return PodStatusUnknown
+	}
+}
+
 // lazyInit initializes the kubernetes clientset
 func lazyInit() {
 	if clientset == nil {
@@ -208,7 +238,7 @@ func GetPodsFromK8s() ([]Pod, error) {
 		podObj := Pod{
 			PodName:                pod.Name,
 			NodeName:               pod.Spec.NodeName,
-			State:                  pod.Status.Phase,
+			State:                  getPodState(pod),
 			SchedulerBypassed:      pod.Spec.SchedulerName != SchedulerName,
 			AllowedProcessingUnits: getPodAllowedProcessingUnits(pod),
 			AllowedAgentpools:      getPodAllowedAgentpools(pod),
