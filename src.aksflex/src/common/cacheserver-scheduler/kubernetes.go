@@ -8,6 +8,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
@@ -250,6 +251,54 @@ func GetPodsFromK8s() ([]Pod, error) {
 	return podList, nil
 }
 
+// Function to bind caheserver PV with PVC incase they aren't bound
+func ensurePVCBound(podName string) error {
+	lazyInit()
+
+	log.Infof("Fetching pod %s to get PVC", podName)
+	pod, err := clientset.CoreV1().Pods(CacheserverNamespace).Get(context.TODO(), podName, metav1.GetOptions{})
+	if err != nil {
+		log.Errorf("Error getting pod %s: %s", podName, err.Error())
+		return err
+	}
+
+	log.Infof("Fetching PVC %s for pod %s", pod.Spec.Volumes[0].PersistentVolumeClaim.ClaimName, podName)
+	pvcName := pod.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
+	pvc, err := clientset.CoreV1().PersistentVolumeClaims(CacheserverNamespace).Get(context.TODO(), pvcName, metav1.GetOptions{})
+	if err != nil {
+		log.Errorf("Error getting PVC %s: %s", pvcName, err.Error())
+		return err
+	}
+
+	if pvc.Spec.VolumeName == "" {
+		log.Infof("PVC %s not bound to PV. Looking for available PVs", pvcName)
+		pvList, err := clientset.CoreV1().PersistentVolumes().List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			log.Errorf("Error getting PVs: %s", err.Error())
+			return err
+		}
+
+		for _, pv := range pvList.Items {
+			if pv.Spec.ClaimRef == nil && pv.Spec.StorageClassName == *pvc.Spec.StorageClassName {
+				log.Infof("Patching PV %s with claimRef to PVC %s", pv.Name, pvcName)
+
+				pvPatch := []byte(fmt.Sprintf(`{"spec":{"claimRef":{"name":"%s","namespace":"%s"}}}`, pvcName, CacheserverNamespace))
+				_, err := clientset.CoreV1().PersistentVolumes().Patch(context.TODO(), pv.Name, types.StrategicMergePatchType, pvPatch, metav1.PatchOptions{})
+				if err != nil {
+					log.Errorf("Error patching PV %s: %s", pv.Name, err.Error())
+					return err
+				}
+
+				break
+			}
+		}
+	} else {
+		log.Infof("PVC %s already bound to PV %s", pvcName, pvc.Spec.VolumeName)
+	}
+
+	return nil
+}
+
 func executeDeleteInstruction(podName string) error {
 	deletionGracePeriodSeconds := int64(0)
 	err := clientset.CoreV1().Pods(CacheserverNamespace).Delete(
@@ -269,7 +318,13 @@ func executeDeleteInstruction(podName string) error {
 }
 
 func executeBindInstuction(podName string, destinationNode string) error {
-	err := clientset.CoreV1().Pods(CacheserverNamespace).Bind(
+	err := ensurePVCBound(podName)
+	if err != nil {
+		log.Errorf("Error ensuring PVC bound for pod %s: %s", podName, err.Error())
+		return err
+	}
+
+	err = clientset.CoreV1().Pods(CacheserverNamespace).Bind(
 		context.TODO(),
 		&v1.Binding{
 			ObjectMeta: metav1.ObjectMeta{
