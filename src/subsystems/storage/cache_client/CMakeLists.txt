@@ -57,6 +57,30 @@ target_link_libraries(CacheClientLibTests
     ${GTEST_MAIN_LIBRARY}
 )
 
+# CMake archives dont include dependencies, only references.
+# So, merge all dependent objects into one archive.
+add_library(CacheClientStaticLibWithoutProtobuf STATIC
+    $<TARGET_OBJECTS:CacheClientLib>
+    $<TARGET_OBJECTS:StorageCommon>
+    $<TARGET_OBJECTS:StorageLibcDlsymWrapper>
+    $<TARGET_OBJECTS:IbverbsDlsym>
+    $<TARGET_OBJECTS:ClientConnections>
+    $<TARGET_OBJECTS:CacheProto>
+    $<TARGET_OBJECTS:EncryptionUtils>
+    $<TARGET_OBJECTS:diagnostics>
+)
+
+# Merge protobuf into the final archive.
+add_custom_command(
+    TARGET CacheClientStaticLibWithoutProtobuf 
+    POST_BUILD
+    COMMAND 
+        ${CMAKE_CURRENT_SOURCE_DIR}/merge_archives.sh 
+        ${CMAKE_REMOTE_PUBLISH_DIRECTORY}/libCacheClientStaticLib.a 
+        $<TARGET_FILE:CacheClientStaticLibWithoutProtobuf> 
+        /opt/protobufstatic-3.0.0/lib/libprotobuf.a
+)
+
 add_test(NAME CacheClientLibTests
     COMMAND CacheClientLibTests)
 
