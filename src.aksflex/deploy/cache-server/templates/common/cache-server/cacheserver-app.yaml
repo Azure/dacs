@@ -1,0 +1,79 @@
+{{- if .Values.cacheServer.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cacheserver
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: cacheserver
+  serviceName: cacheserver
+  replicas: {{ .Values.cacheServer.numServers }}
+  template:
+    metadata:
+      labels:
+        app: cacheserver
+    spec:
+      terminationGracePeriodSeconds: 10
+{{- if .Values.cacheServer.scheduler.enabled }}
+      schedulerName: cacheserver-scheduler
+{{- end }}
+      affinity:
+      {{- toYaml .Values.cacheServer.affinity | nindent 8 }}
+      containers:
+      - name: cacheserver
+        image: {{ include "amlArcExtension.getImage" (dict "image" .Values.cacheServer.image "Values" .Values) }}
+        imagePullPolicy: Always
+        env:
+        - name: CACHESERVER_THREADPOOL_SIZE
+          value: {{ .Values.cacheServer.serverThreads | quote }}
+        - name: TEST_CACHESERVER_ADDR_PORT
+          value: {{ .Values.cacheServer.port | quote }}
+        - name: CACHESERVER_METRICS_PORT
+          value: {{ .Values.cacheServer.metricsPort | quote }}
+        - name: CACHESERVER_EVICTION_ENABLED
+          value: {{ .Values.cacheServer.evictionEnabled | quote }}
+        - name : CACHESERVER_EVICTION_LAST_ACCESS_THRESHOLD
+          value : {{ .Values.cacheServer.evictionLastAccessThreshold | quote }}
+        - name : CACHESERVER_EVICTION_SIZE_THRESHOLD
+          value : {{ .Values.cacheServer.evictionSizeThreshold | quote }}
+        - name : CACHESERVER_EVICTION_PASS_FREQUENCY
+          value : {{ .Values.cacheServer.evictionPassFrequency | quote }}
+
+        ports:
+        - containerPort: {{ .Values.cacheServer.port }}
+          name : cacheserver
+        - containerPort: {{ .Values.cacheServer.metricsPort }}
+          name : metrics
+        command: [
+          '/bin/sh',
+          '-c',
+          {{ (printf "\"CACHESERVER_HOSTNAME=$HOSTNAME /root/CacheServer %d %s/cache %d\"" (.Values.cacheServer.port | int) .Values.cacheServer.mountSsdPath (mul .Values.cacheServer.serverSizeInGB 1024 1024 1024)) }} ]
+        volumeMounts:
+        - mountPath: {{ .Values.cacheServer.mountSsdPath }}
+          name: cache-data-volume
+          subPath: ssd0
+        livenessProbe:
+          exec:
+            command: [
+            '/bin/sh',
+            '-c',
+            '/root/LivenessProbe' ]
+          initialDelaySeconds: 300
+          periodSeconds: 120
+          failureThreshold : 10
+      volumes:
+        - name: cache-data-volume
+{{- if .Values.cacheServer.useEphemeralStorage }}
+          emptyDir:
+            sizeLimit: {{ .Values.cacheServer.ephemeralStorageSize }}
+{{- else if .Values.cacheServer.useCacheFolder }}
+          persistentVolumeClaim:
+            claimName: cacheserver-storage-pv3-claim
+{{- else }}
+          persistentVolumeClaim:
+            claimName: cacheserver-storage-pv2-rwx-claim
+{{- end }}
+          hostPath: null
+{{- end }}

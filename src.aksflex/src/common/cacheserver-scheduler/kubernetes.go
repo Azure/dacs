@@ -20,13 +20,11 @@ var clientset *kubernetes.Clientset
 const (
 	MaxRetries                  = 3
 	RetryInterval               = 5 * time.Second
-	ProcessingUnitLabelKey      = "dacs.azure.com/processing-unit"
 	ProcessingUnitLabelValueCpu = "cpu"
 	ProcessingUnitLabelValueGpu = "gpu"
 	AgentpoolLabelKey           = "agentpool"
 	SchedulerName               = "cacheserver-scheduler"
 	CacheDataVolumeName         = "cache-data-volume"
-	CacheserverNamespace        = "azureml"
 	PodLabelSelectorStr         = "app=cacheserver"
 )
 
@@ -72,7 +70,7 @@ func sanityCheckPod(pod v1.Pod) bool {
 		}
 
 		matchExpression := nodeSelectorTerm.MatchExpressions[0]
-		if matchExpression.Key != ProcessingUnitLabelKey && matchExpression.Key != AgentpoolLabelKey {
+		if matchExpression.Key != GetConfig().ProcessingUnitLabelKey && matchExpression.Key != AgentpoolLabelKey {
 			log.Errorf("Pod %s should have match expression for processing unit or agentpool if it uses non-ephemeral storage", pod.Name)
 			return false
 		}
@@ -96,7 +94,7 @@ func getPodAllowedProcessingUnits(pod v1.Pod) []string {
 	allowedProcessingUnits := []string{}
 	for _, term := range pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms {
 		for _, expression := range term.MatchExpressions {
-			if expression.Key == ProcessingUnitLabelKey {
+			if expression.Key == GetConfig().ProcessingUnitLabelKey {
 				allowedProcessingUnits = append(allowedProcessingUnits, expression.Values...)
 			}
 		}
@@ -192,7 +190,7 @@ func GetNodesFromK8s() ([]Node, error) {
 		nodeObj := Node{
 			NodeName:       node.Name,
 			Schedulable:    !node.Spec.Unschedulable,
-			ProcessingUnit: node.Labels[ProcessingUnitLabelKey],
+			ProcessingUnit: node.Labels[GetConfig().ProcessingUnitLabelKey],
 			Agentpool:      node.Labels[AgentpoolLabelKey],
 		}
 		nodeList = append(nodeList, nodeObj)
@@ -208,7 +206,7 @@ func GetPodsFromK8s() ([]Pod, error) {
 	retryCount := 0
 	for retryCount < MaxRetries {
 		var err error
-		pods, err = clientset.CoreV1().Pods(CacheserverNamespace).List(
+		pods, err = clientset.CoreV1().Pods(GetConfig().CacheserverNamespace).List(
 			context.TODO(),
 			metav1.ListOptions{
 				LabelSelector: PodLabelSelectorStr,
@@ -256,7 +254,7 @@ func ensurePVCBound(podName string) error {
 	lazyInit()
 
 	log.Infof("Fetching pod %s to get PVC", podName)
-	pod, err := clientset.CoreV1().Pods(CacheserverNamespace).Get(context.TODO(), podName, metav1.GetOptions{})
+	pod, err := clientset.CoreV1().Pods(GetConfig().CacheserverNamespace).Get(context.TODO(), podName, metav1.GetOptions{})
 	if err != nil {
 		log.Errorf("Error getting pod %s: %s", podName, err.Error())
 		return err
@@ -264,7 +262,7 @@ func ensurePVCBound(podName string) error {
 
 	log.Infof("Fetching PVC %s for pod %s", pod.Spec.Volumes[0].PersistentVolumeClaim.ClaimName, podName)
 	pvcName := pod.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
-	pvc, err := clientset.CoreV1().PersistentVolumeClaims(CacheserverNamespace).Get(context.TODO(), pvcName, metav1.GetOptions{})
+	pvc, err := clientset.CoreV1().PersistentVolumeClaims(GetConfig().CacheserverNamespace).Get(context.TODO(), pvcName, metav1.GetOptions{})
 	if err != nil {
 		log.Errorf("Error getting PVC %s: %s", pvcName, err.Error())
 		return err
@@ -282,7 +280,7 @@ func ensurePVCBound(podName string) error {
 			if pv.Spec.ClaimRef == nil && pv.Spec.StorageClassName == *pvc.Spec.StorageClassName {
 				log.Infof("Patching PV %s with claimRef to PVC %s", pv.Name, pvcName)
 
-				pvPatch := []byte(fmt.Sprintf(`{"spec":{"claimRef":{"name":"%s","namespace":"%s"}}}`, pvcName, CacheserverNamespace))
+				pvPatch := []byte(fmt.Sprintf(`{"spec":{"claimRef":{"name":"%s","namespace":"%s"}}}`, pvcName, GetConfig().CacheserverNamespace))
 				_, err := clientset.CoreV1().PersistentVolumes().Patch(context.TODO(), pv.Name, types.StrategicMergePatchType, pvPatch, metav1.PatchOptions{})
 				if err != nil {
 					log.Errorf("Error patching PV %s: %s", pv.Name, err.Error())
@@ -301,7 +299,7 @@ func ensurePVCBound(podName string) error {
 
 func executeDeleteInstruction(podName string) error {
 	deletionGracePeriodSeconds := int64(0)
-	err := clientset.CoreV1().Pods(CacheserverNamespace).Delete(
+	err := clientset.CoreV1().Pods(GetConfig().CacheserverNamespace).Delete(
 		context.TODO(),
 		podName,
 		metav1.DeleteOptions{
@@ -324,12 +322,12 @@ func executeBindInstuction(podName string, destinationNode string) error {
 		return err
 	}
 
-	err = clientset.CoreV1().Pods(CacheserverNamespace).Bind(
+	err = clientset.CoreV1().Pods(GetConfig().CacheserverNamespace).Bind(
 		context.TODO(),
 		&v1.Binding{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      podName,
-				Namespace: CacheserverNamespace,
+				Namespace: GetConfig().CacheserverNamespace,
 			},
 			Target: v1.ObjectReference{
 				APIVersion: "v1",
@@ -354,12 +352,12 @@ func emitFailedSchedulingEvent(podName string, reason string) error {
 	event := &v1.Event{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      podName,
-			Namespace: CacheserverNamespace,
+			Namespace: GetConfig().CacheserverNamespace,
 		},
 		InvolvedObject: v1.ObjectReference{
 			Kind:      "Pod",
 			Name:      podName,
-			Namespace: CacheserverNamespace,
+			Namespace: GetConfig().CacheserverNamespace,
 		},
 		Reason:        "FailedScheduling",
 		Message:       fmt.Sprintf("Failed to schedule pod %s. %s", podName, reason),
@@ -370,7 +368,7 @@ func emitFailedSchedulingEvent(podName string, reason string) error {
 		},
 	}
 
-	_, err := clientset.CoreV1().Events(CacheserverNamespace).Create(context.TODO(), event, metav1.CreateOptions{})
+	_, err := clientset.CoreV1().Events(GetConfig().CacheserverNamespace).Create(context.TODO(), event, metav1.CreateOptions{})
 	if err != nil {
 		log.Errorf("Error emitting event for pod %s: %s", podName, err.Error())
 		return err
