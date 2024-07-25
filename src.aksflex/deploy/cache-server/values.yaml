@@ -1,0 +1,59 @@
+## global
+global:
+  registry: {{cnf["registry"]}}
+  prefix: {{cnf["prefix"]}}
+  version: {{cnf["version"]}}
+
+## settings from Azure
+Azure:
+  containerRegistry:
+    repository:
+    username:
+    password:
+
+## Core Components Start
+cacheServer:
+  enabled: true
+  image: cache-server
+  numServers: 3
+  serverSizeInGB: 10240
+  serverThreads: 400
+  evictionEnabled: true
+  evictionLastAccessThreshold: 90d
+  evictionSizeThreshold: 75
+  evictionPassFrequency: 1h
+  mountSsdPath: /host/mnt/ssd0
+  port: 9065
+  metricsPort: 9096
+  useEphemeralStorage: false
+  ephemeralStorageSize: null # required when useEphemeralStorage is true
+  nodeSsdPath: /var/lib/containerd # required when useEphemeralStorage is false and useCacheFolder is false. To be removed after all clusters are rebuilt to have dedicated cache folder
+  useCacheFolder: true
+  nodeCacheFolderPath: /var/lib/ssd/cacheserver # required when useEphemeralStorage is false and useCacheFolder is true.
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: dacs.azure.com/processing-unit
+            operator: In
+            values:
+            - gpu
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - cacheserver
+        topologyKey: kubernetes.io/hostname
+  scheduler:
+    enabled: true
+    image: cacheserver-scheduler
+    debugLevel: "info"
+    schedulerPollInterval: 15s
+    processingUnitLabelKey: dacs.azure.com/processing-unit
+    cacheserverNamespace: cache-server
+
+## Core Components end

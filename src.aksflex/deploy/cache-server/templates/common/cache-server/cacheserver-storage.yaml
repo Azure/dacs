@@ -1,0 +1,80 @@
+{{- if and .Values.cacheServer.enabled (not .Values.cacheServer.useEphemeralStorage) }}
+---
+apiVersion: v1
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: cacheserver-storage
+  namespace: {{ .Release.Namespace }}
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+{{- if .Values.cacheServer.useCacheFolder }}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: cacheserver-storage-pv3
+  namespace: {{ .Release.Namespace }}
+spec:
+  capacity:
+    storage: {{ (printf "%dGi" (add1 .Values.cacheServer.serverSizeInGB)) }}
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: cacheserver-storage
+  local:
+    path: {{ .Values.cacheServer.nodeCacheFolderPath }}
+  nodeAffinity:
+    required:
+    {{- toYaml .Values.cacheServer.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution | nindent 6 }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cacheserver-storage-pv3-claim
+  namespace: {{ .Release.Namespace }}
+spec:
+  storageClassName: cacheserver-storage
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ (printf "%dGi" (add1 .Values.cacheServer.serverSizeInGB)) }}
+{{- else }}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: cacheserver-storage-pv2
+  namespace: {{ .Release.Namespace }}
+spec:
+  capacity:
+    storage: {{ (printf "%dGi" (add1 .Values.cacheServer.serverSizeInGB)) }}
+  volumeMode: Filesystem
+  # accessMode not set to ReadWriteOnce, because the directory is also currently used by kubelet and containerd and
+  # this causes the volume unmount to fail with device busy leading to cacheserver pods stuck in Terminating state on upgrades.
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: cacheserver-storage
+  local:
+    path: {{ .Values.cacheServer.nodeSsdPath }}
+  nodeAffinity:
+    required:
+    {{- toYaml .Values.cacheServer.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution | nindent 6 }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cacheserver-storage-pv2-rwx-claim
+  namespace: {{ .Release.Namespace }}
+spec:
+  storageClassName: cacheserver-storage
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: {{ (printf "%dGi" (add1 .Values.cacheServer.serverSizeInGB)) }}
+{{- end }}
+{{- end }}

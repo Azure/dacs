@@ -1,0 +1,81 @@
+{{- if .Values.cacheServer.enabled }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: cacheserver-scheduler
+  labels:
+    app: cacheserver-scheduler
+    component: cacheserver-scheduler
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cacheserver-scheduler
+  namespace: {{ .Release.Namespace }}
+subjects:
+- kind: ServiceAccount
+  name: cacheserver-scheduler
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+  name: system:kube-scheduler
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: cacheserver-scheduler-pv-role
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cacheserver-scheduler-pv-rolebinding
+  namespace: {{ .Release.Namespace }}
+subjects:
+- kind: ServiceAccount
+  name: cacheserver-scheduler
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+  name: cacheserver-scheduler-pv-role
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cacheserver-scheduler
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: cacheserver-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cacheserver-scheduler
+  template:
+    metadata:
+      labels:
+        app: cacheserver-scheduler
+    spec:
+      serviceAccount: cacheserver-scheduler
+      containers:
+        - name: cacheserver-scheduler
+          image: {{ include "amlArcExtension.getImage" (dict "image" .Values.cacheServer.scheduler.image "Values" .Values) }}
+          imagePullPolicy: Always
+          env:
+          - name: CACHESERVER_SCHEDULER_LOGLEVEL
+            value: {{ .Values.cacheServer.scheduler.debugLevel | quote }}
+          - name: CACHESERVER_SCHEDULER_SCHEDULERPOLLINTERVAL
+            value: {{ .Values.cacheServer.scheduler.schedulerPollInterval | quote }}
+          - name: CACHESERVER_SCHEDULER_PROCESSINGUNITLABELKEY
+            value: {{ .Values.cacheServer.scheduler.processingUnitLabelKey | quote }}
+          - name: CACHESERVER_SCHEDULER_CACHESERVERNAMESPACE
+            value: {{ .Values.cacheServer.scheduler.cacheserverNamespace | quote }}
+{{- end }}
