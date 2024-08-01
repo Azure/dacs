@@ -26,34 +26,16 @@ cacheServer:
   port: 9065
   metricsPort: 9096
   useEphemeralStorage: false
-  ephemeralStorageSize: null # required when useEphemeralStorage is true
   nodeSsdPath: /var/lib/containerd # required when useEphemeralStorage is false and useCacheFolder is false. To be removed after all clusters are rebuilt to have dedicated cache folder
   useCacheFolder: true
   nodeCacheFolderPath: /var/lib/ssd/cacheserver # required when useEphemeralStorage is false and useCacheFolder is true.
-  affinity:
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-        - matchExpressions:
-          - key: dacs.azure.com/processing-unit
-            operator: In
-            values:
-            - gpu
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-      - labelSelector:
-          matchExpressions:
-          - key: app
-            operator: In
-            values:
-            - cacheserver
-        topologyKey: kubernetes.io/hostname
+  nodeSelectorLabelKey: dacs.azure.com/processing-unit
+  nodeSelectorLabelValues: [ "cpu" ]
   scheduler:
     enabled: true
     image: cacheserver-scheduler
     debugLevel: "info"
     schedulerPollInterval: 15s
-    processingUnitLabelKey: dacs.azure.com/processing-unit
-    cacheserverNamespace: cache-server
+    cacheserverNamespace: azureml
 
 ## Core Components end

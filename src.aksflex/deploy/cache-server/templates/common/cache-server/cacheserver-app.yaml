@@ -20,7 +20,24 @@ spec:
       schedulerName: cacheserver-scheduler
 {{- end }}
       affinity:
-      {{- toYaml .Values.cacheServer.affinity | nindent 8 }}
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: {{ .Values.cacheServer.nodeSelectorLabelKey }}
+                operator: In
+                values: {{ toYaml .Values.cacheServer.nodeSelectorLabelValues | nindent 16 }}
+{{- if not .Values.cacheServer.useEphemeralStorage }}
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - cacheserver
+            topologyKey: kubernetes.io/hostname
+{{- end }}
       containers:
       - name: cacheserver
         image: {{ include "amlArcExtension.getImage" (dict "image" .Values.cacheServer.image "Values" .Values) }}
@@ -67,7 +84,7 @@ spec:
         - name: cache-data-volume
 {{- if .Values.cacheServer.useEphemeralStorage }}
           emptyDir:
-            sizeLimit: {{ .Values.cacheServer.ephemeralStorageSize }}
+            sizeLimit: {{ (printf "%dGi" (add1 .Values.cacheServer.serverSizeInGB)) }}
 {{- else if .Values.cacheServer.useCacheFolder }}
           persistentVolumeClaim:
             claimName: cacheserver-storage-pv3-claim

@@ -75,7 +75,7 @@ spec:
           - name: CACHESERVER_SCHEDULER_SCHEDULERPOLLINTERVAL
             value: {{ .Values.cacheServer.scheduler.schedulerPollInterval | quote }}
           - name: CACHESERVER_SCHEDULER_PROCESSINGUNITLABELKEY
-            value: {{ .Values.cacheServer.scheduler.processingUnitLabelKey | quote }}
+            value: {{ .Values.cacheServer.nodeSelectorLabelKey | quote }}
           - name: CACHESERVER_SCHEDULER_CACHESERVERNAMESPACE
             value: {{ .Values.cacheServer.scheduler.cacheserverNamespace | quote }}
 {{- end }}

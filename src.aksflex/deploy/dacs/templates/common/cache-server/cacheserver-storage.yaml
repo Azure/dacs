@@ -27,7 +27,11 @@ spec:
     path: {{ .Values.cacheServer.nodeCacheFolderPath }}
   nodeAffinity:
     required:
-    {{- toYaml .Values.cacheServer.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution | nindent 6 }}
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: {{ .Values.cacheServer.nodeSelectorLabelKey }}
+          operator: In
+          values: {{ toYaml .Values.cacheServer.nodeSelectorLabelValues | nindent 10 }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -62,7 +66,11 @@ spec:
     path: {{ .Values.cacheServer.nodeSsdPath }}
   nodeAffinity:
     required:
-    {{- toYaml .Values.cacheServer.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution | nindent 6 }}
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: {{ .Values.cacheServer.nodeSelectorLabelKey }}
+          operator: In
+          values: {{ toYaml .Values.cacheServer.nodeSelectorLabelValues | nindent 10 }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
