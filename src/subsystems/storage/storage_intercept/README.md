@@ -97,6 +97,7 @@ The default config file path (/tmp/storageIntercept.config) can be overridden by
 The config key names are case insensitive.
 ```
 enableReadIOLogs [true or false - Whether to log (INFO) every completed read request from the application]
+logRefreshIntervalInSeconds [eg. 10 - Storage streamling client's log refreshes after every 10 seconds]
 chunkDownloadParallelismEnabled [true or false]
 chunkDownloadMaxConcurrency [eg. 40, should ideally be same as maxConnsPerBlobClient]
 enableLargePrefetch [true or false]

@@ -474,6 +474,12 @@ bool StorageInterceptConfig::GetEnableReadIOLogs()
         m_ConfigProps, StorageInterceptConstants::ConfigNameEnableReadIOLogs, false);
 }
 //---------------------------------------------------------------------------------------------------------------------
+uint32_t StorageInterceptConfig::GetLogsRefreshIntervalInSeconds()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint32(
+        m_ConfigProps, StorageInterceptConstants::ConfigNameLogRefreshIntervalInSeconds, 10);
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetCacheEnable(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(

@@ -45,6 +45,7 @@ class StorageInterceptConfig
         uint32_t GetIoBlockSize();
 
         bool GetEnableReadIOLogs();
+        uint32_t GetLogsRefreshIntervalInSeconds();
 
         // Getters for cache config
         bool GetCacheEnable(const std::string& mountName);

@@ -32,6 +32,7 @@ namespace StorageInterceptConstants
     const char* const ConfigNameStreamingChunkSize = "streamingChunkSize";
     const char* const ConfigNameIoBlockSize = "ioBlockSize";
     const char* const ConfigNameEnableReadIOLogs = "enableReadIOLogs";
+    const char* const ConfigNameLogRefreshIntervalInSeconds = "logRefreshIntervalInSeconds";
 
     // Config constants for caching
     const char* const ConfigNameCacheEnable = "cacheEnable";
