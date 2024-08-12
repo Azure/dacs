@@ -16,6 +16,7 @@
 #include <numeric>
 #include <pthread.h>
 #include <future>
+#include <thread>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cacheutils;
 using namespace std;
@@ -75,6 +76,8 @@ StreamingClient::StreamingClient(
     , m_nRead1GB({0, 0})
     , m_nReadLarge({0, 0})
     , m_nReadMax({0, 0})
+    , m_bStopLogging(false)
+    , m_loggingThread(&StreamingClient::LongRunningLogStats, this, StorageInterceptConfig::GetInstance().GetLogsRefreshIntervalInSeconds())
 {
     SetClients(cacheClient, attributesCache);
 
@@ -118,7 +121,14 @@ StreamingClient::StreamingClient(
 //---------------------------------------------------------------------------------------------------------------------
 StreamingClient::~StreamingClient()
 {
-    LogStats(true);
+    {
+        std::lock_guard<std::mutex> lock(m_loggingMutex);
+        m_bStopLogging = true;
+    }
+    m_loggingCV.notify_one();
+    m_loggingThread.join();
+
+    LogStats();
 }
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::ForkHandlerPrepare()
@@ -395,7 +405,6 @@ int StreamingClient::GetProperties(
     {
         LOG_DEBUG("Found atrributes in cache for file: {}", remotePath);
         m_nGetPropertiesCache++;
-        LogGetPropertiesStats();
         return 0;
     }
 
@@ -409,8 +418,6 @@ int StreamingClient::GetProperties(
         // Update cache on success
         attributesCache->Put(cacheFilePath, attributes);
     }
-
-    LogGetPropertiesStats();
     return result;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -468,7 +475,6 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunk(
     m_nReadChunksInProgress--;
     m_cvReadChunk.notify_one();
 
-    LogReadChunkStats();
     return result;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -532,7 +538,6 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
                 remoteReadData->BufferSize = readLength;
                 m_nReadChunksRemoteCache++;
                 m_vecCacheDownloadLatencies[m_nTotalCacheDownloadLatencySamples.fetch_add(1) % m_nLatencySamplesVecSize] = DURATION_MS_GET(cacheDownload);
-                LogDownloadLatencyStats();
             }
             else if (cacheStatus == CacheStatus::INTERNAL_ERROR )
             {
@@ -575,7 +580,6 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
         }
 
         m_vecRemoteDownloadLatencies[m_nTotaRemotelDownloadLatencySamples.fetch_add(1) % m_nLatencySamplesVecSize] = DURATION_MS_GET(remoteDownload);
-        LogDownloadLatencyStats();
         LOG_DEBUG("Read file: {}, offset: {}, length: {} from remote server",
             remotePath, chunkOffset, nBytesFromRemote);
         remoteReadData->BufferSize = nBytesFromRemote;
@@ -780,108 +784,98 @@ void StreamingClient::LogReadIO(
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-void StreamingClient::LogStats(bool forceLog)
-{
-    LogReadChunkStats(forceLog);
-    LogGetPropertiesStats(forceLog);
-    LogDownloadLatencyStats(forceLog);
+void StreamingClient::LongRunningLogStats(const uint32_t sleepTimeInSec)
+{   
+    std::unique_lock<std::mutex> lock(m_loggingMutex);
+    while (!m_bStopLogging)
+    {
+        LogStats();
+        m_loggingCV.wait_for(lock, std::chrono::seconds(sleepTimeInSec));
+    }    
 }
 //---------------------------------------------------------------------------------------------------------------------
-void StreamingClient::LogReadChunkStats(bool forceLog)
+void StreamingClient::LogStats()
 {
-    // TODO: To get these logs for low QPS cases, log at fixed intervals (every 2 minutes for e.g).
-    const int totalReadChunks = m_nReadChunksTotal;
-    if (forceLog || 
-        (totalReadChunks < 10) || 
-        (totalReadChunks < 200 && totalReadChunks % 10 == 0) ||
-        (totalReadChunks % 200 == 0))
-    {        
-        LOG_INFO("ReadChunk stats: MountName={} Total={} PrefetchCache={} RemoteCache={} RemoteClient={}",
-            m_strMountName,
-            m_nReadChunksTotal,
-            m_nReadChunksPrefetchCache,
-            m_nReadChunksRemoteCache,
-            m_nReadChunksRemoteClient);
-
-        LOG_INFO("ReadFile requested stats. TotalReads={} 128k={} 4MB={}, 100MB={} 1GB={} >1GB={} TotalBytes={} "
-            "MaxReadBytes={}",
-            m_nReadFileTotal[0],
-            m_nRead128K[0],
-            m_nRead4MB[0],
-            m_nRead100MB[0],
-            m_nRead1GB[0],
-            m_nReadLarge[0],
-            m_nReadTotalBytes[0],
-            m_nReadMax[0]);
-
-        LOG_INFO("ReadFile serviced stats. TotalReads={} 128k={} 4MB={}, 100MB={} 1GB={} >1GB={} TotalBytes={} "
-            "MaxReadBytes={}",
-            m_nReadFileTotal[1],
-            m_nRead128K[1],
-            m_nRead4MB[1],
-            m_nRead100MB[1],
-            m_nRead1GB[1],
-            m_nReadLarge[1],
-            m_nReadTotalBytes[1],
-            m_nReadMax[1]);
-    }
+    LogReadChunkStats();
+    LogGetPropertiesStats();
+    LogDownloadLatencyStats();
 }
 //---------------------------------------------------------------------------------------------------------------------
-void StreamingClient::LogDownloadLatencyStats(bool forceLog)
+void StreamingClient::LogReadChunkStats()
+{
+    LOG_INFO("ReadChunk stats: MountName={} Total={} PrefetchCache={} RemoteCache={} RemoteClient={}",
+        m_strMountName,
+        m_nReadChunksTotal,
+        m_nReadChunksPrefetchCache,
+        m_nReadChunksRemoteCache,
+        m_nReadChunksRemoteClient);
+
+    LOG_INFO("ReadFile requested stats. TotalReads={} 128k={} 4MB={}, 100MB={} 1GB={} >1GB={} TotalBytes={} "
+        "MaxReadBytes={}",
+        m_nReadFileTotal[0],
+        m_nRead128K[0],
+        m_nRead4MB[0],
+        m_nRead100MB[0],
+        m_nRead1GB[0],
+        m_nReadLarge[0],
+        m_nReadTotalBytes[0],
+        m_nReadMax[0]);
+
+    LOG_INFO("ReadFile serviced stats. TotalReads={} 128k={} 4MB={}, 100MB={} 1GB={} >1GB={} TotalBytes={} "
+        "MaxReadBytes={}",
+        m_nReadFileTotal[1],
+        m_nRead128K[1],
+        m_nRead4MB[1],
+        m_nRead100MB[1],
+        m_nRead1GB[1],
+        m_nReadLarge[1],
+        m_nReadTotalBytes[1],
+        m_nReadMax[1]);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void StreamingClient::LogDownloadLatencyStats()
 {
     unsigned nNumCachdeDownloadLatencySamples =
         std::min((uint64_t)m_nTotalCacheDownloadLatencySamples, (uint64_t)m_nLatencySamplesVecSize);
     unsigned nNumRemoteDownloadLatencySamples =
         std::min((uint64_t)m_nTotaRemotelDownloadLatencySamples, (uint64_t)m_nLatencySamplesVecSize);
 
-    LogDownloadLatencyStatsInner(m_vecCacheDownloadLatencies, nNumCachdeDownloadLatencySamples, "Cache", forceLog);
-    LogDownloadLatencyStatsInner(m_vecRemoteDownloadLatencies, nNumRemoteDownloadLatencySamples, "Remote", forceLog);
+    LogDownloadLatencyStatsInner(m_vecCacheDownloadLatencies, nNumCachdeDownloadLatencySamples, "Cache");
+    LogDownloadLatencyStatsInner(m_vecRemoteDownloadLatencies, nNumRemoteDownloadLatencySamples, "Remote");
 }
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::LogDownloadLatencyStatsInner(const std::vector<unsigned>& vecLatencies,
                                                    unsigned nNumSamples,
-                                                   const char* strSource,
-                                                   bool bForceLog)
+                                                   const char* strSource)
 {
     if (nNumSamples == 0)
     {
         return;
     }
 
-    if (nNumSamples < 10 || (nNumSamples < 200 && nNumSamples % 10 == 0) || (nNumSamples % 200 == 0) || bForceLog)
-    {
-        std::vector<unsigned> vecLatenciesCopy(nNumSamples, UINT_MAX);
-        std::copy_n(vecLatencies.begin(), nNumSamples, vecLatenciesCopy.begin());
-        std::sort(vecLatenciesCopy.begin(), vecLatenciesCopy.end());
+    std::vector<unsigned> vecLatenciesCopy(nNumSamples, UINT_MAX);
+    std::copy_n(vecLatencies.begin(), nNumSamples, vecLatenciesCopy.begin());
+    std::sort(vecLatenciesCopy.begin(), vecLatenciesCopy.end());
 
-        unsigned nAvgLatency = std::accumulate(vecLatenciesCopy.begin(), vecLatenciesCopy.end(), 0ULL) / nNumSamples;
-        LOG_INFO("Download latencies (ms) from {} MountName={} Samples={} Min={} Max={} Avg={} P50={} P95={}",
-                 strSource,
-                 m_strMountName,
-                 nNumSamples,
-                 vecLatenciesCopy.front(),
-                 vecLatenciesCopy.back(),
-                 nAvgLatency,
-                 vecLatenciesCopy[nNumSamples * 0.5],
-                 vecLatenciesCopy[nNumSamples * 0.95]);
-    }
+    unsigned nAvgLatency = std::accumulate(vecLatenciesCopy.begin(), vecLatenciesCopy.end(), 0ULL) / nNumSamples;
+    LOG_INFO("Download latencies (ms) from {} MountName={} Samples={} Min={} Max={} Avg={} P50={} P95={}",
+                strSource,
+                m_strMountName,
+                nNumSamples,
+                vecLatenciesCopy.front(),
+                vecLatenciesCopy.back(),
+                nAvgLatency,
+                vecLatenciesCopy[nNumSamples * 0.5],
+                vecLatenciesCopy[nNumSamples * 0.95]);
 }
 //---------------------------------------------------------------------------------------------------------------------
-void StreamingClient::LogGetPropertiesStats(bool forceLog)
+void StreamingClient::LogGetPropertiesStats()
 {
-    // TODO: To get these logs for low QPS cases, log at fixed inervals (every 2 minutes for e.g).
-    const int totalGetProperties = m_nGetPropertiesTotal;
-    if (forceLog ||
-        (totalGetProperties < 10) || 
-        (totalGetProperties < 200 && totalGetProperties % 10 == 0) ||
-        (totalGetProperties % 200 == 0))
-    {        
-        LOG_INFO("GetProperties stats: MountName={} Total={} CacheHit={} CacheMiss={}",
-            m_strMountName,
-            m_nGetPropertiesTotal,
-            m_nGetPropertiesCache,
-            m_nGetPropertiesRemoteClient);
-    }
+    LOG_INFO("GetProperties stats: MountName={} Total={} CacheHit={} CacheMiss={}",
+        m_strMountName,
+        m_nGetPropertiesTotal,
+        m_nGetPropertiesCache,
+        m_nGetPropertiesRemoteClient);
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::string StreamingClient::GetCacheFilePath(const std::string& path) const

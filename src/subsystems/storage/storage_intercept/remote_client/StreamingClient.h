@@ -10,6 +10,7 @@
 #include <map>
 #include <vector>
 #include <array>
+#include <thread>
 #include "IRemoteClient.h"
 #include "FileReadData.h"
 #include "ICacheClient.h"
@@ -122,6 +123,12 @@ class StreamingClient
         std::array<std::atomic_uint64_t, 2> m_nReadLarge;
         std::array<std::atomic_uint64_t, 2> m_nReadMax;
 
+        // Long running thread for logging.
+        bool m_bStopLogging;
+        std::thread m_loggingThread;
+        std::condition_variable m_loggingCV;
+        std::mutex m_loggingMutex;
+
         // Wrapper to call ReadChunkImpl() and update the counters tracking read chunk concurrency
         std::shared_ptr<const FileReadData> ReadChunk(
             /*[in] */ const std::string& remotePath,
@@ -175,7 +182,8 @@ class StreamingClient
         void PreReadChunkCheck();
 
         // Helper funtions to log stats
-        void LogStats(bool forceLog = false);
+        void LongRunningLogStats(const uint32_t);
+        void LogStats();
 
         // Helper funtion to record read stats 
         void UpdateReadStats(
@@ -189,13 +197,12 @@ class StreamingClient
             /*[in] */ size_t requestedSize,
             /*[in] */ ssize_t actualSize);
 
-        void LogReadChunkStats(bool forceLog = false);
-        void LogGetPropertiesStats(bool forceLog = false);
-        void LogDownloadLatencyStats(bool forceLog = false);
+        void LogReadChunkStats();
+        void LogGetPropertiesStats();
+        void LogDownloadLatencyStats();
         void LogDownloadLatencyStatsInner(const std::vector<unsigned>& vecLatencies,
                                           unsigned nNumSamples,
-                                          const char* strSource,
-                                          bool bForceLog);
+                                          const char* strSource);
 
         // Given a relative remote path, construct a unique locally addressable path
         std::string GetCacheFilePath(/*[in] */ const std::string& path) const;

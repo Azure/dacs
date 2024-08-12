@@ -59,5 +59,7 @@ spec:
           value: "%CACHE_GROUP_ID%"
         - name: SI_enableReadIOLogs
           value: "false"
+        - name: SI_logRefreshIntervalInSeconds
+          value: "10"
         args: ['/usr/bin/python3', '/app/launcher.py', '--storage_path', '/app/mounts/mount0', '--name', '%DATASET%', '--num_workers', '4', '--client_type', '%CLIENT_TYPE%']
       restartPolicy: Never
