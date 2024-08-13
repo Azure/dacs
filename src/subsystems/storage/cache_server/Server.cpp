@@ -326,7 +326,7 @@ int main(int argc, char *argv[])
 
     if (!IBManager::GetInstance().Init())
     {
-        LOG_WARN("Failed to initialize infiniband, will proceed without IB support");
+        LOG_INFO("Failed to initialize infiniband, will proceed without IB support");
     }
 
     // ignore signal when write to socket fails, this is handled by -1 return value of the write call

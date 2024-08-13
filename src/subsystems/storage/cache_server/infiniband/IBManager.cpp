@@ -46,7 +46,7 @@ bool IBManager::Init()
     bool bDeviceFound = GetIBDeviceInfo(m_ibDevice.lid, m_ibDevice.port, m_ibDevice.mtu, context);
     if (!bDeviceFound)
     {
-        LOG_WARN("No active IB ports found");
+        LOG_INFO("No active IB ports found");
         return false;
     }
 
