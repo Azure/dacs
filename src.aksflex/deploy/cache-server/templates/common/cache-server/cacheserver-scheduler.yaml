@@ -64,6 +64,8 @@ spec:
       labels:
         app: cacheserver-scheduler
     spec:
+      nodeSelector:
+        {{ .Values.cacheServer.nodeSelectorLabelKey | quote }}: system
       serviceAccount: cacheserver-scheduler
       containers:
         - name: cacheserver-scheduler
