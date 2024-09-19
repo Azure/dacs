@@ -58,6 +58,15 @@ spec:
         - name : CACHESERVER_EVICTION_PASS_FREQUENCY
           value : {{ .Values.cacheServer.evictionPassFrequency | quote }}
 
+{{- if has "gpu" .Values.nodeSelectorLabelValues }}
+        resources:
+            requests:
+                memory: "100Mi"
+                cpu: "0.25"
+            limits:
+                memory: "{{ .Values.memoryLimitMB }}Mi"
+                cpu: {{ .Values.cpuLimit }}
+{{- end }}
         ports:
         - containerPort: {{ .Values.cacheServer.port }}
           name : cacheserver

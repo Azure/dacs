@@ -18,6 +18,8 @@ cacheServer:
   numServers: 3
   serverSizeInGB: 10240
   serverThreads: 400
+  cpuLimit: 16
+  memoryLimitMB: 5000
   evictionEnabled: true
   evictionLastAccessThreshold: 90d
   evictionSizeThreshold: 75
