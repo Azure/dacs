@@ -101,7 +101,7 @@ CacheClientStatus CacheClientImpl::Initialize(
                                                                 bEnableAuth,
                                                                 m_strAccountName,
                                                                 m_strAccountKey,
-                                                                nConnectionPoolSize,
+                                                                m_nConnectionPoolSize,
                                                                 bReuseConnections,
                                                                 bEnableIB);
     m_bInitialized = true;
