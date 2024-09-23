@@ -63,6 +63,7 @@ spec:
     metadata:
       labels:
         app: cacheserver-scheduler
+        kubernetes.azure.com/managedby: {{ .Values.dacsManagedById }}
     spec:
       nodeSelector:
         {{ .Values.cacheServer.nodeSelectorLabelKey | quote }}: system

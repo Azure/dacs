@@ -14,6 +14,7 @@ spec:
     metadata:
       labels:
         app: cacheserver
+        kubernetes.azure.com/managedby: {{ .Values.dacsManagedById }}
     spec:
       terminationGracePeriodSeconds: 10
 {{- if .Values.cacheServer.scheduler.enabled }}

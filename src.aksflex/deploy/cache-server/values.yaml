@@ -11,6 +11,12 @@ Azure:
     username:
     password:
 
+### Managed-by label (kubernetes.azure.com/managedby)
+# Lab clusters: 
+# Partner cloud clusters: 
+# Azure clusters: 
+dacsManagedById: "" # The default value is for Azure clusters
+
 ## Core Components Start
 cacheServer:
   enabled: true
