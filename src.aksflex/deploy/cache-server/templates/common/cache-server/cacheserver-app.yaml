@@ -73,10 +73,15 @@ spec:
           name : cacheserver
         - containerPort: {{ .Values.cacheServer.metricsPort }}
           name : metrics
-        command: [
-          '/bin/sh',
-          '-c',
-          {{ (printf "\"CACHESERVER_HOSTNAME=$HOSTNAME /root/CacheServer %d %s/cache %d\"" (.Values.cacheServer.port | int) .Values.cacheServer.mountSsdPath (mul .Values.cacheServer.serverSizeInGB 1024 1024 1024)) }} ]
+        command: ["/bin/sh", "-cx"]
+        args:
+        - |
+          export CACHESERVER_HOSTNAME=$HOSTNAME
+          export CACHESERVER_PORT={{ .Values.cacheServer.port }}
+          export CACHESERVER_CACHE_PATH={{ .Values.cacheServer.mountSsdPath }}/{{ .Values.cacheServer.identifier }}/cache
+          export CACHESERVER_CACHE_SIZE_BYTES={{ (mul .Values.cacheServer.serverSizeInGB 1024 1024 1024) }}
+          mkdir -p $CACHESERVER_CACHE_PATH
+          /root/CacheServer $CACHESERVER_PORT $CACHESERVER_CACHE_PATH $CACHESERVER_CACHE_SIZE_BYTES
         volumeMounts:
         - mountPath: {{ .Values.cacheServer.mountSsdPath }}
           name: cache-data-volume
@@ -97,7 +102,7 @@ spec:
             sizeLimit: {{ (printf "%dGi" (add1 .Values.cacheServer.serverSizeInGB)) }}
 {{- else if .Values.cacheServer.useCacheFolder }}
           persistentVolumeClaim:
-            claimName: cacheserver-storage-pv3-claim
+            claimName: cacheserver-storage-largepv-claim
 {{- else }}
           persistentVolumeClaim:
             claimName: cacheserver-storage-pv2-rwx-claim

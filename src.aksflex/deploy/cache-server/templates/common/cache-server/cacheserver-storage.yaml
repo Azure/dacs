@@ -1,10 +1,16 @@
 {{- if and .Values.cacheServer.enabled (not .Values.cacheServer.useEphemeralStorage) }}
+{{ $storageClassName := "cacheserver-storage" }}
+{{ $storagePVName := "cacheserver-storage-largepv" }}
+{{- if .Values.cacheServer.identifier }}
+{{ $storageClassName = printf "%s-%s" $storageClassName .Values.cacheServer.identifier }}
+{{ $storagePVName = printf "%s-%s" $storagePVName .Values.cacheServer.identifier }}
+{{- end }}
 ---
 apiVersion: v1
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: cacheserver-storage
+  name: {{ $storageClassName }}
   namespace: {{ .Release.Namespace }}
 provisioner: kubernetes.io/no-provisioner
 volumeBindingMode: WaitForFirstConsumer
@@ -13,16 +19,16 @@ volumeBindingMode: WaitForFirstConsumer
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: cacheserver-storage-pv3
+  name: {{ $storagePVName }}
   namespace: {{ .Release.Namespace }}
 spec:
   capacity:
-    storage: {{ (printf "%dGi" (add1 .Values.cacheServer.serverSizeInGB)) }}
+    storage: 102400Gi
   volumeMode: Filesystem
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: cacheserver-storage
+  storageClassName: {{ $storageClassName }}
   local:
     path: {{ .Values.cacheServer.nodeCacheFolderPath }}
   nodeAffinity:
@@ -36,10 +42,10 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: cacheserver-storage-pv3-claim
+  name: cacheserver-storage-largepv-claim
   namespace: {{ .Release.Namespace }}
 spec:
-  storageClassName: cacheserver-storage
+  storageClassName: {{ $storageClassName }}
   accessModes:
     - ReadWriteOnce
   resources:
@@ -61,7 +67,7 @@ spec:
   accessModes:
     - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: cacheserver-storage
+  storageClassName: {{ $storageClassName }}
   local:
     path: {{ .Values.cacheServer.nodeSsdPath }}
   nodeAffinity:
@@ -78,7 +84,7 @@ metadata:
   name: cacheserver-storage-pv2-rwx-claim
   namespace: {{ .Release.Namespace }}
 spec:
-  storageClassName: cacheserver-storage
+  storageClassName: {{ $storageClassName }}
   accessModes:
     - ReadWriteMany
   resources:

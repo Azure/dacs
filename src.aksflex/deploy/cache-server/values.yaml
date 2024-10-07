@@ -21,6 +21,7 @@ dacsManagedById: "" # The default value is for Azure clusters
 cacheServer:
   enabled: true
   image: cache-server
+  identifier: ""
   numServers: 3
   serverSizeInGB: 10240
   serverThreads: 400
