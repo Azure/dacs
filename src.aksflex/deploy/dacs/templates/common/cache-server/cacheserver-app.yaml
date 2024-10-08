@@ -59,7 +59,7 @@ spec:
         - name : CACHESERVER_EVICTION_PASS_FREQUENCY
           value : {{ .Values.cacheServer.evictionPassFrequency | quote }}
 
-{{- if has "gpu" .Values.nodeSelectorLabelValues }}
+{{- if has "gpu" .Values.cacheServer.nodeSelectorLabelValues }}
         resources:
             requests:
                 memory: "100Mi"
