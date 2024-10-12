@@ -11,6 +11,10 @@ Azure:
     username:
     password:
 
+# -- Node selector for system pod assignment.
+nodeSelector:
+  dacs.azure.com/processing-unit: system
+
 ### Managed-by label (kubernetes.azure.com/managedby)
 # Lab clusters: 
 # Partner cloud clusters: 
