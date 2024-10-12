@@ -74,7 +74,7 @@ spec:
         kubernetes.azure.com/managedby: {{ .Values.dacsManagedById }}
     spec:
       nodeSelector:
-        {{ .Values.cacheServer.nodeSelectorLabelKey | quote }}: system
+        {{- toYaml .Values.nodeSelector | nindent 10 }}
       serviceAccount: cacheserver-scheduler
       containers:
         - name: cacheserver-scheduler
