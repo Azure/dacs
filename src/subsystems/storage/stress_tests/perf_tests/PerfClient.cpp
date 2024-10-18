@@ -151,6 +151,10 @@ void RunPerfTest(/*[in]*/ int nParallelism,
 
     std::size_t nTotalChunksToTransfer = nDataSizeBytes / CHUNK_SIZE;
     std::size_t nChunksPerThread = nTotalChunksToTransfer / nParallelism;
+    if (nTotalChunksToTransfer % nParallelism != 0) {
+        std::size_t nUpperBoundTotalChunksToTransfer = nTotalChunksToTransfer + nParallelism - (nTotalChunksToTransfer % nParallelism);
+        nChunksPerThread = nUpperBoundTotalChunksToTransfer / nParallelism;
+    }
     std::atomic_uint_fast64_t nChunksSuccessfullyTransferred(0);
     std::vector<std::thread*> vecThreads;
     bool bIsUpload = (strMode == "upload");
@@ -159,7 +163,8 @@ void RunPerfTest(/*[in]*/ int nParallelism,
     for(std::size_t nThreadIdx = 0; nThreadIdx < nParallelism; nThreadIdx++)
     {
         std::size_t nStartIndex = nThreadIdx * nChunksPerThread;
-        std::size_t nEndIndexExclusive = (nThreadIdx + 1) * nChunksPerThread;
+        // EndIndex is set to the chunk counter. If chunk counter surpasses totalChunkCount, then totalChunkCount is used.
+        std::size_t nEndIndexExclusive = std::min((nThreadIdx + 1) * nChunksPerThread, nTotalChunksToTransfer);
         std::thread* pThread = new std::thread(Worker,
                                                bIsUpload,
                                                nStartIndex,
