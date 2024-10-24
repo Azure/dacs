@@ -4,6 +4,10 @@ kind: StatefulSet
 metadata:
   name: cacheserver
   namespace: {{ .Release.Namespace }}
+{{- if .Values.cacheServer.egressBandwidthInGb }}
+  annotations:
+    kubernetes.io/egress-bandwidth: {{ .Values.cacheServer.egressBandwidthInGb }}G
+{{- end }}
 spec:
   selector:
     matchLabels:
