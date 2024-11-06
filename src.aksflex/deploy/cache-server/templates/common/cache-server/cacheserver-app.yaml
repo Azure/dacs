@@ -4,10 +4,6 @@ kind: StatefulSet
 metadata:
   name: cacheserver
   namespace: {{ .Release.Namespace }}
-{{- if .Values.cacheServer.egressBandwidthInGb }}
-  annotations:
-    kubernetes.io/egress-bandwidth: {{ .Values.cacheServer.egressBandwidthInGb }}G
-{{- end }}
 spec:
   selector:
     matchLabels:
@@ -19,6 +15,10 @@ spec:
       labels:
         app: cacheserver
         kubernetes.azure.com/managedby: {{ .Values.dacsManagedById }}
+{{- if .Values.cacheServer.egressBandwidthInGb }}
+      annotations:
+        kubernetes.io/egress-bandwidth: {{ .Values.cacheServer.egressBandwidthInGb }}G
+{{- end }}
     spec:
       terminationGracePeriodSeconds: 10
 {{- if .Values.cacheServer.scheduler.enabled }}
