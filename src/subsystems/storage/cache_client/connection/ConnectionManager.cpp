@@ -321,14 +321,14 @@ std::unique_ptr<IConnection> ConnectionManager::InitFreshConnection(int serverIn
     int ret = getaddrinfo(m_vecCacheServers[serverIndex].c_str(), NULL, NULL, &structAddrInfo);
     if (ret != 0)
     {
-        LOG_CRITICAL("Couldn't resolve server address={} error={}", m_vecCacheServers[serverIndex], gai_strerror(ret));
+        LOG_RARELY(5, WARN, "Couldn't resolve server address={} error={}", m_vecCacheServers[serverIndex], gai_strerror(ret));
         return nullptr;
     }
 
     int serverFd = socket(AF_INET, SOCK_STREAM, 0);
     if (serverFd < 0)
     {
-        LOG_CRITICAL("Error creating a socket fd at client error={},{}", errno, strerror(errno));
+        LOG_WARN("Error creating a socket fd at client error={},{}", errno, strerror(errno));
         return nullptr;
     }
 
