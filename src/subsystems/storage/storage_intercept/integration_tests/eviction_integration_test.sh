@@ -35,7 +35,7 @@ function __run_cache_client_lib_test_with_eviction__()
     __logsleep__ 10
 
     echo "Running cache client lib test with eviction enabled"
-    pushd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
+    pushd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
     eval "ctest -V --no-tests=error -j -1 -R CacheClientLibTests"
     if [ $? -ne 0 ]
     then

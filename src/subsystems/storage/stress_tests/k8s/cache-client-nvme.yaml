@@ -1,0 +1,154 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cache-test-client
+spec:
+  parallelism: 1
+  template:
+    metadata:
+      labels:
+        app: cache-test-client
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: workload
+                operator: In
+                values:
+                - cache-perf-test
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - cache-test-client
+            topologyKey: kubernetes.io/hostname
+      imagePullSecrets:
+      - name: regcreddacsdaily
+      containers:
+      - name: dacsfs-mount-container
+        image: dacs.azurecr.io/dacs/cache-perf-test-client:adbansal20240620
+        imagePullPolicy: Always
+        env:
+        - name: SI_azBlobStorageAccountName
+          value: "storageinterceptionpr1"
+        - name: SI_azBlobSASToken
+          value: "sas-token" # add your SAS token here
+        - name: SI_azBlobStorageEndpoint
+          value: "https://storageinterceptionpr1.blob.core.windows.net"
+        - name: SI_azBlobContainerName
+          value: "dataset"
+        - name: SI_maxConnsPerBlobClient
+          value: "80"
+        - name: SI_chunkDownloadMaxConcurrency
+          value: "80"
+        - name: SI_enableLargePrefetch
+          value: "true"
+        - name: SI_prefetchWindowSizeInMB
+          value: "160"
+        - name: SI_cacheServerPort
+          value: "9065"
+        - name: SI_cacheServerList
+          value: "cacheserver-0.cacheserver.default.svc.cluster.local#cacheserver-1.cacheserver.default.svc.cluster.local#cacheserver-2.cacheserver.default.svc.cluster.local#cacheserver-3.cacheserver.default.svc.cluster.local"
+        - name: SI_cacheNumUploadThreadsPerProcess
+          value: "8"
+        - name: SI_cacheEnableSyncUpload
+          value: "false"
+        - name: SI_cacheKeyExpirySeconds
+          value: "3600"
+        - name: SI_cacheKeyGroupId
+          value: ""
+        - name: SI_enableReadIOLogs
+          value: "false"
+        command: ["/bin/bash", "-cx"]
+        args:
+        - |
+          export DACS_LOG_OUTPUT_FILE=/dacsfs.log
+          export DACS_LOG_ERROR_FILE=/dacsfs.log
+          mkdir -p /dacsfs/mnt
+          /app/dacsfs /dacsfs/mnt -o allow_other -o ro -o attr_timeout=36000 -o entry_timeout=36000 -o negative_timeout=36000
+          touch /signals/dacsfs.ready
+          tail -F /dacsfs.log &
+          while [ ! -f /signals/job.completed ]; do
+            sleep 5
+          done
+        securityContext:
+          privileged: true # needed for fuse mount
+        volumeMounts:
+        - name: dacsfs-mount
+          mountPath: /dacsfs
+          mountPropagation: Bidirectional
+        - name: mount-signal
+          mountPath: /signals
+      - name: rslex-mount-container
+        image: dacs.azurecr.io/dacs/rslex-mount:adbansal20240630
+        imagePullPolicy: Always
+        env:
+        - name: CACHE_SERVER_LIST
+          value: "cacheserver-0.cacheserver.default.svc.cluster.local"
+        - name: CACHE_SERVER_PORT
+          value: "9065"
+        - name: RSLEX_SOURCE_URL
+          value: "wasbs://dataset@storageinterceptionpr1.blob.core.windows.net/?sas=[url_enoded_sas]" # update the sas here
+        command: ["/bin/bash", "-cx"]
+        args:
+        - |
+          mkdir -p /rslex/mnt
+          chmod 777 /app/rslex-fuse-cli
+          export MOUNT_OPTIONS="--mount-point "/rslex/mnt" --source-url "${RSLEX_SOURCE_URL}" --log-file /tmp/mount.log --log-level "info""
+          if [ -n "${CACHE_SERVER_LIST}" ]; then
+            export DACS_CACHE_SERVER_MODE="global"
+            export MOUNT_OPTIONS="${MOUNT_OPTIONS} --read-only --use-dacs-server"
+          fi
+          /app/rslex-fuse-cli $MOUNT_OPTIONS &
+          sleep 5 # wait for the mount to be ready
+          touch /signals/rslex.ready          
+          tail -F /tmp/mount.log &
+          while [ ! -f /signals/job.completed ]; do
+            sleep 5
+          done
+        securityContext:
+          privileged: true # needed for fuse mount
+        volumeMounts:
+        - name: rslex-mount
+          mountPath: /rslex
+          mountPropagation: Bidirectional
+        - name: mount-signal
+          mountPath: /signals
+      - name: job
+        image: dacs.azurecr.io/dacs/base-client:adbansal20240630
+        imagePullPolicy: Always
+        env:
+        - name: MOUNT_TYPE
+          value: "rslex"
+        command: ["/bin/bash", "-cx"]
+        args:
+        - |
+          signal_file="/signals/${MOUNT_TYPE}.ready"
+          while [ ! -f $signal_file ]; do
+            sleep 1
+            echo "Waiting for $signal_file"
+          done
+          python3 /app/StorageClient.py --storage_path /${MOUNT_TYPE}/mnt/tbs --name 500gb --num_workers 8 --rank_filter 1 --world_size 10 --read_pattern whole
+          touch /signals/job.completed
+        volumeMounts:
+        - name: dacsfs-mount
+          mountPath: /dacsfs
+          mountPropagation: HostToContainer
+        - name: rslex-mount
+          mountPath: /rslex
+          mountPropagation: HostToContainer
+        - name: mount-signal
+          mountPath: /signals
+      restartPolicy: Never
+      volumes:
+      - name: dacsfs-mount
+        emptyDir: {}
+      - name: rslex-mount
+        emptyDir: {}
+      - name: mount-signal
+        emptyDir: {}

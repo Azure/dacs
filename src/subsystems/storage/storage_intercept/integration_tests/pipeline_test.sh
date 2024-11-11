@@ -184,7 +184,7 @@ function start_cache_server() {
   done
   
   # Start cache server in the background and save pid
-  CACHE_SERVER_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/CacheServer"
+  CACHE_SERVER_EXE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/native-storage/storage/CacheServer"
   TTL_WINDOW_IN_SECONDS=5
   CacheServerCommand="${CACHE_SERVER_EXE} ${CACHE_SERVER_PORT} ${CACHE_SERVER_PATH} 100000000000 10000000 1 $"
 
@@ -324,7 +324,7 @@ function __run_perf_benchmark__() {
 __run_perf_benchmark__
 
 echo "Running cache server unit tests"
-cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
+cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
 eval "ctest -V --no-tests=error -j -1 -R CacheServer"
 if [ $? -ne 0 ]
 then
@@ -337,7 +337,7 @@ __verify_nologs_unintercepted_
 echo "Running unit tests against blob"
 add_interception_config_blob /mnt/dataPathIntcpt
 export STORAGE_INTERCEPT_USE_EXISITNG_CONFIG=true
-cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
+cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
 eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
 if [ $? -ne 0 ]
 then
@@ -428,7 +428,7 @@ fi
 #END: Ensure last access distribution client is wired up correctly
 
 echo "Running cache client lib test"
-cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
+cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
 eval "ctest -V --no-tests=error -j -1 -R CacheClientLibTests"
 if [ $? -ne 0 ]
 then
@@ -473,7 +473,7 @@ start_cache_server
 sleep 10
 
 echo "Running cache client lib test with authentication enabled"
-cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
+cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
 eval "ctest -V --no-tests=error -j -1 -R CacheClientLibTests"
 if [ $? -ne 0 ]
 then
@@ -514,7 +514,7 @@ run_cacheserver_test
 
 echo "Running unit tests against blob with cache enabled"
 add_interception_config_blob_with_cache /mnt/dataPathIntcpt
-cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
+cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
 eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
 if [ $? -ne 0 ]
 then
@@ -535,7 +535,7 @@ echo ""
 
 echo "Running unit tests against blob with cache and encryption enabled"
 add_interception_config_blob_with_cache_encryption /mnt/dataPathIntcpt
-cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
+cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
 eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
 if [ $? -ne 0 ]
 then
@@ -556,7 +556,7 @@ echo ""
 
 echo "Running unit tests against blob with remote attribute and data cache enabled"
 add_interception_config_blob_with_remote_cache /mnt/dataPathIntcpt
-cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
+cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
 eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
 if [ $? -ne 0 ]
 then
@@ -588,7 +588,7 @@ echo ""
 echo "Running unit tests against blob with local ssd cache"
 reset_local_ssd_cache
 add_interception_config_blob_with_localssdcache /mnt/dataPathIntcpt
-cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/non_cuda/
+cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
 eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
 if [ $? -ne 0 ]
 then

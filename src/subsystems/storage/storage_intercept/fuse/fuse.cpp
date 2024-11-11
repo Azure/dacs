@@ -40,7 +40,7 @@ static void *dacsfs_init(
 	struct fuse_config *cfg)
 {
 	//cfg->direct_io = 1; // Can't do direct IO because it doesn't support mmap
-	//cfg->kernel_cache = 1;
+	cfg->kernel_cache = 1;
 	cfg->use_ino = 0;
     cfg->nullpath_ok = 1;
 
