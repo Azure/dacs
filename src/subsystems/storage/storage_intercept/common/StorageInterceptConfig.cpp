@@ -653,6 +653,14 @@ bool StorageInterceptConfig::GetAttributesCacheUseRemoteServer()
         m_ConfigProps, StorageInterceptConstants::ConfigNameAttributesCacheUseRemoteServer, false);
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::GetAttributesCachePutAllOnReaddir()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameAttributesCachePutAllOnReaddir,
+        false);
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetCacheAuthEnabled()
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(

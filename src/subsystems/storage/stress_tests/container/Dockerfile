@@ -1,4 +1,4 @@
-ARG ARG_DACS_BASE_CONTAINER=mcr.microsoft.com/oss/mirror/docker.io/library/ubuntu:20.04
+ARG ARG_DACS_BASE_CONTAINER=mcr.microsoft.com/mirror/docker/library/ubuntu:20.04
 
 FROM $ARG_DACS_BASE_CONTAINER
 
@@ -7,6 +7,7 @@ USER root
 RUN \
     apt-get update && \
     apt-get install -yq python3 \
+    libfuse3-dev \
     libjsoncpp-dev \
     libcurl4-openssl-dev \
     libibverbs-dev \
@@ -35,5 +36,8 @@ COPY bin/Release/native-storage/storage/CacheStorageClient /app/CacheStorageClie
 COPY bin/Release/native-storage/storage/DeleteClient /app/DeleteClient
 COPY bin/Release/native-storage/storage/PerfClient /app/PerfClient
 COPY src/subsystems/storage/stress_tests/storageIntercept.config /tmp/storageIntercept.config
-# This copy requires the build to complete first, need to wire up this docker build invocation accordingly
 COPY obj/Release/native/linux-x64/publish-storage/storage/libStorageIntercept.so /app/lib/libStorageIntercept.so
+
+RUN apt-get install -yq libfuse-dev libfuse3-dev
+COPY /bin/Release/native-storage/storage/rslex-fuse-cli /app/rslex-fuse-cli
+COPY /bin/Release/native-storage/storage/dacsfs /app/dacsfs

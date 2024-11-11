@@ -72,7 +72,7 @@ file(GLOB DACSFS_SOURCES ${STORAGE_INTERCEPT_SOURCES_COMMON} fuse/fuse.cpp)
 add_executable(dacsfs ${DACSFS_SOURCES})
 target_compile_definitions(dacsfs PRIVATE FUSE_USE_VERSION=31 STORAGE_INTERCEPT_FUSE=1)
 target_link_libraries(dacsfs PRIVATE
-        PkgConfig::FUSE3 StorageLibcDirectWrapper ${CommonDeps})
+        PkgConfig::FUSE3 StorageLibcDirectWrapper ${CommonDeps} ibverbs)
 
 add_custom_command(
     TARGET dacsfs POST_BUILD

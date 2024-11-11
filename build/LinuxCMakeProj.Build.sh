@@ -18,6 +18,41 @@ function __prepare_native_code_for_amd__(){
   time "$SCRIPT_DIR"/../.pipelines/amd/code_translation.py --root "$AMD_CODE_DIR"
 }
 
+function invoke_cmake() {
+  local latest_git_hash=`git rev-parse HEAD || echo "unknown_git_commit"`
+  local cmake_build_dir=$1
+  local source_dir=$2
+  local cmake_extra_args=${@:3}
+
+  mkdir -p $cmake_build_dir
+  cd $cmake_build_dir
+  echo "cmake \
+    $cmake_extra_args \
+    -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_CONFIGURATION \
+    -DBUILD_WITH_DEBUG_SYMBOLS=$BUILD_WITH_DEBUG_SYMBOLS \
+    -DGIT_COMMIT_HASH=${latest_git_hash} \
+    -G Ninja \
+    $source_dir"
+  cmake \
+    $cmake_extra_args \
+    -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_CONFIGURATION \
+    -DBUILD_WITH_DEBUG_SYMBOLS=$BUILD_WITH_DEBUG_SYMBOLS \
+    -DGIT_COMMIT_HASH=${latest_git_hash} \
+    -G Ninja \
+    $source_dir
+
+  ninja
+
+  if [ $? -ne 0 ]; then
+    exit 1
+  fi
+}
+
+function execute_storage_build() {
+  echo "Build for storage projects......"
+  invoke_cmake $CMAKE_RUNTIME_OUTPUT_DIRECTORY/storage $PATH_TO_SOURCE -DENABLE_STORAGE_BUILD=true
+}
+
 function execute_build() {
   local cuda_deps=$1
   local python_deps=$2
@@ -35,24 +70,7 @@ function execute_build() {
   fi
 
   echo "Build for ${cuda_deps} and python ${python_deps} projects......"
-  mkdir -p $CMAKE_RUNTIME_OUTPUT_DIRECTORY/${cuda_deps}
-  cd $CMAKE_RUNTIME_OUTPUT_DIRECTORY/${cuda_deps}
-  cmake \
-    -DAMD_BUILD=$AMD_BUILD \
-    -DPYTHON_VERSION=${python_deps} \
-    -DCUDA_VERSION=${cuda_deps} \
-    -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_CONFIGURATION \
-    -DSKIP_SUBMODULE_BUILD=$SKIP_NATIVE_SUBMODULE_BUILD \
-    -DBUILD_WITH_DEBUG_SYMBOLS=$BUILD_WITH_DEBUG_SYMBOLS \
-    -DGIT_COMMIT_HASH=${latest_git_hash} \
-    -G Ninja \
-    $PATH_TO_SOURCE
-
-  ninja
-
-  if [ $? -ne 0 ]; then
-    exit 1
-  fi
+  invoke_cmake $CMAKE_RUNTIME_OUTPUT_DIRECTORY/${cuda_deps} $PATH_TO_SOURCE -DAMD_BUILD=$AMD_BUILD -DPYTHON_VERSION=${python_deps} -DCUDA_VERSION=${cuda_deps}
 }
 
 function cleanup_build() {
@@ -141,6 +159,11 @@ if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
 
   PATH_TO_SOURCE=/tmp$PATH_TO_SOURCE
   cd $CMAKE_RUNTIME_OUTPUT_DIRECTORY
+fi
+
+execute_storage_build
+if [[ "$BUILD_STORAGE_ONLY" == "true" ]]; then
+  exit 0
 fi
 
 # Though we are looping over different python versions

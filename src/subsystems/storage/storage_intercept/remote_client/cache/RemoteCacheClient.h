@@ -54,6 +54,7 @@ class RemoteCacheClient : public ICacheClient, public IAttributesCache
         std::unique_ptr<CacheUploadManager>             m_spUploadManager;
         int                                             m_numServerNodes;
         InMemoryAttributesCache                         m_inMemAttributeCache;
+        const bool                                      m_bAttributesCachePutAllOnReaddir;
 
         // Per mount specific parameters
         std::map<std::string, std::string>              m_mapEncryptionKey;

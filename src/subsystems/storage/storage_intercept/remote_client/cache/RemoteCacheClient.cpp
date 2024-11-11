@@ -20,6 +20,7 @@ using namespace std;
 using namespace StorageInterceptConstants;
 //---------------------------------------------------------------------------------------------------------------------
 RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
+    : m_bAttributesCachePutAllOnReaddir(StorageInterceptConfig::GetInstance().GetAttributesCachePutAllOnReaddir())
 {
     int serverPort = StorageInterceptConfig::GetInstance().GetCacheServerPort();
     bool enableRemoteCache = StorageInterceptConfig::GetInstance().GetCacheEnableRemote();
@@ -292,21 +293,24 @@ void RemoteCacheClient::PutAll(const std::string& pathPrefix,
 
     m_inMemAttributeCache.PutAll(pathPrefix, dirEntries, startIndex);
 
-    LOG_DEBUG("Adding {} entries to remote attribute cache", numEntries);
-    for(size_t index = startIndex; index < dirEntries.size(); index++)
+    if (m_bAttributesCachePutAllOnReaddir)
     {
-        const DirectoryEntry& dirEntry = dirEntries[index];
-        ::FileAttributes fileAttributes;
-        fileAttributes.isDir = (dirEntry.d_type == DT_DIR);
-        fileAttributes.size = dirEntry.d_size;
-        fileAttributes.mTime.tv_sec = dirEntry.d_mtime;
-        fileAttributes.aTime.tv_sec = dirEntry.d_atime;
-        fileAttributes.cTime = fileAttributes.mTime;
+        LOG_INFO("Adding {} entries to remote attribute cache", numEntries);
+        for(size_t index = startIndex; index < dirEntries.size(); index++)
+        {
+            const DirectoryEntry& dirEntry = dirEntries[index];
+            ::FileAttributes fileAttributes;
+            fileAttributes.isDir = (dirEntry.d_type == DT_DIR);
+            fileAttributes.size = dirEntry.d_size;
+            fileAttributes.mTime.tv_sec = dirEntry.d_mtime;
+            fileAttributes.aTime.tv_sec = dirEntry.d_atime;
+            fileAttributes.cTime = fileAttributes.mTime;
 
-        const string cacheKey = GetAttributeCacheKey(StorageInterceptUtils::CombinePath(pathPrefix, dirEntry.d_name));
-        const string strEcncryptionKey = "";
-        m_spUploadManager->Upload(
-            "", cacheKey, nullptr, strEcncryptionKey, make_unique<::FileAttributes>(fileAttributes));
+            const string cacheKey = GetAttributeCacheKey(StorageInterceptUtils::CombinePath(pathPrefix, dirEntry.d_name));
+            const string strEcncryptionKey = "";
+            m_spUploadManager->Upload(
+                "", cacheKey, nullptr, strEcncryptionKey, make_unique<::FileAttributes>(fileAttributes));
+        }
     }
 }
 //---------------------------------------------------------------------------------------------------------------------

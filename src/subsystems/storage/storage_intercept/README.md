@@ -14,14 +14,10 @@ pip3 install setuptools
 apt-get install libjpeg-dev
 pip3 install torch torchvision torchsummary
 ```
-To do a full build:
+To do a build:
 ```
 .pipelines/restore.sh
-.pipelines/build.sh
-```
-To do a partial build:
-```
-dotnet msbuild -p:Configuration=Debug -p:SkipCuda11Build=true -M /mnt/DACS/DACS/src/native/native_build.linuxcmakeproj
+BUILD_STORAGE_ONLY=true .pipelines/build.sh
 ```
 
 ### Run Unit test
@@ -124,6 +120,7 @@ cacheValidateChecksumEnabled [true or false - Enable checksum validation for chu
 prefetchCacheTotalSizeInMB [Max in-memory data cache size]
 prefetchCachePerFileSizeInMB [Max in-memory data cache size per file]
 cacheEnableSyncUpload [After downloading chunk from remote blob on a cache miss upload to cache server synchronously in critical path. Note: This will increase client IO latency. default - false]
+attributesCachePutAllOnReaddir [Upload the readdir entries to remote attributes cache. default - false]
 ```
 
 ### Config for running interception on multiple mounts
