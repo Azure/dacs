@@ -19,6 +19,8 @@ using namespace cacheutils;
 using namespace std;
 using namespace StorageInterceptConstants;
 //---------------------------------------------------------------------------------------------------------------------
+constexpr uint64_t CHUNK_SIZE_4_MIB = 4 * 1024 * 1024;
+//---------------------------------------------------------------------------------------------------------------------
 RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
     : m_bAttributesCachePutAllOnReaddir(StorageInterceptConfig::GetInstance().GetAttributesCachePutAllOnReaddir())
 {
@@ -35,6 +37,11 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
     bool bUseInfiniband = StorageInterceptConfig::GetInstance().GetCacheIBEnabled();
     bool bEnableCalculateChecksum = StorageInterceptConfig::GetInstance().IsCacheCalculateChecksumEnabled();
     bool bEnableValidateChecksum = StorageInterceptConfig::GetInstance().IsCacheValidateChecksumEnabled();
+    uint32_t nChunkSizeConfig = StorageInterceptConfig::GetInstance().GetStreamingChunkSize();
+
+    // Chunk size is configurable in new clients, so we need to include it in the cache key to prevent collisions
+    // but dont include it for the default 4MB size so existing data is re-usable.
+    m_strChunkSizeSuffix = (nChunkSizeConfig == CHUNK_SIZE_4_MIB) ? "" : (":" + std::to_string(nChunkSizeConfig));
 
     uint64_t maxUploadBufferSizePerProcess =
         StorageInterceptConfig::GetInstance().GetCacheMaxUploadBufferSizePerProcessGB() * 1024ULL * 1024 * 1024;
@@ -361,8 +368,10 @@ std::string
 RemoteCacheClient::GetCacheKey(const std::string& mountName, const std::string& filePath, off64_t fileOffset)
 {
     // To uniquely identify a chunk within a cluster we need
-    // <account name>/<container name>/<filepath within the container>:<file offset>
-    return GetSHA256Hex(m_strCachePrefixMap.at(mountName) + "/" + filePath + ":" + std::to_string(fileOffset));
+    // <account name>/<container name>/<filepath within the container>:<file offset>:<chunk size>
+    // (with chunk size optional)
+    return GetSHA256Hex(m_strCachePrefixMap.at(mountName) + "/" + filePath + ":" + std::to_string(fileOffset) +
+                        m_strChunkSizeSuffix);
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::string RemoteCacheClient::GetAttributeCacheKey(const std::string& filePath)

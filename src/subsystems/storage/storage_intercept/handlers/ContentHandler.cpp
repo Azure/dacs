@@ -238,7 +238,7 @@ void ContentHandler::SetCacheClients()
         }
         else
         {
-            remoteCacheClient = std::make_shared<RemoteCacheClient>();
+            remoteCacheClient = std::make_shared<RemoteCacheClient>(StorageInterceptConfig::GetInstance().GetStreamingChunkSize());
             std::atomic_store(&m_spCacheClient, std::shared_ptr<ICacheClient>(remoteCacheClient));
             LOG_INFO("Initialized remote cache client in ContentHandler")
         }
@@ -275,7 +275,7 @@ void ContentHandler::SetCacheClients()
             // reuse RemoteCacheClient if its already instantiated
             if (!remoteCacheClient.get())
             {
-                remoteCacheClient = std::make_shared<RemoteCacheClient>();
+                remoteCacheClient = std::make_shared<RemoteCacheClient>(StorageInterceptConfig::GetInstance().GetStreamingChunkSize());
             }
 
             std::atomic_store(
