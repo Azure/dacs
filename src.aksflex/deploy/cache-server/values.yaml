@@ -23,21 +23,21 @@ dacsManagedById: "" # The default value is for Azure clusters
 
 ## Core Components Start
 cacheServer:
-  enabled: true
+  enabled: false
   image: cache-server
   identifier: ""
-  numServers: 3
-  serverSizeInGB: 10240
-  serverThreads: 400
-  cpuLimit: 16
-  memoryLimitMB: 5000
+  numServers: 1
+  serverSizeInGB: 1
+  serverThreads: 4
+  cpuLimit: 1
+  memoryLimitMB: 400
   evictionEnabled: true
   evictionLastAccessThreshold: 90d
   evictionSizeThreshold: 75
   evictionPassFrequency: 1h
   mountSsdPath: /host/mnt/ssd0
-  port: 9065
-  metricsPort: 9096
+  port: 9196
+  metricsPort: 9165
   useEphemeralStorage: false
   nodeSsdPath: /var/lib/containerd # required when useEphemeralStorage is false and useCacheFolder is false. To be removed after all clusters are rebuilt to have dedicated cache folder
   useCacheFolder: true
@@ -49,6 +49,6 @@ cacheServer:
     image: cacheserver-scheduler
     debugLevel: "info"
     schedulerPollInterval: 15s
-    cacheserverNamespace: azureml
+    cacheserverNamespace: cache-server
 
 ## Core Components end
