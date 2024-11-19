@@ -29,8 +29,8 @@
 //---------------------------------------------------------------------------------------------------------------------
 namespace po = boost::program_options;
 //---------------------------------------------------------------------------------------------------------------------
-constexpr const std::size_t CHUNK_SIZE = (4 * 1024 * 1024);
-constexpr const std::size_t RETRY_COUNT_PER_CHUNK = 100;
+constexpr const std::size_t CHUNK_SIZE = (32 * 1024 * 1024);
+constexpr const std::size_t RETRY_COUNT_PER_CHUNK = 5;
 constexpr const std::size_t UPLOAD_EXPIRY_DURATION_SECONDS = 3600; // 1 hour
 //---------------------------------------------------------------------------------------------------------------------
 std::atomic_uint_fast64_t nGlobalFailureCounter(0);
