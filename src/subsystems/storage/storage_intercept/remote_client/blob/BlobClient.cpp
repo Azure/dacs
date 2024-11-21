@@ -7,8 +7,63 @@
 #include "StorageInterceptUtils.h"
 #include "RemoteClientException.h"
 #include <dirent.h>
+#include <random>
 #include <sstream>
 #include <mstream.h>
+//---------------------------------------------------------------------------------------------------------------------
+// Refer: https://github.com/Azure/azure-storage-cpplite/blob/33a807a3984681a604c41659a4a2030ea81194e7/include/retry.h
+//---------------------------------------------------------------------------------------------------------------------
+class exponential_backoff_retry_policy final : public azure::storage_lite::retry_policy_base
+{
+  public:
+    exponential_backoff_retry_policy() : m_rng(std::random_device{}())
+    {
+    }
+
+    azure::storage_lite::retry_info evaluate(const azure::storage_lite::retry_context& context) const override
+    {
+        if (context.numbers() <= MAX_RETRY_COUNT && can_retry(context.result()))
+        {
+            auto interval_without_jitter = RETRY_INTERVAL_BASE_SECONDS << context.numbers();
+            std::uniform_int_distribution<int> dist(1, std::min(MAX_RETRY_INTERVAL_SECONDS, interval_without_jitter));
+            auto interval = std::chrono::seconds(dist(m_rng));
+            LOG_INFO("Will retry attempts={} status-code={} in {} seconds",
+                     context.numbers(),
+                     context.result(),
+                     interval.count());
+
+            return azure::storage_lite::retry_info(true, interval);
+        }
+
+        LOG_INFO("Will not retry attempts={} status-code={}", context.numbers(), context.result());
+        return azure::storage_lite::retry_info(false, std::chrono::seconds(0));
+    }
+
+  private:
+    static constexpr uint32_t RETRY_INTERVAL_BASE_SECONDS = 1;
+    static constexpr uint32_t MAX_RETRY_COUNT = 10;
+    static constexpr uint32_t MAX_RETRY_INTERVAL_SECONDS = 128;
+
+    bool can_retry(azure::storage_lite::http_base::http_code statusCode) const
+    {
+        // Copied from https://github.com/Azure/azure-storage-cpplite/blob/33a807a3984681a604c41659a4a2030ea81194e7/src/utility.cpp#L172
+        if (statusCode == 408 /*Request Timeout*/)
+        {
+            return true;
+        }
+        if (statusCode >= 300 && statusCode < 500)
+        {
+            return false;
+        }
+        if (statusCode == 501 /*Not Implemented*/ || statusCode == 505 /*HTTP Version Not Supported*/)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    mutable std::mt19937 m_rng;
+};
 //---------------------------------------------------------------------------------------------------------------------
 BlobClient::BlobClient(const std::string& mountName)
     : m_strMountName(mountName)
@@ -18,7 +73,7 @@ BlobClient::BlobClient(const std::string& mountName)
     GetConfigProperties();
     if (!m_bIsDynamicAccount)
     {
-        m_mapBlobClients[""] = std::make_unique<azBlobClient_t>(
+        auto client = std::make_unique<azBlobClient_t>(
             std::make_shared<azStorageAccount_t>(
                 m_storageAccountContext.accountName,
                 m_storageAuthContext.credential,
@@ -27,6 +82,8 @@ BlobClient::BlobClient(const std::string& mountName)
             ),
             m_nMaxConnections
         );
+        client->context()->set_retry_policy(std::make_shared<exponential_backoff_retry_policy>());
+        m_mapBlobClients[""] = std::move(client);
     }
 
     LOG_INFO(
@@ -500,6 +557,7 @@ azure::storage_lite::blob_client& BlobClient::GetBlobClient(/*[in] */ const std:
         );
 
         itBlobClient = m_mapBlobClients.find(accountHostname);
+        (*(itBlobClient->second)).context()->set_retry_policy(std::make_shared<exponential_backoff_retry_policy>());
     }
 
     return *(itBlobClient->second);
