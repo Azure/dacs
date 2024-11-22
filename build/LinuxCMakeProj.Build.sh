@@ -193,10 +193,11 @@ else
     execute_build "cuda_$cudaVersion" $pythonVersion
   done
 
-  for rocmVersion in "5_2_3"; do
-    pythonVersion="3.8"
-    execute_build "rocm_$rocmVersion" $pythonVersion
-  done
+  # AMD build disabled for now (unused)
+  # for rocmVersion in "5_2_3"; do
+  #   pythonVersion="3.8"
+  #   execute_build "rocm_$rocmVersion" $pythonVersion
+  # done
 fi
 
 if [[ "$FAST_NATIVE_BUILD" == "true" ]]; then
