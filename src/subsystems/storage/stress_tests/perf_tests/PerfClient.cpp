@@ -375,14 +375,15 @@ int PerfClient(int argc, char *argv[])
                       vecCstrHostnames.size(),
                       nPort,            /*nCacheServerPort*/
                       false,            /*bEnableIB*/
-                      false,             /*bEnableCalculateChecksum*/
+                      false,            /*bEnableCalculateChecksum*/
                       false,            /*bEnableValidateChecksum*/
                       nNumThreads * 2,  /*nConnectionPoolSize*/
                       false,            /*bEnableAuth*/
                       nullptr,          /*strAccountName*/
                       nullptr,          /*strAccountKey*/
                       false,            /*bUseLocalServer*/
-                      true);            /*bReuseConnections*/
+                      true,             /*bReuseConnections*/
+                      CHUNK_SIZE);      /*nMaxBufferSizeBytes*/
 
     std::size_t nDataSizeBytes = nDataSizeGiB * 1024 * 1024 * 1024;
 
