@@ -36,8 +36,8 @@ cacheServer:
   evictionSizeThreshold: 75
   evictionPassFrequency: 1h
   mountSsdPath: /host/mnt/ssd0
-  port: 9196
-  metricsPort: 9165
+  port: 9165
+  metricsPort: 9196
   useEphemeralStorage: false
   nodeSsdPath: /var/lib/containerd # required when useEphemeralStorage is false and useCacheFolder is false. To be removed after all clusters are rebuilt to have dedicated cache folder
   useCacheFolder: true
