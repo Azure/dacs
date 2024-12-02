@@ -396,6 +396,24 @@ echo ""
 start_cache_server
 sleep 10
 
+
+# Ensure perf client is wired up correctly
+PERF_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/cache-test/PerfClient "
+random_prefix=$(date +%s)
+eval "${PERF_CLIENT_EXE} --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT} --num-threads 16 --data-size-GiB 1 --prefix ${random_prefix} --mode upload"
+if [ $? -ne 0 ]
+then
+    echo "Perf client test failed"
+    exit 1
+fi
+
+eval "${PERF_CLIENT_EXE} --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT} --num-threads 16 --data-size-GiB 1 --prefix ${random_prefix} --mode download"
+if [ $? -ne 0 ]
+then
+    echo "Perf client test failed"
+    exit 1
+fi
+
 # Ensure eviction client is wired up correctly
 EVICTION_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/cache-test/PerfClient "
 eval "${EVICTION_CLIENT_EXE} --eviction-client --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT} --last-access-time "2024-04-02T20:00:00.000Z" | tee /tmp/eviction.log"
