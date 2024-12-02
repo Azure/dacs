@@ -141,7 +141,8 @@ void Worker(/*[in]*/ bool bIsUpload,
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-void RunPerfTest(/*[in]*/ int nParallelism,
+// Returns true if all chunks were transferred successfully else false
+bool RunPerfTest(/*[in]*/ int nParallelism,
                  /*[in]*/ uint64_t nDataSizeBytes,
                  /*[in]*/ CacheClientImpl& client,
                  /*[in]*/ std::string& strPrefix,
@@ -210,6 +211,18 @@ void RunPerfTest(/*[in]*/ int nParallelism,
              nGlobalFailureCounter.load(),
              nTotalChunksToTransfer,
              nChunksSuccessfullyTransferred);
+
+    uint64_t nTotalFailedChunks = nTotalChunksToTransfer - nChunksSuccessfullyTransferred;
+
+    if (nTotalFailedChunks > 0)
+    {
+        LOG_ERROR("This iteration failed with {} chunks not transferred", nTotalFailedChunks);
+        return false;
+    }
+    else
+    {
+        return true;
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
@@ -224,7 +237,7 @@ po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
             "data-size-GiB", po::value<int>(), "Total size of data to upload/download in GiB")(
             "prefix", po::value<std::string>(), "Prefix for file uploads. Must be same for upload and download")(
             "mode", po::value<std::string>(), "Mode ( 'upload' or 'download' )")(
-            "num-iterations", po::value<int>(), "Number of times to run the perf test");
+            "num-iterations", po::value<int>()->default_value(1), "Number of times to run the perf test");
 
         po::variables_map vm;
         po::store(po::command_line_parser(argc, argv).options(description).allow_unregistered().run(), vm);
@@ -386,13 +399,19 @@ int PerfClient(int argc, char *argv[])
                       CHUNK_SIZE);      /*nMaxBufferSizeBytes*/
 
     std::size_t nDataSizeBytes = nDataSizeGiB * 1024 * 1024 * 1024;
+    bool bAllIterationsSucceeded = true;
 
-    for(std::size_t i = 0; i < nNumIterations; i++)
+    for (std::size_t i = 0; i < nNumIterations; i++)
     {
-        RunPerfTest(nNumThreads, nDataSizeBytes, client, strPrefix, strMode);
+        if (!RunPerfTest(nNumThreads, nDataSizeBytes, client, strPrefix, strMode))
+        {
+            bAllIterationsSucceeded = false;
+        }
     }
 
-    return 0;
+    LOG_INFO("All iterations succeeded: {}", bAllIterationsSucceeded);
+
+    return bAllIterationsSucceeded ? 0 : 5;
 }
 //---------------------------------------------------------------------------------------------------------------------
 int EvictionClient(int argc, char* argv[])
