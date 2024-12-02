@@ -182,7 +182,7 @@ namespace ibutils
 
         if (!bDeviceFound)
         {
-            LOG_ERROR("No IB devices found");
+            LOG_INFO("No IB devices found");
             return false;
         }
 
