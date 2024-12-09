@@ -12,7 +12,7 @@
 extern "C" {
 #endif
 //---------------------------------------------------------------------------------------------------------------------
-#define MAX_BUFFER_SIZE_BYTES (4 * 1024 * 1024)
+#define MAX_BUFFER_SIZE_BYTES (128 * 1024 * 1024)
 #define MAX_CACHE_KEY_LEN 127
 #define MAX_METADATA_KEY_VALUE_PAIRS 32
 #define MAX_GROUPID_LEN 127
@@ -89,7 +89,7 @@ CacheClientStatus Initialize(
 //---------------------------------------------------------------------------------------------------------------------
 /**
  * Uploads nLength bytes of data from pBuffer to the cache server and associates it with the key strCacheKey.
- * The buffer size can be at most 4MB. Consumer of this API needs to divide the data into 4MB chunks and call
+ * The buffer size can be at most 128MB. Consumer of this API needs to divide the data into 128MB chunks and call
  * this API for each chunk separately.
  * 
  * This method chooses the cache server to upload the data to based on the hash value of strCacheKey and the
@@ -111,7 +111,7 @@ CacheClientStatus Initialize(
  * 
  * @param strCacheKey Key to be used to store the data, max supported length is 127 characters
  * @param pBuffer Pointer to the data to be uploaded
- * @param nLength Size of the data in bytes, which can be at most 4194304 (4MB)
+ * @param nLength Size of the data in bytes, which can be at most 134217728 (128MB)
  * @param nExpirySeconds Number of seconds after which strCacheKey and its associated data shall be cleaned up from the
  *        cache server. Set the value to `0` to indicate that the key shall never expire
  * @param strGroupId Group ID of strCacheKey. Set the value to `NULL` to indicate that the data does not belong to any
@@ -124,7 +124,7 @@ CacheClientStatus Initialize(
  * 1. SUCCESS -- The data and metadata was successfully uploaded to the cache server
  * 2. KEY_EXISTS -- The key strCacheKey already exists in the cache server. The data and metadata was not uploaded to
  *    the cache server
- * 3. INVALID_ARGUMENT -- If the input parameters are invalid or out of range, e.g., nLength > 4194304 (4MB)
+ * 3. INVALID_ARGUMENT -- If the input parameters are invalid or out of range, e.g., nLength > 134217728 (128MB)
  * 4. INTERNAL_ERROR -- The data and metadata could not be uploaded to the cache server due to an internal error
 */
 CacheClientStatus Upload(
