@@ -39,6 +39,7 @@ cacheServer:
   port: 9165
   metricsPort: 9196
   useEphemeralStorage: false
+  ibResouceCountLimit: 0
   nodeSsdPath: /var/lib/containerd # required when useEphemeralStorage is false and useCacheFolder is false. To be removed after all clusters are rebuilt to have dedicated cache folder
   useCacheFolder: true
   nodeCacheFolderPath: /var/lib/ssd/cacheserver # required when useEphemeralStorage is false and useCacheFolder is true.

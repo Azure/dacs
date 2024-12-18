@@ -67,9 +67,11 @@ spec:
           requests:
             memory: "100Mi"
             cpu: "0.25"
+            rdma/hca_rdma_infiniband: {{ .Values.cacheServer.ibResouceCountLimit | quote }}
           limits:
             memory: {{ (printf "%dMi" (int .Values.cacheServer.memoryLimitMB)) | quote }}
             cpu: {{ .Values.cacheServer.cpuLimit | quote }}
+            rdma/hca_rdma_infiniband: {{ .Values.cacheServer.ibResouceCountLimit | quote }}
 {{- end }}
         ports:
         - containerPort: {{ .Values.cacheServer.port }}
