@@ -62,6 +62,6 @@ namespace ibutils
     // Buffer size for sending/receiving IB requests and responses.
     // This should be atleast as big as the largest permitted request/response size.
     // Allowing 4MB for chunk/data size and 10KB for request/response protobuf message.
-    constexpr int IB_BUFFER_SIZE = 4ll * 1024 * 1024 + 10 * 1024;
+    constexpr int IB_BUFFER_SIZE = 32ll * 1024 * 1024 + 10 * 1024;
 }
 //---------------------------------------------------------------------------------------------------------------------

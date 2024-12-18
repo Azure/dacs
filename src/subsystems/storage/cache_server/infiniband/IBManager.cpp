@@ -90,9 +90,11 @@ bool IBManager::Init()
     }
 
     // Register a large MR block and split it into multiple equal sized buffers
-    std::unique_ptr<char[]> mrBufferBlock(new char[MAX_RECEIVE_BUFFERS * IB_BUFFER_SIZE]);
+    uint64_t nMRBufferSize = static_cast<uint64_t>(MAX_RECEIVE_BUFFERS) * IB_BUFFER_SIZE;
+    std::unique_ptr<char[]> mrBufferBlock(new char[nMRBufferSize]);
     unique_ibv_mr mrBuffer(ibv_reg_mr(pd.get(), mrBufferBlock.get(),
-        MAX_RECEIVE_BUFFERS * IB_BUFFER_SIZE, IBV_ACCESS_LOCAL_WRITE), FreeIbvMr);
+        nMRBufferSize, IBV_ACCESS_LOCAL_WRITE), FreeIbvMr);
+
     if (!mrBuffer)
     {
         LOG_WARN("ibv_reg_mr failed error={}", strerror(errno));
@@ -126,7 +128,9 @@ bool IBManager::Init()
     // Post receive requests to SRQ
     for (int i = 0; i < MAX_RECEIVE_BUFFERS; i++)
     {
-        PostWrToSRQ((uint64_t)(m_ibDevice.mrBufferBlock.get() + (i * IB_BUFFER_SIZE)));
+        uint64_t offset = static_cast<uint64_t>(i) * IB_BUFFER_SIZE;
+        char* bufferAddr = m_ibDevice.mrBufferBlock.get() + offset;
+        PostWrToSRQ((uint64_t)bufferAddr);
     }
 
     // Start IB listener and handler threads
