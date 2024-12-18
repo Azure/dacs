@@ -237,7 +237,9 @@ po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
             "data-size-GiB", po::value<int>(), "Total size of data to upload/download in GiB")(
             "prefix", po::value<std::string>(), "Prefix for file uploads. Must be same for upload and download")(
             "mode", po::value<std::string>(), "Mode ( 'upload' or 'download' )")(
-            "num-iterations", po::value<int>()->default_value(1), "Number of times to run the perf test");
+            "num-iterations", po::value<int>()->default_value(1), "Number of times to run the perf test")(
+            "ib-enabled", po::value<bool>()->default_value(false), "Enable Infiniband"
+            );
 
         po::variables_map vm;
         po::store(po::command_line_parser(argc, argv).options(description).allow_unregistered().run(), vm);
@@ -251,7 +253,7 @@ po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
 
         if(!(vm.count("server-port") > 0 && vm.count("server-hostname") > 0 && vm.count("num-threads") > 0 &&
              vm.count("data-size-GiB") > 0 && vm.count("mode") > 0 && vm.count("prefix") > 0 &&
-             vm.count("num-iterations") > 0))
+             vm.count("num-iterations") > 0 && vm.count("ib-enabled") > 0))
         {
             std::cout << description << std::endl;
             exit(1);
@@ -370,6 +372,7 @@ int PerfClient(int argc, char *argv[])
     std::string strMode = args["mode"].as<std::string>();
     std::string strPrefix = args["prefix"].as<std::string>();
     std::size_t nNumIterations = args["num-iterations"].as<int>();
+    bool bIsIBEnabled = args["ib-enabled"].as<bool>();
 
     if(strMode != "upload" && strMode != "download")
     {
@@ -387,8 +390,8 @@ int PerfClient(int argc, char *argv[])
     client.Initialize(vecCstrHostnames.data(),
                       vecCstrHostnames.size(),
                       nPort,            /*nCacheServerPort*/
-                      false,            /*bEnableIB*/
-                      false,            /*bEnableCalculateChecksum*/
+                      bIsIBEnabled,     /*bEnableIB*/
+                      false,             /*bEnableCalculateChecksum*/
                       false,            /*bEnableValidateChecksum*/
                       nNumThreads * 2,  /*nConnectionPoolSize*/
                       false,            /*bEnableAuth*/
