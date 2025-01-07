@@ -67,6 +67,9 @@ class StorageLibcApiWrapper
 
         static int fstat(/*[in]*/ int fd,
                          /*[in]*/ struct stat* statbuf);
+        
+        static int fstat64(/*[in]*/ int fd,
+                           /*[in]*/ struct stat64* statbuf);
 
         static int fxstat(/*[in]*/ int __ver,
                           /*[in]*/ int fd,
@@ -160,6 +163,7 @@ class StorageLibcApiWrapper
         typedef int (*Original_xstat64)(/*[in]*/ int __ver, /*[in]*/ const char* pathname,
             /*[out]*/ struct stat64* statbuf);
         typedef int (*Original_fstat)(/*[in]*/ int fd, /*[out]*/ struct stat* statbuf);
+        typedef int (*Original_fstat64)(/*[in]*/ int fd, /*[out]*/ struct stat64* statbuf);
         typedef int (*Original_fxstat)(/*[in]*/ int __ver, /*[in]*/ int fd, /*[out]*/ struct stat* statbuf);
         typedef int (*Original_fxstat64)(/*[in]*/ int __ver, /*[in]*/ int fd, /*[out]*/ struct stat64* statbuf);
         typedef int (*Original_lxstat)(/*[in]*/ int __ver, /*[in]*/ const char* pathname,

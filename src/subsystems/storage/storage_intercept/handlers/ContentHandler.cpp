@@ -952,6 +952,32 @@ int ContentHandler::HandleFstat(int fd, struct stat* statbuf)
     return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::HandleFstat64(int fd, struct stat64* statbuf)
+{
+    if (!IsFdInRange(fd))
+    {
+        return StorageLibcApiWrapper::fstat64(fd, statbuf);
+    }
+
+    std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
+    auto fdIt = m_mapOpenHandles.find(fd);
+    if (fdIt == m_mapOpenHandles.end())
+    {
+        openHandlesLock.unlock();
+        return StorageLibcApiWrapper::fstat64(fd, statbuf);
+    }
+
+    FileAttributes attributes = fdIt->second->Attributes;
+    openHandlesLock.unlock();
+
+    LOG_DEBUG("Intercepted fstat64 call for fd={} path={} mountName={}",
+        fd,
+        fdIt->second->RemotePath,
+        fdIt->second->MountName);
+    PopulateStatBuf(attributes, statbuf);
+    return 0;
+}
+//---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::HandleFxstat(int __ver, int fd, struct stat* statbuf)
 {
     if (!IsFdInRange(fd))

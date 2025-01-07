@@ -117,6 +117,11 @@ int StorageInterceptorImpl::fstat(int fd, struct stat* statbuf)
     return ContentHandler::GetInstance().HandleFstat(fd, statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
+int StorageInterceptorImpl::fstat64(int fd, struct stat64* statbuf)
+{
+    return ContentHandler::GetInstance().HandleFstat64(fd, statbuf);
+}
+//---------------------------------------------------------------------------------------------------------------------
 int StorageInterceptorImpl::fxstat(int __ver, int fd, struct stat* statbuf)
 {
     return ContentHandler::GetInstance().HandleFxstat(__ver, fd, statbuf);

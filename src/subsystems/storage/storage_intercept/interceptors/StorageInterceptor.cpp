@@ -115,6 +115,11 @@ extern "C" int fstat(int fd, struct stat *statbuf)
     return StorageInterceptorImpl::fstat(fd, statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
+extern "C" int fstat64(int fd, struct stat64 *statbuf)
+{
+    return StorageInterceptorImpl::fstat64(fd, statbuf);
+}
+//---------------------------------------------------------------------------------------------------------------------
 extern "C" int __fxstat(int __ver, int fd, struct stat* statbuf)
 {
     return StorageInterceptorImpl::fxstat(__ver, fd, statbuf);
