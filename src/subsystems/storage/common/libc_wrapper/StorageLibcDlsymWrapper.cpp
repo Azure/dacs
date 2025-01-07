@@ -139,6 +139,12 @@ int StorageLibcApiWrapper::fstat(int fd, struct stat* statbuf)
     return m_OriginalFstat(fd, statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
+int StorageLibcApiWrapper::fstat64(int fd, struct stat64* statbuf)
+{
+    static Original_fstat64 m_OriginalFstat64 = (Original_fstat64)dlsym(RTLD_NEXT, "fstat64");
+    return m_OriginalFstat64(fd, statbuf);
+}
+//---------------------------------------------------------------------------------------------------------------------
 int StorageLibcApiWrapper::fxstat(int __ver, int fd, struct stat* statbuf)
 {
     static Original_fxstat m_OriginalFxstat = (Original_fxstat)dlsym(RTLD_NEXT, "__fxstat");

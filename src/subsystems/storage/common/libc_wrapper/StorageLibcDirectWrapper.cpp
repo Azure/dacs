@@ -127,6 +127,11 @@ int StorageLibcApiWrapper::fstat(int fd, struct stat* statbuf)
     return ::fstat(fd, statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
+int StorageLibcApiWrapper::fstat64(int fd, struct stat64* statbuf)
+{
+    return ::fstat64(fd, statbuf);
+}
+//---------------------------------------------------------------------------------------------------------------------
 int StorageLibcApiWrapper::fxstat(int __ver, int fd, struct stat* statbuf)
 {
     return ::__fxstat(__ver, fd, statbuf);

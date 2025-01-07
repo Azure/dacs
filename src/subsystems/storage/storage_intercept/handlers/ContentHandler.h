@@ -99,6 +99,10 @@ class ContentHandler
             /*[in] */ int fd,
             /*[out]*/ struct stat* statbuf);
 
+        int HandleFstat64(
+            /*[in] */ int fd,
+            /*[out]*/ struct stat64* statbuf);
+
         int HandleFxstat(
             /*[in] */ int __ver,
             /*[in] */ int fd,
