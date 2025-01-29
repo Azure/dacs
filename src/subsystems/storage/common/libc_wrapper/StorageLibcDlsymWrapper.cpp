@@ -109,6 +109,18 @@ int StorageLibcApiWrapper::access(const char* pathname, int mode)
     return m_OriginalAccess(pathname, mode);
 }
 //---------------------------------------------------------------------------------------------------------------------
+int StorageLibcApiWrapper::stat(const char* pathname, struct stat* statbuf)
+{
+    static Original_stat m_OriginalStat = (Original_stat)dlsym(RTLD_NEXT, "stat");
+    return m_OriginalStat(pathname, statbuf);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageLibcApiWrapper::stat64(const char* pathname, struct stat64* statbuf)
+{
+    static Original_stat64 m_OriginalStat64 = (Original_stat64)dlsym(RTLD_NEXT, "stat64");
+    return m_OriginalStat64(pathname, statbuf);
+}
+//---------------------------------------------------------------------------------------------------------------------
 int StorageLibcApiWrapper::xstat(int __ver, const char* pathname, struct stat* statbuf)
 {
     static Original_xstat m_OriginalXstat = (Original_xstat)dlsym(RTLD_NEXT, "__xstat");

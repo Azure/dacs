@@ -84,6 +84,14 @@ class ContentHandler
         int HandleAccess(
             /*[in] */ const char* pathname,
             /*[in]*/ int mode);
+        
+        int HandleStat(
+            /*[in] */ const char* pathname,
+            /*[out]*/ struct stat* statbuf);
+        
+        int HandleStat64(
+            /*[in] */ const char* pathname,
+            /*[out]*/ struct stat64* statbuf);
 
         int HandleXstat(
             /*[in] */ int __ver,

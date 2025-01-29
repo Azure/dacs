@@ -49,6 +49,12 @@ class StorageLibcApiWrapper
         static int access(/*[in]*/ const char* pathname,
                          /*[in]*/ int mode);
 
+        static int stat(/*[in]*/ const char* pathname,
+                        /*[in]*/ struct stat* statbuf);
+        
+        static int stat64(/*[in]*/ const char* pathname,
+                          /*[in]*/ struct stat64* statbuf);
+
         static int xstat(/*[in]*/ int __ver,
                          /*[in]*/ const char* pathname,
                          /*[in]*/ struct stat* statbuf);
@@ -158,6 +164,8 @@ class StorageLibcApiWrapper
         typedef void* (*Original_readdir64)(/*[in]*/ void* dirp);
         typedef int (*Original_closedir)(/*[in]*/ void* dirp);
         typedef int (*Original_access)(/*[in]*/ const char* pathname, /*[in]*/ int mode);
+        typedef int (*Original_stat)(/*[in]*/ const char* pathname, /*[out]*/ struct stat* statbuf);
+        typedef int (*Original_stat64)(/*[in]*/ const char* pathname, /*[out]*/ struct stat64* statbuf);
         typedef int (*Original_xstat)(/*[in]*/ int __ver, /*[in]*/ const char* pathname,
             /*[out]*/ struct stat* statbuf);
         typedef int (*Original_xstat64)(/*[in]*/ int __ver, /*[in]*/ const char* pathname,

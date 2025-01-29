@@ -100,6 +100,16 @@ extern "C" int access(const char *pathname, int mode)
     return StorageInterceptorImpl::access(pathname, mode);
 }
 //---------------------------------------------------------------------------------------------------------------------
+extern "C" int stat(const char* pathname, struct stat* statbuf)
+{
+    return StorageInterceptorImpl::stat(pathname, statbuf);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int stat64(const char* pathname, struct stat64* statbuf)
+{
+    return StorageInterceptorImpl::stat64(pathname, statbuf);
+}
+//---------------------------------------------------------------------------------------------------------------------
 extern "C" int __xstat(int __ver, const char* pathname, struct stat* statbuf)
 {
     return StorageInterceptorImpl::xstat(__ver, pathname, statbuf);

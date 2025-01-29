@@ -102,6 +102,16 @@ int StorageLibcApiWrapper::access(const char* pathname, int mode)
     return ::access(pathname, mode);
 }
 //---------------------------------------------------------------------------------------------------------------------
+int StorageLibcApiWrapper::stat(const char* pathname, struct stat* statbuf)
+{
+    return ::stat(pathname, statbuf);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageLibcApiWrapper::stat64(const char* pathname, struct stat64* statbuf)
+{
+    return ::stat64(pathname, statbuf);
+}
+//---------------------------------------------------------------------------------------------------------------------
 int StorageLibcApiWrapper::xstat(int __ver, const char* pathname, struct stat* statbuf)
 {
     return ::__xstat(__ver, pathname, statbuf);
