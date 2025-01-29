@@ -896,6 +896,39 @@ int ContentHandler::HandleAccess(const char* pathname, int mode)
     return GetPropertiesInternal(*mountInfo, relPath, "access", &stat64buf);
 }
 //---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::HandleStat(const char* pathname, struct stat* statbuf)
+{
+    std::string relPath;
+    MountInfo* mountInfo = CheckInterceptionForPath(pathname, relPath);
+    const bool isRelative = (mountInfo != nullptr);
+    if (!isRelative)
+    {
+        return StorageLibcApiWrapper::stat(pathname, statbuf);
+    }
+
+    struct stat64 stat64buf;
+    int result = GetPropertiesInternal(*mountInfo, relPath, "stat", &stat64buf);
+    if (result == 0)
+    {
+        CopyStat64ToStat(&stat64buf, statbuf);
+    }
+
+    return result;
+}
+//---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::HandleStat64(const char* pathname, struct stat64* statbuf)
+{
+    std::string relPath;
+    MountInfo* mountInfo = CheckInterceptionForPath(pathname, relPath);
+    const bool isRelative = (mountInfo != nullptr);
+    if (!isRelative)
+    {
+        return StorageLibcApiWrapper::stat64(pathname, statbuf);
+    }
+
+    return GetPropertiesInternal(*mountInfo, relPath, "stat64", statbuf);
+}
+//---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::HandleXstat(int __ver, const char* pathname, struct stat* statbuf)
 {
     std::string relPath;

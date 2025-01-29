@@ -92,6 +92,16 @@ int StorageInterceptorImpl::access(const char *pathname, int mode)
     return ContentHandler::GetInstance().HandleAccess(pathname, mode);
 }
 //---------------------------------------------------------------------------------------------------------------------
+int StorageInterceptorImpl::stat(const char* pathname, struct stat* statbuf)
+{
+    return ContentHandler::GetInstance().HandleStat(pathname, statbuf);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageInterceptorImpl::stat64(const char* pathname, struct stat64* statbuf)
+{
+    return ContentHandler::GetInstance().HandleStat64(pathname, statbuf);
+}
+//---------------------------------------------------------------------------------------------------------------------
 int StorageInterceptorImpl::xstat(int __ver, const char* pathname, struct stat* statbuf)
 {
     return ContentHandler::GetInstance().HandleXstat(__ver, pathname, statbuf);

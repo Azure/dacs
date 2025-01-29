@@ -33,6 +33,8 @@ class StorageInterceptorImpl
         static int closedir(void* dirp);
 
         static int access(const char *pathname, int mode);
+        static int stat(const char* pathname, struct stat* statbuf);
+        static int stat64(const char* pathname, struct stat64* statbuf);
         static int xstat(int __ver, const char* pathname, struct stat* statbuf);
         static int xstat64(int __ver, const char* pathname, struct stat64* statbuf);
         static int fstat(int fd, struct stat* statbuf);
