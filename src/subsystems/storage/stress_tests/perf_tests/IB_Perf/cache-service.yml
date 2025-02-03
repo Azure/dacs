@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    meta.helm.sh/release-name: dacs
+    meta.helm.sh/release-namespace: azureml
+  creationTimestamp: "2023-09-26T13:01:59Z"
+  labels:
+    app: cacheserver
+    app.kubernetes.io/managed-by: Helm
+  name: cacheserver
+  namespace: azureml
+  resourceVersion: "100721497"
+  uid: 00000000-0000-0000-0000-000000000000
+spec:
+  clusterIP: None
+  clusterIPs:
+  - None
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: cacheserver
+    port: 9065
+    protocol: TCP
+    targetPort: 9065
+  - name: metrics
+    port: 9096
+    protocol: TCP
+    targetPort: 9096
+  selector:
+    app: cacheserver
+  sessionAffinity: None
+  type: ClusterIP
+status:
+  loadBalancer: {}
