@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cacheserver
+  namespace: azureml
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cacheserver
+  serviceName: cacheserver
+  template:
+    metadata:
+      labels:
+        app: cacheserver
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - preference:
+              matchExpressions:
+              - key: dacs.azure.com/processing-unit
+                operator: In
+                values:
+                - gpu
+            weight: 10
+          - preference:
+              matchExpressions:
+              - key: dacs.azure.com/processing-unit
+                operator: In
+                values:
+                - gpu
+            weight: 5
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: dacs.azure.com/processing-unit
+                operator: In
+                values:
+                - 'gpu'
+      containers:
+      - args:
+        - |
+          export CACHESERVER_HOSTNAME=$HOSTNAME
+          export CACHESERVER_PORT=9065
+          export CACHESERVER_CACHE_PATH=/host/mnt/ssd0//cache
+          export CACHESERVER_CACHE_SIZE_BYTES=2147483648000
+          mkdir -p $CACHESERVER_CACHE_PATH
+          /root/CacheServer $CACHESERVER_PORT $CACHESERVER_CACHE_PATH $CACHESERVER_CACHE_SIZE_BYTES
+        command:
+        - /bin/sh
+        - -cx
+        env:
+        - name: CACHESERVER_THREADPOOL_SIZE
+          value: "64"
+        - name: TEST_CACHESERVER_ADDR_PORT
+          value: "9065"
+        - name: CACHESERVER_METRICS_PORT
+          value: "9096"
+        - name: CACHESERVER_EVICTION_ENABLED
+          value: "true"
+        - name: CACHESERVER_EVICTION_LAST_ACCESS_THRESHOLD
+          value: 90d
+        - name: CACHESERVER_EVICTION_SIZE_THRESHOLD
+          value: "75"
+        - name: CACHESERVER_EVICTION_PASS_FREQUENCY
+          value: 1h
+        image: dacs.azurecr.io/test-image:1.5.8
+        imagePullPolicy: Always
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - /root/LivenessProbe
+          failureThreshold: 10
+          initialDelaySeconds: 30000000
+          periodSeconds: 120
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: cacheserver
+        ports:
+        - containerPort: 9065
+          name: cacheserver
+          protocol: TCP
+        - containerPort: 9096
+          name: metrics
+          protocol: TCP
+        resources:
+          requests:
+            rdma/hca_rdma_infiniband: 1         
+          limits:
+            rdma/hca_rdma_infiniband: 1
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /host/mnt/ssd0
+          name: cache-data-volume
+          subPath: ssd0
+        - mountPath: /cache
+          name: cache-data-volume
+          subPath: ssd0
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 10
+      volumes:
+      - emptyDir:
+          sizeLimit: 2000Gi
+        name: cache-data-volume
+  updateStrategy:
+    rollingUpdate:
+      partition: 0
+    type: RollingUpdate
