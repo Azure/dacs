@@ -38,4 +38,8 @@ constexpr int UPLOAD_FILENAME_LIMIT = 127;
 
 // Max amount of data to read & discard from client for invalid uploads (4MiB)
 constexpr uint64_t MaxReadDiscardSizeBytes = (uint64_t) 4 * 1024 * 1024;
+
+// Constants for  getting cache server addresses dynamically
+constexpr char CACHE_SERVER_COUNT_CONFIG_PATH[] = "/serverConfig/cache_server_count";
+constexpr char CACHE_SERVER_ENDPOINT_FORMAT_CONFIG_PATH[] = "/serverConfig/cache_server_endpoint_format";
 //---------------------------------------------------------------------------------------------------------------------
