@@ -276,3 +276,84 @@ string GetCachePath(const string& fileName)
     return GetCacheFolderPath() + "/" + to_string(folderHash) + "/" + FileNameEncode(fileName);
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool ReadConfigFile(const string& filePath, string& content, const std::string& requestid)
+{
+    ifstream configFile(filePath);
+    if (!configFile.is_open())
+    {
+        LOG_ERROR_REQID_STR("Failed to open configuration file: {}. Error: {}", requestid, filePath, strerror(errno));
+        return false;
+    }
+
+    string tempContent;
+    configFile >> tempContent;
+    if (configFile.bad()) {
+        LOG_ERROR_REQID_STR("I/O error while reading configuration file: {}. Error: {}", requestid, filePath, strerror(errno));
+        return false;
+    } else if (configFile.fail()) {
+        LOG_ERROR_REQID_STR("Failed to read from configuration file: {}. Error: {}", requestid, filePath, strerror(errno));
+        return false;
+    }
+    else if (!configFile.eof()) {
+        LOG_ERROR_REQID_STR("Configuration file: {} has extra data.",requestid,  filePath);
+        return false;
+    }
+
+    content = tempContent;
+    configFile.close();
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool GetCacheServersHelper(::google::protobuf::RepeatedPtrField<::std::string>& serveraddresses, const std::string& requestid) 
+{
+    string cacheServerCountStr;
+    //TODO: Periodically poll the file for better performance instead of read on every request
+    if (!ReadConfigFile(CACHE_SERVER_COUNT_CONFIG_PATH, cacheServerCountStr, requestid))
+    {
+        return false;
+    }
+
+    uint32_t cacheServerCount;
+    try  
+    {
+        cacheServerCount = stoi(cacheServerCountStr);
+    }
+    catch (const invalid_argument& e)
+    {
+        LOG_ERROR_REQID_STR("Invalid integer in configuration file: {} exception: {}",requestid, CACHE_SERVER_COUNT_CONFIG_PATH, e.what());
+        return false;
+    }
+    catch (const out_of_range& e)
+    {
+        LOG_ERROR_REQID_STR("Integer out of range in configuration file: {} exception: {}",requestid, CACHE_SERVER_COUNT_CONFIG_PATH, e.what());
+        return false;
+    }
+
+    if (cacheServerCount == 0)
+    {
+        LOG_ERROR_REQID_STR("Cache server count is 0", requestid);
+        return false;
+    }
+
+    string cacheServerEndpointFormat;
+    if (!ReadConfigFile(CACHE_SERVER_ENDPOINT_FORMAT_CONFIG_PATH, cacheServerEndpointFormat, requestid))
+    {
+        return false;
+    }
+
+    const string placeholder = "{}";
+    size_t pos = cacheServerEndpointFormat.find(placeholder);
+    if (pos == string::npos) 
+    {
+        LOG_ERROR_REQID_STR("Placeholder not found in endpoint format: {}", requestid, cacheServerEndpointFormat);
+        return false;
+    }
+    for (uint32_t i = 0; i < cacheServerCount; i++)
+    {
+        string cacheServerEndpoint  = cacheServerEndpointFormat;
+        cacheServerEndpoint.replace(pos, placeholder.length(), to_string(i));
+        serveraddresses.Add()->assign(cacheServerEndpoint);
+    }
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------

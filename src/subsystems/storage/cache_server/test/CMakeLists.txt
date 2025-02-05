@@ -1,7 +1,6 @@
 project(test_client LANGUAGES CXX C)
 cmake_minimum_required(VERSION 3.10)
 
-
 set(TEST_CLIENT_EXEC cacheServerTestClient)
 
 add_executable(${TEST_CLIENT_EXEC} TestClient.cpp)

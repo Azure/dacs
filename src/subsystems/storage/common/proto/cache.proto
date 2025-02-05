@@ -63,6 +63,13 @@ package cache;
  * The server will respond with a 4 byte buffer containing the proto message length and
  *         then followed by the IBInitResponse proto message. 
  *
+ * GetCacheServers API
+ * 
+ * Client has to first send a 4 byte buffer containing the proto message length,
+ *         then followed by the "Request" proto message with the appropriate GetCacheServers fields populated.
+ * The server will respond with a 4 byte buffer containing the proto message length and
+ *         then followed by the GetCacheServersResponse proto message.
+ *
  */
 //---------------------------------------------------------------------------------------------------------------------
 // Authentication params
@@ -317,6 +324,24 @@ message GetCacheLastAccessTimeDistributionResponse
     Result result = 1;
     map<int64, uint64> distributionmap = 2;
 }
+//----------------------------------------------------------------------------------------------------------------------
+message GetCacheServersRequest
+{
+    string requestid = 999;
+}
+//-----------------------------------------------------------------------------------------------------------------------
+message GetCacheServersResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        INTERNAL_ERROR = 1;
+    }
+    Result result = 1;
+
+    // List of cache server addresses
+    repeated string serveraddresses = 2;
+}
 //---------------------------------------------------------------------------------------------------------------------
 message EndMarker
 {
@@ -335,7 +360,8 @@ message Request
         DeleteRequest deleterequest = 6;
         IBInitRequest ibinitrequest = 7;
         GetCacheLastAccessTimeDistributionRequest getcachelastaccesstimedistributionrequest = 8;
-        EndMarker endmarker = 9;
+        GetCacheServersRequest getcacheserversrequest = 9;
+        EndMarker endmarker = 10;
     }
 }
 //---------------------------------------------------------------------------------------------------------------------

@@ -18,6 +18,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/epoll.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <chrono>
 #include <netdb.h>
@@ -38,7 +39,9 @@
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <infiniband/verbs.h>
+#include <cassert>
 #include "cache.pb.cc"
+#include "../utils/Constants.h" 
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cache;
 using namespace ibutils;
@@ -1963,6 +1966,140 @@ bool cli(int argc, char* argv[], bool& /*[out]*/ isCli)
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool TestGetCacheServersAPI(GetCacheServersResponse_Result expectedResult, int expectedServerCount = 0)
+{
+    unique_ptr<IConnection> serverConnection = GetConnection();
+    if (!serverConnection)
+    {
+        return false;
+    }
+
+    Request request;
+    GetCacheServersRequest* getCacheServersRequest = request.mutable_getcacheserversrequest();
+
+    if (!SendMessageToRemote(serverConnection.get(), request))
+    {
+        cout << "couldn't send message to server" << endl;
+        return false;
+    }
+
+    cout << "sent getcacheservers request to the server" << endl;
+
+    string requestMessage;
+    if (!ReadMessageFromRemote(serverConnection.get(), requestMessage))
+    {
+        cout << "couldn't read message from server" << endl;
+        return false;
+    }
+    cout << "read message from server" << endl;
+
+    GetCacheServersResponse response;
+    if (!response.ParseFromString(requestMessage))
+    {
+        cout << "Failed to parse protobuf message" << endl;
+        return false;
+    }
+
+    if (response.result() != expectedResult)
+    {
+        cout << "error: getattribute failed: response.result() != expectedResult:" << response.result() << ", "
+             << expectedResult << endl;
+        return false;
+    }
+
+    if (response.result() == GetCacheServersResponse::SUCCESS)
+    {
+        if (expectedServerCount != 0 && response.serveraddresses().size() != expectedServerCount)
+        {
+            cout << "error: GetCacheServersAPI Failed: response.serveraddresses.size() != expectedServerCount" << endl;
+            return false;
+        }
+        cout << "Cache Server Count: " << response.serveraddresses().size() << endl;
+        if (response.serveraddresses().size() == 0)
+        {
+            cout << "error: GetCacheServersAPI Failed: response.serveraddresses.size() == 0" << endl;
+            return false;
+        }
+        // print the contents of serveraddresses
+        for (int i = 0; i < response.serveraddresses().size(); i++)
+        {
+            cout << "Cache Server Address: " << response.serveraddresses().Get(i) << endl;
+        }
+    }
+    ReleaseConnection(serverConnection);
+    return true;
+}
+
+void WriteConfig(const string& path, const string& content)
+{
+    std::ofstream configFile(path);
+    if (!configFile.is_open())
+    {
+        cerr << "Unable to open file: " << path <<  " Error: " << strerror(errno) << endl;;
+        assert(false && "File open failed");
+    }
+
+    configFile << content;
+    configFile.close();
+
+    cout << "Wrote to file: " << path << " content: " << content << endl;
+}
+
+// Test GetCacheServersAPI
+void TestGetCacheServers()
+{
+    string path = "/serverConfig";
+    if (mkdir(path.c_str(), 0777) != 0 && errno != EEXIST)
+    {
+        cerr << "Failed to create directory: " << path << " Error: " << strerror(errno) << endl;
+        assert(false && "Directory creation failed");
+    }
+
+    cout << "Test GetCacheServersAPI" << endl;
+    WriteConfig(CACHE_SERVER_COUNT_CONFIG_PATH, "5");
+    WriteConfig(CACHE_SERVER_ENDPOINT_FORMAT_CONFIG_PATH, "cacheserver-{}-cacheserver.svc.cluster.local");
+
+    // Call the API and verify the results
+    RUNTEST(TestGetCacheServersAPI(GetCacheServersResponse::SUCCESS, 5));
+
+    // scale up server count to 8
+    WriteConfig(CACHE_SERVER_COUNT_CONFIG_PATH, "8");
+    RUNTEST(TestGetCacheServersAPI(GetCacheServersResponse::SUCCESS, 8));
+
+    // scale down server down to 3
+    WriteConfig(CACHE_SERVER_COUNT_CONFIG_PATH, "3");
+    RUNTEST(TestGetCacheServersAPI(GetCacheServersResponse::SUCCESS, 3));
+
+    // scale down server down to 0
+    WriteConfig(CACHE_SERVER_COUNT_CONFIG_PATH, "0");
+    RUNTEST(TestGetCacheServersAPI(GetCacheServersResponse::INTERNAL_ERROR));
+
+    // Invalid content in cache_server_count file
+    WriteConfig(CACHE_SERVER_COUNT_CONFIG_PATH, "3\n4");
+    RUNTEST(TestGetCacheServersAPI(GetCacheServersResponse::INTERNAL_ERROR));
+
+    // Invalid format in cache_server_count file
+    WriteConfig(CACHE_SERVER_COUNT_CONFIG_PATH, "invalid");
+    RUNTEST(TestGetCacheServersAPI(GetCacheServersResponse::INTERNAL_ERROR));
+
+    // Overflow in cache_server_count file
+    WriteConfig(CACHE_SERVER_COUNT_CONFIG_PATH, "99999999999");
+    RUNTEST(TestGetCacheServersAPI(GetCacheServersResponse::INTERNAL_ERROR));
+
+    // Placeholder not found in endpoint format
+    WriteConfig(CACHE_SERVER_COUNT_CONFIG_PATH, "4");
+    WriteConfig(CACHE_SERVER_ENDPOINT_FORMAT_CONFIG_PATH, "cacheserver-no-placeholder");
+    RUNTEST(TestGetCacheServersAPI(GetCacheServersResponse::INTERNAL_ERROR));
+
+    // Missing cache_server_endpoint_format file
+    std::remove(CACHE_SERVER_ENDPOINT_FORMAT_CONFIG_PATH);
+    RUNTEST(TestGetCacheServersAPI(GetCacheServersResponse::INTERNAL_ERROR));
+
+    // Missing cache_server_count file
+    std::remove(CACHE_SERVER_COUNT_CONFIG_PATH);
+    RUNTEST(TestGetCacheServersAPI(GetCacheServersResponse::INTERNAL_ERROR));
+}
+//---------------------------------------------------------------------------------------------------------------------
 int main(int argc, char *argv[])
 {
 
@@ -2014,6 +2151,7 @@ int main(int argc, char *argv[])
     TestCacheMetadata();
     TestDeletes();
     TestDistribution();
+    TestGetCacheServers();
     TestExpiry();
 
     if (runIBTests)

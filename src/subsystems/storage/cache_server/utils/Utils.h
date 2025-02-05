@@ -23,4 +23,5 @@ bool ValidateAuthSignature(const std::string& clientAccountName, const std::stri
     const std::string& message, time_t timestamp);
 std::string GetUuid();
 std::string FileNameEncode(const std::string& fileName);
+bool GetCacheServersHelper(::google::protobuf::RepeatedPtrField<::std::string>& serveraddresses, const std::string& requestid);
 //---------------------------------------------------------------------------------------------------------------------

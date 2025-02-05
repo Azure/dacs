@@ -16,6 +16,7 @@
 #include "cache.pb.h"
 #include "Logger.h"
 #include "HandleRequest.h"
+#include "GetCacheServers.h"
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 using namespace cache;
@@ -82,6 +83,10 @@ bool HandleRequest(IConnection& clientConnection,
     else if (eRequestType == Request::kGetcachelastaccesstimedistributionrequest)
     {
         bRet = GetLastAccessTimeDistribution(clientConnection, request.getcachelastaccesstimedistributionrequest(), eResponseCode);
+    }
+    else if (eRequestType == Request::kGetcacheserversrequest)
+    {
+        bRet = GetCacheServers(clientConnection, request.getcacheserversrequest(), eResponseCode);
     }
     else
     {
