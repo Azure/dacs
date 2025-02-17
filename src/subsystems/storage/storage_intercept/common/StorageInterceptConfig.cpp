@@ -859,7 +859,7 @@ uint64_t StorageInterceptConfig::GetPrefetchCachePerFileSizeInMB()
     return StorageInterceptConfig::GetOptionalConfigUint64(
         m_ConfigProps,
         StorageInterceptConstants::ConfigPrefetchCachePerFileSizeInMB,
-        800);
+        320);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetEnableLargePrefetch(const std::string& mountName)
