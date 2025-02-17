@@ -659,7 +659,7 @@ void StreamingClient::EnsurePrefetchCacheWindowPopulated(
     // Download the uncached chunks parallely in order to populate into pre-fetch cache
     std::vector<std::future<std::shared_ptr<const FileReadData>>> asyncReadChunks;
 
-    LOG_INFO("Starting parallel async read chunk calls for populating PrefetchCache."
+    LOG_DEBUG("Starting parallel async read chunk calls for populating PrefetchCache."
         " RemotePath={} PrefetchStart={} PrefetchEnd={} UncachedOffsets={} MaxConcurrency={}"
         " ReadStartOffset={} ReadEndOffset={}",
         remotePath,

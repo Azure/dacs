@@ -33,9 +33,6 @@ file(GLOB STORAGE_INTERCEPT_SOURCES_CACHE_CLIENT ${STORAGE_INTERCEPT_SOURCES_COM
 add_library(StorageIntercept SHARED ${STORAGE_INTERCEPT_SOURCES_INTERCEPTOR})
 add_library(CacheClient SHARED ${STORAGE_INTERCEPT_SOURCES_CACHE_CLIENT})
 
-# Don't expose internally linked interfaces via the StorageIntercept shared library
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--exclude-libs,ALL")
-
 # Statically link to precompiled protobuf and azurestorage sdk library to prevent mismatch with system installed versions
 ADD_LIBRARY(staticprotobuf STATIC IMPORTED)
 SET_TARGET_PROPERTIES(staticprotobuf PROPERTIES
