@@ -22,7 +22,7 @@ SocketConnection::SocketConnection(int socketFd)
 //---------------------------------------------------------------------------------------------------------------------
 SocketConnection::~SocketConnection()
 {
-    LOG_INFO("Close server fd={}", m_socketFd);
+    LOG_DEBUG("Close server fd={}", m_socketFd);
     StorageLibcApiWrapper::close(m_socketFd);
 }
 //---------------------------------------------------------------------------------------------------------------------
