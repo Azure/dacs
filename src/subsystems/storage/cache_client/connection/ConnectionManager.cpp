@@ -159,7 +159,7 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd,
     ibRequest->set_clientmtu(m_ibDevice.mtu);
     auto clientQpns = ibRequest->mutable_clientqpn();
     clientQpns->Clear();
-    LOG_INFO_REQID("SetupIBConnections: serverFd={} serverIndex={}", *ibRequest, serverFd, serverIndex);
+    LOG_DEBUG_REQID("SetupIBConnections: serverFd={} serverIndex={}", *ibRequest, serverFd, serverIndex);
 
     vector<unique_ibv_comp_channel> vectorEventChannels;
     vector<unique_ibv_cq> vectorCqs;
@@ -295,7 +295,7 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd,
             return nullptr;
         }
 
-        LOG_INFO_REQID("Created IB connection, qp={}", *ibRequest, qp->qp_num);
+        LOG_DEBUG_REQID("Created IB connection, qp={}", *ibRequest, qp->qp_num);
         if (qpn < IB_CONNECTIONS_PER_SERVER - 1)
         {
 
@@ -358,7 +358,7 @@ std::unique_ptr<IConnection> ConnectionManager::InitFreshConnection(int serverIn
         return SetupIBConnections(serverFd, serverIndex);
     }
 
-    LOG_INFO("Created new server connection fd={} serverIndex={}", serverFd, serverIndex);
+    LOG_DEBUG("Created new server connection fd={} serverIndex={}", serverFd, serverIndex);
     return move(make_unique<SocketConnection>(serverFd));
 }
 //---------------------------------------------------------------------------------------------------------------------
