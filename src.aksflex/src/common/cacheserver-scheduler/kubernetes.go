@@ -14,7 +14,7 @@ import (
 )
 
 // Kubernetes clientset
-var clientset *kubernetes.Clientset
+var clientset kubernetes.Interface
 
 // Constants
 const (

@@ -19,10 +19,11 @@ const (
 )
 
 type Config struct {
-	LogLevel               string        `yaml:"logLevel" mapstructure:"logLevel"`
-	SchedulerPollInterval  time.Duration `yaml:"schedulerPollInterval" mapstructure:"schedulerPollInterval"`
-	ProcessingUnitLabelKey string        `yaml:"processingUnitLabelKey" mapstructure:"processingUnitLabelKey"`
-	CacheserverNamespace   string        `yaml:"cacheserverNamespace" mapstructure:"cacheserverNamespace"`
+	LogLevel                    string        `yaml:"logLevel" mapstructure:"logLevel"`
+	SchedulerPollInterval       time.Duration `yaml:"schedulerPollInterval" mapstructure:"schedulerPollInterval"`
+	ProcessingUnitLabelKey      string        `yaml:"processingUnitLabelKey" mapstructure:"processingUnitLabelKey"`
+	CacheserverNamespace        string        `yaml:"cacheserverNamespace" mapstructure:"cacheserverNamespace"`
+	EnableSchedulerCoordination bool          `yaml:"enableSchedulerCoordination" mapstructure:"enableSchedulerCoordination"`
 }
 
 var (
