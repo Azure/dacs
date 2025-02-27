@@ -339,16 +339,27 @@ func findNodeToSchedule(podToSchedule Pod, schedulableNodesWithoutPod nodeList) 
 
 // SchedulerPeriodicStep processes the cacheserver nodes and pods and returns the ScheduleInstruction
 // This function is supposed to be called periodically by main function
-func SchedulerPeriodicStep(pods []Pod, nodes []Node) []SchedulerInstruction {
+func SchedulerPeriodicStep(pods []Pod, nodes []Node, enableSchedulerCoordination bool, cacheServerNamespace string) []SchedulerInstruction {
 	log.Infof("Scheduler started processing %d nodes and %d pods", len(nodes), len(pods))
-
 	// Update the nodeMap
 	schedulableNodes := updateNodeMap(nodes)
 
 	// Update the nodeMap
 	pendingPods, stuckPods, nodesWithPod := updatePodMap(pods)
 	log.Infof("Found %d pending pods, %d stuck pods", len(pendingPods), len(stuckPods))
+	globalNodesWithPod := nodesWithPod
+	// Sync node locks
+	if enableSchedulerCoordination {
+		//Populdate the Node-Pod mapping of nodes with cacheserver pods
+		nodePodMap := map[string]string{}
+		for _, pod := range pods {
+			if _, found := nodesWithPod[pod.NodeName]; found {
+				nodePodMap[pod.NodeName] = pod.PodName
+			}
+		}
 
+		globalNodesWithPod = syncNodeLocks(nodesWithPod, nodePodMap, cacheServerNamespace)
+	}
 	// Issue delete instructions for stuck pods
 	schedulerInstructions := []SchedulerInstruction{}
 	for _, stuckPod := range stuckPods {
@@ -366,12 +377,14 @@ func SchedulerPeriodicStep(pods []Pod, nodes []Node) []SchedulerInstruction {
 	// Compute list of nodes without cacheserver pods
 	schedulableNodesWithoutPod := nodeList{}
 	for node := range schedulableNodes {
-		if _, found := nodesWithPod[node]; !found {
+		//check if the node does not have cacheserver pod in same or other namespace
+		if _, found := globalNodesWithPod[node]; !found {
 			schedulableNodesWithoutPod.add(node)
 		}
 	}
-	log.Debugf("Found %d nodes without cacheserver pods. TotalNodes=%d NodesWithPods=%d",
-		len(schedulableNodesWithoutPod), len(nodes), len(nodesWithPod))
+
+	log.Debugf("Found %d nodes without cacheserver pods. TotalNodes=%d LocalNodesWithPods=%d GlobalNodesWithPods=%d",
+		len(schedulableNodesWithoutPod), len(nodes), len(nodesWithPod), len(globalNodesWithPod))
 
 	// For each pod to schedule, find a node to schedule it on
 	for _, pendingPod := range pendingPods {
@@ -381,13 +394,13 @@ func SchedulerPeriodicStep(pods []Pod, nodes []Node) []SchedulerInstruction {
 		}
 
 		// Find a node to schedule the pod
-		targetNode, reason := findNodeToSchedule(pendingPod, schedulableNodesWithoutPod)
+		targetNode, reason := reserveNodeToSchedule(pendingPod, schedulableNodesWithoutPod, enableSchedulerCoordination, cacheServerNamespace)
 		if targetNode != "" {
 			schedulableNodesWithoutPod.remove(targetNode) // remove so that next pending pod in loop doesn't schedule on same node
 		} else {
 			// Expand reason string with diagnostic information in case no node was found to schedule
-			reason = fmt.Sprintf("%s TotalNodes=%d SchedulableNodes=%d SchedulableNodesWithoutPod=%d NodesWithPod=%d",
-				reason, len(nodes), len(schedulableNodes), len(schedulableNodesWithoutPod), len(nodesWithPod))
+			reason = fmt.Sprintf("%s TotalNodes=%d SchedulableNodes=%d SchedulableNodesWithoutPod=%d NodesWithPod=%d GlobalNodesWithPod=%d",
+				reason, len(nodes), len(schedulableNodes), len(schedulableNodesWithoutPod), len(nodesWithPod), len(globalNodesWithPod))
 		}
 
 		schedulerInstructions = append(schedulerInstructions, SchedulerInstruction{
@@ -399,4 +412,62 @@ func SchedulerPeriodicStep(pods []Pod, nodes []Node) []SchedulerInstruction {
 	}
 
 	return schedulerInstructions
+}
+
+// helper function which finds a node to schedule a pod and
+// acquires the lock in global mapping if enableSchedulerCoordination is true
+func reserveNodeToSchedule(podToSchedule Pod, schedulableNodesWithoutPod nodeList, enableSchedulerCoordination bool, cacheServerNamespace string) (targetNode string, reason string) {
+
+	for {
+		targetNode, reason := findNodeToSchedule(podToSchedule, schedulableNodesWithoutPod)
+
+		if !enableSchedulerCoordination || targetNode == "" {
+			return targetNode, reason
+		}
+
+		// Try to acquire lock on the node
+		isLockAcquired := coordinator.acquireLock(targetNode, podToSchedule.PodName, cacheServerNamespace)
+		if isLockAcquired {
+			return targetNode, reason
+		}
+
+		log.Warnf("Node %s is already occupied, trying next node", targetNode)
+		schedulableNodesWithoutPod.remove(targetNode) // remove the node as this node is not available
+
+		if len(schedulableNodesWithoutPod) == 0 {
+			// No more schedulable nodes available
+			reason = fmt.Sprintf("%s No more schedulable nodes available", reason)
+			return "", reason
+		}
+	}
+}
+
+// helper function to sync node locks
+// returns updated list of nodes with cacheserver pods across all namespaces
+func syncNodeLocks(nodesWithPod nodeList, nodePodMap map[string]string, cacheServerNamespace string) map[string]bool {
+	// Initialize the scheduler coordinator
+	InitSchedulerCoordinator()
+	// Get the current list of  locks held by this namespace
+	nodeLocksHeld := coordinator.getNamespaceLocks(cacheServerNamespace)
+	log.Infof("Syncing node locks in Namespace %s: NodeWithPods: %d, NodeLocksHeld: %d", cacheServerNamespace, len(nodesWithPod), len(nodeLocksHeld))
+
+	// Release unneccessary locks for nodes which do not have cacheserver pods
+	for node := range nodeLocksHeld {
+		if _, found := nodesWithPod[node]; !found {
+			coordinator.releaseLock(node, cacheServerNamespace)
+		}
+	}
+
+	// Acquire locks for nodes which have cacheserver pods
+	for node := range nodesWithPod {
+		if _, found := nodeLocksHeld[node]; !found {
+			isLockAcquired := coordinator.acquireLock(node, nodePodMap[node], cacheServerNamespace)
+			if !isLockAcquired {
+				log.Fatalf("Failed to aquire lock on node %s", node)
+			}
+		}
+	}
+
+	//Return the updated list of locks held by all namespaces
+	return coordinator.getAllNamespacesLocks()
 }

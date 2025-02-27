@@ -59,12 +59,15 @@ func main() {
 			log.Fatalf("Error getting pods from k8s: %s", err.Error())
 		}
 
-		schedulerInstructions := SchedulerPeriodicStep(pods, nodes)
+		if GetConfig().EnableSchedulerCoordination {
+			InitSchedulerCoordinator()
+		}
+
+		schedulerInstructions := SchedulerPeriodicStep(pods, nodes, GetConfig().EnableSchedulerCoordination, GetConfig().CacheserverNamespace)
 		exectionErrors := ExecuteSchedulerInstructionsOnK8s(schedulerInstructions)
 		if len(exectionErrors) > 0 {
 			log.Errorf("Errors while executing schedule instructions: %v, errorCount: %d", exectionErrors, len(exectionErrors))
 		}
-
 		log.Debugf("Sleeping for %s", schedulerSleepInterval)
 		time.Sleep(schedulerSleepInterval)
 	}
