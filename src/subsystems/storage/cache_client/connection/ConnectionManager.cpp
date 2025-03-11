@@ -161,6 +161,11 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd,
     clientQpns->Clear();
     LOG_DEBUG_REQID("SetupIBConnections: serverFd={} serverIndex={}", *ibRequest, serverFd, serverIndex);
 
+    // Create socket connection. This will be used for IB init request.
+    // In case of failures, this socket connection will be returned to the caller
+    // otherwise, IB connections will be created and returned to the caller and this socket connection will be closed.
+    unique_ptr<IConnection> socketConnection = make_unique<SocketConnection>(serverFd);
+
     vector<unique_ibv_comp_channel> vectorEventChannels;
     vector<unique_ibv_cq> vectorCqs;
     vector<unique_ibv_qp> vectorQps;
@@ -170,24 +175,21 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd,
         if (!compChannel)
         {
             LOG_ERROR_REQID("ibv_create_comp_channel failed error={}", *ibRequest, strerror(errno));
-            close(serverFd);
-            return nullptr;
+            return socketConnection;
         }
 
         unique_ibv_cq cq(ibv_create_cq(m_ibDevice.context.get(), 2, NULL, compChannel.get(), 0), FreeIbvCq);
         if (!cq)
         {
             LOG_ERROR_REQID("ibv_create_cq failed error={}", *ibRequest, strerror(errno));
-            close(serverFd);
-            return nullptr;
+            return socketConnection;
         }
 
         int rc = ibv_req_notify_cq(cq.get(), 0);
         if (rc != 0)
         {
             LOG_ERROR_REQID("ibv_req_notify_cq failed error={},{}", *ibRequest, rc, strerror(errno));
-            close(serverFd);
-            return nullptr;
+            return socketConnection;
         }
 
         struct ibv_qp_init_attr qpInitAttr;
@@ -216,8 +218,7 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd,
         if (!qp)
         {
             LOG_ERROR_REQID("ibv_create_qp failed error={}", *ibRequest, strerror(errno));
-            close(serverFd);
-            return nullptr;
+            return socketConnection;
         }
 
         clientQpns->Add(qp->qp_num);
@@ -227,43 +228,43 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd,
     }
 
     // serverFd will be auto-closed by socketConnection
-    unique_ptr<IConnection> socketConnection = make_unique<SocketConnection>(serverFd);
+    
     if (m_bAuthEnabled && !AddAuthParams(request, m_strCacheAccountName, m_strCacheAccountKey))
     {
         LOG_WARN_REQID("failed to create auth request", *ibRequest);
-        return nullptr;
+        return socketConnection;
     }
 
     if (!SendMessageToRemoteFinal(socketConnection.get(), request))
     {
         LOG_WARN_REQID("couldn't send message to server", *ibRequest);
-        return nullptr;
+        return nullptr; // not returning socket connection for network failures
     }
 
     string requestMessage;
     if (!ReadMessageFromRemote(socketConnection.get(), requestMessage))
     {
         LOG_WARN_REQID("couldn't read message from server", *ibRequest);
-        return nullptr;
+        return nullptr; // not returning socket connection for network failures
     }
 
     IBInitResponse response;
     if (!response.ParseFromString(requestMessage))
     {
         LOG_WARN_REQID("Failed to parse protobuf message", *ibRequest);
-        return nullptr;
+        return socketConnection;
     }
 
     if (response.result() != IBInitResponse::SUCCESS)
     {
         LOG_WARN_REQID("unexpected response={}", *ibRequest, response.result());
-        return nullptr;
+        return socketConnection;
     }
 
     if (response.serverqpn_size() != IB_CONNECTIONS_PER_SERVER)
     {
         LOG_WARN_REQID("serverqpn size mismatch {}!={}", *ibRequest, IB_CONNECTIONS_PER_SERVER, response.serverqpn_size());
-        return nullptr;
+        return socketConnection;
     }
 
     // Create one to one qp mapping for client-server communication
@@ -282,7 +283,7 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd,
         if (!bRet)
         {
             LOG_WARN_REQID("Failed to setup QP id={}", *ibRequest, qp->qp_num);
-            return nullptr;
+            return socketConnection;
         }
 
         // Register an MR block
@@ -292,7 +293,7 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd,
         if (!mr)
         {
             LOG_WARN_REQID("ibv_reg_mr failed error={}", *ibRequest, strerror(errno));
-            return nullptr;
+            return socketConnection;
         }
 
         LOG_DEBUG_REQID("Created IB connection, qp={}", *ibRequest, qp->qp_num);
@@ -310,7 +311,7 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd,
         }
     }
 
-    return nullptr;
+    return socketConnection;
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::unique_ptr<IConnection> ConnectionManager::InitFreshConnection(int serverIndex)
