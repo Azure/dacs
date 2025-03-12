@@ -1,6 +1,6 @@
 {{- if and .Values.cacheServer.enabled (not .Values.cacheServer.useEphemeralStorage) }}
 {{ $storageClassName := "cacheserver-storage" }}
-{{ $storagePVName := "cacheserver-storage-largepv" }}
+{{ $storagePVName := "cacheserver-storage-largepv-v2" }}
 {{- if .Values.cacheServer.identifier }}
 {{ $storageClassName = printf "%s-%s" $storageClassName .Values.cacheServer.identifier }}
 {{ $storagePVName = printf "%s-%s" $storagePVName .Values.cacheServer.identifier }}
@@ -42,7 +42,7 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: cacheserver-storage-largepv-claim
+  name: cacheserver-storage-largepv-claim-v2
   namespace: {{ .Release.Namespace }}
 spec:
   storageClassName: {{ $storageClassName }}
