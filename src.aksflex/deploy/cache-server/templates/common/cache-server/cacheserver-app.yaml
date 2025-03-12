@@ -111,7 +111,7 @@ spec:
             sizeLimit: {{ (printf "%dGi" (add1 .Values.cacheServer.serverSizeInGB)) }}
 {{- else if .Values.cacheServer.useCacheFolder }}
           persistentVolumeClaim:
-            claimName: cacheserver-storage-largepv-claim
+            claimName: cacheserver-storage-largepv-claim-v2
 {{- else }}
           persistentVolumeClaim:
             claimName: cacheserver-storage-pv2-rwx-claim
