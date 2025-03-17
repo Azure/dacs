@@ -1,4 +1,4 @@
-{{- if .Values.cacheServer.enabled }}
+{{- if and .Values.cacheServer.enabled (ne (int .Values.cacheServer.numServers) 0)}}
 {{ $schedulerRoleBindingName := "cacheserver-scheduler" }}
 {{ $pvAndSchedulerCoordinatorRoleName := "cacheserver-scheduler-pv-schedulercoordinator-role" }}
 {{ $pvAndSchedulerCoordinatorRoleBindingName := "cacheserver-scheduler-pv-schedulercoordinator-rolebinding" }}
