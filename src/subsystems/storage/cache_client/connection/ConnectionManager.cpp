@@ -43,6 +43,7 @@ ConnectionManager::ConnectionManager(
     ,  m_nMaxConnectionsReuseSize(nMaxConnectionsReuseSize)
     ,  m_bReuseServerConnections(bReuseServerConnections)
     ,  m_bUseInfiniband(bUseInfiniband)
+    ,  m_vecIbHandshakeStatus(cacheServers.size(), HandshakeStatus::NOT_SET)
 {
 
     m_ibDevice = {0};
@@ -248,6 +249,8 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd,
         return nullptr; // not returning socket connection for network failures
     }
 
+    // reset socket connection as it has been used to send the IB init request
+    socketConnection->ResetConnection();
     IBInitResponse response;
     if (!response.ParseFromString(requestMessage))
     {
@@ -297,17 +300,25 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd,
         }
 
         LOG_DEBUG_REQID("Created IB connection, qp={}", *ibRequest, qp->qp_num);
+        std::unique_ptr<IBConnection> ibConnection = make_unique<IBConnection>(
+            move(qp), 
+            move(vectorEventChannels[qpn]),
+            move(vectorCqs[qpn]), 
+            move(mr), 
+            move(mrBufferBlock)
+        );
+        if (!PerformIBHandshake(ibConnection.get(), serverIndex))
+        {
+            return socketConnection;
+        }
         if (qpn < IB_CONNECTIONS_PER_SERVER - 1)
         {
-
             // Add all but one connections to the re-use pool
-            ReleaseConnection(serverIndex, move(make_unique<IBConnection>(move(qp), move(vectorEventChannels[qpn]),
-                move(vectorCqs[qpn]), move(mr), move(mrBufferBlock))), false);
+            ReleaseConnection(serverIndex, move(ibConnection), false);
         }
         else
         {
-            return move(make_unique<IBConnection>(move(qp), move(vectorEventChannels[qpn]), move(vectorCqs[qpn]),
-                move(mr), move(mrBufferBlock)));
+            return move(ibConnection);           
         }
     }
 
@@ -398,3 +409,84 @@ void ConnectionManager::ReleaseConnection(int serverIndex, std::unique_ptr<IConn
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool ConnectionManager::PerformIBHandshake(IConnection* connection, int serverIndex)
+{
+    // check if handshake is already performed
+    if (m_vecIbHandshakeStatus[serverIndex] == HandshakeStatus::SUCCESS)
+    {
+        LOG_DEBUG("IB handshake already successfully performed for qp={}, serverIndex={}", 
+             connection->GetId(), serverIndex);
+        return true;
+    }
+    else if (m_vecIbHandshakeStatus[serverIndex] == HandshakeStatus::FAILURE)
+    {
+        LOG_DEBUG("Previous IB handshake failed for qp={}, serverIndex={}",
+             connection->GetId(), serverIndex);
+        return false;
+    }
+
+    LOG_DEBUG("Performing IB handshake qp={}, serverIndex={}", connection->GetId(), serverIndex);
+
+    // Create an download request message for a file
+    Request request;
+    DownloadRequest* downloadRequest = request.mutable_downloadrequest();
+    std::string strRandId = cacheutils::GetCorrelationId();
+    const char* strCorrelationId = strRandId.c_str();
+    std::size_t nReadLength = 512;
+    downloadRequest->set_requestid(strCorrelationId);
+    downloadRequest->set_filename("IB_HANDSHAKE_TEST_FILE");
+    downloadRequest->set_offset(0);
+    downloadRequest->set_length(nReadLength);
+    downloadRequest->set_enablelock(false);
+
+    // Add authentication headers if enabled
+    if (m_bAuthEnabled && !AddAuthParams(request, m_strCacheAccountName, m_strCacheAccountKey))
+    {
+        LOG_WARN("Failed to add authentication headers to handshake request");
+        m_vecIbHandshakeStatus[serverIndex] = HandshakeStatus::FAILURE;
+        connection->ResetConnection();
+        return false;
+    }
+    // Send the request message to the server
+    bool bRet = SendMessageToRemoteFinal(connection, request);
+    if (!bRet)
+    {
+        LOG_WARN("IB handshake failed, Failed to send request message qp={}", connection->GetId());
+        m_vecIbHandshakeStatus[serverIndex] = HandshakeStatus::FAILURE;
+        connection->ResetConnection();
+        return false;
+    }
+
+    // Wait for the "not found" response
+    std::string responseBuffer;
+    if (!ReadMessageFromRemote(connection, responseBuffer))
+    {
+        LOG_WARN("IB handshake failed, Failed to receive response qp={}", connection->GetId());
+        m_vecIbHandshakeStatus[serverIndex] = HandshakeStatus::FAILURE;
+        connection->ResetConnection();
+        return false;
+    }
+
+    // Parse the response
+    DownloadResponse response;
+    if (!response.ParseFromString(responseBuffer))
+    {
+        LOG_WARN("IB handshake failed, Failed to parse response qp={}", connection->GetId());
+        m_vecIbHandshakeStatus[serverIndex] = HandshakeStatus::FAILURE;
+        connection->ResetConnection();
+        return false;
+    }
+
+    if (response.result() != DownloadResponse::NOT_FOUND)
+    {
+        LOG_WARN("IB handshake failed, Invalid response received qp={}", connection->GetId());
+        m_vecIbHandshakeStatus[serverIndex] = HandshakeStatus::FAILURE;
+        connection->ResetConnection();
+        return false;
+    }
+
+    LOG_INFO("IB handshake successful qp={}, serverIndex={}", connection->GetId(), serverIndex);
+    m_vecIbHandshakeStatus[serverIndex] = HandshakeStatus::SUCCESS;
+    connection->ResetConnection();
+    return true;
+}
