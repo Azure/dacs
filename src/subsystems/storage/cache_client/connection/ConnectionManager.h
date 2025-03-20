@@ -46,6 +46,7 @@ class ConnectionManager
 
         bool InitInfiniband();
         std::unique_ptr<IConnection> SetupIBConnections(int serverFd, int serverIndex);
+        bool PerformIBHandshake(IConnection* connection, int serverIndex);
     
     private:
         const int                                               m_ServerPort;
@@ -75,5 +76,13 @@ class ConnectionManager
             ibutils::unique_ibv_pd pd;
         };
         IbDev m_ibDevice;
+
+        enum HandshakeStatus
+        {
+            NOT_SET,
+            SUCCESS,
+            FAILURE
+        };
+        std::vector<HandshakeStatus>                            m_vecIbHandshakeStatus;
 };
 //---------------------------------------------------------------------------------------------------------------------
