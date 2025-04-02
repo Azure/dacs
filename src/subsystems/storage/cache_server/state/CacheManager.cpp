@@ -374,7 +374,7 @@ shared_ptr<Snapshot> CacheManager::TakeSnapshot() const
     LOG_INFO("Completed taking a snapshot. num entries: {}. toDeleteGroups: {} Snapshot size: {}",
       nEntries,
       snapshot->todeletegroups_size(),
-      snapshot->ByteSize());
+      snapshot->ByteSizeLong());
     TIMER_STOP_AND_LOG(takeSnapshot);
     return snapshot;
 }

@@ -60,6 +60,11 @@ extern "C" ssize_t read(int fd, void* buf, size_t nByte)
     return StorageInterceptorImpl::read(fd, buf, nByte);
 }
 //---------------------------------------------------------------------------------------------------------------------
+extern "C" off64_t lseek(int fd, off64_t offset, int whence)
+{
+    return StorageInterceptorImpl::lseek(fd, offset, whence);
+}
+//---------------------------------------------------------------------------------------------------------------------
 extern "C" off64_t lseek64(int fd, off64_t offset, int whence)
 {
     return StorageInterceptorImpl::lseek64(fd, offset, whence);

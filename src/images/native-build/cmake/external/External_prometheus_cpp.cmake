@@ -1,7 +1,7 @@
 ExternalProject_Add(
         prometheus_cpp
         GIT_REPOSITORY "https://github.com/jupp0r/prometheus-cpp"
-        GIT_TAG "v1.1.0"
+        GIT_TAG "v1.3.0"
         GIT_SHALLOW 1
         UPDATE_COMMAND ""
         PATCH_COMMAND ""

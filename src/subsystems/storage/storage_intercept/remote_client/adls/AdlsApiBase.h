@@ -7,6 +7,7 @@
 #include "AdlsAuthTokenProvider.h"
 #include "AdlsHostContext.h"
 #include "AdlsHttpClient.h"
+#include <cstdint>
 #include <map>
 #include <memory>
 //---------------------------------------------------------------------------------------------------------------------

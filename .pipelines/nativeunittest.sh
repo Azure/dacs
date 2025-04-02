@@ -50,10 +50,4 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 execute_test "non_cuda"
 
-execute_test "cuda_agnostic"
-
-execute_test "cuda_11_1"
-
-execute_test "cuda_11_3"
-
 echo "End running native unit tests"

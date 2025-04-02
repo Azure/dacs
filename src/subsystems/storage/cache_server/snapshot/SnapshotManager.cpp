@@ -97,13 +97,8 @@ uint32_t SnapshotManager::GetSnapshotIntervalInSeconds() const
     IstreamInputStream rawInput(&input);
     CodedInputStream codedStream(&rawInput);
 
-    /** The limit is 2GiB by default for CodedInputStream according to docs, but setting manually for safety across versions.
-     * It's not possible to read a single message larger than INT_MAX bytes (2GiB).
-     * https://protobuf.dev/reference/cpp/api-docs/google.protobuf.io.coded_stream/#CodedInputStream.SetTotalBytesLimit.details
-     * 
-     * If we hit this limit, we may consider breaking the snapshot file into smaller parts.
-    */
-    codedStream.SetTotalBytesLimit(INT_MAX, INT_MAX);
+    LOG_INFO("Setting coded stream total bytes limit to: {}", INT_MAX);
+    codedStream.SetTotalBytesLimit(INT_MAX);
 
     if(!snapshot->ParseFromCodedStream(&codedStream))
     {

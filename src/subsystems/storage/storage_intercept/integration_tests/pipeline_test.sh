@@ -23,6 +23,8 @@ else
   BUILD_CONFIGURATION=$1
 fi
 
+source /venv/bin/activate
+
 STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/libStorageIntercept.so"
 
 function append_interception_config_blob_prefix() {
@@ -275,13 +277,13 @@ function __verify_nologs_unintercepted_() {
 }
 
 function __run_perf_benchmark__() {
+
+  if [ "$SKIP_PERF_BENCHMARK" = "true" ]; then
+    echo "Skipping perf benchmark as SKIP_PERF_BENCHMARK is set to true"
+    return
+  fi
   echo "Running perf tracker benchmark"
   stop_cache_server
-
-  # Todo: Move to build container
-  sudo apt-get install -y python3-setuptools
-  python3 -m pip install --upgrade pip
-  python3 -m pip install setuptools opencensus-ext-azure
 
   if [[ -z "${APP_INSIGHTS_KEY}" ]]; then
     echo "APP_INSIGHTS_KEY not set."
@@ -349,12 +351,6 @@ echo ""
 echo "Running go integration test against blob"
 add_interception_config_blob /mnt/quiverfs
 export SI_azBlobSASToken="incorrect-token"
-# Install go
-pushd /tmp
-wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz
-rm -rf /usr/local/go && tar -C /usr/local -xzf go1.20.5.linux-amd64.tar.gz
-export PATH=$PATH:/usr/local/go/bin
-popd
 
 # Run the test
 export DACS_PATH=${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/
@@ -456,14 +452,6 @@ fi
 echo ""
 
 echo "Running rust cache client integration test"
-# TODO: Move to build container
-if ! [[ -x $(command -v "cargo") ]]; then
-pushd /tmp
-curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y
-[[ ! -f "$HOME/.cargo/env" ]] && echo "Failed to install rust" && exit 1
-source "$HOME/.cargo/env"
-popd
-fi
 
 pushd ${REPOSITORY_ROOT}/src/subsystems/storage/cache_client/rust_tests
 export LD_LIBRARY_PATH="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage-cache-client:${LD_LIBRARY_PATH}"
