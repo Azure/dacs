@@ -9,6 +9,12 @@ message("Current CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY
 message("Current CMAKE_LIBRARY_OUTPUT_DIRECTORY from ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 message("Current CMAKE_REMOTE_PUBLISH_DIRECTORY ${CMAKE_REMOTE_PUBLISH_DIRECTORY}")
 
+# Statically link to precompiled protobuf library to prevent mismatch with system installed versions
+ADD_LIBRARY(staticprotobuf STATIC IMPORTED)
+
+SET_TARGET_PROPERTIES(staticprotobuf PROPERTIES
+        IMPORTED_LOCATION /opt/protobufstatic-3.0.0/lib/libprotobuf.a)
+
 add_executable(CacheStorageClient 
     StorageClient.cpp)
 
@@ -50,7 +56,7 @@ target_include_directories(DeleteClient PRIVATE
     ${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/operations
 )
 
-target_link_libraries(DeleteClient StorageCommon StorageLibcDlsymWrapper ClientConnections CacheProto pthread protobuf)
+target_link_libraries(DeleteClient StorageCommon StorageLibcDlsymWrapper ClientConnections CacheProto pthread staticprotobuf)
 
 add_custom_command(
     TARGET DeleteClient POST_BUILD

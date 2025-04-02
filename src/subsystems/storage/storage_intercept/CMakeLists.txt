@@ -10,6 +10,7 @@ message("Current CMAKE_LIBRARY_OUTPUT_DIRECTORY from ${CMAKE_LIBRARY_OUTPUT_DIRE
 message("Current CMAKE_REMOTE_PUBLISH_DIRECTORY ${CMAKE_REMOTE_PUBLISH_DIRECTORY}")
 
 set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS_INIT} -fPIC")
+add_definitions(-D_GLIBCXX_USE_NANOSLEEP)
 
 include_directories(
         ${CMAKE_SOURCE_DIR}/src/subsystems/common/native_lib/diagnostics

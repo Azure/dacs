@@ -768,7 +768,7 @@ bool TestPutAttributeAPI(PutAttributeRequest& putRequest, PutAttributeResponse_R
         status = false;
     }
 
-    request.release_putattributerequest();
+    auto _ = request.release_putattributerequest();
     ReleaseConnection(serverConnection);
     return status;
 }

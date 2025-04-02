@@ -406,6 +406,12 @@ void TestFileReadPerf(
 {
   int fd = ::open(path.c_str(), O_RDONLY, 0777);
 
+  if (fd < 0)
+  {
+    std::cout << "ERROR: failed to open file: " << path.c_str() << " err=" << strerror(errno) << std::endl;
+    throw "open file failed";
+  }
+
   static constexpr size_t bufferSize = 64 * 1024 * 1024;
   static thread_local std::unique_ptr<char[]> writeAddr(new char[bufferSize]);
   size_t readSize = 0;
@@ -526,6 +532,23 @@ void TestIfStreamInterception(const std::string& mountPath)
   }
 
   in.seekg(0, std::ios::end);
+
+  if (in.fail())
+  {
+    std::cout << "seekg failed: " << strerror(errno) << std::endl;
+    throw "seekg failed";
+  }
+  if (in.bad())
+  {
+    std::cout << "seekg failed: " << strerror(errno) << std::endl;
+    throw "seekg failed";
+  }
+  if (in.eof())
+  {
+    std::cout << "seekg failed: " << strerror(errno) << std::endl;
+    throw "seekg failed";
+  }
+
   int size = in.tellg();
   if (size != expectedFileSize)
   {

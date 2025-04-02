@@ -33,6 +33,7 @@ docker run \
     -v /etc/shadow:/etc/shadow:ro \
     -v /root/.dotnet:/root/.dotnet \
     -v ~:/root \
+    -v $HOME:$HOME \
     -v $DIR:$DIR\
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /usr/share/dotnet/sdk/NuGetFallbackFolder:/usr/share/dotnet/sdk/NuGetFallbackFolder \

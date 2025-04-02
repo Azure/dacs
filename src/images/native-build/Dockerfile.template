@@ -1,225 +1,97 @@
-ARG ARG_DACS_BASE_CONTAINER=$(ContainerImageRepository).azurecr.io/cdpxlinux/global/ubuntu-2004:2023041600
-#
-# Main Container phase
-#
-FROM $ARG_DACS_BASE_CONTAINER
+FROM mcr.microsoft.com/mirror/docker/library/ubuntu:24.04
 
 USER root
 
-# Pytorch version is tightly coupled to CUDA and cuDNN so it should be selected carefully
 ENV DEBIAN_FRONTEND=noninteractive \
-  APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn \
-  PATH=/opt/rocm-5.2.3/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH} \
-  LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/opt/rocm-5.2.3/lib:/opt/rocm-5.2.3/roctracer/lib \
-  NVIDIA_VISIBLE_DEVICES=all \
-  HIP_VISIVLE_DEVICES=all \
-  NVIDIA_DRIVER_CAPABILITIES=compute,utility \
-  NVIDIA_REQUIRE_CUDA="cuda>=10.1 brand=tesla,driver>=396,driver<397 brand=tesla,driver>=410,driver<411 brand=tesla,driver>=418,driver<419" \
-  LIBRARY_PATH=/usr/local/cuda/lib64/stubs:/opt/rocm-5.2.3/lib:/opt/rocm-5.2.3/roctracer/lib \
-  NUGET_CREDENTIALPROVIDER_SESSIONTOKENCACHE_ENABLED=true \
-  CMAKE_DEP_INSTALL_DIR=/dependency
+  CMAKE_DEP_INSTALL_DIR=/dependency \
+  NUGET_CREDENTIALPROVIDER_SESSIONTOKENCACHE_ENABLED=true
 
 COPY cmake $CMAKE_DEP_INSTALL_DIR/cmake/
-  
-# Remove nodejs sources as we never use this
-RUN rm /etc/apt/sources.list.d/nodesource.list
 
-# Repos and basic tools that likely never change
 RUN \
-  apt-get update && \
-  apt install --reinstall ca-certificates && \
-  apt-get install -yq --no-install-recommends \
-  apt-utils \
-  inotify-tools \
-  software-properties-common \
-  vim \
-  build-essential \
-  gnupg2 \
-  ca-certificates \
-  gcc-7 \
-  g++-7 \
-  gdb \
-  git-lfs \
-  clang \
-  rsync \
-  tar \
-  protobuf-compiler \
-  libprotobuf-dev \
-  wget \
-  curl \
-  git=1:2.25.1-1ubuntu3.11 \
-  ntpdate \
-  locales \
-  locales-all \
-  python3.8 \
-  python3.8-dev \
-  python3-pip && \
-  ln -s /bin/gcc-7 /usr/bin/gcc-temp && mv -f /usr/bin/gcc-temp /usr/bin/gcc && \
-  ln -s /bin/g++-7 /usr/bin/g++-temp && mv -f /usr/bin/g++-temp /usr/bin/g++ && \
-  wget -q https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb && \
-  dpkg -i packages-microsoft-prod.deb && \
-  rm packages-microsoft-prod.deb && \
-  add-apt-repository universe && \
-  mkdir -p /etc/apt/keyrings && \
-  curl -sLS https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/keyrings/microsoft.gpg > /dev/null && \
-  chmod go+r /etc/apt/keyrings/microsoft.gpg && \
-  echo "deb [arch=`dpkg --print-architecture` signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/azure-cli/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/azure-cli.list && \
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add - && \
-  add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" && \
-  wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null && \
-  echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ focal main' | sudo tee /etc/apt/sources.list.d/kitware.list >/dev/null && \
-  apt-get update -y && \
-  apt-get install -yq --no-install-recommends \
-  cmake \
-  apt-transport-https \
-  gnupg \
-  pass \
-  gnupg-agent \
-  software-properties-common \
-  lsb-release \
-  dotnet-sdk-6.0=6.0.414-1 \
-  azure-cli \
-  powershell \
-  docker-ce && \
-  curl -L "https://github.com/docker/compose/releases/download/1.25.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/bin/docker-compose && \
-  chmod +x /usr/bin/docker-compose && \
-  wget -qO- https://aka.ms/install-artifacts-credprovider.sh | bash && \
-  pip3 install lxml && \
-  apt-get update && apt-get install -y --no-install-recommends \
-  gnupg2 && \
-  wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.0-1_all.deb && \
-  dpkg -i cuda-keyring_1.0-1_all.deb && \
-  apt-get update -y && \
-  apt-get install datacenter-gpu-manager -y && \
-  apt-get install libboost-all-dev -y && \
-  apt-get install libgoogle-perftools-dev -y && \
-  sudo ln -s /usr/lib/x86_64-linux-gnu/libprofiler.so /usr/lib/libprofiler.so && \
-  apt-get install ninja-build -y && \
-  add-apt-repository ppa:deadsnakes/ppa -y && \
-  apt-get update -y && \
-  apt-get install python3.6 python3.6-dev python3.6-venv -y && \
-  apt-get install python3.7 python3.7-dev python3.7-venv -y && \
-  apt-get install python3.9 python3.9-dev python3.9-venv -y && \
-  apt-get install python3.10 python3.10-dev python3.10-venv -y && \
-  apt-get install python3.11 python3.11-dev python3.11-venv -y && \
-  apt-get install python3.12 python3.12-dev python3.12-venv -y && \
-# Dependencies for storage
-  apt-get update && apt-get install -y --no-install-recommends \
-  libfuse3-dev libssl-dev libcurl4-openssl-dev curl libjsoncpp-dev uuid-dev && \
+    apt-get update && \
+    apt-get install -yq python3 \
+    libjsoncpp-dev \
+    libcurl4-openssl-dev \
+    libibverbs-dev \
+    libssl-dev \
+    libboost-program-options-dev \
+    curl \
+    uuid-dev \
+    ibverbs-providers \
+    sysstat \
+    tar \
+    net-tools \
+    pciutils \
+    cmake \
+    docker.io \
+    wget \
+    ethtool \
+    pkg-config \
+    iproute2 \
+    vim \
+    fuse3 \
+    libfuse3-dev \
+    apt-transport-https \
+    gnupg \
+    git \
+    git-lfs \
+    pass \
+    gnupg-agent \
+    software-properties-common \
+    lsb-release \
+    python3.12 \
+    python3.12-dev \
+    python3-pip \
+    sudo \
+    libboost-all-dev \
+    libgoogle-perftools-dev \
+    ninja-build \
+    lld \
+    clang \
+    build-essential \
+    gdb
+  
+RUN apt install -y python3.12-venv python3-pip python3-setuptools
+
+RUN  sudo ln -s /usr/lib/x86_64-linux-gnu/libprofiler.so /usr/lib/libprofiler.so
+
+RUN python3 -m venv /venv && . /venv/bin/activate &&  \
+  python -m pip install --upgrade pip setuptools opencensus-ext-azure h5py
+
+RUN curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+RUN wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz && \
+  rm -rf /usr/local/go && tar -C /usr/local -xzf go1.20.5.linux-amd64.tar.gz
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+RUN wget -qO- https://aka.ms/install-artifacts-credprovider.sh | bash
+
+RUN cd /opt && wget https://builds.dotnet.microsoft.com/dotnet/Sdk/6.0.428/dotnet-sdk-6.0.428-linux-x64.tar.gz && \
+  mkdir dotnet && \
+  tar -C dotnet -xf dotnet-sdk-6.0.428-linux-x64.tar.gz && \
+  rm -f dotnet-sdk-6.0.428-linux-x64.tar.gz
+
+RUN wget https://github.com/PowerShell/PowerShell/releases/download/v7.5.0/powershell_7.5.0-1.deb_amd64.deb && \
+  dpkg -i powershell_7.5.0-1.deb_amd64.deb || true && \
+  apt-get install -f -y && \
+  rm powershell_7.5.0-1.deb_amd64.deb
+
+ENV PATH="/opt/dotnet:$PATH"
+
+RUN curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+RUN az extension add --name azure-devops
+
 # Following is used to prebuild all DACS dependencies
-  cd $CMAKE_DEP_INSTALL_DIR && \
-  cmake -DCMAKE_BUILD_TYPE=Release -G Ninja $CMAKE_DEP_INSTALL_DIR/cmake && \
-  ninja && \
-  cd ~ && \
-# Following is needed for interactive ssh connection with the container during
-# local developement (with pycharm/clion etc). This is not needed for cdpx containers
-  apt-get update && apt-get install -yq --no-install-recommends ssh && \
-  ( \
-    echo 'LogLevel DEBUG2'; \
-    echo 'PermitRootLogin yes'; \
-    echo 'PasswordAuthentication yes'; \
-    echo 'Subsystem sftp /usr/lib/openssh/sftp-server'; \
-  ) > /etc/ssh/sshd_dev_config && \
-  mkdir /run/sshd && \
-  useradd -m dacsuser && \
-  #find all the dirs in /dependency and chmod 777,
-  #few dir name might have spaces in their name, so pass each line of the output of the find command to xargs instead of using space as separator
-  find /dependency -type d -print0 | xargs -0 -I {} chmod 777 "{}"
+RUN cd $CMAKE_DEP_INSTALL_DIR && \
+    cmake -DCMAKE_BUILD_TYPE=Release -G Ninja $CMAKE_DEP_INSTALL_DIR/cmake && \
+    ninja
 
+#find all the dirs in /dependency and chmod 777,
+#few dir name might have spaces in their name, so pass each line of the output of the find command to xargs instead of using space as separator
+RUN  find /dependency -type d -print0 | xargs -0 -I {} chmod 777 "{}"
 
+RUN cd ~
 
-# GPU Profiler Dependencies
-RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
-  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cupti && \
-  . /opt/conda-cupti/bin/activate && \
-  conda install -y -c conda-forge cudatoolkit=11.0.3 && \
-  conda clean -a && \
-  conda deactivate && \
-  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
-  ln -s /opt/conda-cupti/pkgs/cudatoolkit-11.0.3-h15472ef_8/lib/libcupti.so /usr/lib/libcuptiprofiler.so
-
-# Create cuda 11.0.221, nccl 2.7.8, cudnn 8.0.5 conda environment
-RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
-  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-110 && \
-  . /opt/conda-cuda-110/bin/activate && \
-  conda install -y -c conda-forge cudatoolkit-dev=11.0.3 && \
-  conda install -y --no-deps -c conda-forge cudnn=8.0.5 nccl=2.7.8 && \
-  conda clean -a && \
-  conda deactivate && \
-  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
-
-# Create cuda 11.1 nccl 2.7.8, cudnn 8.0.5 conda environment
-RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
-  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-111 && \
-  . /opt/conda-cuda-111/bin/activate && \
-  conda install -y -c conda-forge cudatoolkit-dev=11.1 && \
-  conda install -y --no-deps -c conda-forge cudnn=8.0.5 nccl=2.7.8 && \
-  conda clean -a && \
-  conda deactivate && \
-  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
-
-# Create cuda 11.3.109, nccl 2.9.9, cudnn 8.2.1 conda environment
-RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
-  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-113 && \
-  . /opt/conda-cuda-113/bin/activate && \
-  conda install -y -c conda-forge cudatoolkit-dev=11.3.1 && \
-  conda install -y --no-deps -c conda-forge cudnn=8.2.1 nccl=2.9.9 && \
-  conda clean -a && \
-  conda deactivate && \
-  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
-
-# Create cuda 11.4, nccl 2.11.4 cudnn 8.2.1 conda environment
-RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
-  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-114 && \
-  . /opt/conda-cuda-114/bin/activate && \
-  conda install -y -c conda-forge cudatoolkit-dev=11.4 && \
-  conda install -y --no-deps -c conda-forge cudnn=8.2.1.32=h86fa8c9_0 nccl=2.11.4.1=h5c60f85_2 && \
-  conda clean -a && \
-  conda deactivate && \
-  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
-  
-# Create cuda 11.5, nccl 2.12.12 cudnn 8.3.2 conda environment
-  RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
-  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-115 && \
-  . /opt/conda-cuda-115/bin/activate && \
-  conda install -y -c conda-forge cudatoolkit-dev=11.5.0 && \
-  conda install -y --no-deps -c conda-forge cudnn=8.3.2.44=hed8a83a_1 nccl=2.12.12.1=h12f7317_0 && \
-  conda clean -a && \
-  conda deactivate && \
-  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
-  
-# Create cuda 11.6, nccl 2.12.12 cudnn 8.4.0 conda environment
-  RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
-  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-116 && \
-  . /opt/conda-cuda-116/bin/activate && \
-  conda install -y -c conda-forge cudatoolkit-dev=11.6.0 && \
-  conda install -y --no-deps -c conda-forge cudnn=8.4.0.27=hed8a83a_1 nccl=2.12.12.1=h0800d71_0 && \
-  conda clean -a && \
-  conda deactivate && \
-  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
-
-# Create cuda 11.7, nccl 2.12.12 cudnn 8.4.0 conda environment
-  RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh && \
-  bash Miniconda3-py39_4.10.3-Linux-x86_64.sh -bfp  /opt/conda-cuda-117 && \
-  . /opt/conda-cuda-117/bin/activate && \
-  conda install -y -c conda-forge cudatoolkit-dev=11.7.0 && \
-  conda install -y --no-deps -c conda-forge cudnn=8.4.0.27=hed8a83a_1 nccl=2.12.12.1=h0800d71_0 && \
-  conda clean -a && \
-  conda deactivate && \
-  rm -rf Miniconda3-py39_4.10.3-Linux-x86_64.sh
-
-#TODO: for pt1.11-cuda11.6 image, the requied cudnn and nccl versions are higher(8.6.0 and 2.15.5), need to check and add support for them
-# Install az module for powershell
-RUN pwsh -c "Install-Module -Name Az -Scope AllUsers -Repository PSGallery -Force"
-
-# Instal AMD-sepcific common deps
-RUN sudo apt-get install -yq --no-install-recommends \
-  libdrm-amdgpu1 \
-  libdrm2
-
-# Install AMD rocm-5.2.3, includes rccl, miopen, roctracer etc.
-RUN echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/5.2.3 ubuntu main' | sudo tee -a /etc/apt/sources.list.d/rocm.list && \
-  wget https://repo.radeon.com/amdgpu-install/22.20.3/ubuntu/focal/amdgpu-install_22.20.50203-1_all.deb -O /tmp/rocm_5.2.3_setup.deb && \
-  sudo apt-get install -y /tmp/rocm_5.2.3_setup.deb && \
-  sudo apt update && \
-  sudo amdgpu-install -y --usecase=hiplibsdk,rocm --no-dkms --rocmrelease=5.2.3

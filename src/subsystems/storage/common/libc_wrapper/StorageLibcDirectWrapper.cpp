@@ -114,22 +114,22 @@ int StorageLibcApiWrapper::stat64(const char* pathname, struct stat64* statbuf)
 //---------------------------------------------------------------------------------------------------------------------
 int StorageLibcApiWrapper::xstat(int __ver, const char* pathname, struct stat* statbuf)
 {
-    return ::__xstat(__ver, pathname, statbuf);
+    return ::stat(pathname, statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
 int StorageLibcApiWrapper::xstat64(int __ver, const char* pathname, struct stat64* statbuf)
 {
-    return ::__xstat64(__ver, pathname, statbuf);
+    return ::stat64(pathname, statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
 int StorageLibcApiWrapper::lxstat(int __ver, const char* pathname, struct stat* statbuf)
 {
-    return ::__lxstat(__ver, pathname, statbuf);
+    return ::lstat(pathname, statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
 int StorageLibcApiWrapper::lxstat64(int __ver, const char* pathname, struct stat64* statbuf)
 {
-    return ::__lxstat64(__ver, pathname, statbuf);
+    return ::lstat64(pathname, statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
 int StorageLibcApiWrapper::fstat(int fd, struct stat* statbuf)
@@ -144,12 +144,12 @@ int StorageLibcApiWrapper::fstat64(int fd, struct stat64* statbuf)
 //---------------------------------------------------------------------------------------------------------------------
 int StorageLibcApiWrapper::fxstat(int __ver, int fd, struct stat* statbuf)
 {
-    return ::__fxstat(__ver, fd, statbuf);
+    return ::fstat(fd, statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
 int StorageLibcApiWrapper::fxstat64(int __ver, int fd, struct stat64* statbuf)
 {
-    return ::__fxstat64(__ver, fd, statbuf);
+    return ::fstat64(fd, statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
 int StorageLibcApiWrapper::ioctl(int fd, unsigned long request, void* argp)

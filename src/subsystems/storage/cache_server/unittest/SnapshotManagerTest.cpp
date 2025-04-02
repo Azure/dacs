@@ -113,7 +113,8 @@ TEST_F(SnapshotManagerTest, LoadExpiredSnapshot)
 }
 //---------------------------------------------------------------------------------------------------------------------
 /** Either snapshot is saved or not saved, but no invalid / partial snapshot. **/
-TEST_F(SnapshotManagerTest, CrashWhileTakingSnapshot)
+// fork() behavoir is broken in gtest for Ubuntu 24.04, so disable this test
+TEST_F(SnapshotManagerTest, DISABLED_CrashWhileTakingSnapshot)
 {
     std::string fileName = "/tmp/snapshot";
     SnapshotManager snapshotManager = SnapshotManager::GetInstance();
@@ -171,13 +172,13 @@ TEST_F(SnapshotManagerTest, HandleLargeSnapshotFile)
 {
     std::string fileName = "/tmp/snapshot";
 
-    // This test can  a few seconds.
+    // This test can take a few seconds.
     std::shared_ptr<snapshot::Snapshot> pSnapshot = CreateMockSnapshot(50000);
-    std::cout << "Snapshot size (MB) is " << pSnapshot->ByteSize() / (1024 * 1024) << std::endl;
+    std::cout << "Snapshot size (MB) is " << pSnapshot->ByteSizeLong() / (1024 * 1024) << std::endl;
     SnapshotManager::SaveSnapshotToFile(fileName, *pSnapshot);
 
     std::shared_ptr<snapshot::Snapshot> pLoadedSnapshot = SnapshotManager::LoadSnapshotFromFile(fileName);
-
+    std::cout << "Loaded snapshot size (MB) is " << pLoadedSnapshot->ByteSizeLong() / (1024 * 1024) << std::endl;
     ASSERT_TRUE(MessageDifferencer::Equals(*pSnapshot, *pLoadedSnapshot));
 }
 //---------------------------------------------------------------------------------------------------------------------

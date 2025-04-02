@@ -23,6 +23,7 @@ class StorageInterceptorImpl
 
         static ssize_t read(int fd, void* buf, size_t size);
         static ssize_t pread(int fd, void* buf, size_t size, off64_t offset);
+        static off64_t lseek(int fd, off64_t offset, int whence);
         static off64_t lseek64(int fd, off64_t offset, int whence);
 
         static int close(int fd);
