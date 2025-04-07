@@ -6,7 +6,7 @@
 # Make changes to Dockerfile.template 
 #
 # =============================================================================
-FROM mcr.microsoft.com/mirror/docker/library/ubuntu:24.04
+FROM ubuntu:22.04
 
 USER root
 
@@ -48,8 +48,8 @@ RUN \
     gnupg-agent \
     software-properties-common \
     lsb-release \
-    python3.12 \
-    python3.12-dev \
+    python3 \
+    python3-dev \
     python3-pip \
     sudo \
     libboost-all-dev \
@@ -60,7 +60,7 @@ RUN \
     build-essential \
     gdb
   
-RUN apt install -y python3.12-venv python3-pip python3-setuptools
+RUN apt install -y python3-venv python3-pip python3-setuptools
 
 RUN  sudo ln -s /usr/lib/x86_64-linux-gnu/libprofiler.so /usr/lib/libprofiler.so
 
