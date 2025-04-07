@@ -1,18 +1,11 @@
 #!/bin/bash
 
 function execute_test() {
-  local cuda_deps=$1
-  echo "Testing for ${cuda_deps} projects......"
+  local target=$1
+  echo "Testing for ${target} projects......"
 
-  if [[ -e "$DIR/../build/SetupNativeUnitTestDependencies/setup_${cuda_deps}.sh" ]]; then
-      . "$DIR/../build/SetupNativeUnitTestDependencies/setup_${cuda_deps}.sh"
-  elif [[ ${cuda_deps} != "non_cuda" && ${cuda_deps} != "cuda_agnostic" ]]; then
-      echo "Failed to find setup script for cuda dependencies ${cuda_deps}"
-      exit 1
-  fi
-
-  echo "PWD = $DIR/../bin/$BUILD_CONFIGURATION/native/${cuda_deps}/"
-  cd $DIR/../bin/$BUILD_CONFIGURATION/native/${cuda_deps}/
+  echo "PWD = $DIR/../bin/$BUILD_CONFIGURATION/native//${target}/"
+  cd $DIR/../bin/$BUILD_CONFIGURATION/native//${target}/
   log_file="`pwd`/Testing/Temporary/LastTest.log"
 
   if [ ! -z "$TEST_NAME" ]; then
@@ -48,6 +41,6 @@ echo "Start running native unit tests"
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-execute_test "non_cuda"
+execute_test "storage"
 
 echo "End running native unit tests"
