@@ -77,7 +77,6 @@ StreamingClient::StreamingClient(
     , m_nReadLarge({0, 0})
     , m_nReadMax({0, 0})
     , m_bStopLogging(false)
-    , m_loggingThread(&StreamingClient::LongRunningLogStats, this, StorageInterceptConfig::GetInstance().GetLogsRefreshIntervalInSeconds())
 {
     SetClients(cacheClient, attributesCache);
 
@@ -102,6 +101,12 @@ StreamingClient::StreamingClient(
             m_nPrefetchWindowSize);
         m_nPrefetchWindowSize = newPrefetchWindowSize;
     }
+
+    // Initialize the logging thread here
+    m_loggingThread = std::thread(
+        &StreamingClient::LongRunningLogStats,
+        this,
+        StorageInterceptConfig::GetInstance().GetLogsRefreshIntervalInSeconds());
 
     LOG_INFO("StreamingClient initialized. MountName={}, RemotePathPrefix={} ChunkSize={}, chunk cache={},"
              " attribute cache={} readChunkParallelism={}, maxReadChunkConcurrency={},"
