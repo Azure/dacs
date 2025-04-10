@@ -45,16 +45,14 @@ int SocketConnection::Send(const char* buffer, uint64_t size)
     {
         int bufferLen = size - totalWritten;
         int tempWrite;
-        if ((tempWrite = TimedWrite(
-            buffer + totalWritten,
-            bufferLen)) > 0)
+        if ((tempWrite = TimedWrite(buffer + totalWritten, bufferLen)) > 0)
         {
             totalWritten += tempWrite;
         }
         else 
         {
-            LOG_WARN("couldn't complete write to server: fd={}. wrote={}, error={}, errno={}:{}",
-                GetId(), totalWritten, tempWrite, errno, strerror(errno));
+            LOG_WARN("couldn't complete write to server: fd={}. wrote={} of size={} from buff={}, error={}, errno={}:{}",
+                GetId(), totalWritten, size, buffer, tempWrite, errno, strerror(errno));
             return totalWritten;
         }
     }

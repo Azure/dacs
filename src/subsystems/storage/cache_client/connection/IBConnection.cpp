@@ -33,7 +33,7 @@ IBConnection::IBConnection(unique_ibv_qp qp, unique_ibv_comp_channel eventChanne
 //---------------------------------------------------------------------------------------------------------------------
 IBConnection::~IBConnection()
 {
-    LOG_INFO("Closing qp={}", GetId());
+    LOG_DEBUG("Closing qp={}", GetId());
     m_qp.reset(nullptr);
     m_mr.reset(nullptr);
     m_cq.reset(nullptr);

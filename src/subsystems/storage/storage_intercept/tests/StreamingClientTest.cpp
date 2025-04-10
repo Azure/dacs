@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "StreamingClientTest.h"
+#include "StorageInterceptConstants.h"
 #include "StreamingClient.h"
 #include "InMemoryAttributesCache.h"
 #include <atomic>
@@ -57,86 +58,26 @@ bool StreamingClientTest::BufferEquals(
     return bResult;
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(StreamingClientTest, ReadFilePartialTest)
+void StreamingClientTest::PerformReadTest(size_t bufferSize,
+                                          size_t offset,
+                                          ssize_t expectedBytesRead,
+                                          int expectedZeroCopyReads)
 {
-    std::vector<char> readBuf(REMOTE_FILE_SIZE / 2);
+    std::vector<char> readBuf(bufferSize);
 
     ssize_t nBytesRead = m_spStreamingClient->ReadFile(
         m_strRemoteFilePath,
         readBuf.data(),
         readBuf.size(),
-        10, /* offset */
+        offset, /* offset */
         REMOTE_FILE_SIZE);
-    ASSERT_EQ(nBytesRead, REMOTE_FILE_SIZE / 2);
+    ASSERT_EQ(nBytesRead, expectedBytesRead);
     // Data integrity check
-    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 10, 0, nBytesRead)));
-}
-//---------------------------------------------------------------------------------------------------------------------
-TEST_F(StreamingClientTest, ReadChunkFullFileTest)
-{
-    std::vector<char> readBuf(REMOTE_FILE_SIZE);
-    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath,
-        readBuf.data(),
-        readBuf.size(),
-        0, /* offset */
-        REMOTE_FILE_SIZE);
-    ASSERT_EQ(nBytesRead, REMOTE_FILE_SIZE);
-    /* Data integrity check */
-    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEquals(m_vecBuffer, readBuf)));
-}
-//---------------------------------------------------------------------------------------------------------------------
-TEST_F(StreamingClientTest, ReadFileTinyReadsTest)
-{
-    std::vector<char> readBuf(50);
+    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, offset, 0, nBytesRead)));
 
-    // Read first 50 bytes.
-    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath,
-        readBuf.data(),
-        readBuf.size(),
-        0, /* offset */
-        REMOTE_FILE_SIZE);
-    ASSERT_EQ(nBytesRead, 50);
-    // Data integrity check
-    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 0, 0, 50)));
-
-    // Read next 50 bytes.
-    nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath,
-        readBuf.data(),
-        readBuf.size(),
-        50, /* offset */
-        REMOTE_FILE_SIZE);
-    ASSERT_EQ(nBytesRead, 50);
-    // Data integrity check
-    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 50, 0, 50)));
-
-    // Read next 50 bytes.
-    nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath,
-        readBuf.data(),
-        readBuf.size(),
-        100, /* offset */
-        REMOTE_FILE_SIZE);
-    ASSERT_EQ(nBytesRead, 50);
-    // Data integrity check
-    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 100, 0, 50)));
-}
-//---------------------------------------------------------------------------------------------------------------------
-TEST_F(StreamingClientTest, ReadSizeLargerThanFileSizeTest)
-{
-    std::vector<char> readBuf(2 * REMOTE_FILE_SIZE);
-
-    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath,
-        readBuf.data(),
-        readBuf.size(),
-        0, /* offset */
-        REMOTE_FILE_SIZE);
-    ASSERT_EQ(nBytesRead, REMOTE_FILE_SIZE);
-    // Data integrity check
-    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 0, 0, REMOTE_FILE_SIZE)));
+    ASSERT_EQ(m_spStreamingClient->GetReadChunksZeroCopy(), expectedZeroCopyReads);
+    // Close the file, forcing to purge the cache
+    m_spStreamingClient->Close(m_strRemoteFilePath);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(StreamingClientTest, RootDirPathTest)
@@ -162,4 +103,187 @@ TEST_F(StreamingClientTest, RootDirPathTest)
     ASSERT_EQ(nResult, 0);
     ASSERT_EQ(attr.isDir, true);
 }
+//---------------------------------------------------------------------------------------------------------------------
+// BEGIN: Test cases for streaming client with zero copy disabled
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadResetStreamingClientDisableZC)
+{
+    // Save the current streaming client instance
+    auto originalStreamingClient = m_spStreamingClient;
+
+    // Override the config to enable zero copy and reset the m_spStreamingClient
+    OverrideConfig(StorageInterceptConstants::ConfigNameEnableZeroCopy, "false");
+
+    // Reset the streaming client
+    m_spStreamingClient.reset();
+
+    // Reinitialize the streaming client
+    SetUp();
+
+    // Since the new streaming client is created, don't wanna reset the config again
+    m_bConfigUpdated = false;
+
+    // Validate that the streaming client instance has changed
+    ASSERT_NE(originalStreamingClient, m_spStreamingClient);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadFilePartialTest)
+{
+    // Read from 10th offset
+    PerformReadTest(REMOTE_FILE_SIZE / 2, 10, REMOTE_FILE_SIZE / 2, 0);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadChunkFullFileTest)
+{
+    // Read full file
+    PerformReadTest(REMOTE_FILE_SIZE, 0, REMOTE_FILE_SIZE, 0);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadFileTinyReadsTest)
+{
+    // Read first 50 bytes.
+    PerformReadTest(50, 0, 50, 0);
+
+    // Read next 50 bytes.
+    PerformReadTest(50, 50, 50, 0);
+
+    // Read next 50 bytes.
+    PerformReadTest(50, 100, 50, 0);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadSizeLargerThanFileSizeTest)
+{
+    // Read larger than file size
+    PerformReadTest(2 * REMOTE_FILE_SIZE, 0, REMOTE_FILE_SIZE, 0);
+}
+//---------------------------------------------------------------------------------------------------------------------
+// END: Test cases for streaming client with zero copy disabled
+//---------------------------------------------------------------------------------------------------------------------
+// BEGIN: Test cases for streaming client with zero copy enabled
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadResetStreamingClientEnableZC)
+{
+    // Save the current streaming client instance
+    auto originalStreamingClient = m_spStreamingClient;
+
+    // Override the config to enable zero copy and reset the m_spStreamingClient
+    OverrideConfig(StorageInterceptConstants::ConfigNameEnableZeroCopy, "true");
+
+    // Reset the streaming client
+    m_spStreamingClient.reset();
+
+    // Reinitialize the streaming client
+    SetUp();
+
+    // Since the new streaming client is created, don't wanna reset the config again
+    m_bConfigUpdated = false;
+
+    // Validate that the streaming client instance has changed
+    ASSERT_NE(originalStreamingClient, m_spStreamingClient);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadFilePartialTestZC)
+{
+    // Read from 10th offset
+    PerformReadTest(REMOTE_FILE_SIZE / 2, 10, REMOTE_FILE_SIZE / 2, 1);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadChunkFullFileTestZC)
+{
+    // Read full file
+    PerformReadTest(REMOTE_FILE_SIZE, 0, REMOTE_FILE_SIZE, 4);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadFileTinyReadsTestZC)
+{
+    // Read first 50 bytes.
+    PerformReadTest(50, 0, 50, 0);
+
+    // Read next 50 bytes.
+    PerformReadTest(50, 50, 50, 0);
+
+    // Read next 50 bytes.
+    PerformReadTest(50, 100, 50, 0);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadSizeLargerThanFileSizeTestZC)
+{
+    // Read larger than file size
+    PerformReadTest(2 * REMOTE_FILE_SIZE, 0, REMOTE_FILE_SIZE, 4);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadSizeUnalignedRequest1ByteAtStartTestZC)
+{
+    PerformReadTest(1, 0, 1, 0);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadSizeUnalignedRequest10ByteAtOffset1TestZC)
+{
+    PerformReadTest(10, 1, 10, 0);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadSizeUnalignedRequestNearChunkBoundaryTestZC)
+{
+    PerformReadTest(DEFAULT_STREAMING_CHUNK_SIZE - 10, 0, DEFAULT_STREAMING_CHUNK_SIZE - 10, 0);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadSizeUnalignedRequestCrossingChunkBoundaryTestZC)
+{
+    PerformReadTest(DEFAULT_STREAMING_CHUNK_SIZE + 10, DEFAULT_STREAMING_CHUNK_SIZE,
+                    DEFAULT_STREAMING_CHUNK_SIZE + 10, 1);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadSizeWithinHalfChunkTestZC)
+{
+    PerformReadTest(DEFAULT_STREAMING_CHUNK_SIZE / 2, 0, DEFAULT_STREAMING_CHUNK_SIZE / 2, 0);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadSizeFullChunkTestZC)
+{
+    PerformReadTest(DEFAULT_STREAMING_CHUNK_SIZE, 0, DEFAULT_STREAMING_CHUNK_SIZE, 1);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadSizeFullChunkAtOffsetTestZC)
+{
+    PerformReadTest(DEFAULT_STREAMING_CHUNK_SIZE, DEFAULT_STREAMING_CHUNK_SIZE,
+                    DEFAULT_STREAMING_CHUNK_SIZE, 1);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadSizeMultipleChunksTestZC)
+{
+    PerformReadTest(2 * DEFAULT_STREAMING_CHUNK_SIZE, 0, 2 * DEFAULT_STREAMING_CHUNK_SIZE, 2);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadSizeThreeChunksTestZC)
+{
+    PerformReadTest(3 * DEFAULT_STREAMING_CHUNK_SIZE, 0, 3 * DEFAULT_STREAMING_CHUNK_SIZE, 3);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadSizeFourChunksTestZC)
+{
+    PerformReadTest(4 * DEFAULT_STREAMING_CHUNK_SIZE, 0, REMOTE_FILE_SIZE, 4);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadSizeChunkPlusExtraBytesTestZC)
+{
+    PerformReadTest(DEFAULT_STREAMING_CHUNK_SIZE + 50, 0, DEFAULT_STREAMING_CHUNK_SIZE + 50, 1);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadSizeTwoChunksPlusExtraBytesTestZC)
+{
+    PerformReadTest(2 * DEFAULT_STREAMING_CHUNK_SIZE + 50, 0, 2 * DEFAULT_STREAMING_CHUNK_SIZE + 50, 2);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadSizeTwoChunksPlusExtraBytesAtOffsetTestZC)
+{
+    PerformReadTest(2 * DEFAULT_STREAMING_CHUNK_SIZE + 50, DEFAULT_STREAMING_CHUNK_SIZE,
+                    2 * DEFAULT_STREAMING_CHUNK_SIZE + 50, 2);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadSizeMoreThanFileSizeTestZC)
+{
+    PerformReadTest(6 * DEFAULT_STREAMING_CHUNK_SIZE, 0, REMOTE_FILE_SIZE, 4);
+}
+//---------------------------------------------------------------------------------------------------------------------
+// END: Test cases for streaming client with zero copy enabled
 //---------------------------------------------------------------------------------------------------------------------

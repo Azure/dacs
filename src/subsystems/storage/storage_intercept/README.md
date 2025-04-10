@@ -121,6 +121,7 @@ prefetchCacheTotalSizeInMB [Max in-memory data cache size]
 prefetchCachePerFileSizeInMB [Max in-memory data cache size per file]
 cacheEnableSyncUpload [After downloading chunk from remote blob on a cache miss upload to cache server synchronously in critical path. Note: This will increase client IO latency. default - false]
 attributesCachePutAllOnReaddir [Upload the readdir entries to remote attributes cache. default - false]
+enableZeroCopy [true or false - Enable zero copy path for all possible paths like sequential large file reads aligned to streamingChunkSize. default - false]
 ```
 
 ### Config for running interception on multiple mounts

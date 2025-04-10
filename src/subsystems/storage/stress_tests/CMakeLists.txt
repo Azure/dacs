@@ -56,7 +56,14 @@ target_include_directories(DeleteClient PRIVATE
     ${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/operations
 )
 
-target_link_libraries(DeleteClient StorageCommon StorageLibcDlsymWrapper ClientConnections CacheProto pthread staticprotobuf)
+target_link_libraries(DeleteClient 
+    StorageCommon
+    StorageLibcDlsymWrapper
+    ClientConnections
+    CacheProto
+    pthread
+    staticprotobuf
+)
 
 add_custom_command(
     TARGET DeleteClient POST_BUILD
@@ -75,7 +82,16 @@ add_executable(PerfClient
 
 add_dependencies(PerfClient CacheClientLib ClientConnections storage_utils)
 
-target_link_libraries(PerfClient PRIVATE CacheClientLib ClientConnections storage_utils pthread diagnostics stdc++fs Boost::program_options Boost::system)
+target_link_libraries(PerfClient PRIVATE 
+    CacheClientLib
+    ClientConnections
+    storage_utils
+    pthread
+    diagnostics
+    stdc++fs
+    Boost::program_options
+    Boost::system
+)
 
 target_include_directories(PerfClient PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}
@@ -85,6 +101,44 @@ target_include_directories(PerfClient PRIVATE
 add_custom_command(
     TARGET PerfClient POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/PerfClient
+        ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/cache-test)
+
+# ---------------------------------------------------------------------------------------------------------------------#
+
+# ---------------------------------------------------------------------------------------------------------------------#
+# Storage Interceptor Client
+# ---------------------------------------------------------------------------------------------------------------------#
+find_package(Boost COMPONENTS program_options system REQUIRED)
+include_directories(${Boost_INCLUDE_DIRS})
+
+add_executable(StorageInterceptorClient
+    storage_interceptor_client/storage_interceptor_client_test.cpp)
+
+add_dependencies(StorageInterceptorClient StorageIntercept CacheClientLib ClientConnections storage_utils)
+
+target_link_libraries(StorageInterceptorClient PRIVATE 
+    StorageIntercept
+    CacheClientLib
+    ClientConnections
+    storage_utils
+    pthread
+    diagnostics
+    stdc++fs
+    Boost::program_options
+    Boost::system
+)
+
+target_include_directories(StorageInterceptorClient PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}
+    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/
+    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/storage_intercept/common
+    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/storage_intercept/remote_client
+    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/storage_intercept/remote_client/cache
+)
+
+add_custom_command(
+    TARGET StorageInterceptorClient POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/StorageInterceptorClient
         ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/cache-test)
 
 # ---------------------------------------------------------------------------------------------------------------------#

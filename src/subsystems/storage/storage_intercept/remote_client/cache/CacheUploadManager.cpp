@@ -137,7 +137,7 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
 //---------------------------------------------------------------------------------------------------------------------
 void CacheUploadManager::UploadWorker()
 {
-    LOG_INFO("Started UploadWorker");
+    LOG_DEBUG("Started UploadWorker");
     while (!m_stop)
     {
         std::unique_lock<std::mutex> lock(m_mutexQueue);
@@ -168,7 +168,7 @@ void CacheUploadManager::UploadWorker()
         }
     }
 
-    LOG_INFO("Shutdown UploadWorker");
+    LOG_DEBUG("Shutdown UploadWorker");
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool CacheUploadManager::Upload(
@@ -186,6 +186,7 @@ bool CacheUploadManager::Upload(
     }
     else
     {
+        STORAGE_ASSERT(!(fileData.get() && fileData->bIsUserBuffer), "Async upload attempted with user buffer!!");
         size_t bufferSizeToSend = fileData.get() ? fileData->BufferSize : 0;
         {
             lock_guard lock(m_mutexQueue);

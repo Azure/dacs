@@ -70,7 +70,7 @@ string CacheClientTest::GetRandFilename()
 //---------------------------------------------------------------------------------------------------------------------
 std::shared_ptr<FileReadData> CacheClientTest::GetRandDataBuffer(uint64_t size)
 {
-    std::shared_ptr<FileReadData> fileData = std::make_shared<FileReadData>(0, size);
+    std::shared_ptr<FileReadData> fileData = std::make_shared<FileReadData>(0, size, nullptr);
     std::generate(fileData->Buffer.get(), fileData->Buffer.get() + size, []{return rand() % 255;});
     return fileData;
 }

@@ -52,6 +52,7 @@ std::shared_ptr<const FileReadData> PrefetchCache::Get(const std::string& path, 
 //---------------------------------------------------------------------------------------------------------------------
 void PrefetchCache::Put(const std::string& path, std::shared_ptr<const FileReadData> buffer)
 {
+    STORAGE_ASSERT(!(buffer.get() && buffer->bIsUserBuffer), "PrefetchCache insert attempted with user buffer!!");
     std::unique_lock<std::shared_mutex> buffersLock(m_mutexBuffers);
 
     if (m_mapBuffers.size() >= MAX_ENTRIES_OVERALL)

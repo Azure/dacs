@@ -65,6 +65,11 @@ class StreamingClient
             /*[in] */ std::shared_ptr<IAttributesCache> attributesCache);
         void ClearClients();
 
+        #ifdef STORAGE_INTERCEPT_UT
+        // APIs to get stats for m_nReadChunksZeroCopy, used in unit testing
+        uint64_t GetReadChunksZeroCopy() const { return m_nReadChunksZeroCopy; }
+        #endif
+
     private:
         const std::string                  m_strMountName;
         const std::string                  m_strRemotePathPrefix;
@@ -101,6 +106,7 @@ class StreamingClient
         std::atomic_uint64_t               m_nReadChunksPrefetchCache;
         std::atomic_uint64_t               m_nReadChunksRemoteCache;
         std::atomic_uint64_t               m_nReadChunksRemoteClient;
+        std::atomic_uint64_t               m_nReadChunksZeroCopy;
         std::atomic_uint64_t               m_nGetPropertiesTotal;
         std::atomic_uint64_t               m_nGetPropertiesCache;
         std::atomic_uint64_t               m_nGetPropertiesRemoteClient;
@@ -129,10 +135,14 @@ class StreamingClient
         std::condition_variable m_loggingCV;
         std::mutex m_loggingMutex;
 
+        // Switch to enable zero-copy read
+        const bool                         m_bEnableZeroCopy;
+
         // Wrapper to call ReadChunkImpl() and update the counters tracking read chunk concurrency
         std::shared_ptr<const FileReadData> ReadChunk(
             /*[in] */ const std::string& remotePath,
-            /*[in] */ off64_t chunkOffset);
+            /*[in] */ off64_t chunkOffset,
+            /*[in] */ void* pUserBuf);
 
         /*
          * Helper to read chunk at given offset.
@@ -143,36 +153,37 @@ class StreamingClient
          */
         std::shared_ptr<const FileReadData> ReadChunkImpl(
             /*[in] */ const std::string& remotePath,
-            /*[in] */ off64_t chunkOffset);
+            /*[in] */ off64_t chunkOffset,
+            /*[in] */ void* pUserPassedbuffer);
 
         // Helper function to read chunk and copy the relevant part to user provided buffer.
         // Returns the number of bytes copied into buffer, -1 in case of error.
         ssize_t ReadChunkAndCopyToBuffer(
             /*[in] */ const std::string& remotePath,
             /*[in] */ off64_t chunkOffset,
-            /*[in] */ void* buf,
+            /*[in] */ void* pUserPassedbuffer,
             /*[in] */ size_t bufSize,
             /*[in] */ size_t chunkCopyOffset);
 
         // Function to serve read by sequentially downloading the required chunks.
         ssize_t ReadChunksSequential(
             /*[in] */ const std::string& remotePath,
-            /*[out]*/ void *buf,
-            /*[in] */ size_t readSize,
+            /*[in] */ void *pUserPassedbuffer,
+            /*[in] */ size_t totalReadSize,
             /*[in] */ off64_t readOffset);
 
         // Function to serve read by parallely downloading the required chunks.
         ssize_t ReadChunksParallel(
             /*[in] */ const std::string& remotePath,
-            /*[out]*/ void *buf,
-            /*[in] */ size_t readSize,
+            /*[in] */ void *pUserPassedbuffer,
+            /*[in] */ size_t totalReadSize,
             /*[in] */ off64_t readOffset);
 
         // Function to ensure all chunks in prefetch window(s) overlapping with current read are populated in the
         // prefetch cache. This is called only when large prefetch optimization is enabled.
         void EnsurePrefetchCacheWindowPopulated(
             /*[in] */ const std::string& remotePath,
-            /*[in] */ size_t readSize,
+            /*[in] */ size_t totalReadSize,
             /*[in] */ off64_t readOffset,
             /*[in] */ off64_t fileSize);
         

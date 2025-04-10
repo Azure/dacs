@@ -19,7 +19,7 @@ void PrefetchCacheTest::SetUp()
 //---------------------------------------------------------------------------------------------------------------------
 std::shared_ptr<FileReadData> PrefetchCacheTest::GetRandDataBuffer(off64_t offset, uint64_t size)
 {
-    std::shared_ptr<FileReadData> fileData = std::make_shared<FileReadData>(offset, size);
+    std::shared_ptr<FileReadData> fileData = std::make_shared<FileReadData>(offset, size, nullptr);
     std::generate(fileData->Buffer.get(), fileData->Buffer.get() + size, []{return rand() % 255;});
     return fileData;
 }
