@@ -61,6 +61,7 @@ StreamingClient::StreamingClient(
     , m_nReadChunksPrefetchCache(0)
     , m_nReadChunksRemoteCache(0)
     , m_nReadChunksRemoteClient(0)
+    , m_nReadChunksZeroCopy(0)
     , m_nGetPropertiesTotal(0)
     , m_nGetPropertiesCache(0)
     , m_nGetPropertiesRemoteClient(0)
@@ -77,6 +78,7 @@ StreamingClient::StreamingClient(
     , m_nReadLarge({0, 0})
     , m_nReadMax({0, 0})
     , m_bStopLogging(false)
+    , m_bEnableZeroCopy(StorageInterceptConfig::GetInstance().GetEnableZeroCopy(mountName))
 {
     SetClients(cacheClient, attributesCache);
 
@@ -108,9 +110,10 @@ StreamingClient::StreamingClient(
         this,
         StorageInterceptConfig::GetInstance().GetLogsRefreshIntervalInSeconds());
 
-    LOG_INFO("StreamingClient initialized. MountName={}, RemotePathPrefix={} ChunkSize={}, chunk cache={},"
-             " attribute cache={} readChunkParallelism={}, maxReadChunkConcurrency={},"
-             " enableLargePrefetch={}, prefetchWindowSizeInBytes={}, Commit hash={} built on {}",
+    LOG_INFO("StreamingClient initialized. MountName={}, RemotePathPrefix={} ChunkSize={}, ChunkCache={},"
+             " AttributeCache={} readChunkParallelism={}, maxReadChunkConcurrency={},"
+             " enableLargePrefetch={}, prefetchWindowSizeInBytes={},"
+             " enableZeroCopy={} Commit hash={} built on {}",
         mountName,
         m_strRemotePathPrefix,
         m_nChunkSize,
@@ -120,6 +123,7 @@ StreamingClient::StreamingClient(
         m_nMaxReadChunkConcurrency,
         m_bEnableLargePrefetch,
         m_nPrefetchWindowSize,
+        m_bEnableZeroCopy,
         BUILD_GIT_COMMIT_HASH,
         __DATE__);
 }
@@ -199,7 +203,7 @@ void StreamingClient::OpenFile(const std::string& remotePath)
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t StreamingClient::ReadFile(
     const std::string& remotePath,
-    void *buf,
+    void *pUserBuf,
     size_t readSize,
     off64_t readOffset,
     off64_t fileSize)
@@ -228,7 +232,7 @@ ssize_t StreamingClient::ReadFile(
 
         // All data for this read is now in prefetchCache,
         // reading chunks parallely won't speed-up as there won't be remote store calls.
-        ssize_t readBytes = ReadChunksSequential(remotePath, buf, readSize, readOffset);
+        ssize_t readBytes = ReadChunksSequential(remotePath, pUserBuf, readSize, readOffset);
         UpdateReadStats(readBytes, true);
         LogReadIO(remotePath, readOffset, readSize, readBytes);
         return readBytes;
@@ -238,13 +242,13 @@ ssize_t StreamingClient::ReadFile(
     // read required chunks in parallel.
     if (m_bEnableReadChunkParallelism && readSize > m_nChunkSize)
     {
-        ssize_t readBytes = ReadChunksParallel(remotePath, buf, readSize, readOffset);
+        ssize_t readBytes = ReadChunksParallel(remotePath, pUserBuf, readSize, readOffset);
         UpdateReadStats(readBytes, true);
         LogReadIO(remotePath, readOffset, readSize, readBytes);
         return readBytes;
     }
 
-    ssize_t readBytes = ReadChunksSequential(remotePath, buf, readSize, readOffset);
+    ssize_t readBytes = ReadChunksSequential(remotePath, pUserBuf, readSize, readOffset);
     UpdateReadStats(readBytes, true);
     LogReadIO(remotePath, readOffset, readSize, readBytes);
     return readBytes;
@@ -252,12 +256,12 @@ ssize_t StreamingClient::ReadFile(
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t StreamingClient::ReadChunksSequential(
     const std::string& remotePath,
-    void *buf,
-    size_t readSize,
+    void *pUserBuf,
+    size_t totalReadSize,
     off64_t readOffset)
 {
     ssize_t nBytesRead = 0;
-    const size_t readEnd = readOffset + readSize;
+    const size_t readEnd = readOffset + totalReadSize;
 
     // Divide into chunks and read sequentially
     off64_t chunkOffset = readOffset - (readOffset % m_nChunkSize);
@@ -272,10 +276,20 @@ ssize_t StreamingClient::ReadChunksSequential(
         const size_t bufSizeForChunkCopy = std::min(readEnd, (size_t)m_nChunkSize + chunkOffset) - currentOffset;
         const size_t chunkCopyOffset = currentOffset - chunkOffset;
 
+        LOG_DEBUG("ReadChunksSequential. remotePath={} chunkOffset={} currentOffset={} chunkCopyOffset={} bufSizeForChunkCopy={} bufOffset={} readSize={} readEnd={}",
+            remotePath,
+            chunkOffset,
+            currentOffset, 
+            chunkCopyOffset,
+            bufSizeForChunkCopy,
+            bufOffset,
+            totalReadSize,
+            readEnd);
+
         ssize_t bytesReadIntoBuffer = ReadChunkAndCopyToBuffer(
                 remotePath,
                 chunkOffset,
-                (char*)buf + bufOffset,
+                (char*)pUserBuf + bufOffset,
                 bufSizeForChunkCopy,
                 chunkCopyOffset);
 
@@ -304,11 +318,11 @@ ssize_t StreamingClient::ReadChunksSequential(
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t StreamingClient::ReadChunksParallel(
     const std::string& remotePath,
-    void *buf,
-    size_t readSize,
+    void *pUserBuf,
+    size_t totalReadSize,
     off64_t readOffset)
 {
-    const size_t readEnd = readOffset + readSize;
+    const size_t readEnd = readOffset + totalReadSize;
 
     // Divide into chunks and read parallely
     off64_t chunkOffset = readOffset - (readOffset % m_nChunkSize);
@@ -324,6 +338,16 @@ ssize_t StreamingClient::ReadChunksParallel(
         const size_t bufSizeForChunkCopy = std::min(readEnd, (size_t)m_nChunkSize + chunkOffset) - currentOffset;
         const size_t chunkCopyOffset = currentOffset - chunkOffset;
 
+        LOG_DEBUG("ReadChunksParallel. remotePath={} chunkOffset={} currentOffset={} chunkCopyOffset={} bufSizeForChunkCopy={} bufOffset={} readSize={} readEnd={} buf={}",
+            remotePath,
+            chunkOffset,
+            currentOffset,
+            chunkCopyOffset,
+            bufSizeForChunkCopy,
+            bufOffset,
+            totalReadSize,
+            readEnd,
+            static_cast<void*>(static_cast<char*>(pUserBuf) + bufOffset));
         // start async read chunk and store future result.
         asyncReadChunks.push_back(AsyncReadChunkInfo(chunkOffset, bufSizeForChunkCopy));
         // TODO: use threadpool to avoid thread creation costs.
@@ -333,7 +357,7 @@ ssize_t StreamingClient::ReadChunksParallel(
             this,
             std::ref(remotePath),
             chunkOffset,
-            (char*)buf + bufOffset,
+            (char*)pUserBuf + bufOffset,
             bufSizeForChunkCopy,
             chunkCopyOffset);
 
@@ -345,7 +369,7 @@ ssize_t StreamingClient::ReadChunksParallel(
     LOG_DEBUG("Collecting the results of all read chunk calls. RemotePath={} ReadOffset={} ReadSize={} ReadChunks={}",
         remotePath,
         readOffset,
-        readSize,
+        totalReadSize,
         asyncReadChunks.size());
 
     ssize_t nBytesRead = 0;
@@ -434,11 +458,20 @@ void StreamingClient::Close(const std::string& remotePath)
 ssize_t StreamingClient::ReadChunkAndCopyToBuffer(
     const std::string& remotePath,
     off64_t chunkOffset,
-    void* buf,
+    void* pUserBuf,
     size_t bufSize,
     size_t chunkCopyOffset)
 {
-    std::shared_ptr<const FileReadData> readChunkData = ReadChunk(remotePath, chunkOffset);
+    // Zero copy should be done only if chunk copy offset is in chunkSize boundary and valid user buffer is passed.
+    // And whether user buffer is aligned when ZC is enabled
+    const bool bCanZeroCopyPathBeTaken = (m_bEnableZeroCopy
+                                          && pUserBuf
+                                          && bufSize == m_nChunkSize
+                                          && chunkCopyOffset == 0);
+        
+    std::shared_ptr<const FileReadData> readChunkData = ReadChunk(remotePath,
+                                                                  chunkOffset,
+                                                                  bCanZeroCopyPathBeTaken ? pUserBuf : nullptr);
     if (!readChunkData)
     {
         LOG_ERROR("Read chunk failed. remotePath={} chunkOffset={}",
@@ -447,35 +480,45 @@ ssize_t StreamingClient::ReadChunkAndCopyToBuffer(
         return -1;
     }
 
-    LOG_DEBUG("Read chunk done. remotePath={}, chunkOffset={}, chunkBytesRead={}",
-        remotePath,
-        chunkOffset,
-        readChunkData->BufferSize);
-
-    // Copy from the chunk read data into caller-provided buffer
-    const size_t copySize = std::min(
-        readChunkData->BufferSize - chunkCopyOffset,
-        bufSize);
-    if (copySize > 0)
+    // If user buffer is filled, we have used the user buffer as zero-copy to read the data from cache or remote storage.
+    // In this case, we will not copy the data into caller-provided buffer.
+    if (readChunkData->bIsUserBuffer)
     {
-        memcpy(
-            (char*)buf,
-            readChunkData->Buffer.get() + chunkCopyOffset,
-            copySize);
+        LOG_DEBUG("Zero-copy read. chunkOffset={} chunkCopyOffset={} bufSize={}",
+            chunkOffset,
+            chunkCopyOffset,
+            readChunkData->BufferSize);
+        return readChunkData->BufferSize;
     }
-    LOG_DEBUG("Copied into caller buffer. chunkOffset={} chunkCopyOffset={} copySize={}",
-        chunkOffset,
-        chunkCopyOffset,
-        copySize);
-
-    return copySize;
+    else
+    {
+        // Copy from the chunk read data into caller-provided buffer if it is not a zero-copy read.
+        const size_t copySize = std::min(
+            readChunkData->BufferSize - chunkCopyOffset,
+            bufSize);
+        if (copySize > 0)
+        {
+            memcpy(
+                (char*)pUserBuf,
+                readChunkData->Buffer.get() + chunkCopyOffset,
+                copySize);
+        }
+        LOG_DEBUG("Copied into caller buffer. chunkOffset={} chunkCopyOffset={} copySize={}",
+            chunkOffset,
+            chunkCopyOffset,
+            copySize);
+        return copySize;
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::shared_ptr<const FileReadData> StreamingClient::ReadChunk(
     const std::string& remotePath,
-    off64_t chunkOffset)
+    off64_t chunkOffset,
+    void* pUserBuf)
 {
-    std::shared_ptr<const FileReadData> result = ReadChunkImpl(remotePath, chunkOffset);
+    std::shared_ptr<const FileReadData> result = ReadChunkImpl(remotePath,
+                                                               chunkOffset,
+                                                               pUserBuf);
 
     m_nReadChunksInProgress--;
     m_cvReadChunk.notify_one();
@@ -485,7 +528,8 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunk(
 //---------------------------------------------------------------------------------------------------------------------
 std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
     const std::string& remotePath,
-    off64_t chunkOffset)
+    off64_t chunkOffset,
+    void* pUserBuf)
 {
     m_nReadChunksTotal++;
 
@@ -495,19 +539,27 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
         return nullptr;
     }
 
-    // Try fetch from prefetch cache
     const std::string cacheFilePath = GetCacheFilePath(remotePath);
+
+    // Let's try to fetch from prefetch cache
+    // Even if zero-copy is enabled, we will still try to fetch from prefetch cache
+    // to avoid unnecessary remote storage/cache server calls, as memcopy is cheaper than network calls.
     std::shared_ptr<const FileReadData> prefetchLookupResult =
         PrefetchCache::GetInstance().Get(cacheFilePath, chunkOffset);
     if (prefetchLookupResult)
     {
-        LOG_DEBUG("Read file: {}, offset: {}, length: {} from prefetch cache",
-            remotePath, chunkOffset, prefetchLookupResult->BufferSize);
         m_nReadChunksPrefetchCache++;
         return prefetchLookupResult;
     }
 
-    std::shared_ptr<FileReadData> remoteReadData = std::make_shared<FileReadData>(chunkOffset, m_nChunkSize);
+    // Create a read data object to hold the data read from cache or remote storage
+    // If Zero Copy is enabled, we will use the pUserBuf as zero-copy to read the data.
+    // Else as pUserBuf was NULL - allocate and fetch the contents into new buffer,
+    // as this would be used for upload to cache in async manner and also held up in prefetch cache.
+    std::shared_ptr<FileReadData> remoteReadData =
+        std::make_shared<FileReadData>(chunkOffset,
+                                       m_nChunkSize,
+                                       (char *)pUserBuf);
 
     // Try fetching from cache service
     CacheStatus cacheStatus = CacheStatus::NOTFOUND;
@@ -520,7 +572,7 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
         {
             if(nIterations > 0)
             {
-                LOG_INFO("Failed to acquire entry/lock for cache key: {}, attempt: {}, retrying after {} seconds",
+                LOG_INFO("Failed to acquire entry/lock for cacheFilePath: {}, attempt: {}, retrying after {} seconds",
                     cacheFilePath,
                     nIterations,
                     m_nRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs);
@@ -539,18 +591,19 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
                 readLength);
             if (cacheStatus == CacheStatus::SUCCESS)
             {
-                LOG_DEBUG("Read file: {}, offset: {}, length: {} from cache", remotePath, chunkOffset, readLength);
                 remoteReadData->BufferSize = readLength;
                 m_nReadChunksRemoteCache++;
                 m_vecCacheDownloadLatencies[m_nTotalCacheDownloadLatencySamples.fetch_add(1) % m_nLatencySamplesVecSize] = DURATION_MS_GET(cacheDownload);
             }
             else if (cacheStatus == CacheStatus::INTERNAL_ERROR )
             {
-                LOG_WARN("Got server internal error for cache key: {}, ignore and continue blob download", cacheFilePath);
+                LOG_WARN("Got server internal error for cacheFilePath: {}, offset: {}, length: {}, ignore and continue blob download",
+                    cacheFilePath, chunkOffset, readLength);
             }
             else if (cacheStatus == CacheStatus::CHECKSUM_MISMATCH)
             {
-                LOG_WARN("Got checksum mismatch for cache key: {}, ignore and continue blob download", cacheFilePath);
+                LOG_WARN("Got checksum mismatch for cacheFilePath: {}, offset: {}, length: {} , ignore and continue blob download",
+                    cacheFilePath, chunkOffset, readLength);
             }
 
             nIterations++;
@@ -561,11 +614,23 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
         
         if (cacheStatus == CacheStatus::NOTFOUND && nIterations >= m_nRemoteDownloadOnlyWhenLockHeldMaxAttempts)
         {
-            LOG_WARN("Failed to acquire lock/entry for cache key: {}, max attempts reached: {}, downloading from remote store",
+            LOG_WARN("Failed to acquire lock/entry for cacheFilePath: {}, max attempts reached: {}, downloading from remote store",
                 cacheFilePath, m_nRemoteDownloadOnlyWhenLockHeldMaxAttempts);
         }
     }
 
+    if (cacheStatus == CacheStatus::SUCCESS && remoteReadData->bIsUserBuffer)
+    {
+        // Increment the read chunk count for zero-copy read
+        m_nReadChunksZeroCopy++;
+
+        // Zero copy read done from cache into user buffer.
+        // Hence returning the same buffer without upload of prefetch cache (to save memcpy)
+        LOG_DEBUG("ZC Cache read. Data already cached, no need to upload.");
+        return remoteReadData;
+    }
+
+    // If cache client is not available or cache download failed, fetch from remote storage
     if (cacheStatus != CacheStatus::SUCCESS)
     {
         // Fetch from remote storage   
@@ -591,19 +656,48 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
         m_nReadChunksRemoteClient++;
     }
 
+    // We have now the data in remoteReadData->Buffer, which is from remote storage.
+    // Hence, we need to upload it to the cache server & prefetch cache
+    std::shared_ptr<FileReadData> bufferForCacheUpload = remoteReadData;
+    if (remoteReadData->bIsUserBuffer)
+    {
+        // Zero copy read done from remote store into user buffer and cache is not enabled,
+        // Hence return the same buffer - there is no memcpy + upload to cache required.
+        if (!cacheClient)
+        {
+            // Increment the read chunk count for zero-copy read
+            m_nReadChunksZeroCopy++;
+
+            LOG_DEBUG("ZC Remote read. No cache client available, no need to upload to cache server or prefetch cache");
+            return remoteReadData;
+        }
+
+        // Create a new buffer for upload to cache server and prefetch cache
+        bufferForCacheUpload =
+            std::make_shared<FileReadData>(chunkOffset,
+                                           remoteReadData->BufferSize,
+                                           nullptr);
+
+        memcpy(bufferForCacheUpload->Buffer.get(),
+               remoteReadData->Buffer.get(),
+               remoteReadData->BufferSize);
+    }
+
     // upload to cache server if this client owns the cache key
     if (cacheClient && cacheStatus == CacheStatus::NOTFOUND_LOCKED)
     {
-        bool bRet = cacheClient->Upload(m_strMountName, cacheFilePath, chunkOffset, remoteReadData);
+        LOG_DEBUG("Uploading to cache server. file: {}, offset: {}", remotePath, chunkOffset);
+        bool bRet = cacheClient->Upload(m_strMountName, cacheFilePath, chunkOffset, bufferForCacheUpload);
         if (!bRet)
         {
             // Not taking any action on failure as this is only a best effort service
             LOG_DEBUG("Failed to upload file: {}, offset: {} to cache", remotePath, chunkOffset);
         }
     }
-    
+
+    LOG_DEBUG("Uploading to prefetch cache. file: {}, offset: {}", remotePath, chunkOffset);
     // Put to pre-fetch cache
-    PrefetchCache::GetInstance().Put(cacheFilePath, remoteReadData);
+    PrefetchCache::GetInstance().Put(cacheFilePath, bufferForCacheUpload);
 
     return remoteReadData;
 }
@@ -666,26 +760,35 @@ void StreamingClient::EnsurePrefetchCacheWindowPopulated(
 
     LOG_DEBUG("Starting parallel async read chunk calls for populating PrefetchCache."
         " RemotePath={} PrefetchStart={} PrefetchEnd={} UncachedOffsets={} MaxConcurrency={}"
-        " ReadStartOffset={} ReadEndOffset={}",
+        " ReadStartOffset={} ReadEndOffset={} m_nChunkSize={} readSize={}",
         remotePath,
         prefetchStart,
         prefetchEnd,
         uncachedOffsets.size(),
         m_nMaxReadChunkConcurrency,
         readOffset,
-        endOffset);
+        endOffset,
+        m_nChunkSize,
+        readSize);
+
+    // Iterate through the uncached offsets and start async read chunk calls
+    // to populate the prefetch cache.
     for (off64_t chunkOffset : uncachedOffsets)
     {
         // Proceed only when we are not exceeding the max allowed concurrency
         PreReadChunkCheck();
 
         // start async read chunk and store future result.
+        // Irrespective of enabling ZeroCopy Path, keeping this logic untouched
+        // as this will help to populate the prefetch cache and cache servers,
+        // which will be used for subsequent reads. Hence disable zero-copy for this.
         asyncReadChunks.push_back(std::async(
             std::launch::async,
             &StreamingClient::ReadChunk,
             this,
             std::ref(remotePath),
-            chunkOffset));
+            chunkOffset,
+            nullptr)); // pUserBuf is NULL as we are not using it for prefetch cache population.
     }
 
     // Wait for all the async read chunks to complete
@@ -796,7 +899,7 @@ void StreamingClient::LongRunningLogStats(const uint32_t sleepTimeInSec)
     {
         LogStats();
         m_loggingCV.wait_for(lock, std::chrono::seconds(sleepTimeInSec));
-    }    
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::LogStats()
@@ -808,12 +911,13 @@ void StreamingClient::LogStats()
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::LogReadChunkStats()
 {
-    LOG_INFO("ReadChunk stats: MountName={} Total={} PrefetchCache={} RemoteCache={} RemoteClient={}",
+    LOG_INFO("ReadChunk stats: MountName={} Total={} PrefetchCache={} RemoteCache={} RemoteClient={} RemoteZC={}",
         m_strMountName,
         m_nReadChunksTotal,
         m_nReadChunksPrefetchCache,
         m_nReadChunksRemoteCache,
-        m_nReadChunksRemoteClient);
+        m_nReadChunksRemoteClient,
+        m_nReadChunksZeroCopy);
 
     LOG_INFO("ReadFile requested stats. TotalReads={} 128k={} 4MB={}, 100MB={} 1GB={} >1GB={} TotalBytes={} "
         "MaxReadBytes={}",

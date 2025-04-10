@@ -191,7 +191,7 @@ bool RunPerfTest(/*[in]*/ int nParallelism,
     LOG_INFO("=============================================================");
     LOG_INFO("Test complete. Details below.")
     LOG_INFO("Test Mode: {}", strMode);
-    LOG_INFO("Throughput: {} Mbps", nThroughputMbps);
+    LOG_INFO("Throughput: {} Mbps {} Gbps", nThroughputMbps, nThroughputMbps/1024);
     LOG_INFO("Total bytes transferred: {}", nBytesTransferred);
     LOG_INFO("Total time taken: {} ms", durationMs);
     LOG_INFO("Expected chunks to tansfer: {}", nTotalChunksToTransfer);
@@ -201,7 +201,7 @@ bool RunPerfTest(/*[in]*/ int nParallelism,
 
     // Single line summary for easy parsing
     LOG_INFO("Summary: mode {},start_timestamp {},end_timestamp {},duration_ms {},total_bytes_transferred {},"
-             "throughput_Mbps {},total_individual_failures {},expected_chunks_to_transfer {},chuncks_successfully_transferred {}",
+             "throughput_Mbps {},total_individual_failures {},expected_chunks_to_transfer {},chunks_successfully_transferred {}",
              strMode,
              std::chrono::duration_cast<std::chrono::milliseconds>(startTime.time_since_epoch()).count(),
              std::chrono::duration_cast<std::chrono::milliseconds>(endTime.time_since_epoch()).count(),

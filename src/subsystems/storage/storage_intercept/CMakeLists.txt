@@ -86,6 +86,9 @@ file(GLOB STORAGE_INTERCEPT_SOURCES_TEST
 
 add_executable(StorageInterceptUnitTests ${STORAGE_INTERCEPT_SOURCES_TEST})
 
+# Ensure debugging symbols are enabled
+set_target_properties(StorageInterceptUnitTests PROPERTIES COMPILE_FLAGS "-g -O0")
+
 target_compile_definitions(StorageInterceptUnitTests PRIVATE STORAGE_INTERCEPT_UT=1)
 
 target_include_directories(StorageInterceptUnitTests PRIVATE
@@ -120,6 +123,7 @@ target_link_libraries(StorageInterceptUnitTests
         ${GTEST_LIBRARY}
         ${GTEST_MAIN_LIBRARY}
         -L${DEP_INSTALL_DIR}/lib
+        backtrace
         )
 
 add_test(NAME StorageInterceptUnitTests

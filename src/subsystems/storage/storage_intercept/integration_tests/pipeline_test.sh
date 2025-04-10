@@ -26,9 +26,9 @@ fi
 source /venv/bin/activate
 
 STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/libStorageIntercept.so"
+STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
 
 function append_interception_config_blob_prefix() {
-    STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
     MOUNT_PATH=$1
     ACCOUNT_NAME=$2
     MOUNT_PREFIX=$3
@@ -59,7 +59,6 @@ function append_interception_config_blob_prefix() {
 }
 
 function add_dynamic_mount_config() {
-    STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
     MOUNT_PATH=$1
 
     rm ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
@@ -71,7 +70,6 @@ function add_dynamic_mount_config() {
 }
 
 function add_interception_config_blob() {
-    STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
     STORAGE_INTERCEPT_PATH=$1
     TEST_MULTI_MOUNT=${2:false}
     IS_FUSE_ENABLED=${3:false}
@@ -102,7 +100,6 @@ function add_interception_config_blob_with_cache() {
     add_interception_config_blob $1 $2
     TEST_MULTI_MOUNT=${2:false}
 
-    STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
     if [ "$TEST_MULTI_MOUNT" = true ]
     then
       echo "mount1cacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
@@ -124,7 +121,6 @@ function add_interception_config_blob_with_cache_encryption() {
     add_interception_config_blob_with_cache $1 $2
     TEST_MULTI_MOUNT=${2:false}
 
-    STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
     if [ "$TEST_MULTI_MOUNT" = true ]
     then
       echo "mount1cacheEncryptionEnabled true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
@@ -142,7 +138,6 @@ function add_interception_config_blob_with_remote_cache() {
     add_interception_config_blob $1 $2 $3
     TEST_MULTI_MOUNT=${2:false}
 
-    STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
     if [ "$TEST_MULTI_MOUNT" = true ]
     then
       echo "mount1cacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
@@ -156,13 +151,13 @@ function add_interception_config_blob_with_remote_cache() {
     echo "cacheEnableRemote true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "cacheServerList 127.0.0.1" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
-    echo "Created the storage interception config file with remote attribute and data cache enabled"
+    echo "Created the storage interception config file with remote attribute and data cache enabled. Its contents are =>"
+    eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
 }
 
 function add_interception_config_blob_with_localssdcache() {
     add_interception_config_blob $1
 
-    STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
     echo "cacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "cacheUseLocalFS true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "cacheLocalFSCachePath ${CACHE_LOCAL_SSD_PATH}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
@@ -174,6 +169,9 @@ function add_interception_config_blob_with_localssdcache() {
 
 function start_cache_server() {
   local output_redirect_file=$1
+
+  # Check if cache server is already running and kill it
+  pkill CacheServer
 
   # ensure cache storage path is present
   mkdir -p ${CACHE_SERVER_PATH}
@@ -346,7 +344,7 @@ then
 echo "Unit tests against blob failed"
 exit 1
 fi
-echo ""
+echo -e "Unit tests against blob passed\n\n"
 
 echo "Running go integration test against blob"
 add_interception_config_blob /mnt/quiverfs
@@ -363,7 +361,7 @@ exit 1
 fi
 popd
 unset SI_azBlobSASToken
-echo ""
+echo -e "Go integration test passed\n\n"
 
 echo "Running integration test against blob with dynamic container mount"
 pip3 install h5py
@@ -374,7 +372,7 @@ then
 echo "Blob Integration test failed"
 exit 1
 fi
-echo ""
+echo -e "Blob Integration test with dynamic container mount passed\n\n"
 
 echo "Running integration test against blob with dynamic account mount"
 add_dynamic_mount_config /mnt/quiverfs
@@ -384,12 +382,12 @@ then
 echo "Blob Integration test failed"
 exit 1
 fi
-echo ""
+echo -e "Blob Integration test with dynamic account mount passed\n\n"
 
 #### END : Tests which DONT require cache server running ####
 
 #### BEGIN : Tests against cache server with snapshot and auth disabled ####
-start_cache_server
+start_cache_server /dev/null
 sleep 10
 
 
@@ -449,7 +447,7 @@ then
 echo "cache client lib unit test failed"
 exit 1
 fi
-echo ""
+echo -e "cache client lib unit test passed\n\n"
 
 echo "Running rust cache client integration test"
 
@@ -466,7 +464,7 @@ echo "Rust cache client integration test failed"
 exit 1
 fi
 popd
-echo ""
+echo -e "cache client lib integration test passed\n\n"
 
 stop_cache_server
 #### END : Tests against cache server with snapshot and auth disabled ####
@@ -475,7 +473,7 @@ stop_cache_server
 export CACHESERVER_AUTH_ENABLED="true"
 export CACHESERVER_AUTH_ACCOUNTNAME="us3rn@m3"
 export CACHESERVER_AUTH_ACCOUNTKEY="p@ssw0rd"
-start_cache_server
+start_cache_server /dev/null
 sleep 10
 
 echo "Running cache client lib test with authentication enabled"
@@ -486,7 +484,7 @@ then
 echo "cache client lib unit test with authentication failed"
 exit 1
 fi
-echo ""
+echo -e "cache client lib unit test with authentication passed\n\n"
 
 stop_cache_server
 unset CACHESERVER_AUTH_ENABLED
@@ -503,7 +501,7 @@ export CACHESERVER_HOSTNAME="testhost"
 export CACHESERVER_SNAPSHOT_INTERVAL="1"
 export CACHESERVER_EVICTION_ENABLED="true"
 export CACHESERVER_EVICTION_PASS_FREQUENCY="30s"
-start_cache_server
+start_cache_server /dev/null
 unset CACHESERVER_HOSTNAME
 unset CACHESERVER_SNAPSHOT_INTERVAL
 unset CACHESERVER_EVICTION_ENABLED
@@ -527,7 +525,7 @@ then
 echo "Unit tests against blob with cache failed"
 exit 1
 fi
-echo ""
+echo -e "Unit tests against blob with cache passed\n\n"
 
 echo "Running integration test against blob with cache"
 add_interception_config_blob_with_cache /mnt/quiverfs
@@ -537,7 +535,7 @@ then
 echo "Blob Integration test with cache failed"
 exit 1
 fi
-echo ""
+echo -e "Blob Integration test with cache passed\n\n"
 
 echo "Running unit tests against blob with cache and encryption enabled"
 add_interception_config_blob_with_cache_encryption /mnt/dataPathIntcpt
@@ -548,7 +546,7 @@ then
 echo "Unit tests against blob with cache and encryption failed"
 exit 1
 fi
-echo ""
+echo -e "Running unit tests against blob with cache and encryption passed\n\n"
 
 echo "Running integration test against blob with cache and encryption"
 add_interception_config_blob_with_cache_encryption /mnt/quiverfs true
@@ -558,18 +556,18 @@ then
 echo "Blob Integration test with cache and encryption failed"
 exit 1
 fi
-echo ""
+echo -e "Running integration test against blob with cache and encryption passed\n\n"
 
 echo "Running unit tests against blob with remote attribute and data cache enabled"
 add_interception_config_blob_with_remote_cache /mnt/dataPathIntcpt
 cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
-eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
+ctest -V --no-tests=error -j -1 -R StorageIntercept
 if [ $? -ne 0 ]
 then
 echo "Unit tests against blob with remote attribute and data cache failed"
 exit 1
 fi
-echo ""
+echo -e "Unit tests against blob with remote attribute and data cache passed\n\n"
 
 echo "Running integration test against blob with remote attribute and data cache enabled"
 add_interception_config_blob_with_remote_cache /mnt/quiverfs false true
@@ -579,7 +577,7 @@ then
 echo "Blob Integration test with remote attribute and data cache failed"
 exit 1
 fi
-echo ""
+echo -e "Blob Integration test with remote attribute and data cache passed\n\n"
 
 echo "Running integration test with multi-mount against blob with remote attribute and data cache enabled"
 add_interception_config_blob_with_remote_cache /mnt/quiverfs true
@@ -589,7 +587,7 @@ then
 echo "Blob Integration test with multi-mount and remote attribute and data cache failed"
 exit 1
 fi
-echo ""
+echo -e "Blob Integration test with multi-mount and remote attribute and data cache passed\n\n"
 
 echo "Running unit tests against blob with local ssd cache"
 reset_local_ssd_cache
@@ -601,7 +599,7 @@ then
 echo "Unit tests against blob with local ssd cache failed"
 exit 1
 fi
-echo ""
+echo -e "Unit tests against blob with local ssd cache passed\n\n"
 
 echo "Running integration test against blob with local ssd cache"
 reset_local_ssd_cache
@@ -612,7 +610,7 @@ then
 echo "Blob Integration test with local ssd cache failed"
 exit 1
 fi
-echo ""
+echo -e "Blob Integration test with local ssd cache passed\n\n"
 
 reset_local_ssd_cache
 stop_cache_server
@@ -625,7 +623,7 @@ __test_snapshot_disk_mismatch__
 __test_no_crash_on_invalid_snapshot__
 __test_upload_download_snapshot_in_parallel__
 __test_no_crash_on_truncated_snapshot__
-echo "Snapshot validation tests passed"
+echo -e "Snapshot validation tests passed\n\n"
 
 echo "Running cache eviction validation tests"
 source "$SCRIPT_DIR/eviction_integration_test.sh"
@@ -633,7 +631,7 @@ __run_cache_client_lib_test_with_eviction__
 __run_eviction_test_with_parallel_upload_download__
 __run_eviction_test_with_restart_snapshot__
 __run_delete_by_last_access_time__
- echo "Cache eviction validation tests passed"
+echo -e "Cache eviction validation tests passed\n\n"
 
  source "$SCRIPT_DIR/last_access_distribution_integration_test.sh"
 __run__test__last_access_time_distribution__

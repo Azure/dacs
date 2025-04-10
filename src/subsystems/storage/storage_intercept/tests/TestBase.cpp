@@ -13,15 +13,43 @@
 #include <vector>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <execinfo.h>
 //---------------------------------------------------------------------------------------------------------------------
 bool TestBase::m_bUsingMock;
 std::vector<char> TestBase::m_vecFileBuf;
 //---------------------------------------------------------------------------------------------------------------------
+void signalHandler(int signum) {
+    std::cout << "Interrupt signal (" << signum << ") received." << std::endl;
+    // Print backtrace
+    void* array[10];
+    size_t size = backtrace(array, 10);
+    char** messages = backtrace_symbols(array, size);
+
+    std::cerr << "Stack trace:" << std::endl;
+    for (size_t i = 0; i < size; i++) {
+        std::cerr << messages[i] << std::endl;
+    }
+
+    free(messages);
+
+    // Terminate program
+    exit(signum);
+}
+
 TestBase::TestBase()
     : m_bConfigUpdated(false)
 {
     static std::once_flag randomSeedFlag;
     std::call_once(randomSeedFlag, [](){srand(time(NULL));});
+
+    static std::once_flag sigHandlerFlag;
+    std::call_once(sigHandlerFlag, []() {
+        std::cout << "Enabling Sig Handler for SIGSEGV" << std::endl;
+        // Register signal handler for SIGSEGV to prevent process from crashing
+        if (::signal(SIGSEGV, signalHandler) == SIG_ERR) {
+            std::cout << "Registering SIGSEGV signal handler failed" << std::endl;
+        }
+    });
 
     const char* envUseEXistingConfig = std::getenv("STORAGE_INTERCEPT_USE_EXISITNG_CONFIG");
     if (envUseEXistingConfig && std::string(envUseEXistingConfig).compare("true") == 0)
@@ -98,8 +126,8 @@ void TestBase::SetupMockRemoteClient()
     std::map<std::string, std::string> mockClientConfig;
     mockClientConfig[StorageInterceptConstants::ConfigNameMockClientRoot] = mockClientRootDir;
 
-    // Step 2: Append to the config
-    std::ofstream outConfig(StorageInterceptConstants::DefaultConfigFilePath, std::ios_base::app);
+    // Step 2: Write the config
+    std::ofstream outConfig(StorageInterceptConstants::DefaultConfigFilePath);
     outConfig
         << StorageInterceptConstants::ConfigNameStoragePath
         << ' ' << m_strInterceptPath << std::endl
@@ -110,7 +138,7 @@ void TestBase::SetupMockRemoteClient()
         << StorageInterceptConstants::ConfigNameCacheEnable
         << " false" << std::endl
         << StorageInterceptConstants::ConfigNameAttributesCacheEnable
-        << " false";
+        << " false" << std::endl;
 
     outConfig.close();
 

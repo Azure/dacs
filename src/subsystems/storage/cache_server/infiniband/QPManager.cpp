@@ -64,7 +64,7 @@ ibutils::shared_ibv_qp QPManager::CreateQP(ibv_cq* sendCQ, ibv_srq* receiveSRQ, 
         {
             if (ibvQp)
             {
-                LOG_INFO("Closing qp={}", ibvQp->qp_num);
+                LOG_DEBUG("Closing qp={}", ibvQp->qp_num);
                 int rc = ibv_destroy_qp(ibvQp);
                 if (rc != 0)
                 {

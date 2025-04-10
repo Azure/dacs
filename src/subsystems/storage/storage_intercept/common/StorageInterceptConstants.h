@@ -97,6 +97,10 @@ namespace StorageInterceptConstants
     const char* const ConfigNameRemoteDownloadOnlyWhenLockHeldEnabled = "remoteDownloadOnlyWhenLockHeldEnabled";
     const char* const ConfigNameRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs = "remoteDownloadOnlyWhenLockHeldPollingIntervalInSeconds";
 
+    // Config constants for enabling zero copy.
+    // Benefitial for paths like sequential large file reads, aligned to streamingChunkSize
+    const char* const ConfigNameEnableZeroCopy = "enableZeroCopy";
+
     // Constants for file metadata
     const char* const CACHE_META_FILE_ISDIR = "FILE_ISDIR";
     const char* const CACHE_META_FILE_SIZE = "FILE_SIZE";

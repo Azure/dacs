@@ -23,7 +23,8 @@ class TestBase : public ::testing::Test
 
         // Remote path for a test file which we can read
         inline static const std::string m_strRemoteFilePath = "testFileForUt";
-        static constexpr uint32_t REMOTE_FILE_SIZE = 16 * 1024 * 1024;
+        static constexpr uint32_t REMOTE_FILE_SIZE = 16 * 1024 * 1024; // 16MB
+        static constexpr uint32_t DEFAULT_STREAMING_CHUNK_SIZE = 4 * 1024 * 1024; // 4MB
         static std::vector<char> m_vecFileBuf;
 
         // Remote path for a test dir and a file inside it

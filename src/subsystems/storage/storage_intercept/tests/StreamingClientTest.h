@@ -20,6 +20,12 @@ class StreamingClientTest : public TestBase
             /*[in]*/ size_t nStartIdxSecond,
             /*[in]*/ size_t nSize);
 
+        void PerformReadTest(
+            /*[in]*/ size_t bufferSize,
+            /*[in]*/ size_t offset,
+            /*[in]*/ ssize_t expectedBytesRead,
+            /*[in]*/ int expectedZeroCopyReads);
+
         std::vector<char>                   m_vecBuffer;
         std::shared_ptr<StreamingClient>    m_spStreamingClient;
 };

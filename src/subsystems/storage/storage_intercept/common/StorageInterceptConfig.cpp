@@ -880,3 +880,12 @@ uint64_t StorageInterceptConfig::GetPrefetchWindowSizeInMB(const std::string& mo
         100);
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::GetEnableZeroCopy(const std::string& mountName)
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameEnableZeroCopy,
+        false);
+}
+//---------------------------------------------------------------------------------------------------------------------
