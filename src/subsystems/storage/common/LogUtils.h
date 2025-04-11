@@ -31,7 +31,7 @@
 #define STORAGE_ASSERT_NOTHROW(condition, ...) do {                                                                 \
     if (!(condition))                                                                                               \
     {                                                                                                               \
-        LOG_CRITICAL("ASSERTION FAILED: {}", #condition);                                                           \
+        LOG_CRITICAL("CacheClientError - ASSERTION FAILED: {}", #condition);                                                           \
         LOG_CRITICAL(__VA_ARGS__);                                                                                  \
     }                                                                                                               \
 } while (0)
