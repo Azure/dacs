@@ -82,6 +82,9 @@ StreamingClient::StreamingClient(
 {
     SetClients(cacheClient, attributesCache);
 
+    STORAGE_ASSERT(m_nChunkSize % FileReadData::BufferAlignmentSize == 0,
+        "Chunk size must be a multiple of buffer alignment size");
+
     // Sanitize prefetch window size
     const size_t maxPrefetchWindowSize = (size_t)m_nChunkSize *
         (PrefetchCache::GetInstance().MAX_ENTRIES_PER_FILE / 2);
@@ -695,8 +698,8 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
         }
     }
 
-    LOG_DEBUG("Uploading to prefetch cache. file: {}, offset: {}", remotePath, chunkOffset);
     // Put to pre-fetch cache
+    LOG_DEBUG("Uploading to prefetch cache. file: {}, offset: {}", remotePath, chunkOffset);
     PrefetchCache::GetInstance().Put(cacheFilePath, bufferForCacheUpload);
 
     return remoteReadData;
@@ -911,8 +914,10 @@ void StreamingClient::LogStats()
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::LogReadChunkStats()
 {
-    LOG_INFO("ReadChunk stats: MountName={} Total={} PrefetchCache={} RemoteCache={} RemoteClient={} RemoteZC={}",
+    LOG_INFO("ReadChunk stats: MountName={} ChunkSize={} Total={} PrefetchCache={} RemoteCache={} RemoteClient={}"
+        " ZeroCopy={}",
         m_strMountName,
+        m_nChunkSize,
         m_nReadChunksTotal,
         m_nReadChunksPrefetchCache,
         m_nReadChunksRemoteCache,
