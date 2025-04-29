@@ -316,13 +316,17 @@ func executeDeleteInstruction(podName string) error {
 }
 
 func executeBindInstuction(podName string, destinationNode string) error {
-	err := ensurePVCBound(podName)
-	if err != nil {
-		log.Errorf("Error ensuring PVC bound for pod %s: %s", podName, err.Error())
-		return err
+	config := GetConfig()
+
+	if !config.IsHostPathMountEnabled {
+		err := ensurePVCBound(podName)
+		if err != nil {
+			log.Errorf("Error ensuring PVC bound for pod %s: %s", podName, err.Error())
+			return err
+		}
 	}
 
-	err = clientset.CoreV1().Pods(GetConfig().CacheserverNamespace).Bind(
+	err := clientset.CoreV1().Pods(GetConfig().CacheserverNamespace).Bind(
 		context.TODO(),
 		&v1.Binding{
 			ObjectMeta: metav1.ObjectMeta{
