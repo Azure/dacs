@@ -24,6 +24,7 @@ type Config struct {
 	ProcessingUnitLabelKey      string        `yaml:"processingUnitLabelKey" mapstructure:"processingUnitLabelKey"`
 	CacheserverNamespace        string        `yaml:"cacheserverNamespace" mapstructure:"cacheserverNamespace"`
 	EnableSchedulerCoordination bool          `yaml:"enableSchedulerCoordination" mapstructure:"enableSchedulerCoordination"`
+	IsHostPathMountEnabled      bool          `yaml:"isHostPathMountEnabled" mapstructure:"isHostPathMountEnabled"`
 }
 
 var (

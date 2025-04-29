@@ -106,7 +106,11 @@ spec:
           failureThreshold : 10
       volumes:
         - name: cache-data-volume
-{{- if .Values.cacheServer.useEphemeralStorage }}
+{{- if .Values.cacheServer.useHostPath }}
+          hostPath:
+            path: {{ .Values.cacheServer.nodeCacheFolderPath }}
+            type: Directory
+{{- else if .Values.cacheServer.useEphemeralStorage }}
           emptyDir:
             sizeLimit: {{ (printf "%dGi" (add1 .Values.cacheServer.serverSizeInGB)) }}
 {{- else if .Values.cacheServer.useCacheFolder }}
@@ -116,5 +120,4 @@ spec:
           persistentVolumeClaim:
             claimName: cacheserver-storage-pv2-rwx-claim
 {{- end }}
-          hostPath: null
 {{- end }}

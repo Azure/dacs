@@ -1,4 +1,4 @@
-{{- if and .Values.cacheServer.enabled (not .Values.cacheServer.useEphemeralStorage) (ne (int .Values.cacheServer.numServers) 0) }}
+{{- if and .Values.cacheServer.enabled (not .Values.cacheServer.useEphemeralStorage) (ne (int .Values.cacheServer.numServers) 0) (not .Values.cacheServer.useHostPath) }}
 {{ $storageClassName := "cacheserver-storage" }}
 {{ $storagePVName := "cacheserver-storage-largepv-v2" }}
 {{- if .Values.cacheServer.identifier }}
