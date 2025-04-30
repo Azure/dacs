@@ -6,6 +6,7 @@
 #include "StorageInterceptLogger.h"
 #include "StorageInterceptUtils.h"
 #include "RemoteClientException.h"
+#include "BlobAuthTokenProvider.h"
 #include <dirent.h>
 #include <random>
 #include <sstream>
@@ -69,11 +70,12 @@ BlobClient::BlobClient(const std::string& mountName)
     : m_strMountName(mountName)
     , m_bIsDynamicAccount(StorageInterceptConfig::GetInstance().IsDynamicAccountMount(mountName))
     , m_bIsDynamicContainer(StorageInterceptConfig::GetInstance().IsDynamicContainerMount(mountName))
+    , m_isTokenFetchEnabled(false)
 {
     GetConfigProperties();
     if (!m_bIsDynamicAccount)
     {
-        auto client = std::make_unique<azBlobClient_t>(
+        auto client = std::make_shared<azBlobClient_t>(
             std::make_shared<azStorageAccount_t>(
                 m_storageAccountContext.accountName,
                 m_storageAuthContext.credential,
@@ -83,18 +85,19 @@ BlobClient::BlobClient(const std::string& mountName)
             m_nMaxConnections
         );
         client->context()->set_retry_policy(std::make_shared<exponential_backoff_retry_policy>());
-        m_mapBlobClients[""] = std::move(client);
+        m_mapBlobClients[""] = client;
     }
 
     LOG_INFO(
         "Initialized blob client with mountName={} accountName={}, maxConnections={},"
-        " isDynamicAccount={} isDynamicContainer={} and authType={} successfully",
+        " isDynamicAccount={} isDynamicContainer={} authType={} and isTokenFetchEnabled={} successfully",
         mountName,
         m_bIsDynamicAccount ? "" : m_storageAccountContext.accountName,
         m_nMaxConnections,
         m_bIsDynamicAccount,
         m_bIsDynamicContainer,
-        m_storageAuthContext.authType);
+        m_storageAuthContext.authType,
+        m_isTokenFetchEnabled);
 }
 //---------------------------------------------------------------------------------------------------------------------
 const std::set<HttpStatus> BlobClient::m_setIgnorableErrors =
@@ -110,6 +113,13 @@ void BlobClient::GetConfigProperties()
     m_nMaxConnections =
         static_cast<size_t>(StorageInterceptConfig::GetInstance().GetMaxBlobConnectionsPerClient(m_strMountName));
 
+    if (StorageInterceptConfig::GetInstance().GetMSIEndpoint(m_strMountName).length() != 0 &&
+        StorageInterceptConfig::GetInstance().GetMSISecret(m_strMountName).length() != 0 &&
+        StorageInterceptConfig::GetInstance().GetIdentityClientId(m_strMountName).length() != 0)
+    {
+        m_isTokenFetchEnabled = true;
+    }
+
     if (m_bIsDynamicAccount)
     {
         if (StorageInterceptConfig::GetInstance().GetStorageSASToken(m_strMountName).length() != 0)
@@ -123,6 +133,12 @@ void BlobClient::GetConfigProperties()
             m_storageAuthContext = AzStorageAuthContext(
                 AzStorageAuthType::AccessToken,
                 StorageInterceptConfig::GetInstance().GetBlobAccessToken(m_strMountName));
+        }
+        else if (IsTokenRefreshed())
+        {
+            m_storageAuthContext = AzStorageAuthContext(
+                AzStorageAuthType::AccessToken,
+                m_strAccessToken);
         }
         else
         {
@@ -156,6 +172,12 @@ void BlobClient::GetConfigProperties()
             StorageInterceptConfig::GetInstance().GetBlobAccessToken(m_strMountName));
         // TODO: add support for taking in managed identity params and fetch+renew access tokens.
     }
+    else if (IsTokenRefreshed())
+    {
+        m_storageAuthContext = AzStorageAuthContext(
+            AzStorageAuthType::AccessToken,
+            m_strAccessToken);
+    }
     else
     {
         throw RemoteClientException("ConfigurationError: auth credentials missing");
@@ -171,7 +193,7 @@ ssize_t BlobClient::ReadChunkSync(const std::string& remotePath, void* buf, size
 {
     azure::storage_lite::omstream oStream((char *)buf, size);
     ssize_t nBytesRead = -1;
-    auto blobOutcome = GetBlobClient(remotePath).get_chunk_to_stream_sync(
+    auto blobOutcome = GetBlobClient(remotePath)->get_chunk_to_stream_sync(
         GetContainerName(remotePath),
         GetBlobName(remotePath),
         offset,
@@ -217,7 +239,7 @@ std::string BlobClient::ReadDirectory(
     /* Case of ls on mount point for dynamic container mounts - we need to list containers insted of blobs Performing automatic code translation */
     if (m_bIsDynamicContainer && remotePath.empty())
     {
-        auto listContainersOutcome = GetBlobClient(remotePath).list_containers_segmented(
+        auto listContainersOutcome = GetBlobClient(remotePath)->list_containers_segmented(
             "", /* prefix */
             continuationToken,
             DIRENTS_BATCH_SIZE).get();
@@ -257,7 +279,7 @@ std::string BlobClient::ReadDirectory(
     const std::string containerName = GetContainerName(remotePath);
 
     auto blobOutcome =
-        GetBlobClient(remotePath).list_blobs_segmented(
+        GetBlobClient(remotePath)->list_blobs_segmented(
             containerName,
             DIRECTORY_DELIMITER,
             continuationToken,
@@ -330,7 +352,7 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
         return 0;
     }
 
-    azBlobClient_t& blobClient = GetBlobClient(remotePath);
+    auto blobClient = GetBlobClient(remotePath);
     const std::string blobPath = GetBlobName(remotePath);
     const std::string containerName = GetContainerName(remotePath);
 
@@ -341,7 +363,7 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
         return 0;
     }
 
-    std::vector<azBlobItem_t> listBlobResult = ListOneBlob(blobClient, containerName, "", blobPath);
+    std::vector<azBlobItem_t> listBlobResult = ListOneBlob(*blobClient, containerName, "", blobPath);
 
     if (blobPath.back() == DIRECTORY_DELIMITER.back())
     {
@@ -356,7 +378,7 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
                 containerName,
                 blobPath);
             const std::string blobPathWithoutTrailingDelimiter = blobPath.substr(0, blobPath.size() - 1);
-            auto secondListBlobResult = ListOneBlob(blobClient, containerName, "", blobPathWithoutTrailingDelimiter);
+            auto secondListBlobResult = ListOneBlob(*blobClient, containerName, "", blobPathWithoutTrailingDelimiter);
             if (secondListBlobResult.size() > 0 && secondListBlobResult[0].name == blobPathWithoutTrailingDelimiter)
             {
                 LOG_WARN("File found instead of directory blobPath={}", blobPath);
@@ -415,7 +437,7 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
                     containerName,
                     blobPath);
                 const std::string blobPathWithTrailingDelimiter = blobPath + DIRECTORY_DELIMITER;
-                auto secondListBlobResult = ListOneBlob(blobClient, containerName, "", blobPathWithTrailingDelimiter);
+                auto secondListBlobResult = ListOneBlob(*blobClient, containerName, "", blobPathWithTrailingDelimiter);
                 if (secondListBlobResult.size() > 0)
                 {
                     // Directory exists as we got non-empty result
@@ -527,12 +549,51 @@ bool BlobClient::IsIgnorableError(HttpStatus statusCode)
     return isIgnorable;
 }
 //---------------------------------------------------------------------------------------------------------------------
-azure::storage_lite::blob_client& BlobClient::GetBlobClient(/*[in] */ const std::string& remotePath)
+bool BlobClient::IsTokenRefreshed()
+{
+    if(!m_isTokenFetchEnabled)
+    {
+        return false;
+    }
+
+    std::string accessToken = BlobAuthTokenProvider::GetInstance().GetAccessToken(m_strMountName);
+    if (!m_strAccessToken.empty() && (accessToken == m_strAccessToken))
+    {
+        LOG_DEBUG("Token is valid for mountName={}", m_strMountName);
+        return false;
+    }
+
+    LOG_INFO("Updated token for mountName={}", m_strMountName);
+    m_strAccessToken = accessToken;
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::shared_ptr<azure::storage_lite::blob_client> BlobClient::GetBlobClient(/*[in] */ const std::string& remotePath)
 {
     if (!m_bIsDynamicAccount)
     {
+        std::lock_guard<std::mutex> lock(m_lockBlobClients);
+
+        if(IsTokenRefreshed())
+        {
+            m_storageAuthContext= AzStorageAuthContext(
+                AzStorageAuthType::AccessToken,
+                m_strAccessToken);
+            m_mapBlobClients[""] = std::make_shared<azBlobClient_t>(
+                std::make_shared<azStorageAccount_t>(
+                    m_storageAccountContext.accountName,
+                    m_storageAuthContext.credential,
+                    USE_HTTPS,
+                    m_storageAccountContext.endpointUrl
+                ),
+                m_nMaxConnections
+            );
+            m_mapBlobClients[""]->context()->set_retry_policy(std::make_shared<exponential_backoff_retry_policy>());
+            LOG_INFO("New blob client with updated token for mountName={}", m_strMountName);
+        }
+        
         // Static account, return the only blob client
-        return *(m_mapBlobClients.begin()->second);
+        return m_mapBlobClients.begin()->second;
     }
 
     // Dynamic account, return the blob client corresponding to the accountHostName in remotePath
@@ -540,13 +601,22 @@ azure::storage_lite::blob_client& BlobClient::GetBlobClient(/*[in] */ const std:
     std::lock_guard<std::mutex> lock(m_lockBlobClients);
 
     auto itBlobClient = m_mapBlobClients.find(accountHostname);
-    if (itBlobClient == m_mapBlobClients.end())
+    if (itBlobClient == m_mapBlobClients.end() || (IsTokenRefreshed()))
     {
         const std::string accountName = accountHostname.substr(0, accountHostname.find('.'));
         const std::string endpointUrl = "https://" + accountHostname;
+        
+        if(m_isTokenFetchEnabled)
+        {
+            m_storageAuthContext = AzStorageAuthContext(
+                AzStorageAuthType::AccessToken,
+                m_strAccessToken);
+            
+            m_mapBlobClients.clear();
+        }
 
         LOG_INFO("Creating new blob client for account={}, endpoint={}", accountName, endpointUrl);
-        m_mapBlobClients[accountHostname] = std::make_unique<azBlobClient_t>(
+        m_mapBlobClients[accountHostname] = std::make_shared<azBlobClient_t>(
             std::make_shared<azStorageAccount_t>(
                 accountName,
                 m_storageAuthContext.credential,
@@ -555,12 +625,12 @@ azure::storage_lite::blob_client& BlobClient::GetBlobClient(/*[in] */ const std:
             ),
             m_nMaxConnections
         );
-
+        
         itBlobClient = m_mapBlobClients.find(accountHostname);
         (*(itBlobClient->second)).context()->set_retry_policy(std::make_shared<exponential_backoff_retry_policy>());
     }
 
-    return *(itBlobClient->second);
+    return itBlobClient->second;
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::string BlobClient::GetContainerName(const std::string& remotePath) const

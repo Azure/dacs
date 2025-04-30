@@ -65,9 +65,18 @@ If the blob requests need to be authenticated using SASToken, use
 azBlobSASToken <any-type-of-sas-token>
 ```
 
-If the blob requests need to be authenticated using an accessToken obtained from Managed Identity, use
+If the blob requests need to be authenticated using Managed Identity, use either:
+
+Option A: Fetch access token from outside the lib and pass a static access token using
 ```
 azBlobAccessToken <token>
+```
+
+Option B: Enable the lib to fetch token internally by configuring the these settings
+```
+azBlobMSIEndpoint <msi-endpoint>
+azBlobMSISecret <msi-secret>
+azBlobIdentityClientId <identity-client-id>
 ```
 
 To enable dynamic account interception, use
@@ -122,6 +131,8 @@ prefetchCachePerFileSizeInMB [Max in-memory data cache size per file]
 cacheEnableSyncUpload [After downloading chunk from remote blob on a cache miss upload to cache server synchronously in critical path. Note: This will increase client IO latency. default - false]
 attributesCachePutAllOnReaddir [Upload the readdir entries to remote attributes cache. default - false]
 enableZeroCopy [true or false - Try to download without any memcpy in case the user read spans over entire chunk(s). default - true]
+tokenRefreshBufferInSeconds [The buffer time before token expiry to start new access token fetch in background]
+tokenExpiryBufferInSeconds [ The buffer time before token expiry to consider the token as alredy expired]
 ```
 
 ### Config for running interception on multiple mounts

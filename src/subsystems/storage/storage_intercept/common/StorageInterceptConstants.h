@@ -73,6 +73,9 @@ namespace StorageInterceptConstants
     const char* const ConfigNameAzBlobStorageAccName = "azBlobStorageAccountName";
     const char* const ConfigNameAzBlobSASToken = "azBlobSASToken";
     const char* const ConfigNameAzBlobAccessToken = "azBlobAccessToken";
+    const char* const ConfigNameAzBlobMSIEndpoint = "azBlobMSIEndpoint";
+    const char* const ConfigNameAzBlobMSISecret = "azBlobMSISecret";
+    const char* const ConfigNameAzBlobIdentityClientId = "azBlobIdentityClientId";
     const char* const ConfigNameAzBlobStorageAccKey = "azBlobStorageAccountKey";
     const char* const ConfigNameAzBlobStorageEndpointUrl = "azBlobStorageEndpoint";
     const char* const ConfigNameAzBlobContainerName = "azBlobContainerName";
@@ -100,6 +103,10 @@ namespace StorageInterceptConstants
     // Config constants for enabling zero copy.
     // Benefitial for paths like sequential large file reads, aligned to streamingChunkSize
     const char* const ConfigNameEnableZeroCopy = "enableZeroCopy";
+
+    //config for dynamic token fetching
+    const char* const ConfigNameTokenRefreshBufferInSeconds = "tokenRefreshBufferInSeconds";
+    const char* const ConfigNameTokenExpiryBufferInSeconds = "tokenExpiryBufferInSeconds";
 
     // Constants for file metadata
     const char* const CACHE_META_FILE_ISDIR = "FILE_ISDIR";

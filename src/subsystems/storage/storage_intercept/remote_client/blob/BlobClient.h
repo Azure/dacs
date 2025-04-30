@@ -68,21 +68,24 @@ class BlobClient : public IRemoteClient
             /*[in]*/ const azBlobItem_t& blobItem,
             /*[out]*/ FileAttributes& attr);
         
-        azBlobClient_t& GetBlobClient(/*[in] */ const std::string& remotePath);
+        std::shared_ptr<azBlobClient_t> GetBlobClient(/*[in] */ const std::string& remotePath);
 
         std::string GetContainerName(/*[in] */ const std::string& remotePath) const;
 
         std::string GetBlobName(/*[in] */ const std::string& remotePath) const;
 
+        bool IsTokenRefreshed();
     private:
         const std::string                                           m_strMountName;
-        std::map<std::string, std::unique_ptr<azBlobClient_t>>      m_mapBlobClients;
+        std::map<std::string, std::shared_ptr<azBlobClient_t>>      m_mapBlobClients;
         std::mutex                                                  m_lockBlobClients;
         AzStorageAccountContext                                     m_storageAccountContext;
         AzStorageAuthContext                                        m_storageAuthContext;
         const bool                                                  m_bIsDynamicAccount;
         const bool                                                  m_bIsDynamicContainer;
         std::string                                                 m_strContainerName;
+        bool                                                        m_isTokenFetchEnabled;
+        std::string                                                 m_strAccessToken;
         size_t                                                      m_nMaxConnections;
         static constexpr bool                                       USE_HTTPS=true;
         static constexpr uint64_t                                   DIRENTS_BATCH_SIZE=10000;
