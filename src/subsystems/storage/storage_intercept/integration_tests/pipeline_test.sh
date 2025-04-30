@@ -28,6 +28,17 @@ source /venv/bin/activate
 STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/libStorageIntercept.so"
 STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
 
+#set IMDS endpoint as MSI endpoint for testing
+MSI_ENDPOINT="http://169.254.169.254/metadata/identity/oauth2/token"
+#secret is not required for IMDS endpoint
+MSI_SECRET="dummy"
+# identity client id for mi used in the test pipeline
+# this is the user assigned identity used for the azdacs build pool
+# the identity has storage blob data contributor role on the storage account storageinterceptionpr1 and storageinterceptionpr2
+# internal-reference-removed
+MOUNT_IDENTITY_CLIENT_ID="00000000-0000-0000-0000-000000000000"
+
+
 function append_interception_config_blob_prefix() {
     MOUNT_PATH=$1
     ACCOUNT_NAME=$2
@@ -39,10 +50,19 @@ function append_interception_config_blob_prefix() {
     echo "${MOUNT_PREFIX}storagePath ${MOUNT_PATH}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "${MOUNT_PREFIX}type blob" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "${MOUNT_PREFIX}azBlobStorageAccountName ${ACCOUNT_NAME}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "${MOUNT_PREFIX}azBlobSASToken \${${MOUNT_SAS_TOKEN_NAME}}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "${MOUNT_PREFIX}azBlobStorageEndpoint https://${ACCOUNT_NAME}.blob.core.windows.net" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "${MOUNT_PREFIX}azBlobContainerName dataset" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "${MOUNT_PREFIX}maxConnsPerBlobClient 200" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+
+    if [ -n "${MOUNT_SAS_TOKEN_NAME}" ]
+    then
+      echo "${MOUNT_PREFIX}azBlobSASToken \${${MOUNT_SAS_TOKEN_NAME}}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    else
+      echo "${MOUNT_PREFIX}azBlobIdentityClientId ${MOUNT_IDENTITY_CLIENT_ID}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+      echo "${MOUNT_PREFIX}azBlobMSIEndpoint ${MSI_ENDPOINT}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+      echo "${MOUNT_PREFIX}azBlobMSISecret ${MSI_SECRET}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    fi
+    
 
     if [ "$IS_DYNAMIC" = true ]
     then
@@ -66,7 +86,9 @@ function add_dynamic_mount_config() {
     echo "storagePath ${MOUNT_PATH}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "type blob" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "azBlobDynamicAccount true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "azBlobSASToken \${STORAGE_INTCPT_SAS_TOKEN}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "azBlobIdentityClientId ${MOUNT_IDENTITY_CLIENT_ID}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "azBlobMSIEndpoint ${MSI_ENDPOINT}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "azBlobMSISecret ${MSI_SECRET}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 }
 
 function add_interception_config_blob() {
@@ -87,9 +109,9 @@ function add_interception_config_blob() {
       append_interception_config_blob_prefix ${STORAGE_INTERCEPT_PATH} storageinterceptionpr1 "mount1" STORAGE_INTCPT_SAS_TOKEN true $IS_FUSE_ENABLED
 
       echo "mountName1 mount2" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-      append_interception_config_blob_prefix "${STORAGE_INTERCEPT_PATH}2" storageinterceptionpr2 "mount2" STORAGE_INTCPT_SAS_TOKEN2 true $IS_FUSE_ENABLED
+      append_interception_config_blob_prefix "${STORAGE_INTERCEPT_PATH}2" storageinterceptionpr2 "mount2" "" true $IS_FUSE_ENABLED
     else
-      append_interception_config_blob_prefix ${STORAGE_INTERCEPT_PATH} storageinterceptionpr1 "" STORAGE_INTCPT_SAS_TOKEN false $IS_FUSE_ENABLED
+      append_interception_config_blob_prefix ${STORAGE_INTERCEPT_PATH} storageinterceptionpr1 "" "" false $IS_FUSE_ENABLED
     fi
 
     echo "Created the storage interception config file. Its contents are =>"

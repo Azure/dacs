@@ -776,6 +776,33 @@ std::string StorageInterceptConfig::GetBlobAccessToken(const std::string& mountN
         "");
 }
 //---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::GetMSIEndpoint(const std::string& mountName)
+{
+    return StorageInterceptConfig::GetOptionalConfigStr(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameAzBlobMSIEndpoint,
+        "");
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::GetMSISecret(const std::string& mountName)
+{
+    return StorageInterceptConfig::GetOptionalConfigStr(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameAzBlobMSISecret,
+        "");
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::GetIdentityClientId(const std::string& mountName)
+{
+    return StorageInterceptConfig::GetOptionalConfigStr(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameAzBlobIdentityClientId,
+        "");
+}
+//---------------------------------------------------------------------------------------------------------------------
 std::string StorageInterceptConfig::GetBlobContainerName(const std::string& mountName)
 {
     return StorageInterceptConfig::GetConfigStr(
@@ -889,3 +916,18 @@ bool StorageInterceptConfig::GetEnableZeroCopy(const std::string& mountName)
         true);
 }
 //---------------------------------------------------------------------------------------------------------------------
+uint32_t StorageInterceptConfig::GetTokenRefreshBufferInSeconds()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint64(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameTokenRefreshBufferInSeconds,
+        DEFAULT_TOKEN_REFRESH_BUFFER_IN_SECONDS);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint32_t StorageInterceptConfig::GetTokenExpiryBufferInSeconds()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint64(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameTokenExpiryBufferInSeconds,
+        DEFAULT_TOKEN_EXPIRY_BUFFER_IN_SECONDS);
+}

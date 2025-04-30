@@ -1,0 +1,70 @@
+//---------------------------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.  All rights reserved.
+//---------------------------------------------------------------------------------------------------------------------
+#pragma once
+//---------------------------------------------------------------------------------------------------------------------
+#include <mutex>
+#include <chrono>
+#include <thread>
+#include <random>
+#include <iostream>
+#include <unordered_map>
+#include <curl/curl.h> 
+#include <sstream>
+#include <future>
+#include <jsoncpp/json/json.h>
+
+struct TokenInfo
+{
+    std::string token;
+    std::chrono::system_clock::time_point expiryTime;
+};
+struct HttpResponse
+{
+    CURLcode curlCode;
+    long statusCode;
+    std::string responseData;
+};
+class BlobAuthTokenProvider
+{
+public:
+    static BlobAuthTokenProvider& GetInstance();
+
+    // Function to fetch the access token for a given mount path
+    std::string GetAccessToken(const std::string& mountPath);
+
+    protected:
+    BlobAuthTokenProvider(); 
+
+    ~BlobAuthTokenProvider(); 
+
+private:
+    bool IsTokenExpired(TokenInfo& tokenInfo);
+    bool IsTokenNearingExpiry(TokenInfo& tokenInfo);
+    TokenInfo FetchNewAccessToken(const std::string& mountPath);
+    void PerformTokenUpdate(const std::string& mountPath);
+    virtual CURLcode PerformCurlRequest(CURL* curl); 
+    virtual long GetStatusCode(CURL* curl);
+    HttpResponse PerformCurlRequestWithHeaders(const std::string& url, const std::string& msiSecret);
+
+
+    static std::string GenerateMSIUrl(const std::string& msiEndpoint, const std::string& identityClientId);
+    static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp);
+    static bool IsRetryableError(CURLcode curlCode, long httpCode);
+
+    // Member variables
+    std::unordered_map<std::string, TokenInfo> m_mapMountPathToken;
+    std::unordered_map<std::string, bool> m_mapBgTokenUpdateInProgress;
+    std::unordered_map<std::string, std::shared_future<void>> m_mapBgTokenUpdateFutures;
+    std::mutex m_tokenUpdateLock;
+    std::mt19937 m_rng; 
+
+    const int m_tokenRefreshBufferSeconds;
+    const int m_tokenExpiryBufferSeconds;
+
+    static constexpr uint32_t MAX_DELAY_SEC = 64;
+    static constexpr uint32_t MAX_RETRIES = 5;
+    static constexpr uint32_t BASE_DELAY_SEC = 1;
+    static constexpr const char* STORAGE_RESOURCE = "https://storage.azure.com";
+
+};

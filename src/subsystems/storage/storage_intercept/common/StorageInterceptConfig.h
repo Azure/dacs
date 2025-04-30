@@ -94,6 +94,9 @@ class StorageInterceptConfig
         std::string GetStorageAccountKey(const std::string& mountName);
         std::string GetStorageSASToken(const std::string& mountName);
         std::string GetBlobAccessToken(const std::string& mountName);
+        std::string GetMSIEndpoint(const std::string& mountName);
+        std::string GetMSISecret(const std::string& mountName);
+        std::string GetIdentityClientId(const std::string& mountName);
         std::string GetStorageEndpointUrl(const std::string& mountName);
         std::string GetBlobContainerName(const std::string& mountName);
         bool IsDynamicAccountMount(const std::string& mountName);
@@ -115,6 +118,10 @@ class StorageInterceptConfig
 
         // Getters for zero copy
         bool GetEnableZeroCopy(const std::string& mountName);
+
+        //Getters for token refresh
+        uint32_t GetTokenRefreshBufferInSeconds();
+        uint32_t GetTokenExpiryBufferInSeconds();
 
         bool IsRemoteDownloadOnlyWhenLockHeldEnabled();
         uint64_t GetRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs();
@@ -216,5 +223,9 @@ class StorageInterceptConfig
 
         // Map containing config key values
         std::map<std::string, std::string> m_ConfigProps;
+
+        // Default constants for token expiry and refresh
+        static constexpr uint32_t DEFAULT_TOKEN_REFRESH_BUFFER_IN_SECONDS = 600;
+        static constexpr uint32_t DEFAULT_TOKEN_EXPIRY_BUFFER_IN_SECONDS = 120;
 };
 //---------------------------------------------------------------------------------------------------------------------
