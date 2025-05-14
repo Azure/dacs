@@ -126,6 +126,10 @@ class StorageInterceptConfig
         bool IsRemoteDownloadOnlyWhenLockHeldEnabled();
         uint64_t GetRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs();
 
+        bool IsCacheServerDiscoveryEnabled();
+        uint32_t CacheServerDiscoveryIntervalInSeconds();
+        std::string CacheServerDiscoveryEndpoint();
+
     private:
         // Constructor
         StorageInterceptConfig();

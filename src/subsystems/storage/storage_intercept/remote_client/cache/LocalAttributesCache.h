@@ -17,6 +17,8 @@
 class LocalAttributesCache : public IAttributesCache
 {
     public:
+        static constexpr const char* LOCALHOST = "127.0.0.1";
+
         LocalAttributesCache();
         ~LocalAttributesCache();
 

@@ -18,24 +18,28 @@ using namespace cache;
 //---------------------------------------------------------------------------------------------------------------------
 std::size_t CacheClientImpl::nDefaultConnectionPoolSize = 1024;
 //---------------------------------------------------------------------------------------------------------------------
-CacheClientImpl::CacheClientImpl() : m_bInitialized{false}
+CacheClientImpl::CacheClientImpl()
+: m_bInitialized{false}
 {
     LOG_INFO("CacheClientImpl constructor called");
 }
 //---------------------------------------------------------------------------------------------------------------------
 CacheClientStatus CacheClientImpl::Initialize(
     /*[in]*/ const char* const* arrServers,
-    /*[in]*/ uint32_t nNumServers,
-    /*[in]*/ uint32_t nPort,
-    /*[in]*/ bool bEnableIB,
-    /*[in]*/ bool bEnableCalculateChecksum,
-    /*[in]*/ bool bEnableValidateChecksum,
-    /*[in]*/ uint32_t nConnectionPoolSize,
-    /*[in]*/ bool bEnableAuth,
+    /*[in]*/ const uint32_t nNumServers,
+    /*[in]*/ const uint32_t nPort,
+    /*[in]*/ const bool bEnableIB,
+    /*[in]*/ const bool bEnableCalculateChecksum,
+    /*[in]*/ const bool bEnableValidateChecksum,
+    /*[in]*/ const uint32_t nConnectionPoolSize,
+    /*[in]*/ const bool bEnableAuth,
     /*[in]*/ const char* strAccountName,
     /*[in]*/ const char* strAccountKey,
-    /*[inopt]*/ bool bUseLocalServer,
-    /*[inopt]*/ bool bReuseConnections,
+    /*[in]*/ const bool bUseLocalServer,
+    /*[in]*/ const bool bReuseConnections,
+    /*[in]*/ const bool bIsCacheServerDiscoveryEnabled,
+    /*[in]*/ const uint32_t nCacheServerDiscoveryIntervalInSeconds,
+    /*[in]*/ const char* nCacheServerDiscoveryEndpoint,
     /*[inopt]*/ std::size_t nMaxBufferSizeBytes)
 {
     std::lock_guard<std::mutex> lock(m_mtxInitialization);
@@ -52,7 +56,7 @@ CacheClientStatus CacheClientImpl::Initialize(
         return CacheClientStatus::INTERNAL_ERROR;
     }
 
-    if(!bUseLocalServer && (arrServers == nullptr || nNumServers == 0))
+    if(!bIsCacheServerDiscoveryEnabled && !bUseLocalServer && (arrServers == nullptr || nNumServers == 0))
     {
         LOG_ERROR("Invalid empty server list");
         return CacheClientStatus::INVALID_ARGUMENT;
@@ -64,11 +68,11 @@ CacheClientStatus CacheClientImpl::Initialize(
         return CacheClientStatus::INVALID_ARGUMENT;
     }
 
+    std::vector<std::string> vecServers;
     if(arrServers != nullptr)
     {
         for(uint32_t i = 0; i < nNumServers; i++)
         {
-
             if(arrServers[i] == nullptr)
             {
                 LOG_ERROR("Invalid null server name");
@@ -81,13 +85,11 @@ CacheClientStatus CacheClientImpl::Initialize(
                 return CacheClientStatus::INVALID_ARGUMENT;
             }
 
-            m_vecServers.push_back(std::string(arrServers[i]));
+            vecServers.push_back(std::string(arrServers[i]));
         }
     }
 
-    m_nNumServers = nNumServers;
     m_nMaxBufferSizeBytes = nMaxBufferSizeBytes;
-    m_nPort = nPort;
     m_bEnableIB = bEnableIB;
     m_nConnectionPoolSize = nConnectionPoolSize == 0 ? nDefaultConnectionPoolSize : nConnectionPoolSize;
     m_bEnableAuth = bEnableAuth;
@@ -97,13 +99,16 @@ CacheClientStatus CacheClientImpl::Initialize(
     m_strAccountKey = strAccountKey == nullptr ? "" : std::string(strAccountKey);
     m_spConnectionManager = std::make_unique<ConnectionManager>(nPort,
                                                                 bUseLocalServer,
-                                                                m_vecServers,
+                                                                vecServers,
                                                                 bEnableAuth,
                                                                 m_strAccountName,
                                                                 m_strAccountKey,
                                                                 m_nConnectionPoolSize,
                                                                 bReuseConnections,
-                                                                bEnableIB);
+                                                                bEnableIB,
+                                                                bIsCacheServerDiscoveryEnabled,
+                                                                nCacheServerDiscoveryIntervalInSeconds,
+                                                                nCacheServerDiscoveryEndpoint);
     m_bInitialized = true;
     LOG_INFO("CacheClientImpl initialized. Num servers = {}. Port = {}. Enable IB = {}. Connection pool size = {}, Enable Calculate checksum = {}, Enable Validate checksum = {}",
              nNumServers,
@@ -253,8 +258,9 @@ CacheClientStatus CacheClientImpl::Upload(
         }
     }
 
-    const uint32_t nServerIndex = GetServerIndex(strCacheKey, m_nNumServers);
-    std::unique_ptr<IConnection> serverConnection = move(m_spConnectionManager->GetConnection(nServerIndex));
+    const std::string hostname = m_spConnectionManager->GetCacheServerHostname(strCacheKey);
+    LOG_DEBUG_REQID("Cache server hostname for file: {} is {}", *uploadRequest, strCacheKey, hostname);
+    std::unique_ptr<IConnection> serverConnection = move(m_spConnectionManager->GetConnection(hostname));
     if(serverConnection.get() == nullptr)
     {
         LOG_WARN_REQID("couldn't get server connection, ignoring upload for file: {}", *uploadRequest, strCacheKey);
@@ -274,14 +280,14 @@ CacheClientStatus CacheClientImpl::Upload(
     if(!bRet)
     {
         LOG_WARN_REQID("couldn't send request, ignoring upload for file: {}", *uploadRequest, strCacheKey);
-        m_spConnectionManager->ReleaseConnection(nServerIndex, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
         return CacheClientStatus::INTERNAL_ERROR;
     }
 
     if(nBufferLength > 0 && !cacheutils::WriteAllFinal(serverConnection.get(), pBuffer, nBufferLength))
     {
         LOG_WARN_REQID("couldn't complete write to server, file: {}", *uploadRequest, strCacheKey);
-        m_spConnectionManager->ReleaseConnection(nServerIndex, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
         return CacheClientStatus::INTERNAL_ERROR;
     }
 
@@ -289,7 +295,7 @@ CacheClientStatus CacheClientImpl::Upload(
     if(!ReadMessageFromRemote(serverConnection.get(), strResponse))
     {
         LOG_WARN_REQID("couldn't read response from server. file: {}", *uploadRequest, strCacheKey);
-        m_spConnectionManager->ReleaseConnection(nServerIndex, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
         return CacheClientStatus::INTERNAL_ERROR;
     }
 
@@ -297,7 +303,7 @@ CacheClientStatus CacheClientImpl::Upload(
     if(!response.ParseFromString(strResponse))
     {
         LOG_WARN_REQID("couldn't parse response from server. file: {}", *uploadRequest, strCacheKey);
-        m_spConnectionManager->ReleaseConnection(nServerIndex, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
         return CacheClientStatus::INTERNAL_ERROR;
     }
 
@@ -323,7 +329,7 @@ CacheClientStatus CacheClientImpl::Upload(
         status = CacheClientStatus::INTERNAL_ERROR;
     }
 
-    m_spConnectionManager->ReleaseConnection(nServerIndex, move(serverConnection), false);
+    m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), false);
     return status;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -396,14 +402,15 @@ CacheClientStatus CacheClientImpl::Download(
                     *nLength,
                     bEnableLock);
 
+    const std::string hostname = m_spConnectionManager->GetCacheServerHostname(strCacheKey);
+    LOG_DEBUG_REQID("Cache server hostname for file: {} is {}", *downloadRequest, strCacheKey, hostname);
     if(m_bEnableAuth && !AddAuthParams(request, m_strAccountName, m_strAccountKey))
     {
         LOG_WARN_REQID("failed to create auth request, key: {}", *downloadRequest, strCacheKey);
         return CacheClientStatus::AUTH_FAILED;
     }
 
-    const uint32_t serverIndex = GetServerIndex(strCacheKey, m_nNumServers);
-    std::unique_ptr<IConnection> serverConnection = move(m_spConnectionManager->GetConnection(serverIndex));
+    std::unique_ptr<IConnection> serverConnection = move(m_spConnectionManager->GetConnection(hostname));
     if(!serverConnection.get())
     {
         LOG_WARN_REQID("couldn't get server connection, key: {}", *downloadRequest, strCacheKey);
@@ -413,7 +420,7 @@ CacheClientStatus CacheClientImpl::Download(
     if(!SendMessageToRemoteFinal(serverConnection.get(), request))
     {
         LOG_WARN_REQID("couldn't send message to server, key: {}", *downloadRequest, strCacheKey);
-        m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
         return cacheClientStatus;
     }
 
@@ -421,7 +428,7 @@ CacheClientStatus CacheClientImpl::Download(
     if(!ReadMessageFromRemote(serverConnection.get(), responseMessage))
     {
         LOG_WARN_REQID("couldn't read message from server, key: {}", *downloadRequest, strCacheKey);
-        m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
         return cacheClientStatus;
     }
 
@@ -429,7 +436,7 @@ CacheClientStatus CacheClientImpl::Download(
     if(!response.ParseFromString(responseMessage))
     {
         LOG_WARN_REQID("error: Failed to parse protobuf message, key: {}", *downloadRequest, strCacheKey);
-        m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
         return cacheClientStatus;
     }
 
@@ -451,7 +458,7 @@ CacheClientStatus CacheClientImpl::Download(
                            strCacheKey,
                            actualReadLen,
                            *nLength);
-            m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
             return cacheClientStatus;
         }
 
@@ -461,7 +468,7 @@ CacheClientStatus CacheClientImpl::Download(
             {
                 LOG_ERROR_REQID(
                     "actualReadLen > 0 but no read buffer supplied, key: {}", *downloadRequest, strCacheKey);
-                m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
+                m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
                 return cacheClientStatus;
             }
 
@@ -469,7 +476,7 @@ CacheClientStatus CacheClientImpl::Download(
                    response, serverConnection.get(), static_cast<char*>(pOutBuffer), actualReadLen))
             {
                 LOG_WARN_REQID("Failed to complete read from server, key: {}", *downloadRequest, strCacheKey);
-                m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), true);
+                m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
                 return cacheClientStatus;
             }
         }
@@ -499,7 +506,7 @@ CacheClientStatus CacheClientImpl::Download(
                                    calculatedChecksum);
 
                     cacheClientStatus = CacheClientStatus::CHECKSUM_MISMATCH;
-                    m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), false);
+                    m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), false);
                     return cacheClientStatus;
                 }
             }
@@ -545,7 +552,7 @@ CacheClientStatus CacheClientImpl::Download(
         cacheClientStatus = CacheClientStatus::INTERNAL_ERROR;
     }
 
-    m_spConnectionManager->ReleaseConnection(serverIndex, move(serverConnection), false);
+    m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), false);
     return cacheClientStatus;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -579,9 +586,9 @@ CacheClientStatus CacheClientImpl::DeleteGroup(/*[in]*/ const char* groupID,
     }
 
     // Loop through each server, setup a connection and issue the delete request
-    for(std::size_t i = 0; i < m_nNumServers; i++)
+    const std::vector<std::string> cacheServerHostnames = m_spConnectionManager->GetAllCacheServerHostnames();
+    for(const std::string& hostname : cacheServerHostnames)
     {
-
         Request request;
         DeleteRequest* deleteGroupRequest = request.mutable_deleterequest();
         deleteGroupRequest->set_requestid(strCorrelationId);
@@ -594,8 +601,7 @@ CacheClientStatus CacheClientImpl::DeleteGroup(/*[in]*/ const char* groupID,
             return CacheClientStatus::AUTH_FAILED;
         }
 
-        std::unique_ptr<IConnection> connection = move(m_spConnectionManager->GetConnection(i));
-        std::string& hostname = m_vecServers[i];
+        std::unique_ptr<IConnection> connection = move(m_spConnectionManager->GetConnection(hostname));
 
         if(!connection || !connection.get())
         {
@@ -603,7 +609,7 @@ CacheClientStatus CacheClientImpl::DeleteGroup(/*[in]*/ const char* groupID,
                             *deleteGroupRequest,
                             hostname,
                             groupID);
-            m_spConnectionManager->ReleaseConnection(i, move(connection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -613,7 +619,7 @@ CacheClientStatus CacheClientImpl::DeleteGroup(/*[in]*/ const char* groupID,
                             *deleteGroupRequest,
                             hostname,
                             groupID);
-            m_spConnectionManager->ReleaseConnection(i, move(connection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -624,7 +630,7 @@ CacheClientStatus CacheClientImpl::DeleteGroup(/*[in]*/ const char* groupID,
                             *deleteGroupRequest,
                             hostname,
                             groupID);
-            m_spConnectionManager->ReleaseConnection(i, move(connection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -641,7 +647,7 @@ CacheClientStatus CacheClientImpl::DeleteGroup(/*[in]*/ const char* groupID,
         switch(response.result())
         {
         case DeleteResponse::SUCCESS:
-            m_spConnectionManager->ReleaseConnection(i, move(connection), false);
+            m_spConnectionManager->ReleaseConnection(hostname, move(connection), false);
             continue;
 
         case DeleteResponse::AUTH_FAILED:
@@ -698,10 +704,10 @@ CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
 
     std::map<int64_t, uint64_t> lastAccessTimeDistribution;
 
-    for(std::size_t i = 0; i < m_nNumServers; i++)
+    const std::vector<std::string> cacheServerHostnames = m_spConnectionManager->GetAllCacheServerHostnames();
+    for(const std::string& hostname : cacheServerHostnames)
     {
         Request request;
-        std::string hostname = m_vecServers[i];
         GetCacheLastAccessTimeDistributionRequest* lastAccessTimeDistributionRequest = request.mutable_getcachelastaccesstimedistributionrequest();
         lastAccessTimeDistributionRequest->set_requestid(strCorrelationId);
         lastAccessTimeDistributionRequest->set_distributionbucketsizeinhours(nDistributionBucketSizeInHours);
@@ -714,13 +720,13 @@ CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
             return CacheClientStatus::AUTH_FAILED;
         }
 
-        std::unique_ptr<IConnection> connection = move(m_spConnectionManager->GetConnection(i));
+        std::unique_ptr<IConnection> connection = move(m_spConnectionManager->GetConnection(hostname));
         if(!connection || !connection.get())
         {
             LOG_ERROR_REQID("Couldn't get server connection, access time distribution request for server: {}",
                             *lastAccessTimeDistributionRequest,
                             hostname);
-            m_spConnectionManager->ReleaseConnection(i, move(connection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -729,7 +735,7 @@ CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
             LOG_ERROR_REQID("Couldn't send message to server, access time distribution request for server: {}",
                             *lastAccessTimeDistributionRequest,
                             hostname);
-            m_spConnectionManager->ReleaseConnection(i, move(connection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -739,7 +745,7 @@ CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
             LOG_ERROR_REQID("Couldn't read message from server, access time distribution request for server: {}",
                             *lastAccessTimeDistributionRequest,
                             hostname);
-            m_spConnectionManager->ReleaseConnection(i, move(connection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -764,7 +770,7 @@ CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
             {
                 lastAccessTimeDistribution[entry.first] += entry.second;
             }
-            m_spConnectionManager->ReleaseConnection(i, move(connection), false);
+            m_spConnectionManager->ReleaseConnection(hostname, move(connection), false);
             continue;
 
         case GetCacheLastAccessTimeDistributionResponse::AUTH_FAILED:
@@ -831,9 +837,9 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
     }
 
     // Loop through each server, setup a connection and issue the delete request
-    for(std::size_t i = 0; i < m_nNumServers; i++)
+    const std::vector<std::string> cacheServerHostnames = m_spConnectionManager->GetAllCacheServerHostnames();
+    for(const std::string& hostname : cacheServerHostnames)
     {
-
         Request request;
         DeleteRequest* deleteByLastAccessTimeRequest = request.mutable_deleterequest();
         deleteByLastAccessTimeRequest->set_requestid(strCorrelationId);
@@ -846,8 +852,7 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
             return CacheClientStatus::AUTH_FAILED;
         }
 
-        std::unique_ptr<IConnection> connection = move(m_spConnectionManager->GetConnection(i));
-        const std::string& hostname = m_vecServers[i];
+        std::unique_ptr<IConnection> connection = move(m_spConnectionManager->GetConnection(hostname));
 
         if(!connection || !connection.get())
         {
@@ -855,7 +860,7 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
                             *deleteByLastAccessTimeRequest,
                             hostname,
                             lastAccessTime);
-            m_spConnectionManager->ReleaseConnection(i, move(connection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -865,7 +870,7 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
                             *deleteByLastAccessTimeRequest,
                             hostname,
                             lastAccessTime);
-            m_spConnectionManager->ReleaseConnection(i, move(connection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -876,7 +881,7 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
                             *deleteByLastAccessTimeRequest,
                             hostname,
                             lastAccessTime);
-            m_spConnectionManager->ReleaseConnection(i, move(connection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -899,7 +904,7 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
         switch(response.result())
         {
         case DeleteResponse::SUCCESS:
-            m_spConnectionManager->ReleaseConnection(i, move(connection), false);
+            m_spConnectionManager->ReleaseConnection(hostname, move(connection), false);
             continue;
 
         case DeleteResponse::AUTH_FAILED:

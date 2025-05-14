@@ -38,7 +38,7 @@ int main(int argc, char** argv)
     CacheClientImpl cacheClient;
     const char* arrServers[1] = {strCacheServerHostName.c_str()};
     cacheClient.Initialize(arrServers,
-                           1, /*nServers*/
+                           1,       /*nServers*/
                            nCacheServerPort,
                            false,   /*bEnableIB*/
                            false,   /*bEnableCalculateChecksum*/
@@ -49,7 +49,10 @@ int main(int argc, char** argv)
                            nullptr, /*strAccountKey*/
                            false,   /*bUseLocalServer*/
                            true,    /*bReuseConnections*/
-                           0 /*nMaxBufferSizeBytes*/);
+                           false,   /*bIsCacheServerDiscoveryEnabled*/
+                           300,     /*nCacheServerDiscoveryIntervalInSeconds*/
+                           strCacheServerHostName.c_str(), /*nCacheServerDiscoveryEndpoint*/
+                           0        /*nMaxBufferSizeBytes*/);
 
     std::string strFileName = "liveness_probe_" + cacheutils::GetCorrelationId();
     void* pBuffer = malloc(MAX_BUFFER_SIZE_BYTES);

@@ -25,7 +25,26 @@
 using namespace std;
 using namespace cacheutils;
 //---------------------------------------------------------------------------------------------------------------------
-void CacheClientTests::InitializeClient(CacheClientImpl& client, bool bEnableCalculateChecksum, bool bEnableValidateChecksum )
+/**
+ * ### Key Features:
+ * 1. **Parameterized Tests**:
+ *    - The parameter `bIsDiscoveryEnabled` is passed to each test case, allowing the tests to run 
+ *      with both `true` and `false` values.
+ *    - This ensures that the behavior of CacheClientImpl is validated in both discovery-enabled 
+ *      and discovery-disabled scenarios.
+ *
+ * 2. **Test Initialization**:
+ *    - The `SetUp()` method initializes the CacheClientImpl instance based on the value of 
+ *      `bIsDiscoveryEnabled`.
+ *
+ * 3. **Test Instantiation**:
+ *    - The `INSTANTIATE_TEST_SUITE_P` macro is used to instantiate the test suite with two values 
+ *      for `bIsDiscoveryEnabled`: `true` and `false`.
+ *    - This ensures that all test cases are executed twice, once with discovery enabled and once 
+ *      with discovery disabled.
+ */
+//---------------------------------------------------------------------------------------------------------------------
+void CacheClientTests::InitializeClient(CacheClientImpl& client, bool bIsDiscoveryEnabled , bool bEnableCalculateChecksum, bool bEnableValidateChecksum )
 {
     static uint32_t nPort = atoi(getenv("CACHE_SERVER_PORT"));
     static char* authAccountName = getenv("CACHESERVER_AUTH_ACCOUNTNAME");
@@ -38,22 +57,46 @@ void CacheClientTests::InitializeClient(CacheClientImpl& client, bool bEnableCal
     bool enableValidateChecksum = bEnableValidateChecksum;
     bool enableAuth = authAccountKey != nullptr && authAccountName != nullptr;
 
-    client.Initialize(arrServers,
-                      nServers,
-                      nPort,
-                      enableIB,
-                      enableCalculateChecksum,
-                      enableValidateChecksum,
-                      0,
-                      enableAuth,
-                      authAccountName ? authAccountName : "",
-                      authAccountKey ? authAccountKey : "",
-                      false,
-                      true);
+    /**
+     * The `nCacheServerDiscoveryIntervalInSeconds` is set to 2 seconds because
+     * the destructor of `ConnectionManager` waits for the background thread
+     * to finish its sleep cycle. Setting a larger value would increase the time
+     * required for the test to complete.
+     * Since each test creates a new instance of `CacheClientImpl`, this delay
+     * impacts the execution time of every test in the suite.
+     */
+    client.Initialize(bIsDiscoveryEnabled ? nullptr : arrServers, /** arrServers*/
+                      nServers, /** nServers*/
+                      nPort, /** nPort*/
+                      enableIB, /** enableIB*/
+                      enableCalculateChecksum, /** enableCalculateChecksum*/
+                      enableValidateChecksum, /** enableValidateChecksum*/
+                      0, /** nConnectionPoolSize*/
+                      enableAuth, /** enableAuth*/
+                      authAccountName ? authAccountName : "", /** strAccountName*/
+                      authAccountKey ? authAccountKey : "", /** strAccountKey*/
+                      false, /** bUseLocalServer*/
+                      true, /** bReuseConnections*/
+                      bIsDiscoveryEnabled, /** bIsCacheServerDiscoveryEnabled*/
+                      2, /** nCacheServerDiscoveryIntervalInSeconds*/
+                      arrServers[0] /** nCacheServerDiscoveryEndpoint*/
+                    );
 }
 //---------------------------------------------------------------------------------------------------------------------
 void CacheClientTests::SetUp()
 {
+    bool bIsDiscoveryEnabled = GetParam(); // Get the parameter value
+    LOG_INFO("CacheClientTests::SetUp() bIsDiscoveryEnabled={}", bIsDiscoveryEnabled);
+
+    // Setting up the endpoint format for local server (testing purpose only)
+    if (bIsDiscoveryEnabled) {
+        SetCacheServerCount(1);
+
+        ofstream configFile("/serverConfig/cache_server_endpoint_format");
+        configFile << "127.0.{}.1"; // with one cacheservers, will be 127.0.0.1
+        configFile.close();
+    }
+
     if(!getenv("CACHE_SERVER_PORT"))
     {
         GTEST_SKIP();
@@ -61,12 +104,12 @@ void CacheClientTests::SetUp()
 
     if(!m_cacheClientImpl.IsInitialized())
     {
-        InitializeClient(m_cacheClientImpl);
+        InitializeClient(m_cacheClientImpl, bIsDiscoveryEnabled);
     }
 
     if(!m_cacheClientImplCRC.IsInitialized())
     {
-        InitializeClient(m_cacheClientImplCRC, true, true);
+        InitializeClient(m_cacheClientImplCRC, bIsDiscoveryEnabled, true, true);
     }   
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -74,7 +117,7 @@ void CacheClientTests::TearDown()
 {
 }
 //---------------------------------------------------------------------------------------------------------------------
-const char* CacheClientTests::GetRandomBuffer(const uint64_t nLength)
+const char* CacheClientTests::GetRandomBuffer(const uint64_t nLength) const
 {
     char* pBuffer = (char*)malloc(nLength);
     for(uint64_t i = 0; i < min((uint64_t)50, nLength); i++)
@@ -84,7 +127,24 @@ const char* CacheClientTests::GetRandomBuffer(const uint64_t nLength)
     return (const char*)pBuffer;
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, UploadSmallFiles)
+/**
+ * Set the cache server count in the configuration file.
+ * This function creates a directory named "/serverConfig" if it doesn't exist,
+ * and writes the specified count to a file named "cache_server_count" within that directory.
+ */
+void CacheClientTests::SetCacheServerCount(int count) const {
+    string path = "/serverConfig";
+    if (mkdir(path.c_str(), 0777) != 0 && errno != EEXIST)
+    {
+        LOG_ERROR("Failed to create directory: {}. Error: {}", path, strerror(errno));
+        assert(false && "Directory creation failed");
+    }
+    ofstream configFile("/serverConfig/cache_server_count");
+    configFile << count;
+    configFile.close();
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, UploadSmallFiles)
 {
     uint64_t nLength = 4 * 1024 * 1024;
     const char* pBuffer = GetRandomBuffer(nLength);
@@ -118,7 +178,7 @@ TEST_F(CacheClientTests, UploadSmallFiles)
     free((void*)pBuffer);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, UploadDuplicateFiles)
+TEST_P(CacheClientTests, UploadDuplicateFiles)
 {
     uint64_t nLength = 4 * 1024 * 1024;
     const char* pBuffer = GetRandomBuffer(nLength);
@@ -135,7 +195,7 @@ TEST_F(CacheClientTests, UploadDuplicateFiles)
     free((void*)pBuffer);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, UploadLargeFiles)
+TEST_P(CacheClientTests, UploadLargeFiles)
 {
     uint64_t nLength = 256 * 1024 * 1024;
     const char* pBuffer = GetRandomBuffer(nLength);
@@ -146,7 +206,7 @@ TEST_F(CacheClientTests, UploadLargeFiles)
     free((void*)pBuffer);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, Initialization)
+TEST_P(CacheClientTests, Initialization)
 {
     const char* arrServers[] = {"127.0.0.1"};
     uint32_t nServers = 1;
@@ -160,22 +220,82 @@ TEST_F(CacheClientTests, Initialization)
         CacheClientImpl client;
         // First initialization
         ASSERT_EQ(CacheClientStatus::SUCCESS,
-                  client.Initialize(arrServers, nServers, nPort, enableIB, enableCalculateChecksum, enableValidateChecksum, 0, true, accountName, accountKey));
+            client.Initialize(arrServers /**arrServers*/,
+                                nServers /**nServers*/,
+                                nPort /**nPort*/,
+                                enableIB /**enableIB*/,
+                                enableCalculateChecksum /**enableCalculateChecksum*/,
+                                enableValidateChecksum /**enableValidateChecksum*/,
+                                0 /**nConnectionPoolSize*/,
+                                true /**enableAuth*/,
+                                accountName /**accountName*/,
+                                accountKey /**accountKey*/,
+                                false /**useLocalServer*/,
+                                true /**bReuseConnections*/,
+                                false /**bIsCacheServerDiscoveryEnabled*/,
+                                5 /**nCacheServerDiscoveryIntervalInSeconds*/,
+                                arrServers[0] /**nCacheServerDiscoveryEndpoint*/));
 
         // Re-initialization
         ASSERT_EQ(CacheClientStatus::INTERNAL_ERROR,
-                  client.Initialize(arrServers, nServers, nPort, enableIB, enableCalculateChecksum, enableValidateChecksum, 0, true, accountName, accountKey));
+            client.Initialize(arrServers /**arrServers*/,
+                                nServers /**nServers*/,
+                                nPort /**nPort*/,
+                                enableIB /**enableIB*/,
+                                enableCalculateChecksum /**enableCalculateChecksum*/,
+                                enableValidateChecksum /**enableValidateChecksum*/,
+                                0 /**nConnectionPoolSize*/,
+                                true /**enableAuth*/,
+                                accountName /**accountName*/,
+                                accountKey /**accountKey*/,
+                                false /**useLocalServer*/,
+                                true /**bReuseConnections*/,
+                                false /**bIsCacheServerDiscoveryEnabled*/,
+                                5 /**nCacheServerDiscoveryIntervalInSeconds*/,
+                                arrServers[0] /**nCacheServerDiscoveryEndpoint*/));
+
+        // Re-initialization with discovery enabled
+        ASSERT_EQ(CacheClientStatus::INTERNAL_ERROR,
+            client.Initialize(arrServers /**arrServers*/,
+                                nServers /**nServers*/,
+                                nPort /**nPort*/,
+                                enableIB /**enableIB*/,
+                                enableCalculateChecksum /**enableCalculateChecksum*/,
+                                enableValidateChecksum /**enableValidateChecksum*/,
+                                0 /**nConnectionPoolSize*/,
+                                true /**enableAuth*/,
+                                accountName /**accountName*/,
+                                accountKey /**accountKey*/,
+                                false /**useLocalServer*/,
+                                true /**bReuseConnections*/,
+                                true /**bIsCacheServerDiscoveryEnabled*/,
+                                2 /**nCacheServerDiscoveryIntervalInSeconds*/,
+                                arrServers[0] /**nCacheServerDiscoveryEndpoint*/));
     }
 
     {
         CacheClientImpl client;
         // No auth credentials
         ASSERT_EQ(CacheClientStatus::SUCCESS,
-                  client.Initialize(arrServers, nServers, nPort, enableIB, enableCalculateChecksum, enableValidateChecksum, 0, true, "", ""));
+            client.Initialize(arrServers /**arrServers*/,
+                nServers /**nServers*/,
+                nPort /**nPort*/,
+                enableIB /**enableIB*/,
+                enableCalculateChecksum /**enableCalculateChecksum*/,
+                enableValidateChecksum /**enableValidateChecksum*/,
+                0 /**nConnectionPoolSize*/,
+                true /**enableAuth*/,
+                "" /**accountName*/,
+                "" /**accountKey*/,
+                false /**useLocalServer*/,
+                true /**bReuseConnections*/,
+                false /**bIsCacheServerDiscoveryEnabled*/,
+                5 /**nCacheServerDiscoveryIntervalInSeconds*/,
+                arrServers[0] /**nCacheServerDiscoveryEndpoint*/));
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, DownloadNonExistent)
+TEST_P(CacheClientTests, DownloadNonExistent)
 {
     uint64_t nLength = 1024;
     void* pBuffer = malloc(nLength);
@@ -185,7 +305,7 @@ TEST_F(CacheClientTests, DownloadNonExistent)
     free(pBuffer);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, DownloadFiles)
+TEST_P(CacheClientTests, DownloadFiles)
 {
     string filename = GetCorrelationId();
     uint64_t nLength = 1024;
@@ -213,7 +333,7 @@ TEST_F(CacheClientTests, DownloadFiles)
     free((void*)pBuffer3);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, DownloadFilesWithKeyValuePairs)
+TEST_P(CacheClientTests, DownloadFilesWithKeyValuePairs)
 {
     string filename = GetCorrelationId();
     uint64_t nLength = 1024;
@@ -261,7 +381,7 @@ TEST_F(CacheClientTests, DownloadFilesWithKeyValuePairs)
     free((void*)pBuffer2);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, DownloadFilesWithEncryption)
+TEST_P(CacheClientTests, DownloadFilesWithEncryption)
 {
     string filename = GetCorrelationId();
     string encryptionKey = GetCorrelationId();
@@ -283,7 +403,7 @@ TEST_F(CacheClientTests, DownloadFilesWithEncryption)
     free((void*)pBuffer2);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, DownloadFilesWithChecksum)
+TEST_P(CacheClientTests, DownloadFilesWithChecksum)
 {
     string filename = GetCorrelationId();
     uint64_t nLength = 1024;
@@ -303,7 +423,7 @@ TEST_F(CacheClientTests, DownloadFilesWithChecksum)
     free((void*)pBuffer2);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, DownloadFilesWithMissingChecksum)
+TEST_P(CacheClientTests, DownloadFilesWithMissingChecksum)
 {
     string filename = GetCorrelationId();
     uint64_t nLength = 1024;
@@ -323,7 +443,7 @@ TEST_F(CacheClientTests, DownloadFilesWithMissingChecksum)
     free((void*)pBuffer2);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, DownloadPartialFileWithChecksumEnabled)
+TEST_P(CacheClientTests, DownloadPartialFileWithChecksumEnabled)
 {
     string filename = GetCorrelationId();
     uint64_t nLength = 1024;
@@ -341,7 +461,7 @@ TEST_F(CacheClientTests, DownloadPartialFileWithChecksumEnabled)
     free((void*)pBuffer2);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, DownloadFileWithChecksumMismatch)
+TEST_P(CacheClientTests, DownloadFileWithChecksumMismatch)
 {
     string filename = GetCorrelationId();
     uint64_t nLength = 1024;
@@ -364,7 +484,7 @@ TEST_F(CacheClientTests, DownloadFileWithChecksumMismatch)
     free((void*)pBuffer2);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, FileExpiry)
+TEST_P(CacheClientTests, FileExpiry)
 {
     string filename = GetCorrelationId();
     uint64_t nLength = 1024;
@@ -394,7 +514,7 @@ TEST_F(CacheClientTests, FileExpiry)
     free((void*)pBuffer3);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, TestDeleteGroup)
+TEST_P(CacheClientTests, TestDeleteGroup)
 {
     string groupId = "";
 
@@ -431,7 +551,7 @@ TEST_F(CacheClientTests, TestDeleteGroup)
     free((void*)pBuffer2);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, TestGetLastAccessTimeDistribution)
+TEST_P(CacheClientTests, TestGetLastAccessTimeDistribution)
 {
     uint64_t distributionBucketSizeInHours;
     LastAccessTimeDistribution* pLastAccessTimeDistribution = new LastAccessTimeDistribution;
@@ -455,7 +575,7 @@ TEST_F(CacheClientTests, TestGetLastAccessTimeDistribution)
     ASSERT_EQ(pLastAccessTimeDistribution->nKeyValuePairs, 1);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, TestDeleteByLastAccessTime)
+TEST_P(CacheClientTests, TestDeleteByLastAccessTime)
 {
     string lastAccessTimestamp = "";
     // Empty Timestamp
@@ -506,7 +626,7 @@ TEST_F(CacheClientTests, TestDeleteByLastAccessTime)
     free((void*)pBuffer2);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, ForceReuseConnections)
+TEST_P(CacheClientTests, ForceReuseConnections)
 {
     CacheClientImpl::nDefaultConnectionPoolSize = 1;
     CacheClientImpl client;
@@ -526,7 +646,7 @@ TEST_F(CacheClientTests, ForceReuseConnections)
     free((void*)pBuffer);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, ParallelUploadDownload)
+TEST_P(CacheClientTests, ParallelUploadDownload)
 {
     uint64_t nLength = 4 * 1024 * 1024;
     const char* pBuffer = GetRandomBuffer(nLength);
@@ -564,7 +684,7 @@ TEST_F(CacheClientTests, ParallelUploadDownload)
     free((void*)pBuffer);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheClientTests, StaleItemExpiry)
+TEST_P(CacheClientTests, StaleItemExpiry)
 {
     char* evictionEnabled = std::getenv("CACHESERVER_EVICTION_ENABLED");
     if (evictionEnabled == NULL || strcasecmp(evictionEnabled, "true") != 0)
@@ -606,4 +726,45 @@ TEST_F(CacheClientTests, StaleItemExpiry)
     free((void*)pBuffer);
     free(pDownloadBuffer);
 }
+//---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, RefreshCacheServersWithDiscoveryEndpoint) {
+
+    if (this->m_cacheClientImpl.m_spConnectionManager->m_bEnableCacheServerDiscovery == false) {
+        LOG_INFO("Cache server discovery is not enabled, skipping test...");
+        GTEST_SKIP();
+    }
+
+    std::vector<std::string> actualCacheServerHostnames;
+    // Based on the cache server format as "127.0.{}.1" configured in the serverConfig file
+    std::unordered_set<std::string> expectedOneHostnames = {"127.0.0.1"};
+    std::unordered_set<std::string> expectedTwoHostnames = {"127.0.0.1", "127.0.1.1"};
+
+    LOG_INFO("Initial setup of one cacheservers");
+    SetCacheServerCount(1);
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    actualCacheServerHostnames = this->m_cacheClientImpl.m_spConnectionManager->GetAllCacheServerHostnames();
+    ASSERT_EQ(std::unordered_set<std::string>(actualCacheServerHostnames.begin(), actualCacheServerHostnames.end()),
+        expectedOneHostnames);
+
+    LOG_INFO("Setting to two cacheservers");
+    SetCacheServerCount(2);
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    actualCacheServerHostnames = this->m_cacheClientImpl.m_spConnectionManager->GetAllCacheServerHostnames();
+    ASSERT_EQ(std::unordered_set<std::string>(actualCacheServerHostnames.begin(), actualCacheServerHostnames.end()),
+        expectedTwoHostnames);
+    
+    LOG_INFO("Setting back to one cacheservers");
+    SetCacheServerCount(1);
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    actualCacheServerHostnames = this->m_cacheClientImpl.m_spConnectionManager->GetAllCacheServerHostnames();
+    ASSERT_EQ(std::unordered_set<std::string>(actualCacheServerHostnames.begin(), actualCacheServerHostnames.end()),
+        expectedOneHostnames);
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Instantiate the test suite with `bIsDiscoveryEnabled` values of `true` and `false`
+INSTANTIATE_TEST_SUITE_P(
+    DiscoveryEnabledTests, // Prefix for the test suite
+    CacheClientTests,      // Test suite name
+    ::testing::Values(true, false) // Values for `bIsDiscoveryEnabled` as true and false
+);
 //---------------------------------------------------------------------------------------------------------------------

@@ -5,67 +5,96 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "IConnection.h"
 #include "IBUtils.h"
+#include "cache.pb.h"
+#include <gtest/gtest.h>
 #include <vector>
+#include <map>
 #include <queue>
 #include <string>
 #include <mutex>
+#include <shared_mutex>
 #include <memory>
+#include <thread>
+#include <atomic>
+#include <unordered_set>
 #include <infiniband/verbs.h>
+//---------------------------------------------------------------------------------------------------------------------
+class CacheClientTests;
 //---------------------------------------------------------------------------------------------------------------------
 class ConnectionManager
 {
     public:
+
         ConnectionManager(
-            /*[in]*/ int serverPort,
-            /*[in]*/ bool useLocalServer,
+            /*[in]*/ const uint16_t serverPort,
+            /*[in]*/ const bool useLocalServer,
             /*[in]*/ const std::vector<std::string>& cacheServers,
-            /*[in]*/ bool bAuthEnabled,
+            /*[in]*/ const bool bAuthEnabled,
             /*[in]*/ const std::string& strCacheAccountName,
             /*[in]*/ const std::string& strCacheAccountKey,
-            /*[in]*/ const int nMaxConnectionsReuseSize,
-            /*[in]*/ bool bReuseServerConnections,
-            /*[in]*/ bool bUseInfiniband
+            /*[in]*/ const uint32_t nMaxConnectionsReuseSize,
+            /*[in]*/ const bool bReuseServerConnections,
+            /*[in]*/ const bool bUseInfiniband,
+            /*[in]*/ const bool bEnableCacheServerDiscovery,
+            /*[in]*/ const uint32_t nCacheServerDiscoveryIntervalInSeconds,
+            /*[in]*/ const std::string& cacheDiscoveryEndpoint
         );
         ~ConnectionManager();
 
-    public:
         /* Get connection handle */
-        std::unique_ptr<IConnection> GetConnection(/*[in]*/ int serverIndex);
+        std::unique_ptr<IConnection> GetConnection(/*[in]*/ const std::string& cacheserver);
 
         /* Release connection handle */
         void ReleaseConnection(
-            /*[in]*/ int serverIndex,
+            /*[in]*/ const std::string& cacheserver,
             /*[in]*/ std::unique_ptr<IConnection> serverConnection,
-            /*[in]*/ bool errorConnection);
+            /*[in]*/ const bool errorConnection);
+
+        std::string GetCacheServerHostname(const std::string& strCacheKey) const;
+        std::vector<std::string> GetAllCacheServerHostnames() const;
 
     private:
+        enum HandshakeStatus
+        {
+            SUCCESS,
+            FAILURE
+        };
+
         ConnectionManager(const ConnectionManager&);
         ConnectionManager& operator=(const ConnectionManager&);
 
-        std::unique_ptr<IConnection> InitFreshConnection(/*[in]*/ int serverIndex);
+        std::unique_ptr<IConnection> CreateSocketAndConnect(const std::string& hostname, uint16_t port) const;
+        std::unique_ptr<IConnection> InitFreshConnection(/*[in]*/ const std::string& cacheserver);
 
         bool InitInfiniband();
-        std::unique_ptr<IConnection> SetupIBConnections(int serverFd, int serverIndex);
-        bool PerformIBHandshake(IConnection* connection, int serverIndex);
+        std::unique_ptr<IConnection> SetupIBConnections(const int serverFd, const std::string& cacheserver);
+        bool PerformIBHandshake(IConnection* connection, const std::string& cacheserver);
+        HandshakeStatus NewIBHandshake(IConnection* connection, const std::string& cacheserver) const;
+
+        void UpdateCacheServers(const std::vector<std::string> &vecServers);
+        std::unique_ptr<std::vector<std::string>> FetchLatestCacheServers() const;
+        void MonitorCacheServers();
     
-    private:
-        const int                                               m_ServerPort;
-        const bool                                              m_bAuthEnabled;
-        const std::string                                       m_strCacheAccountName;
-        const std::string                                       m_strCacheAccountKey;
-        const int                                               m_nMaxConnectionsReuseSize;
-        std::vector<std::mutex>                                 m_vecLocks;
-        std::vector<std::queue<std::unique_ptr<IConnection>>>   m_vecConnectionQueue;
-        std::vector<std::string>                                m_vecCacheServers;
-        int                                                     m_numServerNodes;
-        int                                                     m_nMaxConnsPerServer;
-        const bool                                              m_bReuseServerConnections;
+        const int                                                                   m_ServerPort;
+        const bool                                                                  m_bAuthEnabled;
+        const std::string                                                           m_strCacheAccountName;
+        const std::string                                                           m_strCacheAccountKey;
+        const int                                                                   m_nMaxConnectionsReuseSize;
+        mutable std::mutex                                                          m_lockCacheServerConnections;
+        mutable std::shared_mutex                                                   m_sharedLockCacheServerData;
+        std::unordered_map<std::string, std::queue<std::unique_ptr<IConnection>>>   m_mapConnectionQueue;
+        std::vector<std::string>                                                    m_vecCacheServers;
+        int                                                                         m_nMaxConnsPerServer;
+        const bool                                                                  m_bReuseServerConnections;
+        const bool                                                                  m_bEnableCacheServerDiscovery;
+        const uint32_t                                                              m_nCacheServerDiscoveryIntervalInSeconds;
+        const std::string                                                           m_cacheDiscoveryEndpoint;
 
         // Use infiniband if IB ports are available on local device.
-        bool                                                    m_bUseInfiniband;
-
+        bool                                                                        m_bUseInfiniband;
+        std::mutex                                                                  m_lockIBHandshakeStatusMap;
         // Number of infiniband data connections (QPs) to be established using a single control connection.
-        static constexpr int                                    IB_CONNECTIONS_PER_SERVER = 1;
+        const static constexpr int                                                        IB_CONNECTIONS_PER_SERVER = 1;
 
         struct IbDev
         {
@@ -77,12 +106,13 @@ class ConnectionManager
         };
         IbDev m_ibDevice;
 
-        enum HandshakeStatus
-        {
-            NOT_SET,
-            SUCCESS,
-            FAILURE
-        };
-        std::vector<HandshakeStatus>                            m_vecIbHandshakeStatus;
+        std::unordered_map<std::string, HandshakeStatus>                            m_mapIbHandshakeStatus;
+        // Long running thread for refreshing cacheservers
+        std::thread                                                                 m_cacheServerRefresherThread;
+        std::atomic<bool>                                                           m_bStopCacheServerRefresher = false;
+
+    // Friends for testing
+    FRIEND_TEST(CacheClientTests, RefreshCacheServersWithDiscoveryEndpoint);
+
 };
 //---------------------------------------------------------------------------------------------------------------------
