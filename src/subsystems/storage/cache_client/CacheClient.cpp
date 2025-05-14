@@ -33,7 +33,12 @@ extern "C" CacheClientStatus Initialize(
                                          0,                             /* nConnectionPoolSize */
                                          (pAuthCredentials != nullptr), /* bEnableAuth */
                                          pAuthCredentials ? pAuthCredentials->m_strAccountKey : nullptr,
-                                         pAuthCredentials ? pAuthCredentials->m_strAccountName : nullptr);
+                                         pAuthCredentials ? pAuthCredentials->m_strAccountName : nullptr,
+                                         false, /* bUseLocalServer */
+                                         true,  /* bReuseConnections */
+                                         false, /* bCacheServerDiscoveryEnabled */
+                                         300,   /* nCacheServerDiscoveryIntervalInSeconds */
+                                         "127.0.0.1"); /* nCacheServerDiscoveryEndpoint */
 }
 //---------------------------------------------------------------------------------------------------------------------
 extern "C" CacheClientStatus Upload(

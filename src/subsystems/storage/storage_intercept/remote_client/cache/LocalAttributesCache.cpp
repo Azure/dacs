@@ -35,7 +35,10 @@ LocalAttributesCache::LocalAttributesCache()
                                                            strCacheAccountKey,
                                                            nMaxConnectionsReuseSize,
                                                            bReuseServerConnections,
-                                                           bUseInfiniband);
+                                                           bUseInfiniband,
+                                                           false, // local server doesn't need discovery endpoint enabled
+                                                           300,
+                                                           "127.0.0.1");
 
     // start worker thread
     m_uploadThread = make_unique<thread>([this]() {
@@ -48,6 +51,7 @@ LocalAttributesCache::LocalAttributesCache()
 //---------------------------------------------------------------------------------------------------------------------
 LocalAttributesCache::~LocalAttributesCache()
 {
+    LOG_INFO("Destructor of LocalAttributesCache called");
     m_stop = true;
     m_cvQueue.notify_all();
     m_uploadThread->join();
@@ -63,7 +67,7 @@ CacheStatus LocalAttributesCache::Get(const std::string& path, FileAttributes& f
     getAttributeRequest->set_enablelock(true);
     LOG_DEBUG_REQID("Creating GetAttributeRequest for path: {}", *getAttributeRequest, path);
 
-    auto serverConnection = move(m_spConnectionManager->GetConnection(0));
+    auto serverConnection = move(m_spConnectionManager->GetConnection(LOCALHOST));
     if (serverConnection.get() == nullptr)
     {
         LOG_WARN_REQID("couldn't get server connection", *getAttributeRequest);
@@ -73,7 +77,7 @@ CacheStatus LocalAttributesCache::Get(const std::string& path, FileAttributes& f
     if (!SendMessageToRemoteFinal(serverConnection.get(), request))
     {
         LOG_WARN_REQID("couldn't send message to server", *getAttributeRequest);
-        m_spConnectionManager->ReleaseConnection(0, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(LOCALHOST, move(serverConnection), true);
         return cacheStatus;
     }
 
@@ -81,7 +85,7 @@ CacheStatus LocalAttributesCache::Get(const std::string& path, FileAttributes& f
     if (!ReadMessageFromRemote(serverConnection.get(), responseMessage))
     {
         LOG_WARN_REQID("couldn't read message from server", *getAttributeRequest);
-        m_spConnectionManager->ReleaseConnection(0, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(LOCALHOST, move(serverConnection), true);
         return cacheStatus;
     }
 
@@ -89,7 +93,7 @@ CacheStatus LocalAttributesCache::Get(const std::string& path, FileAttributes& f
     if (!response.ParseFromString(responseMessage))
     {
         LOG_WARN_REQID("error: Failed to parse protobuf message", *getAttributeRequest);
-        m_spConnectionManager->ReleaseConnection(0, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(LOCALHOST, move(serverConnection), true);
         return cacheStatus;
     }
 
@@ -123,7 +127,7 @@ CacheStatus LocalAttributesCache::Get(const std::string& path, FileAttributes& f
         cacheStatus = CacheStatus::INTERNAL_ERROR;
     }
 
-    m_spConnectionManager->ReleaseConnection(0, move(serverConnection), false);
+    m_spConnectionManager->ReleaseConnection(LOCALHOST, move(serverConnection), false);
     return cacheStatus;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -226,7 +230,7 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
     }
     LOG_DEBUG_REQID("Creating PutAttributeRequest with {} entries", *putAttributeRequest, putAttributeRequest->fileattributes_size());
 
-    auto serverConnection = move(m_spConnectionManager->GetConnection(0));
+    auto serverConnection = move(m_spConnectionManager->GetConnection(LOCALHOST));
     if (serverConnection.get() == nullptr)
     {
         LOG_WARN_REQID("couldn't get server connection, ignoring upload", *putAttributeRequest);
@@ -236,7 +240,7 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
     if (!SendMessageToRemoteFinal(serverConnection.get(), request))
     {
         LOG_WARN_REQID("couldn't send request, ignoring upload", *putAttributeRequest);
-        m_spConnectionManager->ReleaseConnection(0, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(LOCALHOST, move(serverConnection), true);
         return false;
     }
 
@@ -245,7 +249,7 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
     if (!ReadMessageFromRemote(serverConnection.get(), strResponse))
     {
         LOG_WARN_REQID("couldn't read response from server", *putAttributeRequest);
-        m_spConnectionManager->ReleaseConnection(0, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(LOCALHOST, move(serverConnection), true);
         return false;
     }
 
@@ -253,7 +257,7 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
     if (!response.ParseFromString(strResponse))
     {
         LOG_WARN_REQID("couldn't parse GetAttributeResponse from server", *putAttributeRequest);
-        m_spConnectionManager->ReleaseConnection(0, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(LOCALHOST, move(serverConnection), true);
         return false;
     }
 
@@ -266,7 +270,7 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
         LOG_WARN_REQID("Upload attributes to server failed, result: {}",  *putAttributeRequest, response.result());
         // TODO: log entries which failed
     }
-    m_spConnectionManager->ReleaseConnection(0, move(serverConnection), false);
+    m_spConnectionManager->ReleaseConnection(LOCALHOST, move(serverConnection), false);
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------

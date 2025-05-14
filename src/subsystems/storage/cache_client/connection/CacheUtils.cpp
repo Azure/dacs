@@ -163,12 +163,12 @@ namespace cacheutils
     }
 //---------------------------------------------------------------------------------------------------------------------
     uint32_t GetServerIndex(const char* filePath, uint32_t numServers)
-    {        
+    {
         if (numServers > 1)
         {
             static thread_local hash<string_view> hasher;
             auto hash_val = hasher(filePath);
-            return hash_val % numServers;            
+            return hash_val % numServers;
         }
         else
         {

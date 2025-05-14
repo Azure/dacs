@@ -130,7 +130,7 @@ These are the steps used to run C# unit tests.
     ```
    $ cd <path to repository root>
    $ ./bldenv.sh
-   $.pipelines/nativeunittest.sh [Release|Debug] [optional_name_of_unittest_to_run]
+   $ .pipelines/nativeunittest.sh [Release|Debug] [optional_name_of_unittest_to_run]
    ```
 
 ## Run native unit tests 

@@ -9,7 +9,7 @@
 #include "cache.pb.h"
 #include "CacheUtils.h"
 #include <errno.h>
-#include <string.h>
+#include <string>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -20,22 +20,82 @@
 #include <sys/types.h>
 #include <netdb.h>
 #include <mutex>
+#include <shared_mutex>
+#include <unordered_set>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cache;
 using namespace cacheutils;
 using namespace ibutils;
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
+ /**
+ * Threading Overview in ConnectionManager:
+ * 
+ * The `ConnectionManager` class uses threading to manage cache server discovery and connection pooling efficiently.
+ * Below are the threading-related components and their roles:
+ * 
+ * 1. **Mutexes and Locks**:
+ *    - `m_lockCacheServerConnections`: Protects access to `m_mapConnectionQueue` to ensure thread-safe
+ *      operations when updating or accessing cache server connections.
+ *    - `m_sharedLockCacheServerData`: A shared mutex that allows multiple threads to read the cache server data
+ *      concurrently while ensuring exclusive access during updates.
+ *    - `m_lockIBHandshakeStatusMap`: Protects access to `m_mapIbHandshakeStatus` to ensure thread-safe updates
+ *      to Infiniband handshake statuses.
+ * 
+ * 2. **Background Thread**:
+ *    - `m_cacheServerRefresherThread`: A dedicated thread that periodically fetches the latest cache server list
+ *      from the discovery endpoint and updates the internal cache server list.
+ *    - This thread runs in the `MonitorCacheServers` method and sleeps for `m_nCacheServerDiscoveryIntervalInSeconds`
+ *      between updates.
+ *    - The background thread (`m_cacheServerRefresherThread`) is started in the constructor if cache server discovery
+ *      is enabled (`m_bEnableCacheServerDiscovery`).
+ *    - The thread is gracefully stopped in the destructor.
+ * 
+ * 3. **Thread-Safe Operations**:
+ *    - Shared data structures such as `m_vecCacheServers`, `m_mapConnectionQueue`, and
+ *      `m_mapIbHandshakeStatus` are accessed or modified within critical sections protected by appropriate locks:
+ *        - `std::lock_guard<std::mutex>` for exclusive access.
+ *        - `std::shared_lock<std::shared_mutex>` for concurrent read access.
+ *        - `std::unique_lock<std::shared_mutex>` for exclusive write access.
+ * 
+ * 4. **RAII Principles**:
+ *    - Mutexes are managed using RAII constructs such as `std::lock_guard` and `std::unique_lock` to ensure they are
+ *      automatically released when the scope ends. This prevents deadlocks and ensures safe access to shared resources.
+ * 
+ * 5. **Infiniband Handshake Management**:
+ *    - The `m_lockIBHandshakeStatusMap` mutex ensures thread-safe updates to the Infiniband handshake status map
+ *      (`m_mapIbHandshakeStatus`).
+ *    - Handshake operations are performed in `PerformIBHandshake` and tracked using `m_mapIbHandshakeStatus`.
+ * 
+ * 6. **Cache Server Updates**:
+ *    - The `UpdateCacheServers` method is responsible for updating the cache server list. It uses a combination of
+ *      `std::lock_guard` and `std::unique_lock` to ensure thread-safe modifications to
+ *      `m_vecCacheServers`, and `m_mapConnectionQueue`.
+ * 
+ * 7. **Connection Pooling**:
+ *    - The `m_mapConnectionQueue` maintains a pool of reusable connections for each cache server.
+ *    - Connections are added to the pool in `ReleaseConnection` and retrieved from the pool in `GetConnection`.
+ *    - The `m_lockCacheServerConnections` mutex ensures thread-safe access to the connection pool.
+ * 
+ * 8. **Graceful Shutdown**:
+ *    - The destructor ensures that all resources are cleaned up properly:
+ *        - All open connections in `m_mapConnectionQueue` are purged.
+ *        - The Infiniband device resources (`m_ibDevice`) are released.
+ *        - The background thread (`m_cacheServerRefresherThread`) is joined to ensure it has stopped.
+ */
 ConnectionManager::ConnectionManager(
-    /*[in]*/ int serverPort,
-    /*[in]*/ bool useLocalServer,
-    /*[in]*/ const std::vector<std::string>& cacheServers,
-    /*[in]*/ bool bAuthEnabled,
+    /*[in]*/ const uint16_t serverPort,
+    /*[in]*/ const bool useLocalServer,
+    /*[in]*/ const std::vector<std::string>& vecCacheServers,
+    /*[in]*/ const bool bAuthEnabled,
     /*[in]*/ const std::string& strCacheAccountName,
     /*[in]*/ const std::string& strCacheAccountKey,
-    /*[in]*/ const int nMaxConnectionsReuseSize,
-    /*[in]*/ bool bReuseServerConnections,
-    /*[in]*/ bool bUseInfiniband)
+    /*[in]*/ const uint32_t nMaxConnectionsReuseSize,
+    /*[in]*/ const bool bReuseServerConnections,
+    /*[in]*/ const bool bUseInfiniband,
+    /*[in]*/ const bool bEnableCacheServerDiscovery,
+    /*[in]*/ const uint32_t nCacheServerDiscoveryIntervalInSeconds,
+    /*[in]*/ const std::string& cacheDiscoveryEndpoint)
     :  m_ServerPort(serverPort)
     ,  m_bAuthEnabled(bAuthEnabled)
     ,  m_strCacheAccountName(strCacheAccountName)
@@ -43,72 +103,158 @@ ConnectionManager::ConnectionManager(
     ,  m_nMaxConnectionsReuseSize(nMaxConnectionsReuseSize)
     ,  m_bReuseServerConnections(bReuseServerConnections)
     ,  m_bUseInfiniband(bUseInfiniband)
-    ,  m_vecIbHandshakeStatus(cacheServers.size(), HandshakeStatus::NOT_SET)
+    ,  m_bEnableCacheServerDiscovery(bEnableCacheServerDiscovery)
+    ,  m_nCacheServerDiscoveryIntervalInSeconds(nCacheServerDiscoveryIntervalInSeconds)
+    ,  m_cacheDiscoveryEndpoint(cacheDiscoveryEndpoint)
 {
-
     m_ibDevice = {0};
     if (useLocalServer)
     {
-        m_numServerNodes = 1;
-
         // Infiniband is not necessary when using localhost
         m_bUseInfiniband = false;
-        m_vecCacheServers.push_back("127.0.0.1");
-        LOG_INFO("Using 127.0.0.1 as cache server");
+        std::string localServer = "127.0.0.1";
+        LOG_INFO("Using {} as cache server", localServer);
+        UpdateCacheServers({localServer});
     }
     else
-    {
-        m_numServerNodes = cacheServers.size();
-        if (m_numServerNodes < 1)
+    {   // Using remote servers
+        if (m_bEnableCacheServerDiscovery)
         {
-            LOG_CRITICAL("No remote cache servers configured");
-            throw "No remote cache servers configured";
+            LOG_INFO("Cache server discovery is enabled");
+            auto vecServersPtr = FetchLatestCacheServers();
+            if (!vecServersPtr) {
+                LOG_ERROR("Failed to fetch the cache servers from endpoint: {}", m_cacheDiscoveryEndpoint);
+                throw "Failed to fetch the cache servers from endpoint";
+            }
+            UpdateCacheServers(*vecServersPtr);
         }
-
-        for (const string& nodeEntry : cacheServers)
+        else
         {
-            m_vecCacheServers.push_back(nodeEntry);
-            LOG_INFO("Added cache server={}", nodeEntry)
+            LOG_INFO("Cache server discovery is not enabled");
+            if (vecCacheServers.empty())
+            {
+                LOG_CRITICAL("No cache servers configured");
+                throw "No cache servers configured";
+            }
+            UpdateCacheServers(vecCacheServers);
         }
     }
-
-    // Hack as resize() on vector<queue<unique_ptr>> does not work due to move requirements
-    std::vector<std::queue<std::unique_ptr<IConnection>>> initConnectionQueue(m_numServerNodes);
-    m_vecConnectionQueue.swap(initConnectionQueue);
-
-    // Simple hack as resize() on vector<mutex> does not work due to move requirements  
-    vector<mutex> initMutices(m_numServerNodes);
-    m_vecLocks.swap(initMutices);
 
     if (m_bUseInfiniband)
     {
         InitInfiniband();
     }
 
-    this->m_nMaxConnsPerServer = (m_nMaxConnectionsReuseSize + m_numServerNodes - 1) / m_numServerNodes;
-    LOG_INFO("Initialized Cache ConnectionManager. serverPort={} m_numServerNodes={}"
-        " m_nMaxConnsPerServer={} m_bReuseServerConnections={} m_bUseInfiniband={}",
+    LOG_INFO("Initialized Cache ConnectionManager. serverPort={} "
+        "m_nMaxConnsPerServer={} m_bReuseServerConnections={} m_bUseInfiniband={} "
+        "m_bEnableCacheServerDiscovery={} m_nCacheServerDiscoveryIntervalInSeconds={} "
+        "m_cacheDiscoveryEndpoint={}",
         serverPort,
-        m_numServerNodes,
         m_nMaxConnsPerServer,
-        m_bReuseServerConnections ? "true" : "false",
-        m_bUseInfiniband ? "true" : "false");
+        m_bReuseServerConnections,
+        m_bUseInfiniband,
+        m_bEnableCacheServerDiscovery,
+        m_nCacheServerDiscoveryIntervalInSeconds,
+        m_cacheDiscoveryEndpoint
+    );
+    
+    if (m_bEnableCacheServerDiscovery) {
+        this->m_cacheServerRefresherThread = std::thread(&ConnectionManager::MonitorCacheServers, this);
+        LOG_INFO("Background cache server discovery thread is enabled");
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 ConnectionManager::~ConnectionManager()
 {
     LOG_INFO("Purge all open connections");
-    for (auto &queueFd : m_vecConnectionQueue)
     {
-        while (!queueFd.empty())
+        std::lock_guard<std::mutex> lock(m_lockCacheServerConnections);
+        for (auto &pair : m_mapConnectionQueue)
         {
-            auto serverConnection = move(queueFd.front());
-            queueFd.pop();
+            auto &queueFd = pair.second;
+            while (!queueFd.empty())
+            {
+                auto serverConnection = std::move(queueFd.front());
+                queueFd.pop();
+            }
         }
     }
 
     m_ibDevice.pd.reset(nullptr);
     m_ibDevice.context.reset(nullptr);
+
+    m_bStopCacheServerRefresher.store(true);
+    if (m_cacheServerRefresherThread.joinable()) {
+        m_cacheServerRefresherThread.join();
+        LOG_INFO("Cache server discovery thread joined");
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+/** 
+* The member variables m_vecCacheServers, m_nMaxConnsPerServer
+* are only mutated by this method.
+* This method is an private method and is called only from the constructor and MonitorCacheServers.
+* This method is never called from multiple threads at the same time.
+*/
+void ConnectionManager::UpdateCacheServers(const std::vector<std::string>& vecLatestCacheServers)
+{
+    // Locking the cache server objects to ensure thread safety
+    std::lock_guard<std::mutex> lockConnections(m_lockCacheServerConnections);
+    std::unique_lock<std::shared_mutex> lockData(m_sharedLockCacheServerData); // Exclusive lock for write access
+
+    int nOldCacheServers = m_vecCacheServers.size();
+    int nNewCacheServers = vecLatestCacheServers.size();
+
+    // Check if the cache server list is changed. Using a Set<string> to eliminate duplicate hostnames (if any).
+    std::unordered_set<std::string> oldCacheServersSet(m_vecCacheServers.begin(), m_vecCacheServers.end());
+    std::unordered_set<std::string> newCacheServersSet(vecLatestCacheServers.begin(), vecLatestCacheServers.end());
+    if (oldCacheServersSet == newCacheServersSet)
+    {
+        LOG_DEBUG("Cache servers have not changed.");
+        return;
+    }
+
+    // Cache server set has changed. Begin updating.
+    LOG_INFO("Updating cache servers:");
+    LOG_INFO("Old set of cache servers: {}", fmt::join(oldCacheServersSet, ", "));
+    LOG_INFO("New set of cache servers: {}", fmt::join(newCacheServersSet, ", "));
+
+    // Finding deleted cache servers and updating the map accordingly
+    std::vector<std::string> eliminatedCacheServers;
+    std::set_difference(oldCacheServersSet.begin(), oldCacheServersSet.end(),
+                        newCacheServersSet.begin(), newCacheServersSet.end(),
+                        std::back_inserter(eliminatedCacheServers));
+
+    // Finding newly added cache servers and updating the map accordingly
+    std::vector<std::string> newlyAddedCacheServers;
+    std::set_difference(newCacheServersSet.begin(), newCacheServersSet.end(),
+                        oldCacheServersSet.begin(), oldCacheServersSet.end(),
+                        std::back_inserter(newlyAddedCacheServers));
+
+    for (const auto& server : eliminatedCacheServers)
+    {
+        if (m_mapConnectionQueue.find(server) != m_mapConnectionQueue.end())
+        {
+            LOG_INFO("Removing cache server={}", server);
+            m_mapConnectionQueue.erase(server);
+        }
+    }
+
+    for (const auto& server : newlyAddedCacheServers)
+    {
+        if (m_mapConnectionQueue.find(server) == m_mapConnectionQueue.end())
+        {
+            LOG_INFO("Adding cache server={}", server);
+            m_mapConnectionQueue[server] = std::queue<std::unique_ptr<IConnection>>();
+        }
+    }
+
+    m_vecCacheServers.assign(newCacheServersSet.begin(), newCacheServersSet.end());
+    uint32_t nServerNodes = m_vecCacheServers.size();
+    m_nMaxConnsPerServer = (m_nMaxConnectionsReuseSize + nServerNodes - 1) / nServerNodes;
+
+    LOG_INFO("New list of cache servers: {}", fmt::join(m_vecCacheServers, ", "));
+    LOG_INFO("Cacheservers updated to {} cache servers", nServerNodes);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool ConnectionManager::InitInfiniband()
@@ -150,7 +296,7 @@ bool ConnectionManager::InitInfiniband()
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd, int serverIndex)
+std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(const int serverFd, const std::string& cacheserver)
 {
     Request request;
     IBInitRequest* ibRequest = request.mutable_ibinitrequest();
@@ -160,7 +306,7 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd,
     ibRequest->set_clientmtu(m_ibDevice.mtu);
     auto clientQpns = ibRequest->mutable_clientqpn();
     clientQpns->Clear();
-    LOG_DEBUG_REQID("SetupIBConnections: serverFd={} serverIndex={}", *ibRequest, serverFd, serverIndex);
+    LOG_DEBUG_REQID("SetupIBConnections: serverFd={} cacheserver={}", *ibRequest, serverFd, cacheserver);
 
     // Create socket connection. This will be used for IB init request.
     // In case of failures, this socket connection will be returned to the caller
@@ -242,7 +388,7 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd,
         return nullptr; // not returning socket connection for network failures
     }
 
-    string requestMessage;
+    std::string requestMessage;
     if (!ReadMessageFromRemote(socketConnection.get(), requestMessage))
     {
         LOG_WARN_REQID("couldn't read message from server", *ibRequest);
@@ -307,14 +453,14 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd,
             move(mr), 
             move(mrBufferBlock)
         );
-        if (!PerformIBHandshake(ibConnection.get(), serverIndex))
+        if (!PerformIBHandshake(ibConnection.get(), cacheserver))
         {
             return socketConnection;
         }
         if (qpn < IB_CONNECTIONS_PER_SERVER - 1)
         {
             // Add all but one connections to the re-use pool
-            ReleaseConnection(serverIndex, move(ibConnection), false);
+            ReleaseConnection(cacheserver, move(ibConnection), false);
         }
         else
         {
@@ -325,65 +471,84 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(int serverFd,
     return socketConnection;
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::unique_ptr<IConnection> ConnectionManager::InitFreshConnection(int serverIndex)
+std::unique_ptr<IConnection> ConnectionManager::CreateSocketAndConnect(const std::string& hostname, uint16_t port) const
 {
-    // TODO: Retry on failures
+    struct addrinfo hints, *res;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
 
-    struct addrinfo *structAddrInfo;
-    int ret = getaddrinfo(m_vecCacheServers[serverIndex].c_str(), NULL, NULL, &structAddrInfo);
+    int ret = getaddrinfo(hostname.c_str(), std::to_string(port).c_str(), &hints, &res);
     if (ret != 0)
     {
-        LOG_RARELY(5, WARN, "Couldn't resolve server address={} error={}", m_vecCacheServers[serverIndex], gai_strerror(ret));
+        LOG_WARN("Failed to resolve server address={} error={}", hostname, gai_strerror(ret));
         return nullptr;
     }
 
-    int serverFd = socket(AF_INET, SOCK_STREAM, 0);
-    if (serverFd < 0)
+    int sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (sockfd < 0)
     {
-        LOG_WARN("Error creating a socket fd at client error={},{}", errno, strerror(errno));
+        LOG_WARN("Failed to create socket for hostname={} error={}", hostname, strerror(errno));
+        freeaddrinfo(res);
         return nullptr;
     }
 
-    sockaddr_in structSockAddr;
-    structSockAddr.sin_addr = ((sockaddr_in *)structAddrInfo->ai_addr)->sin_addr;
-    structSockAddr.sin_family = AF_INET;
-    structSockAddr.sin_port = htons(m_ServerPort);
-    freeaddrinfo(structAddrInfo);
-
-    if (connect(serverFd, (sockaddr * ) &structSockAddr, sizeof(sockaddr)) < 0)
+    if (connect(sockfd, res->ai_addr, res->ai_addrlen) < 0)
     {
-        LOG_CRITICAL("Error during socket connect serverIndex={} error={},{}", serverIndex, errno, strerror(errno));
-        StorageLibcApiWrapper::close(serverFd);
+        LOG_WARN("Failed to connect to hostname={} error={}", hostname, strerror(errno));
+        close(sockfd);
+        freeaddrinfo(res);
         return nullptr;
     }
+
+    freeaddrinfo(res);
 
     int enable = 1;
-    if (setsockopt(serverFd, SOL_TCP, TCP_NODELAY, &enable, sizeof(enable)) != 0)
+    if (setsockopt(sockfd, SOL_TCP, TCP_NODELAY, &enable, sizeof(enable)) != 0)
     {
-        LOG_CRITICAL("Error setting TCP_NODELAY on client socket error={},{}", errno, strerror(errno));
-        StorageLibcApiWrapper::close(serverFd);
+        LOG_WARN("Failed to set TCP_NODELAY for hostname={} error={}", hostname, strerror(errno));
+        close(sockfd);
         return nullptr;
     }
 
-    if (m_bUseInfiniband)
-    {
-        return SetupIBConnections(serverFd, serverIndex);
-    }
-
-    LOG_DEBUG("Created new server connection fd={} serverIndex={}", serverFd, serverIndex);
-    return move(make_unique<SocketConnection>(serverFd));
+    LOG_DEBUG("Successfully connected to hostname={} on port={}", hostname, port);
+    return std::make_unique<SocketConnection>(sockfd);
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::unique_ptr<IConnection> ConnectionManager::GetConnection(int serverIndex)
+std::unique_ptr<IConnection> ConnectionManager::InitFreshConnection(const std::string& cacheserver)
+{
+    auto socketConnection = CreateSocketAndConnect(cacheserver, m_ServerPort);
+    if (!socketConnection)
+    {
+        LOG_WARN("Failed to initialize fresh connection to cacheserver={}", cacheserver);
+        return nullptr;
+    }
+
+    auto* socketConn = static_cast<SocketConnection*>(socketConnection.get());
+    if (m_bUseInfiniband)
+    {
+        return SetupIBConnections(socketConn->GetId(), cacheserver);
+    }
+
+    LOG_DEBUG("Created new server connection fd={} cacheserver={}", socketConn->GetId(), cacheserver);
+    return std::move(socketConnection);
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::unique_ptr<IConnection> ConnectionManager::GetConnection(const std::string& cacheserver)
 {
     if (m_bReuseServerConnections)
     {
         // First check the connection pool for valid connections
-        lock_guard queueLock(m_vecLocks[serverIndex]);
-        while (!m_vecConnectionQueue[serverIndex].empty())
+        std::lock_guard<std::mutex> lock(m_lockCacheServerConnections);
+        if (std::find(m_vecCacheServers.begin(), m_vecCacheServers.end(), cacheserver) == m_vecCacheServers.end())
         {
-            auto serverConnection = move(m_vecConnectionQueue[serverIndex].front());
-            m_vecConnectionQueue[serverIndex].pop();
+            LOG_INFO("Invalid cacheserver={} to perform get connection", cacheserver);
+            return nullptr;
+        }
+        while (!m_mapConnectionQueue[cacheserver].empty())
+        {
+            auto serverConnection = move(m_mapConnectionQueue[cacheserver].front());
+            m_mapConnectionQueue[cacheserver].pop();
             if (serverConnection->IsValidConnection())
             {
                 LOG_DEBUG("Reusing server connection id={}", serverConnection->GetId());
@@ -392,41 +557,69 @@ std::unique_ptr<IConnection> ConnectionManager::GetConnection(int serverIndex)
         }
     }
 
-    return move(InitFreshConnection(serverIndex));
+    return move(InitFreshConnection(cacheserver));
 }
 //---------------------------------------------------------------------------------------------------------------------
-void ConnectionManager::ReleaseConnection(int serverIndex, std::unique_ptr<IConnection> serverConnection, bool errorFd)
+void ConnectionManager::ReleaseConnection(
+    const std::string& cacheserver, 
+    std::unique_ptr<IConnection> serverConnection,
+    const bool errorFd)
 {
     if (m_bReuseServerConnections && !errorFd && serverConnection->IsValidConnection())
     {
-        lock_guard queueLock(m_vecLocks[serverIndex]);
-        if (m_vecConnectionQueue[serverIndex].size() < m_nMaxConnsPerServer)
+        std::lock_guard<std::mutex> lock(m_lockCacheServerConnections);
+        if (std::find(m_vecCacheServers.begin(), m_vecCacheServers.end(), cacheserver) == m_vecCacheServers.end())
+        {
+            LOG_DEBUG("Invalid cacheserver={} to perform release connection", cacheserver);
+            return;
+        }
+        if (m_mapConnectionQueue[cacheserver].size() < m_nMaxConnsPerServer)
         {
             LOG_DEBUG("Add connection to reuse pool id={}", serverConnection->GetId());
             serverConnection->ResetConnection();
-            m_vecConnectionQueue[serverIndex].push(move(serverConnection));
+            m_mapConnectionQueue[cacheserver].push(move(serverConnection));
         }
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool ConnectionManager::PerformIBHandshake(IConnection* connection, int serverIndex)
+bool ConnectionManager::PerformIBHandshake(IConnection* connection, const std::string& cacheserver)
 {
-    // check if handshake is already performed
-    if (m_vecIbHandshakeStatus[serverIndex] == HandshakeStatus::SUCCESS)
     {
-        LOG_DEBUG("IB handshake already successfully performed for qp={}, serverIndex={}", 
-             connection->GetId(), serverIndex);
-        return true;
+        std::lock_guard<std::mutex> lock(m_lockIBHandshakeStatusMap);
+        // check if handshake is already performed
+        if (m_mapIbHandshakeStatus.at(cacheserver) == HandshakeStatus::SUCCESS)
+        {
+            LOG_DEBUG("IB handshake already successfully performed for qp={}, cacheserver={}", 
+                connection->GetId(), cacheserver);
+            return true;
+        }
+        else if (m_mapIbHandshakeStatus.at(cacheserver) == HandshakeStatus::FAILURE)
+        {
+            LOG_DEBUG("Previous IB handshake failed for qp={}, cacheserver={}",
+                connection->GetId(), cacheserver);
+            return false;
+        }
     }
-    else if (m_vecIbHandshakeStatus[serverIndex] == HandshakeStatus::FAILURE)
+
+    HandshakeStatus newHandShakeStatus = NewIBHandshake(connection, cacheserver);
+    std::lock_guard<std::mutex> lock(m_lockIBHandshakeStatusMap);
+    if (newHandShakeStatus == HandshakeStatus::FAILURE)
     {
-        LOG_DEBUG("Previous IB handshake failed for qp={}, serverIndex={}",
-             connection->GetId(), serverIndex);
+        m_mapIbHandshakeStatus[cacheserver] = HandshakeStatus::FAILURE;
+        connection->ResetConnection();
         return false;
     }
 
-    LOG_DEBUG("Performing IB handshake qp={}, serverIndex={}", connection->GetId(), serverIndex);
-
+    LOG_INFO("IB handshake successful qp={}, cacheserver={}", connection->GetId(), cacheserver);
+    m_mapIbHandshakeStatus[cacheserver] = HandshakeStatus::SUCCESS;
+    connection->ResetConnection();
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+ConnectionManager::HandshakeStatus ConnectionManager::NewIBHandshake(
+    IConnection* connection, const std::string& cacheserver) const
+{
+    LOG_DEBUG("Performing IB handshake qp={}, cacheserver={}", connection->GetId(), cacheserver);
     // Create an download request message for a file
     Request request;
     DownloadRequest* downloadRequest = request.mutable_downloadrequest();
@@ -443,18 +636,14 @@ bool ConnectionManager::PerformIBHandshake(IConnection* connection, int serverIn
     if (m_bAuthEnabled && !AddAuthParams(request, m_strCacheAccountName, m_strCacheAccountKey))
     {
         LOG_WARN("Failed to add authentication headers to handshake request");
-        m_vecIbHandshakeStatus[serverIndex] = HandshakeStatus::FAILURE;
-        connection->ResetConnection();
-        return false;
+        return HandshakeStatus::FAILURE;
     }
     // Send the request message to the server
     bool bRet = SendMessageToRemoteFinal(connection, request);
     if (!bRet)
     {
         LOG_WARN("IB handshake failed, Failed to send request message qp={}", connection->GetId());
-        m_vecIbHandshakeStatus[serverIndex] = HandshakeStatus::FAILURE;
-        connection->ResetConnection();
-        return false;
+        return HandshakeStatus::FAILURE;
     }
 
     // Wait for the "not found" response
@@ -462,9 +651,7 @@ bool ConnectionManager::PerformIBHandshake(IConnection* connection, int serverIn
     if (!ReadMessageFromRemote(connection, responseBuffer))
     {
         LOG_WARN("IB handshake failed, Failed to receive response qp={}", connection->GetId());
-        m_vecIbHandshakeStatus[serverIndex] = HandshakeStatus::FAILURE;
-        connection->ResetConnection();
-        return false;
+        return HandshakeStatus::FAILURE;
     }
 
     // Parse the response
@@ -472,21 +659,92 @@ bool ConnectionManager::PerformIBHandshake(IConnection* connection, int serverIn
     if (!response.ParseFromString(responseBuffer))
     {
         LOG_WARN("IB handshake failed, Failed to parse response qp={}", connection->GetId());
-        m_vecIbHandshakeStatus[serverIndex] = HandshakeStatus::FAILURE;
-        connection->ResetConnection();
-        return false;
+        return HandshakeStatus::FAILURE;
     }
 
     if (response.result() != DownloadResponse::NOT_FOUND)
     {
         LOG_WARN("IB handshake failed, Invalid response received qp={}", connection->GetId());
-        m_vecIbHandshakeStatus[serverIndex] = HandshakeStatus::FAILURE;
-        connection->ResetConnection();
-        return false;
+        return HandshakeStatus::FAILURE;
     }
 
-    LOG_INFO("IB handshake successful qp={}, serverIndex={}", connection->GetId(), serverIndex);
-    m_vecIbHandshakeStatus[serverIndex] = HandshakeStatus::SUCCESS;
-    connection->ResetConnection();
-    return true;
+    return HandshakeStatus::SUCCESS;
 }
+//---------------------------------------------------------------------------------------------------------------------
+std::unique_ptr<std::vector<std::string>> ConnectionManager::FetchLatestCacheServers() const
+{
+    Request request;
+    GetCacheServersRequest* getCacheServersRequest = request.mutable_getcacheserversrequest();
+    getCacheServersRequest->set_requestid(cacheutils::GetCorrelationId());
+
+    std::unique_ptr<IConnection> serverConnection = CreateSocketAndConnect(m_cacheDiscoveryEndpoint, m_ServerPort);
+    if (!serverConnection)
+    {
+        LOG_WARN("Couldn't create server connection for fetching cache servers");
+        return nullptr;
+    }
+
+    LOG_INFO("Sending request to fetch cache servers");
+    if (!SendMessageToRemoteFinal(serverConnection.get(), request))
+    {
+        LOG_WARN("Couldn't send message to server for fetching cache servers");
+        return nullptr;
+    }
+
+    std::string requestMessage;
+    if (!ReadMessageFromRemote(serverConnection.get(), requestMessage))
+    {
+        LOG_WARN("Couldn't read message from server for fetching cache servers");
+        return nullptr;
+    }
+
+    GetCacheServersResponse response;
+    if (!response.ParseFromString(requestMessage))
+    {
+        LOG_WARN("Failed to parse response from server for fetching cache servers");
+        return nullptr;
+    }
+
+    if (response.result() != GetCacheServersResponse::SUCCESS)
+    {
+        LOG_WARN("Server returned error for fetching cache servers - {}", response.DebugString());
+        return nullptr;
+    }
+
+    auto vecServers = std::make_unique<std::vector<std::string>>();
+    for (const auto& serverAddress : response.serveraddresses())
+    {
+        vecServers->push_back(serverAddress);
+    }
+    LOG_INFO("Server addresses currently part of cache servers - {}", *vecServers);
+    return vecServers;
+}
+//---------------------------------------------------------------------------------------------------------------------
+void ConnectionManager::MonitorCacheServers()
+{
+    while (!m_bStopCacheServerRefresher.load())
+    {
+        std::this_thread::sleep_for(std::chrono::seconds(m_nCacheServerDiscoveryIntervalInSeconds));
+
+        // Fetch the latest cache servers
+        auto vecServersPtr = FetchLatestCacheServers();
+        if (!vecServersPtr) {
+            LOG_WARN("Failed to fetch the latest cache servers. Skipping update.");
+            continue;
+        }
+        UpdateCacheServers(*vecServersPtr);
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string ConnectionManager::GetCacheServerHostname(const std::string& strCacheKey) const
+{
+    std::shared_lock<std::shared_mutex> readLock(m_sharedLockCacheServerData); // Shared lock for concurrent read access
+    return m_vecCacheServers[cacheutils::GetServerIndex(strCacheKey.c_str(), m_vecCacheServers.size())];
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::vector<std::string> ConnectionManager::GetAllCacheServerHostnames() const
+{
+    std::shared_lock<std::shared_mutex> readLock(m_sharedLockCacheServerData); // Shared lock for concurrent read access
+    return m_vecCacheServers;
+}
+//---------------------------------------------------------------------------------------------------------------------

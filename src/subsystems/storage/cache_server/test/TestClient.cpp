@@ -128,7 +128,7 @@ void ReleaseConnection(unique_ptr<IConnection> &connection)
 //---------------------------------------------------------------------------------------------------------------------
 bool TestLockAPI(const string& filename, bool locked)
 {
-    unique_ptr<IConnection> serverConnection  = GetConnection();
+    unique_ptr<IConnection> serverConnection = GetConnection();
     if (!serverConnection)
     {
         return false;

@@ -931,3 +931,28 @@ uint32_t StorageInterceptConfig::GetTokenExpiryBufferInSeconds()
         StorageInterceptConstants::ConfigNameTokenExpiryBufferInSeconds,
         DEFAULT_TOKEN_EXPIRY_BUFFER_IN_SECONDS);
 }
+//---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::IsCacheServerDiscoveryEnabled()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheServerDiscoveryEnabled,
+        false);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint32_t StorageInterceptConfig::CacheServerDiscoveryIntervalInSeconds()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint32(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheServerDiscoveryIntervalInSeconds,
+        300);
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::CacheServerDiscoveryEndpoint()
+{
+    return StorageInterceptConfig::GetOptionalConfigStr(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheServerDiscoveryEndpoint,
+        "127.0.0.1");
+}
+//---------------------------------------------------------------------------------------------------------------------

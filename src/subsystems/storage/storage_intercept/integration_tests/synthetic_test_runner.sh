@@ -25,6 +25,7 @@ _usage()
     echo "-n NUM Number of files to include in the test"
     echo "-p NUM Number of concurrent threads accessing the files in the test"
     echo "-f Use fuse version of storageinterception"
+    echo "-e Enable discovery"
     echo "-h Print this Help."
     echo
 }
@@ -161,11 +162,12 @@ num_files_to_test=100
 parallelism=4
 build_configuration=Debug
 use_fuse=false
+discovery_enabled=false
 
 # ==================================================
 # Parse command line args
 # ==================================================
-while getopts :b:d:n:p:fsh flag
+while getopts :b:d:n:p:fshe flag
 do
     case "${flag}" in
         h) _usage;
@@ -176,6 +178,7 @@ do
         n) num_files_to_test=${OPTARG};;
         p) parallelism=${OPTARG};;
         s) enable_stacking=true;;
+        e) discovery_enabled=true;;
         *) _usage; 
             exit 1;;
     esac
@@ -212,6 +215,13 @@ else
         [compressed_zip_path]="/mnt/quiverfs/books_wiki_en_corpus.zip")
 fi
 
+if [ "$discovery_enabled" = true ]
+then
+    mkdir -p /serverConfig
+    echo -n "1" > /serverConfig/cache_server_count
+    echo -n "127.0.{}.1" > /serverConfig/cache_server_endpoint_format
+fi
+
 STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${build_configuration}/native/linux-x64/publish-storage/storage/libStorageIntercept.so"
 LFS_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${build_configuration}/native/linux-x64/publish/libLfsIntercept.so"
 PYTHON_IO_TEST="${SCRIPT_DIR}/io_test.py"
@@ -224,6 +234,14 @@ echo "$(readlink -f ${EXE_TEST})"
 echo "Starting the integration test"
 ioTestArgs="declare -p io_test_args"
 _test_runner $enable_stacking "$($ioTestArgs)" $mount_path $samples_file $num_files_to_test $parallelism $use_fuse
+
+# Cleanup after the test
+if [ "$discovery_enabled" = true ]
+then
+    rm -f /serverConfig/cache_server_count /serverConfig/cache_server_endpoint_format
+    rmdir /serverConfig
+fi
+
 if [ $? -ne 0 ]
 then
     echo "Integration test failed"

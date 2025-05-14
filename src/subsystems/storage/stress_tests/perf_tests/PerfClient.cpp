@@ -32,6 +32,7 @@ namespace po = boost::program_options;
 constexpr const std::size_t CHUNK_SIZE = (32 * 1024 * 1024);
 constexpr const std::size_t RETRY_COUNT_PER_CHUNK = 5;
 constexpr const std::size_t UPLOAD_EXPIRY_DURATION_SECONDS = 3600; // 1 hour
+constexpr const char* LOCALHOST = "127.0.0.1";
 //---------------------------------------------------------------------------------------------------------------------
 std::atomic_uint_fast64_t nGlobalFailureCounter(0);
 //---------------------------------------------------------------------------------------------------------------------
@@ -238,7 +239,8 @@ po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
             "prefix", po::value<std::string>(), "Prefix for file uploads. Must be same for upload and download")(
             "mode", po::value<std::string>(), "Mode ( 'upload' or 'download' )")(
             "num-iterations", po::value<int>()->default_value(1), "Number of times to run the perf test")(
-            "ib-enabled", po::value<bool>()->default_value(false), "Enable Infiniband"
+            "ib-enabled", po::value<bool>()->default_value(false), "Enable Infiniband")(
+            "is-discovery-enabled", po::value<bool>()->default_value(false), "Enable discovery endpoint"
             );
 
         po::variables_map vm;
@@ -373,6 +375,7 @@ int PerfClient(int argc, char *argv[])
     std::string strPrefix = args["prefix"].as<std::string>();
     std::size_t nNumIterations = args["num-iterations"].as<int>();
     bool bIsIBEnabled = args["ib-enabled"].as<bool>();
+    bool bIsDiscoveryEnabled = args["is-discovery-enabled"].as<bool>();
 
     if(strMode != "upload" && strMode != "download")
     {
@@ -381,7 +384,7 @@ int PerfClient(int argc, char *argv[])
     }
 
     std::vector<const char*> vecCstrHostnames;
-    for(const std::string& hostname : vecHostnames)
+    for (const std::string& hostname : vecHostnames)
     {
         vecCstrHostnames.push_back(hostname.c_str());
     }
@@ -389,17 +392,20 @@ int PerfClient(int argc, char *argv[])
     CacheClientImpl client;
     client.Initialize(vecCstrHostnames.data(),
                       vecCstrHostnames.size(),
-                      nPort,            /*nCacheServerPort*/
-                      bIsIBEnabled,     /*bEnableIB*/
-                      false,             /*bEnableCalculateChecksum*/
-                      false,            /*bEnableValidateChecksum*/
-                      nNumThreads * 2,  /*nConnectionPoolSize*/
-                      false,            /*bEnableAuth*/
-                      nullptr,          /*strAccountName*/
-                      nullptr,          /*strAccountKey*/
-                      false,            /*bUseLocalServer*/
-                      true,             /*bReuseConnections*/
-                      CHUNK_SIZE);      /*nMaxBufferSizeBytes*/
+                      nPort,                /*nCacheServerPort*/
+                      bIsIBEnabled,         /*bEnableIB*/
+                      false,                /*bEnableCalculateChecksum*/
+                      false,                /*bEnableValidateChecksum*/
+                      nNumThreads * 2,      /*nConnectionPoolSize*/
+                      false,                /*bEnableAuth*/
+                      nullptr,              /*strAccountName*/
+                      nullptr,              /*strAccountKey*/
+                      false,                /*bUseLocalServer*/
+                      true,                 /*bReuseConnections*/
+                      bIsDiscoveryEnabled,  /*bIsCacheServerDiscoveryEnabled*/
+                      5,                  /*nCacheServerDiscoveryIntervalInSeconds*/
+                      LOCALHOST,            /*nCacheServerDiscoveryEndpoint*/
+                      CHUNK_SIZE);          /*nMaxBufferSizeBytes*/
 
     std::size_t nDataSizeBytes = nDataSizeGiB * 1024 * 1024 * 1024;
     bool bAllIterationsSucceeded = true;
@@ -443,7 +449,10 @@ int EvictionClient(int argc, char* argv[])
                       nullptr,                     /*strAccountName*/
                       nullptr,                     /*strAccountKey*/
                       false,                       /*bUseLocalServer*/
-                      true);                       /*bReuseConnections*/
+                      true,                        /*bReuseConnections*/
+                      false,                       /*bIsCacheServerDiscoveryEnabled*/
+                      300,                         /*nCacheServerDiscoveryIntervalInSeconds*/
+                      LOCALHOST);                    /*nCacheServerDiscoveryEndpoint*/
 
     LOG_INFO("Requesting eviction from cache servers based on last access time time: {}",
              strLastAccessTime.c_str());
@@ -488,7 +497,10 @@ int LastAccessTimeDistributionClient(int argc, char* argv[])
                       nullptr,                     /*strAccountName*/
                       nullptr,                     /*strAccountKey*/
                       false,                       /*bUseLocalServer*/
-                      true);                       /*bReuseConnections*/
+                      true,                        /*bReuseConnections*/
+                      false,                       /*bIsCacheServerDiscoveryEnabled*/
+                      300,                         /*nCacheServerDiscoveryIntervalInSeconds*/
+                      LOCALHOST);                    /*nCacheServerDiscoveryEndpoint*/
 
     
     LastAccessTimeDistribution *pLastAccessTimeDistribution = new LastAccessTimeDistribution();

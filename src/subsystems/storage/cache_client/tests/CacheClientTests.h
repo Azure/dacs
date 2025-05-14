@@ -7,13 +7,14 @@
 
 #include "CacheClientImpl.h"
 //---------------------------------------------------------------------------------------------------------------------
-class CacheClientTests : public ::testing::Test
+class CacheClientTests : public ::testing::TestWithParam<bool>
 {
   protected:
     void SetUp() override;
     void TearDown() override;
-    const char* GetRandomBuffer(const uint64_t nLength);
-    static void InitializeClient(CacheClientImpl& client, bool bEnableCalculateChecksum = false, bool bEnableValidateChecksum = false);
+    const char* GetRandomBuffer(const uint64_t nLength) const;
+    void SetCacheServerCount(int count) const;
+    static void InitializeClient(CacheClientImpl& client, bool bIsDiscoveryEnabled = false, bool bEnableCalculateChecksum = false, bool bEnableValidateChecksum = false);
 
     CacheClientImpl m_cacheClientImpl;
     CacheClientImpl m_cacheClientImplCRC;

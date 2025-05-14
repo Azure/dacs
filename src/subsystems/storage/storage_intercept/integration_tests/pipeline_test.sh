@@ -121,6 +121,11 @@ function add_interception_config_blob() {
 function add_interception_config_blob_with_cache() {
     add_interception_config_blob $1 $2
     TEST_MULTI_MOUNT=${2:false}
+    ENABLE_CACHE_DISCOVERY=${3:false}
+
+    echo "attributesCacheUseLocalServer true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "attributesCacheServerPort ${CACHE_SERVER_PORT}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "cacheServerPort ${CACHE_SERVER_PORT}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
     if [ "$TEST_MULTI_MOUNT" = true ]
     then
@@ -130,10 +135,16 @@ function add_interception_config_blob_with_cache() {
       echo "cacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
       echo "attributesCacheEnable true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     fi
-    echo "attributesCacheUseLocalServer true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "attributesCacheServerPort ${CACHE_SERVER_PORT}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "cacheServerPort ${CACHE_SERVER_PORT}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "cacheEnableRemote false" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+
+    if [ "$ENABLE_CACHE_DISCOVERY" = true ]
+    then
+      echo "cacheEnableRemote true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+      echo "cacheServerDiscoveryEnabled true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+      echo "cacheServerDiscoveryIntervalInSeconds 5" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+      echo "cacheServerDiscoveryEndpoint 127.0.0.1" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    else
+      echo "cacheEnableRemote false" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    fi
 
     echo "Created the storage interception config file with cache enabled. Its contents are =>"
     eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
@@ -558,6 +569,16 @@ echo "Blob Integration test with cache failed"
 exit 1
 fi
 echo -e "Blob Integration test with cache passed\n\n"
+
+echo "Running integration test against blob with discovery cache enabled"
+add_interception_config_blob_with_cache /mnt/quiverfs false true
+eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large -s -n 20 -p 4 -e"
+if [ $? -ne 0 ]
+then
+echo "Blob Integration test with discovery cache enabled failed"
+exit 1
+fi
+echo -e "Blob Integration test with discovery cache enabled passed\n\n"
 
 echo "Running unit tests against blob with cache and encryption enabled"
 add_interception_config_blob_with_cache_encryption /mnt/dataPathIntcpt

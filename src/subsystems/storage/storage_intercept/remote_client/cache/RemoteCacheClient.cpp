@@ -83,13 +83,19 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
     bool bAuthEnabled = StorageInterceptConfig::GetInstance().GetCacheAuthEnabled();
     std::string accountName = bAuthEnabled ? StorageInterceptConfig::GetInstance().GetCacheAuthAccountName() : "";
     std::string accountKey = bAuthEnabled ? StorageInterceptConfig::GetInstance().GetCacheAuthAccountKey() : "";
+    bool bIsCacheServerDiscoveryEnabled = StorageInterceptConfig::GetInstance().IsCacheServerDiscoveryEnabled();
+    uint32_t nDiscoveryIntervalInSeconds = StorageInterceptConfig::GetInstance().CacheServerDiscoveryIntervalInSeconds();
+    std::string nDiscoveryEndpoint = StorageInterceptConfig::GetInstance().CacheServerDiscoveryEndpoint();
 
     m_spCacheClientImpl = make_shared<CacheClientImpl>();
 
-    const char** arrServers = new const char*[vsServerNodes.size()];
-    for(size_t index = 0; index < vsServerNodes.size(); index++)
-    {
-        arrServers[index] = vsServerNodes[index].c_str();
+    const char** arrServers = nullptr;
+    if (!bIsCacheServerDiscoveryEnabled) {
+        arrServers = new const char*[vsServerNodes.size()];
+        for(size_t index = 0; index < vsServerNodes.size(); index++)
+        {
+            arrServers[index] = vsServerNodes[index].c_str();
+        }
     }
 
     auto cacheStatus = m_spCacheClientImpl->Initialize(arrServers,
@@ -104,6 +110,9 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
                                                        accountKey.c_str(),
                                                        !enableRemoteCache,
                                                        bReuseServerConnections,
+                                                       bIsCacheServerDiscoveryEnabled,
+                                                       nDiscoveryIntervalInSeconds,
+                                                       nDiscoveryEndpoint.c_str(),
                                                        nMaxBufferSize);
     STORAGE_ASSERT(cacheStatus == CacheClientStatus::SUCCESS, "Failed to initialize CacheClientImpl");
     delete[] arrServers;
