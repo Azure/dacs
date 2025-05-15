@@ -91,6 +91,6 @@ spec:
             value: {{ .Values.cacheServer.scheduler.cacheserverNamespace | quote }}
           - name: CACHESERVER_SCHEDULER_ENABLESCHEDULERCOORDINATION
             value: {{ .Values.cacheServer.scheduler.enableSchedulerCoordination | quote }}
-          - name: CACHESERVER_SCHEDULER_IS_HOSTPATHMOUNTENABLED
+          - name: CACHESERVER_SCHEDULER_ISHOSTPATHMOUNTENABLED
             value: {{ .Values.cacheServer.useHostPath | quote }}
 {{- end }}
