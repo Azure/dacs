@@ -110,6 +110,7 @@ class StreamingClient
         std::atomic_uint64_t               m_nGetPropertiesTotal;
         std::atomic_uint64_t               m_nGetPropertiesCache;
         std::atomic_uint64_t               m_nGetPropertiesRemoteClient;
+        std::atomic_uint64_t               m_nLastLoggedReadChunksTotal;
 
         // Stats for download latencies
         static constexpr unsigned          m_nLatencySamplesVecSize = 1000;
