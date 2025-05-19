@@ -2,5 +2,5 @@ logLevel: info
 schedulerPollInterval: 15s
 processingUnitLabelKey: dacs.azure.com/processing-unit
 cacheserverNamespace: azureml
-enableSchedulerCoordination: false
+enableSchedulerCoordination: true
 isHostPathMountEnabled: false
