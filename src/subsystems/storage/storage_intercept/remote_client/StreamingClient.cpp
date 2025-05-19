@@ -65,6 +65,7 @@ StreamingClient::StreamingClient(
     , m_nGetPropertiesTotal(0)
     , m_nGetPropertiesCache(0)
     , m_nGetPropertiesRemoteClient(0)
+    , m_nLastLoggedReadChunksTotal(0)
     , m_vecCacheDownloadLatencies(m_nLatencySamplesVecSize, UINT_MAX)
     , m_vecRemoteDownloadLatencies(m_nLatencySamplesVecSize, UINT_MAX)
     , m_nTotalCacheDownloadLatencySamples(0)
@@ -526,6 +527,11 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunk(
     m_nReadChunksInProgress--;
     m_cvReadChunk.notify_one();
 
+    // Increment the stats only if the read was successful.
+    if (result)
+    {
+        m_nReadChunksTotal++;
+    }
     return result;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -534,8 +540,6 @@ std::shared_ptr<const FileReadData> StreamingClient::ReadChunkImpl(
     off64_t chunkOffset,
     void* pUserBuf)
 {
-    m_nReadChunksTotal++;
-
     if ((chunkOffset % m_nChunkSize) != 0)
     {
         LOG_ERROR("Invalid usage of readChunk. chunkOffset={} is not at chunk boundary.", chunkOffset);
@@ -907,9 +911,14 @@ void StreamingClient::LongRunningLogStats(const uint32_t sleepTimeInSec)
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::LogStats()
 {
-    LogReadChunkStats();
-    LogGetPropertiesStats();
-    LogDownloadLatencyStats();
+    // Log stats only if the read chunks count has changed
+    if (m_nReadChunksTotal > m_nLastLoggedReadChunksTotal)
+    {
+        LogReadChunkStats();
+        LogGetPropertiesStats();
+        LogDownloadLatencyStats();
+        m_nLastLoggedReadChunksTotal.store(m_nReadChunksTotal);
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::LogReadChunkStats()
