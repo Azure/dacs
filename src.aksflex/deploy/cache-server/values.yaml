@@ -52,6 +52,6 @@ cacheServer:
     debugLevel: "info"
     schedulerPollInterval: 15s
     cacheserverNamespace: cache-server
-    enableSchedulerCoordination: false
+    enableSchedulerCoordination: true
 
 ## Core Components end
