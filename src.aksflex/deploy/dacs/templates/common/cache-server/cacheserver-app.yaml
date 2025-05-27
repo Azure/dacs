@@ -106,13 +106,13 @@ spec:
           failureThreshold : 10
       volumes:
         - name: cache-data-volume
-{{- if .Values.cacheServer.useHostPath }}
+{{- if .Values.cacheServer.useEphemeralStorage }}
+          emptyDir:
+            sizeLimit: {{ (printf "%dGi" (add1 .Values.cacheServer.serverSizeInGB)) }}
+{{- else if .Values.cacheServer.useHostPath }}
           hostPath:
             path: {{ .Values.cacheServer.nodeCacheFolderPath }}
             type: Directory
-{{- else if .Values.cacheServer.useEphemeralStorage }}
-          emptyDir:
-            sizeLimit: {{ (printf "%dGi" (add1 .Values.cacheServer.serverSizeInGB)) }}
 {{- else if .Values.cacheServer.useCacheFolder }}
           persistentVolumeClaim:
             claimName: cacheserver-storage-largepv-claim-v2
