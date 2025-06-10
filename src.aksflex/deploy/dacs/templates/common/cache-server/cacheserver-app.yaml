@@ -85,11 +85,13 @@ spec:
         command: ["/bin/sh", "-cx"]
         args:
         - |
+          set -ex
           export CACHESERVER_HOSTNAME=$HOSTNAME
           export CACHESERVER_PORT={{ .Values.cacheServer.port }}
           export CACHESERVER_CACHE_PATH={{ .Values.cacheServer.mountSsdPath }}/{{ .Values.cacheServer.identifier }}/cache
           export CACHESERVER_CACHE_SIZE_BYTES={{ (mul .Values.cacheServer.serverSizeInGB 1024 1024 1024) }}
           mkdir -p $CACHESERVER_CACHE_PATH
+          /root/check_space_overuse.sh $CACHESERVER_CACHE_PATH $CACHESERVER_CACHE_SIZE_BYTES
           /root/CacheServer $CACHESERVER_PORT $CACHESERVER_CACHE_PATH $CACHESERVER_CACHE_SIZE_BYTES
         volumeMounts:
         - mountPath: {{ .Values.cacheServer.mountSsdPath }}
