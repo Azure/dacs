@@ -15,7 +15,7 @@ spec:
       labels:
         app: cacheserver
         kubernetes.azure.com/managedby: {{ .Values.dacsManagedById }}
-{{- if .Values.cacheServer.egressBandwidthInGb }}
+{{- if and (not .Values.cacheServer.enableTrafficControl) .Values.cacheServer.egressBandwidthInGb }}
       annotations:
         kubernetes.io/egress-bandwidth: {{ .Values.cacheServer.egressBandwidthInGb }}G
 {{- end }}
@@ -82,6 +82,9 @@ spec:
           name : cacheserver
         - containerPort: {{ .Values.cacheServer.metricsPort }}
           name : metrics
+        securityContext:
+          capabilities:
+            add: ["NET_ADMIN"]
         command: ["/bin/sh", "-cx"]
         args:
         - |
@@ -91,6 +94,27 @@ spec:
           export CACHESERVER_CACHE_PATH={{ .Values.cacheServer.mountSsdPath }}/{{ .Values.cacheServer.identifier }}/cache
           export CACHESERVER_CACHE_SIZE_BYTES={{ (mul .Values.cacheServer.serverSizeInGB 1024 1024 1024) }}
           mkdir -p $CACHESERVER_CACHE_PATH
+
+          {{- if and .Values.cacheServer.enableTrafficControl .Values.cacheServer.egressBandwidthInGb }}
+          echo "Traffic control is enabled"
+          BANDWIDTH="{{ .Values.cacheServer.egressBandwidthInGb }}gbit"
+          BURST="$(( {{ .Values.cacheServer.egressBandwidthInGb }} * 25 ))mb"
+          for iface in $(ls /sys/class/net/ | grep -Ev '^(lo|docker|ib|mlx)'); do
+            echo "Applying rate limiting to interface: $iface"
+            echo "Setting bandwidth: $BANDWIDTH, burst: ${BURST}"
+            if ! tc qdisc add dev $iface root tbf rate $BANDWIDTH burst ${BURST} latency 100ms; then
+              echo "Warning: Failed to apply rate limiting to $iface, continuing..."
+            fi
+          done
+
+          for iface in $(ls /sys/class/net/ | grep -Ev '^(lo|docker|ib|mlx)'); do
+            echo "Rate limiting configuration for $iface:"
+            tc qdisc show dev $iface
+          done
+          {{- else }}
+          echo "Traffic control is disabled"
+          {{- end }}
+
           /root/check_space_overuse.sh $CACHESERVER_CACHE_PATH $CACHESERVER_CACHE_SIZE_BYTES
           /root/CacheServer $CACHESERVER_PORT $CACHESERVER_CACHE_PATH $CACHESERVER_CACHE_SIZE_BYTES
         volumeMounts:
