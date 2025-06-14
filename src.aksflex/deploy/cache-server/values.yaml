@@ -42,6 +42,7 @@ cacheServer:
   ibResourceCountLimit: 0
   nodeSsdPath: /var/lib/containerd # required when useEphemeralStorage is false and useCacheFolder is false. To be removed after all clusters are rebuilt to have dedicated cache folder
   useCacheFolder: true
+  enableTrafficControl: true # If true, traffic control will be enabled for the cacheserver pods
   nodeCacheFolderPath: /var/lib/ssd/cacheserver # required when useEphemeralStorage is false and { useCacheFolder or useHostPath } is true.
   nodeSelectorLabelKey: dacs.azure.com/processing-unit
   nodeSelectorLabelValues: [ "cpu" ]
