@@ -609,7 +609,6 @@ CacheClientStatus CacheClientImpl::DeleteGroup(/*[in]*/ const char* groupID,
                             *deleteGroupRequest,
                             hostname,
                             groupID);
-            m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -726,7 +725,6 @@ CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
             LOG_ERROR_REQID("Couldn't get server connection, access time distribution request for server: {}",
                             *lastAccessTimeDistributionRequest,
                             hostname);
-            m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -860,7 +858,6 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
                             *deleteByLastAccessTimeRequest,
                             hostname,
                             lastAccessTime);
-            m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 

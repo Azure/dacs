@@ -100,8 +100,13 @@ void HandleSocket(int epollFd)
         }
         else
         {
-            LOG_DEBUG("close fd={}", clientFd);
-            close(clientFd);
+            LOG_INFO("Close fd={} after request processing, request type: {}, response code: {}",
+                clientFd, eRequestType, eResponseCode);
+            if (close(clientFd) < 0)
+            {
+                LOG_WARN("Failed to close client fd={}, errno: {}:{}", clientFd, errno, strerror(errno));
+            }
+
             if(eResponseCode == ResponseCode::SUCCESS)
             {
                 eResponseCode = ResponseCode::NETWORK_ERROR;

@@ -933,8 +933,9 @@ void StreamingClient::LogReadChunkStats()
         m_nReadChunksRemoteClient,
         m_nReadChunksZeroCopy);
 
-    LOG_INFO("ReadFile requested stats. TotalReads={} 128k={} 4MB={}, 100MB={} 1GB={} >1GB={} TotalBytes={} "
-        "MaxReadBytes={}",
+    LOG_INFO("ReadFile requested stats: MountName={} TotalReads={} 128k={} 4MB={}, 100MB={} 1GB={} >1GB={}"
+        " TotalBytes={} MaxReadBytes={}",
+        m_strMountName,
         m_nReadFileTotal[0],
         m_nRead128K[0],
         m_nRead4MB[0],
@@ -944,8 +945,9 @@ void StreamingClient::LogReadChunkStats()
         m_nReadTotalBytes[0],
         m_nReadMax[0]);
 
-    LOG_INFO("ReadFile serviced stats. TotalReads={} 128k={} 4MB={}, 100MB={} 1GB={} >1GB={} TotalBytes={} "
-        "MaxReadBytes={}",
+    LOG_INFO("ReadFile serviced stats: MountName={} TotalReads={} 128k={} 4MB={}, 100MB={} 1GB={} >1GB={}"
+        " TotalBytes={} MaxReadBytes={}",
+        m_strMountName,
         m_nReadFileTotal[1],
         m_nRead128K[1],
         m_nRead4MB[1],
