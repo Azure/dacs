@@ -180,7 +180,11 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
         }
 
         bool bRet = clientConnection.Sendfile(fileFD, downloadRequest.offset(), downloadFileSize);
-        close(fileFD);
+        if (close(fileFD) < 0)
+        {
+            LOG_WARN_REQID("Error closing local file: {}, filename: {}, errno: {}:{}",
+                downloadRequest, destFilename, downloadRequest.filename(), errno, strerror(errno));
+        }
         if (!bRet)
         {
             LOG_WARN_REQID("Failed to send file: {} to client id: {}", downloadRequest, downloadRequest.filename(), clientConnection.GetId());

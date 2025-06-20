@@ -89,6 +89,8 @@ namespace cacheutils
             }
             else 
             {
+                LOG_WARN("Failed to read all bytes from server, id={}, totalRead={}, tempRead={}, expectedSize={}",
+                    connection->GetId(), totalRead, tempRead, size);
                 return totalRead;
             }
         }
