@@ -32,7 +32,7 @@ cacheServer:
   cpuLimit: 1
   memoryLimitMB: 400
   evictionEnabled: true
-  evictionLastAccessThreshold: 90d
+  evictionLastAccessThreshold: 30d
   evictionSizeThreshold: 75
   evictionPassFrequency: 1h
   mountSsdPath: /host/mnt/ssd0

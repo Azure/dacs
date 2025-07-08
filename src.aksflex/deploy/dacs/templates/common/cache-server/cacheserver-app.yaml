@@ -102,7 +102,7 @@ spec:
           for iface in $(ls /sys/class/net/ | grep -Ev '^(lo|docker|ib|mlx)'); do
             echo "Applying rate limiting to interface: $iface"
             echo "Setting bandwidth: $BANDWIDTH, burst: ${BURST}"
-            if ! tc qdisc add dev $iface root tbf rate $BANDWIDTH burst ${BURST} latency 100ms; then
+            if ! tc qdisc add dev $iface root tbf rate $BANDWIDTH burst ${BURST} latency 1000ms; then
               echo "Warning: Failed to apply rate limiting to $iface, continuing..."
             fi
           done
