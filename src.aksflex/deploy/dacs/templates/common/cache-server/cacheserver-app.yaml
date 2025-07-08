@@ -139,11 +139,8 @@ spec:
           hostPath:
             path: {{ .Values.cacheServer.nodeCacheFolderPath }}
             type: Directory
-{{- else if .Values.cacheServer.useCacheFolder }}
-          persistentVolumeClaim:
-            claimName: cacheserver-storage-largepv-claim-v2
 {{- else }}
-          persistentVolumeClaim:
-            claimName: cacheserver-storage-pv2-rwx-claim
+          hostPath: null
+          sizeLimit: null
 {{- end }}
 {{- end }}

@@ -1,11 +1,11 @@
 {{- if and .Values.cacheServer.enabled (ne (int .Values.cacheServer.numServers) 0)}}
 {{ $schedulerRoleBindingName := "cacheserver-scheduler" }}
-{{ $pvAndSchedulerCoordinatorRoleName := "cacheserver-scheduler-pv-schedulercoordinator-role" }}
-{{ $pvAndSchedulerCoordinatorRoleBindingName := "cacheserver-scheduler-pv-schedulercoordinator-rolebinding" }}
+{{ $cmRoleName := "cacheserver-scheduler-pv-schedulercoordinator-role" }}
+{{ $cmRoleBindingName := "cacheserver-scheduler-pv-schedulercoordinator-rolebinding" }}
 {{- if .Values.cacheServer.identifier }}
 {{ $schedulerRoleBindingName = printf "%s-%s" $schedulerRoleBindingName .Values.cacheServer.identifier }}
-{{ $pvAndSchedulerCoordinatorRoleName = printf "%s-%s" $pvAndSchedulerCoordinatorRoleName .Values.cacheServer.identifier }}
-{{ $pvAndSchedulerCoordinatorRoleBindingName = printf "%s-%s" $pvAndSchedulerCoordinatorRoleBindingName .Values.cacheServer.identifier }}
+{{ $cmRoleName = printf "%s-%s" $cmRoleName .Values.cacheServer.identifier }}
+{{ $cmRoleBindingName = printf "%s-%s" $cmRoleBindingName .Values.cacheServer.identifier }}
 {{- end }}
 ---
 apiVersion: v1
@@ -35,16 +35,16 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   namespace: {{ .Release.Namespace }}
-  name: {{ $pvAndSchedulerCoordinatorRoleName }}
+  name: {{ $cmRoleName }}
 rules:
   - apiGroups: [""]
-    resources: ["persistentvolumes", "configmaps"]
+    resources: ["configmaps"]
     verbs: ["get", "list", "patch", "update", "create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ $pvAndSchedulerCoordinatorRoleBindingName }}
+  name: {{ $cmRoleBindingName }}
   namespace: {{ .Release.Namespace }}
 subjects:
 - kind: ServiceAccount
@@ -53,7 +53,7 @@ subjects:
 roleRef:
   kind: ClusterRole
   apiGroup: rbac.authorization.k8s.io
-  name: {{ $pvAndSchedulerCoordinatorRoleName }}
+  name: {{ $cmRoleName }}
 ---
 apiVersion: apps/v1
 kind: Deployment
