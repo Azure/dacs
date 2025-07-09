@@ -98,18 +98,24 @@ spec:
           {{- if and .Values.cacheServer.enableTrafficControl .Values.cacheServer.egressBandwidthInGb }}
           echo "Traffic control is enabled"
           BANDWIDTH="{{ .Values.cacheServer.egressBandwidthInGb }}gbit"
-          BURST="$(( {{ .Values.cacheServer.egressBandwidthInGb }} * 25 ))mb"
-          for iface in $(ls /sys/class/net/ | grep -Ev '^(lo|docker|ib|mlx)'); do
-            echo "Applying rate limiting to interface: $iface"
-            echo "Setting bandwidth: $BANDWIDTH, burst: ${BURST}"
-            if ! tc qdisc add dev $iface root tbf rate $BANDWIDTH burst ${BURST} latency 1000ms; then
-              echo "Warning: Failed to apply rate limiting to $iface, continuing..."
-            fi
-          done
+          BURST="{{ mul .Values.cacheServer.egressBandwidthInGb 25 }}mb"
+          for iface in $(ls -1 /sys/class/net); do
+            # Ensure it's a directory and has a valid type file
+            if [ -d "/sys/class/net/$iface" ] && [ -f "/sys/class/net/$iface/type" ]; then
+              # Only proceed if it's a physical ethernet interface
+              if [ "$(cat /sys/class/net/$iface/type)" = "1" ]; then
+                echo "Applying rate limiting to interface: $iface"
+                echo "Setting bandwidth: $BANDWIDTH, burst: ${BURST}"
+                if ! tc qdisc replace dev $iface root tbf rate $BANDWIDTH burst ${BURST} latency 1000ms; then
+                  echo "Warning: Failed to apply rate limiting to $iface, continuing..."
+                fi
 
-          for iface in $(ls /sys/class/net/ | grep -Ev '^(lo|docker|ib|mlx)'); do
-            echo "Rate limiting configuration for $iface:"
-            tc qdisc show dev $iface
+                echo "Rate limiting configuration for $iface:"
+                if ! tc qdisc show dev $iface; then
+                  echo "Warning: Failed to show qdisc config for $iface, continuing..."
+                fi
+              fi
+            fi
           done
           {{- else }}
           echo "Traffic control is disabled"
