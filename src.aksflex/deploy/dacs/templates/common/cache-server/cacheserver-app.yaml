@@ -127,6 +127,9 @@ spec:
         - mountPath: {{ .Values.cacheServer.mountSsdPath }}
           name: cache-data-volume
           subPath: ssd0
+        - name: cache-discovery-config
+          mountPath: /serverConfig
+          readOnly: true
         livenessProbe:
           exec:
             command: [
@@ -149,4 +152,18 @@ spec:
           hostPath: null
           sizeLimit: null
 {{- end }}
+        - name: cache-discovery-config
+          configMap:
+            name: cacheserver-discovery-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cacheserver-discovery-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: cacheserver
+data:
+  cache_server_count: "{{ .Values.cacheServer.numServers }}"
+  cache_server_endpoint_format: "cacheserver-{}.cacheserver.{{ .Release.Namespace }}.svc.cluster.local"
 {{- end }}

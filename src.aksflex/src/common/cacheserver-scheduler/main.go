@@ -45,6 +45,7 @@ func initLogger(logLevel string) {
 
 func main() {
 	initLogger(GetConfig().LogLevel)
+	log.Infof("Config: %v", GetConfig())
 
 	schedulerSleepInterval := GetConfig().SchedulerPollInterval
 	log.Infof("Starting CacheServer Scheduler loop with sleep interval: %s", schedulerSleepInterval)
