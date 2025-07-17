@@ -17,4 +17,19 @@ spec:
   clusterIP: None
   selector:
     app: cacheserver
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cacheserver-discovery
+  labels:
+    app: cacheserver
+  namespace: {{ .Release.Namespace }}
+spec:
+  ports:
+  - name: cacheserver
+    port: {{ .Values.cacheServer.port }}
+    targetPort: {{ .Values.cacheServer.port }}
+  selector:
+    app: cacheserver
 {{- end }}
