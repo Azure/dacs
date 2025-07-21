@@ -18,7 +18,7 @@ def parse_args():
     return args
 
 def get_deterministic_hash(s: str):
-    hashNum = int(hashlib.md5(s.encode()).hexdigest(), 16)
+    hashNum = int(hashlib.md5(s.encode()).hexdigest(), 16) # CodeQL [SM02167] stress test client not used in production 
     return hashNum
 
 def worker_function(work_unit, args):
