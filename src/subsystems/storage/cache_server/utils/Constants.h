@@ -23,7 +23,7 @@ constexpr uint32_t DefaultCacheTTLWindowSizeSeconds = 60;
 // Eviction related settings
 constexpr uint32_t DefaultEvictionPassFrequencySeconds = 3630; // ~ 1hr
 constexpr uint64_t DefaultEvictionLastAccessThresholdSeconds = 2592000; // 30 days
-constexpr double DefaultEvictionSizeThresholdPecentage = 60; // 60% of cache size
+constexpr double DefaultEvictionSizeThresholdPecentage = 90; // 90% of cache size
 // 1TB cache size
 constexpr uint64_t DefaultCacheSizeLimitBytes = 1024ull * 1024 * 1024 * 1024; 
 
