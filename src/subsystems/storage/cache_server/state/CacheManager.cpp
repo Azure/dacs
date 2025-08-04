@@ -26,6 +26,7 @@ CacheManager::CacheManager()
   m_stopCleanupThread(false),
   m_bStopEvictionThread(false),
   m_bEvictionEnabled(false),
+  m_bDynamicEvictionEnabled(false),
   m_ttlWindowSizeSeconds(DefaultCacheTTLWindowSizeSeconds),
   m_cacheSizeLimitBytes(DefaultCacheSizeLimitBytes),
   m_totalCachedSize(0)
@@ -401,17 +402,6 @@ void CacheManager::InitializeFromSnapshot(const Snapshot& snapshot)
                     snapshotBucket.entries(fileIndex).filename());
                 continue;
             }
-            else if (snapshotBucket.entries(fileIndex).accesstimestamp() > 0 &&
-                    (snapshot.savetimestamp() - snapshotBucket.entries(fileIndex).accesstimestamp()) >= m_nEvictionLastAccessThresholdSeconds)
-            {
-                LOG_INFO("Skipping stale file from snapshot. bucket: {}, filename: {} Access timestamp: {} Snapshot savetimestamp: {} last access threshold: {} seconds ago",
-                    bucket,
-                    snapshotBucket.entries(fileIndex).filename(),
-                    snapshotBucket.entries(fileIndex).accesstimestamp(),
-                    snapshot.savetimestamp(),
-                    m_nEvictionLastAccessThresholdSeconds);
-                continue;
-            }
 
             nEntries++;
             const auto& fileEntry = snapshotBucket.entries(fileIndex);
@@ -779,6 +769,13 @@ void CacheManager::InitializeEviction()
         LOG_INFO("Cache stale items eviction enabled");
     }
 
+    char* dynamicEvictionEnabled = std::getenv("CACHESERVER_EVICTION_MAINTAIN_FREE_SPACE");
+    if (dynamicEvictionEnabled != NULL && strcasecmp(dynamicEvictionEnabled, "true") == 0)
+    {
+        m_bDynamicEvictionEnabled = true;
+        LOG_INFO("Eviction maintain free space mode enabled");
+    }
+
     char* evictionLastAccessThreshold = std::getenv("CACHESERVER_EVICTION_LAST_ACCESS_THRESHOLD");
     if (evictionLastAccessThreshold != NULL && strlen(evictionLastAccessThreshold) > 0)
     {
@@ -841,6 +838,28 @@ void CacheManager::InitializeEviction()
         m_dEvictionSizeThreshold = DefaultEvictionSizeThresholdPecentage;
         LOG_INFO("Eviction size threshold not set, using default: {} Percent", m_dEvictionSizeThreshold);
     }
+
+    char* evictionSizeTarget = std::getenv("CACHESERVER_EVICTION_SIZE_TARGET");
+    double defaultEvictionSizeTarget = 0.9 * m_dEvictionSizeThreshold; // Default target is 90% of the threshold
+    if (evictionSizeTarget != NULL && strlen(evictionSizeTarget) > 0)
+    {
+        double dValue = std::stod(evictionSizeTarget);
+        if (dValue >= 0.0 && dValue <= 100.0 && (dValue < m_dEvictionSizeThreshold))
+        {
+            m_dEvictionSizeTarget = dValue;
+            LOG_INFO("Eviction size target: {}%", m_dEvictionSizeTarget);
+        }
+        else
+        {
+            m_dEvictionSizeTarget = defaultEvictionSizeTarget;   ;
+            LOG_WARN("Invalid eviction size target set, using default: {}%", m_dEvictionSizeTarget);
+        }
+    }
+    else
+    {
+        m_dEvictionSizeTarget = defaultEvictionSizeTarget;
+        LOG_INFO("Eviction size target not set, using default: {}%", m_dEvictionSizeTarget);
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 void CacheManager::EvictionWorker()
@@ -871,12 +890,31 @@ void CacheManager::EvictionWorker()
             continue;
         }
 
-        LOG_INFO("Starting eviction, Cache server utilization:{} is above eviction threshold: {} last access threshold: {} seconds",
+        LOG_INFO("Starting eviction, Cache server utilization:{} is above eviction threshold: {}",
                  dCacheServerUtilization,
-                 m_dEvictionSizeThreshold,
-                 m_nEvictionLastAccessThresholdSeconds);
-        time_t now = time(NULL);
-        EvictByAccessTime(now - m_nEvictionLastAccessThresholdSeconds);
+                 m_dEvictionSizeThreshold);
+        
+        time_t evictionThreshold;
+        if (m_bDynamicEvictionEnabled)
+        {
+            // Use dynamic eviction threshold that adapts based on cache size and access patterns
+            evictionThreshold = CalculateDynamicEvictionThreshold();
+            LOG_INFO("Using dynamic eviction threshold: {}",
+                     ctime(&evictionThreshold));
+        }
+        else
+        {
+            // Use fixed threshold based on last access time
+            time_t now = time(NULL);
+            evictionThreshold = now - m_nEvictionLastAccessThresholdSeconds;
+            LOG_INFO("Using fixed eviction threshold: {}", ctime(&evictionThreshold));
+        }
+        if(evictionThreshold <= 0)
+        {
+            LOG_WARN("Not a valid eviction threshold, skipping eviction");
+            continue;
+        }
+        EvictByAccessTime(evictionThreshold);
     }
     LOG_INFO("Shutdown EvictionWorker");
 }
@@ -960,7 +998,7 @@ void CacheManager::EvictByAccessTime(time_t nEvictionLastAccessTime)
     }
 
     m_totalCachedSize.fetch_sub(nDeleteFileSize);
-    LOG_INFO("Delete files by access time, num files: {}, size: {}", nNumFilesDeleted, nDeleteFileSize);
+    LOG_INFO("Delete files by access time: {}, num files: {}, size: {}", ctime(&nEvictionLastAccessTime), nNumFilesDeleted, nDeleteFileSize);
     for (auto& filename : vecFilesToDelete)
     {
         // In the download path, we gracefully handle the case where cache entry
@@ -1009,5 +1047,63 @@ bool CacheManager::GetLastAccessTimeDistribution(
 
     TIMER_STOP_AND_LOG(GetLastAccessTimeDistribution);
     return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+time_t CacheManager::CalculateDynamicEvictionThreshold()
+{
+    // Calculate target size to evict: bring utilization down to target percentage
+    double currentUtilization = GetCacheServerUtilizationPercentage();
+    double targetUtilization = m_dEvictionSizeTarget; 
+    uint64_t targetCacheSize = (uint64_t)(m_cacheSizeLimitBytes * targetUtilization / 100.0);
+    uint64_t currentCacheSize = m_totalCachedSize.load();
+    uint64_t sizeToEvict = 0;
+    if (currentCacheSize > targetCacheSize)
+    {
+        sizeToEvict = currentCacheSize - targetCacheSize;
+    }
+    else
+    {
+        LOG_INFO("Current cache size is already below target size, no eviction needed");
+        return 0;
+    }
+    
+    LOG_INFO("Dynamic eviction calculation: current={}%, target={}%, currentSize={}, targetSize={}, toEvict={}", 
+             currentUtilization, targetUtilization, currentCacheSize, targetCacheSize, sizeToEvict);
+    
+    // Get access time distribution with 1-hour buckets
+    ::google::protobuf::Map<int64_t, uint64_t> accessTimeDistribution;
+    if (!GetLastAccessTimeDistribution(1, accessTimeDistribution))
+    {
+        LOG_WARN("Failed to get access time distribution");
+        return 0;
+    }
+    
+    std::map<int64_t, uint64_t> sortedBuckets;
+    for (const auto& [timestamp, bucketSize] : accessTimeDistribution)
+    {
+        sortedBuckets[timestamp] = bucketSize;
+    }
+    
+    // Find the access time threshold that would free up enough space (oldest first)
+    uint64_t accumulatedSize = 0;
+    time_t evictionThreshold = 0; 
+    time_t lastBucketTimestamp = 0;
+    
+    for (const auto& [timestamp, bucketSize] : sortedBuckets)
+    {
+        accumulatedSize += bucketSize;
+        lastBucketTimestamp = timestamp;
+        if (accumulatedSize >= sizeToEvict)
+        {
+            break;
+        }
+    }  
+
+    evictionThreshold = lastBucketTimestamp + 3600; // Add 1 hour to include all entries in this bucket
+    
+    LOG_INFO("Dynamic eviction threshold calculated: {}, will evict ~{} bytes", 
+             ctime(&evictionThreshold), accumulatedSize);
+    
+    return evictionThreshold;
 }
 //---------------------------------------------------------------------------------------------------------------------

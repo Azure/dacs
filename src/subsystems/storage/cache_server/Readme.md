@@ -33,13 +33,23 @@ The port to be used for exposing the cache server metrics (default is "")
 Values: true or false (default is false)
 Enable Cache Eviction for items exceeding cache size and cache age thresholds
 
+### CACHESERVER_EVICTION_MAINTAIN_FREE_SPACE
+Values: true or false (default is false)
+Enable maintain free space eviction algorithm that calculates eviction thresholds based on cache size and access patterns to maintain a target percentage of free space.
+When disabled, uses the fixed threshold defined by CACHESERVER_EVICTION_LAST_ACCESS_THRESHOLD for eviction.
+
 ### CACHESERVER_EVICTION_LAST_ACCESS_THRESHOLD
 Values: Last Access threshold for cache eviction, example "30d12h41m29s"
 Default is set to 30d
 
 ### CACHESERVER_EVICTION_SIZE_THRESHOLD
-Values: Size threshold for cache eviction in percentage
-Default is set to 60
+Values: Size threshold for cache eviction in percentage (0-100)
+Default is set to 90
+
+### CACHESERVER_EVICTION_SIZE_TARGET
+Values: Target cache utilization percentage after eviction (0-100)
+When eviction triggers, cache will be reduced to around this percentage.
+Default is set to 90% of the Eviction Size Threshold
 
 ### CACHESERVER_EVICTION_PASS_FREQUENCY
 Values: Frequency of running eviction pass, example "1h30m"

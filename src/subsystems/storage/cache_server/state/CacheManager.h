@@ -27,6 +27,7 @@ class CacheManager
     FRIEND_TEST(CacheManagerTest, RembemberPendingGroupIdDeletionAfterSnapshotLoad);
     FRIEND_TEST(CacheManagerTest, TestParseTimeIntervalString);
     FRIEND_TEST(CacheManagerTest, TestEviction);
+    FRIEND_TEST(CacheManagerTest, TestDynamicEviction);
 
     public:
         static CacheManager& GetInstance();
@@ -167,6 +168,9 @@ class CacheManager
 
         void EvictByAccessTime(time_t nLastAccessTime);
 
+        // Calculate dynamic eviction threshold based on cache size and access time distribution
+        time_t CalculateDynamicEvictionThreshold();
+
         // Setting some default expiry time to ensure one client doesn't permanently lock a cache key
         static constexpr uint32_t CACHE_INIT_EXPIRY_SECONDS = 60;
 
@@ -188,6 +192,7 @@ class CacheManager
 
         // Eviction related members
         bool m_bEvictionEnabled;
+        bool m_bDynamicEvictionEnabled;
         // Parameter used by the eviction thread to determine which items to evict.
         // All items last accessed within this number of seconds ago are considered active.
         // i.e lastAccessTime < m_nEvictionLastAccessThresholdSeconds => Active
@@ -196,6 +201,9 @@ class CacheManager
         uint32_t m_nEvictionPassFrequencySeconds;
         // Parameter used by the eviction thread to determine the cache size threshold for eviction.
         double m_dEvictionSizeThreshold;
+        // Parameter used by the dynamic eviction algorithm to determine target utilization after eviction.
+        // Target utilization percentage (e.g., 70 means target 70% utilization)
+        double m_dEvictionSizeTarget;
         std::atomic_bool m_bStopEvictionThread;
         std::mutex m_mutexEviction; // really only used by the wait_for
         std::condition_variable m_cvEviction;

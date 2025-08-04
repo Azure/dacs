@@ -6,6 +6,7 @@
 #include "CacheManager.h"
 #include "Constants.h"
 #include "Utils.h"
+#include "Logger.h"
 //---------------------------------------------------------------------------------------------------------------------
 CacheManagerTest::CacheManagerTest()
 {
@@ -73,7 +74,9 @@ void CacheManagerTest::ValidateCacheEntryNotExists(const std::string& fileName)
     CacheManager::GetInstance().m_vCacheGroupIDMap.clear(); \
     CacheManager::GetInstance().m_vCacheGroupIDMap.resize(NUM_MAPS); \
     CacheManager::GetInstance().m_groupIdQueue = {}; \
-    CacheManager::GetInstance().m_totalCachedSize = 0;
+    CacheManager::GetInstance().m_totalCachedSize = 0; \
+    CacheManager::GetInstance().m_bDynamicEvictionEnabled = false; \
+    CacheManager::GetInstance().m_dEvictionSizeThreshold = 0.5;
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(CacheManagerTest, PutAndGetCacheEntry)
 {
@@ -253,5 +256,82 @@ TEST_F(CacheManagerTest, TestEviction)
     ValidateCacheEntry(fileNamePrefix + "6", fileSize, expiryTime, groupId);
 
     ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize, 4 * fileSize);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(CacheManagerTest, TestDynamicEviction)
+{
+    // This test validates the actual bucket iteration logic by directly manipulating
+    // access timestamps to create multiple hour buckets
+    
+    // Take the eviction thread mutex to prevent races
+    {
+        std::lock_guard<std::mutex> lock(CacheManager::GetInstance().m_mutexEviction);
+        RESET_CACHE_MANAGER();
+    }
+
+    // Enable dynamic eviction for this test only
+    CacheManager::GetInstance().m_bDynamicEvictionEnabled = true;
+    CacheManager::GetInstance().m_dEvictionSizeThreshold = 70;
+    CacheManager::GetInstance().m_dEvictionSizeTarget = 40; // 40% of cache size limit
+
+    // Configure eviction settings
+    CacheManager::GetInstance().SetCacheSizeLimit(1000 * 1024 * 1024); // 1GB limit for this test
+    uint64_t fileSize = 200 * 1024 * 1024; // 200MB files
+        
+    // Create files and directly manipulate their access timestamps to span multiple hours
+    time_t baseTime = 1640995200; // Fixed base time
+    std::vector<std::string> fileNames;
+    
+    // Create 4 files with access times in different hour buckets
+    for (int i = 0; i < 4; i++)
+    {
+        std::string fileName = "multi_bucket_file_" + std::to_string(i);
+        fileNames.push_back(fileName);
+        
+        // Add cache entry normally first
+        AddCacheEntry(fileName, fileSize, 0, "testGroup");
+        
+        // Calculate hash bucket for this filename
+        size_t bucket = std::hash<std::string>{}(fileName) % NUM_MAPS;
+        LOG_INFO("Adding file '{}' to bucket {}", fileName, bucket);
+        auto& cacheMap = CacheManager::GetInstance().m_vCacheInfoMap[bucket];
+        auto iter = cacheMap.find(fileName);
+        ASSERT_NE(iter, cacheMap.end()) << "File should exist in cache";
+        
+        // Set access time to different hours:
+        // File 0: 4 hours ago (oldest) - will be in earliest bucket
+        // File 1: 3 hours ago 
+        // File 2: 2 hours ago
+        // File 3: 1 hour ago (newest) - will be in latest bucket
+        iter->second.m_accessTimestamp = baseTime - ((3 - i) * 3600) + 20;
+    }
+    
+
+    // Now test the dynamic eviction threshold calculation iteration logic
+    time_t threshold = CacheManager::GetInstance().CalculateDynamicEvictionThreshold();
+    
+    // Expected algorithm behavior:
+    // Current: 800MB, Target: 40% of 1GB=400MB, Need to evict: 400MB
+    // Bucket iteration should accumulate: 200MB + 200MB = 400MB (first 2 buckets)
+    // Should stop at second bucket and set threshold = secondBucketTime + 3600
+    
+    ASSERT_GT(threshold, 0) << "Algorithm should return valid threshold";
+    
+    // Validate threshold is within reasonable range relative to our test data
+    time_t minExpectedThreshold = baseTime - 2 * 3600; //
+    time_t maxExpectedThreshold = baseTime - 3600; //
+    
+    ASSERT_GE(threshold, minExpectedThreshold) << "Threshold should not be older than min";
+    ASSERT_LE(threshold, maxExpectedThreshold) << "Threshold should not be newer than max";
+    
+   
+    //sleep for one eviction pass to allow eviction to happen
+    std::this_thread::sleep_for(std::chrono::seconds(3));    
+    // Validate that the first two files were evicted
+    ValidateCacheEntryNotExists(fileNames[0]);
+    ValidateCacheEntryNotExists(fileNames[1]);
+    ValidateCacheEntry(fileNames[2], fileSize, 0, "testGroup");
+    ValidateCacheEntry(fileNames[3], fileSize, 0, "testGroup");
+    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize, 2 * fileSize);
 }
 //---------------------------------------------------------------------------------------------------------------------
