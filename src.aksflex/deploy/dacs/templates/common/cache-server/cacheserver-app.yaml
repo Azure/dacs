@@ -62,6 +62,10 @@ spec:
           value : {{ .Values.cacheServer.evictionSizeThreshold | quote }}
         - name : CACHESERVER_EVICTION_PASS_FREQUENCY
           value : {{ .Values.cacheServer.evictionPassFrequency | quote }}
+        - name: CACHESERVER_EVICTION_MAINTAIN_FREE_SPACE
+          value: {{ .Values.cacheServer.evictionMaintainFreeSpace | quote }}
+        - name: CACHESERVER_EVICTION_SIZE_TARGET
+          value: {{ .Values.cacheServer.evictionSizeTarget | quote }}
 {{- if has "gpu" .Values.cacheServer.nodeSelectorLabelValues }}
         resources:
           requests:
