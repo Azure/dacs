@@ -62,6 +62,12 @@ CacheClientStatus CacheClientImpl::Initialize(
         return CacheClientStatus::INVALID_ARGUMENT;
     }
 
+    if(bIsCacheServerDiscoveryEnabled && (nCacheServerDiscoveryEndpoint == nullptr || strlen(nCacheServerDiscoveryEndpoint) == 0))
+    {
+        LOG_ERROR("Discovery enabled but no discovery endpoint provided");
+        return CacheClientStatus::INVALID_ARGUMENT;
+    }
+
     if(nPort == 0 || nPort > UINT16_MAX)
     {
         LOG_ERROR("Invalid port {}", nPort);
@@ -109,6 +115,7 @@ CacheClientStatus CacheClientImpl::Initialize(
                                                                 bIsCacheServerDiscoveryEnabled,
                                                                 nCacheServerDiscoveryIntervalInSeconds,
                                                                 nCacheServerDiscoveryEndpoint);
+    
     m_bInitialized = true;
     LOG_INFO("CacheClientImpl initialized. Num servers = {}. Port = {}. Enable IB = {}. Connection pool size = {}, Enable Calculate checksum = {}, Enable Validate checksum = {}",
              nNumServers,
@@ -259,6 +266,11 @@ CacheClientStatus CacheClientImpl::Upload(
     }
 
     const std::string hostname = m_spConnectionManager->GetCacheServerHostname(strCacheKey);
+    if (hostname.empty())
+    {
+        LOG_DEBUG_REQID("No cache servers available for upload, key: {}. Cache discovery may be in progress.", *uploadRequest, strCacheKey);
+        return CacheClientStatus::INTERNAL_ERROR;
+    }
     LOG_DEBUG_REQID("Cache server hostname for file: {} is {}", *uploadRequest, strCacheKey, hostname);
     std::unique_ptr<IConnection> serverConnection = move(m_spConnectionManager->GetConnection(hostname));
     if(serverConnection.get() == nullptr)
@@ -403,6 +415,11 @@ CacheClientStatus CacheClientImpl::Download(
                     bEnableLock);
 
     const std::string hostname = m_spConnectionManager->GetCacheServerHostname(strCacheKey);
+    if (hostname.empty())
+    {
+        LOG_DEBUG_REQID("No cache servers available for download, key: {}. Cache discovery may be in progress.", *downloadRequest, strCacheKey);
+        return CacheClientStatus::INTERNAL_ERROR;
+    }
     LOG_DEBUG_REQID("Cache server hostname for file: {} is {}", *downloadRequest, strCacheKey, hostname);
     if(m_bEnableAuth && !AddAuthParams(request, m_strAccountName, m_strAccountKey))
     {

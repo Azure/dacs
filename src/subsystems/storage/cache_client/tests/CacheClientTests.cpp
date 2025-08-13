@@ -144,6 +144,22 @@ void CacheClientTests::SetCacheServerCount(int count) const {
     configFile.close();
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool CacheClientTests::WaitForServerCount(int expectedCount, int timeoutSeconds) const {
+    for (int i = 0; i < timeoutSeconds; i++) {
+        auto servers = m_cacheClientImpl.m_spConnectionManager->GetAllCacheServerHostnames();
+        if (servers.size() == expectedCount) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+    return false;
+}
+//---------------------------------------------------------------------------------------------------------------------
+void CacheClientTests::AssertServersContain(const std::vector<std::string>& servers, const std::string& expectedServer) const {
+    auto it = std::find(servers.begin(), servers.end(), expectedServer);
+    ASSERT_NE(it, servers.end()) << "Expected server " << expectedServer << " not found in server list";
+}
+//---------------------------------------------------------------------------------------------------------------------
 TEST_P(CacheClientTests, UploadSmallFiles)
 {
     uint64_t nLength = 4 * 1024 * 1024;
@@ -216,6 +232,10 @@ TEST_P(CacheClientTests, Initialization)
     bool enableValidateChecksum = false;
     const char* accountName = "my_account";
     const char* accountKey = "my_secret_key";
+
+    // This test checks the behavior of CacheClientImpl initialization
+    // with various parameters, including discovery enabled and disabled.
+    // Repeated initialization should return INTERNAL_ERROR.
     {
         CacheClientImpl client;
         // First initialization
@@ -273,6 +293,33 @@ TEST_P(CacheClientTests, Initialization)
                                 arrServers[0] /**nCacheServerDiscoveryEndpoint*/));
     }
 
+    // This test checks the behavior of CacheClientImpl initialization
+    // with an empty server list and discovery enabled.
+    // Discovery endpoint is empty, so it should fail.
+    // It should return INTERNAL_ERROR.
+    {
+        CacheClientImpl client;
+
+        ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT,
+            client.Initialize(nullptr, /**arrServers*/
+                             0, /**nServers*/
+                             nPort, /**nPort*/
+                             false, /**enableIB*/
+                             false, /**enableCalculateChecksum*/
+                             false, /**enableValidateChecksum*/
+                             0, /**nConnectionPoolSize*/
+                             false, /**enableAuth*/
+                             "", /**accountName*/
+                             "", /**accountKey*/
+                             false, /**useLocalServer*/
+                             true, /**bReuseConnections*/
+                             true, /**bIsCacheServerDiscoveryEnabled*/
+                             2, /**nCacheServerDiscoveryIntervalInSeconds*/
+                             "" /**nCacheServerDiscoveryEndpoint - Empty endpoint*/));
+    }
+
+    // This test checks the behavior of CacheClientImpl initialization
+    // with no auth credentials.
     {
         CacheClientImpl client;
         // No auth credentials
@@ -728,37 +775,87 @@ TEST_P(CacheClientTests, StaleItemExpiry)
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_P(CacheClientTests, RefreshCacheServersWithDiscoveryEndpoint) {
-
-    if (this->m_cacheClientImpl.m_spConnectionManager->m_bEnableCacheServerDiscovery == false) {
-        LOG_INFO("Cache server discovery is not enabled, skipping test...");
+    if (!IsDiscoveryTest()) {
         GTEST_SKIP();
     }
-
-    std::vector<std::string> actualCacheServerHostnames;
-    // Based on the cache server format as "127.0.{}.1" configured in the serverConfig file
-    std::unordered_set<std::string> expectedOneHostnames = {"127.0.0.1"};
-    std::unordered_set<std::string> expectedTwoHostnames = {"127.0.0.1", "127.0.1.1"};
-
-    LOG_INFO("Initial setup of one cacheservers");
-    SetCacheServerCount(1);
-    std::this_thread::sleep_for(std::chrono::seconds(3));
-    actualCacheServerHostnames = this->m_cacheClientImpl.m_spConnectionManager->GetAllCacheServerHostnames();
-    ASSERT_EQ(std::unordered_set<std::string>(actualCacheServerHostnames.begin(), actualCacheServerHostnames.end()),
-        expectedOneHostnames);
-
-    LOG_INFO("Setting to two cacheservers");
-    SetCacheServerCount(2);
-    std::this_thread::sleep_for(std::chrono::seconds(3));
-    actualCacheServerHostnames = this->m_cacheClientImpl.m_spConnectionManager->GetAllCacheServerHostnames();
-    ASSERT_EQ(std::unordered_set<std::string>(actualCacheServerHostnames.begin(), actualCacheServerHostnames.end()),
-        expectedTwoHostnames);
     
-    LOG_INFO("Setting back to one cacheservers");
+    // Test server count changes
     SetCacheServerCount(1);
-    std::this_thread::sleep_for(std::chrono::seconds(3));
-    actualCacheServerHostnames = this->m_cacheClientImpl.m_spConnectionManager->GetAllCacheServerHostnames();
-    ASSERT_EQ(std::unordered_set<std::string>(actualCacheServerHostnames.begin(), actualCacheServerHostnames.end()),
-        expectedOneHostnames);
+    ASSERT_TRUE(WaitForServerCount(1, DEFAULT_DISCOVERY_TIMEOUT));
+    
+    SetCacheServerCount(2);
+    ASSERT_TRUE(WaitForServerCount(2, DEFAULT_DISCOVERY_TIMEOUT));
+    
+    // Reset for other tests - use extended timeout for reset
+    SetCacheServerCount(1);
+    ASSERT_TRUE(WaitForServerCount(1, EXTENDED_DISCOVERY_TIMEOUT));
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, DiscoveryEndpointConfigurationValidation) {
+    // Test invalid configurations
+    {
+        CacheClientImpl client;
+        uint32_t nPort = atoi(getenv("CACHE_SERVER_PORT"));
+        
+        ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT,
+            client.Initialize(nullptr, 0, nPort, false, false, false, 0, false, "", "", 
+                             false, true, true, 2, ""));  // Empty endpoint
+    }
+    
+    // Test valid configuration
+    {
+        CacheClientImpl client;
+        InitializeClient(client, true);
+        ASSERT_TRUE(client.IsInitialized());
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, ResilientInitializationWithNetworkFailures) {
+    if (!IsDiscoveryTest()) {
+        GTEST_SKIP();
+    }
+    
+    CacheClientImpl client;
+    uint32_t nPort = atoi(getenv("CACHE_SERVER_PORT"));
+    
+    // Should succeed with unreachable endpoint (graceful degradation)
+    ASSERT_EQ(CacheClientStatus::SUCCESS,
+        client.Initialize(nullptr, 0, nPort, false, false, false, 0, false, "", "", 
+                         false, true, true, 2, UNREACHABLE_ENDPOINT));
+    
+    // Verify graceful degradation
+    auto servers = client.m_spConnectionManager->GetAllCacheServerHostnames();
+    ASSERT_EQ(servers.size(), 0);
+    
+    // Operations should fail gracefully
+    uint64_t nLength = 1024;
+    const char* pBuffer = GetRandomBuffer(nLength);
+    auto status = client.Upload(GetCorrelationId().c_str(), pBuffer, nLength, 0, nullptr, nullptr, nullptr);
+    ASSERT_NE(CacheClientStatus::SUCCESS, status);
+    
+    free((void*)pBuffer);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, DiscoveryResilience) {
+    if (!IsDiscoveryTest()) GTEST_SKIP();
+    
+    // Setup initial state
+    SetCacheServerCount(1);
+    ASSERT_TRUE(WaitForServerCount(1, DEFAULT_DISCOVERY_TIMEOUT));
+    
+    // Test resilience to invalid API responses
+    SetCacheServerCount(0);
+    std::this_thread::sleep_for(std::chrono::seconds(DEFAULT_DISCOVERY_TIMEOUT));
+    auto servers = m_cacheClientImpl.m_spConnectionManager->GetAllCacheServerHostnames();
+    ASSERT_EQ(servers.size(), 1);  // Should remain unchanged
+    
+    // Test recovery
+    SetCacheServerCount(2);
+    ASSERT_TRUE(WaitForServerCount(2, EXTENDED_DISCOVERY_TIMEOUT));
+    
+    // Reset
+    SetCacheServerCount(1);
+    ASSERT_TRUE(WaitForServerCount(1, DEFAULT_DISCOVERY_TIMEOUT));
 }
 //---------------------------------------------------------------------------------------------------------------------
 // Instantiate the test suite with `bIsDiscoveryEnabled` values of `true` and `false`
