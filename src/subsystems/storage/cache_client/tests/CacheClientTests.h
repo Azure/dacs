@@ -16,6 +16,16 @@ class CacheClientTests : public ::testing::TestWithParam<bool>
     void SetCacheServerCount(int count) const;
     static void InitializeClient(CacheClientImpl& client, bool bIsDiscoveryEnabled = false, bool bEnableCalculateChecksum = false, bool bEnableValidateChecksum = false);
 
+    // Discovery test helper methods
+    bool WaitForServerCount(int expectedCount, int timeoutSeconds = 10) const;
+    bool IsDiscoveryTest() const { return GetParam(); }
+    void AssertServersContain(const std::vector<std::string>& servers, const std::string& expectedServer) const;
+
+    // Test constants
+    static constexpr const char* UNREACHABLE_ENDPOINT = "192.0.2.1";  // RFC5737 test address
+    static constexpr int DEFAULT_DISCOVERY_TIMEOUT = 3;
+    static constexpr int EXTENDED_DISCOVERY_TIMEOUT = 10;
+
     CacheClientImpl m_cacheClientImpl;
     CacheClientImpl m_cacheClientImplCRC;
 };

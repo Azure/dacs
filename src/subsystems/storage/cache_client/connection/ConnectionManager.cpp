@@ -123,10 +123,13 @@ ConnectionManager::ConnectionManager(
             LOG_INFO("Cache server discovery is enabled");
             auto vecServersPtr = FetchLatestCacheServers();
             if (!vecServersPtr) {
-                LOG_ERROR("Failed to fetch the cache servers from endpoint: {}", m_cacheDiscoveryEndpoint);
-                throw "Failed to fetch the cache servers from endpoint";
+                LOG_WARN("Failed to fetch the cache servers from endpoint: {}. Cache client will start with empty "
+                    "server list and rely on background discovery.", m_cacheDiscoveryEndpoint);
             }
-            UpdateCacheServers(*vecServersPtr);
+            else
+            {
+                UpdateCacheServers(*vecServersPtr);
+            }
         }
         else
         {
@@ -536,6 +539,13 @@ std::unique_ptr<IConnection> ConnectionManager::InitFreshConnection(const std::s
 //---------------------------------------------------------------------------------------------------------------------
 std::unique_ptr<IConnection> ConnectionManager::GetConnection(const std::string& cacheserver)
 {
+    // Handle empty server name (when no servers are discovered yet)
+    if (cacheserver.empty())
+    {
+        LOG_DEBUG("Cannot create connection to empty server name. Cache servers may not be discovered yet.");
+        return nullptr;
+    }
+
     if (m_bReuseServerConnections)
     {
         // First check the connection pool for valid connections
@@ -716,7 +726,7 @@ std::unique_ptr<std::vector<std::string>> ConnectionManager::FetchLatestCacheSer
     {
         vecServers->push_back(serverAddress);
     }
-    LOG_INFO("Server addresses currently part of cache servers - {}", *vecServers);
+    LOG_INFO("Discovery api response cache servers - {}", *vecServers);
     return vecServers;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -739,6 +749,14 @@ void ConnectionManager::MonitorCacheServers()
 std::string ConnectionManager::GetCacheServerHostname(const std::string& strCacheKey) const
 {
     std::shared_lock<std::shared_mutex> readLock(m_sharedLockCacheServerData); // Shared lock for concurrent read access
+    
+    // Handle case where no servers are available yet during discovery
+    if (m_vecCacheServers.empty())
+    {
+        LOG_DEBUG("No cache servers available for key: {}. Discovery may still be in progress.", strCacheKey);
+        return "";  // Return empty string to indicate no server available
+    }
+    
     return m_vecCacheServers[cacheutils::GetServerIndex(strCacheKey.c_str(), m_vecCacheServers.size())];
 }
 //---------------------------------------------------------------------------------------------------------------------

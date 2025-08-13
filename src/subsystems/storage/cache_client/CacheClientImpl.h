@@ -89,8 +89,12 @@ class CacheClientImpl
     uint32_t CalculateChecksum(const void* pBuffer, const std::size_t nBufferLength);
 
     // Friends for testing
+    friend class CacheClientTests;
     FRIEND_TEST(CacheClientTests, ForceReuseConnections);
     FRIEND_TEST(CacheClientTests, Initialization);
     FRIEND_TEST(CacheClientTests, RefreshCacheServersWithDiscoveryEndpoint);
+    FRIEND_TEST(CacheClientTests, DiscoveryEndpointConfigurationValidation);
+    FRIEND_TEST(CacheClientTests, ResilientInitializationWithNetworkFailures);
+    FRIEND_TEST(CacheClientTests, DiscoveryResilience);
 };
 //---------------------------------------------------------------------------------------------------------------------
