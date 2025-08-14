@@ -61,10 +61,13 @@ private:
 
     const int m_tokenRefreshBufferSeconds;
     const int m_tokenExpiryBufferSeconds;
+    const bool m_enableSSLVerification;
 
     static constexpr uint32_t MAX_DELAY_SEC = 64;
     static constexpr uint32_t MAX_RETRIES = 5;
     static constexpr uint32_t BASE_DELAY_SEC = 1;
     static constexpr const char* STORAGE_RESOURCE = "https://storage.azure.com";
-
+    
+    static constexpr long HTTP_TIMEOUT_SECONDS = 180L;        // 3 minutes total timeout
+    static constexpr long CONNECTION_TIMEOUT_SECONDS = 30L;   // 30 seconds connection timeout
 };

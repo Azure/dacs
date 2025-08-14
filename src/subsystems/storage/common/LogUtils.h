@@ -4,10 +4,14 @@
 #pragma once
 #include <atomic>
 #include <chrono>
+#include <iomanip>
 //---------------------------------------------------------------------------------------------------------------------
 // Some code borrowed from APSDK
 #define VAR_NAME_CONCAT(a,b)  a##_##b
 #define VAR_NAME_UNIQUE(prefix) VAR_NAME_CONCAT(prefix,__LINE__)
+//---------------------------------------------------------------------------------------------------------------------
+// Macro to format time_t as readable UTC string for logging
+#define LOG_READABLE_TIME_UTC(time_val) std::put_time(std::gmtime(&time_val), "%a %b %d %H:%M:%S %Y UTC")
 //---------------------------------------------------------------------------------------------------------------------
 // Log at most once every reportPeriodSeconds seconds
 #define LOG_RARELY(reportPeriodSeconds, logLevel, ...) do {                                                         \

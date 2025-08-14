@@ -932,6 +932,14 @@ uint32_t StorageInterceptConfig::GetTokenExpiryBufferInSeconds()
         DEFAULT_TOKEN_EXPIRY_BUFFER_IN_SECONDS);
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::GetEnableSSLVerification()
+{
+    return GetOptionalConfigBoolean(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameTokenRequestEnableSSLVerification,
+        true);
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::IsCacheServerDiscoveryEnabled()
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(

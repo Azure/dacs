@@ -111,6 +111,9 @@ namespace StorageInterceptConstants
     const char* const ConfigNameTokenRefreshBufferInSeconds = "tokenRefreshBufferInSeconds";
     const char* const ConfigNameTokenExpiryBufferInSeconds = "tokenExpiryBufferInSeconds";
 
+    // Config for SSL verification in token requests
+    const char* const ConfigNameTokenRequestEnableSSLVerification = "tokenRequestEnableSSLVerification";
+
     // Constants for file metadata
     const char* const CACHE_META_FILE_ISDIR = "FILE_ISDIR";
     const char* const CACHE_META_FILE_SIZE = "FILE_SIZE";
