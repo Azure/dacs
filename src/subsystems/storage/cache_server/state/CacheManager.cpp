@@ -211,8 +211,9 @@ bool CacheManager::UpdateCacheInfo(const std::string& fileName, uint64_t fileSiz
 {
     if (cacheExpirySeconds > 0 && !groupId.empty())
     {
-        LOG_WARN("Both expiry and groupid should not be set, ignoring expiry. filename: {}, expiry: {}, groupid: {}",
-            fileName, cacheExpirySeconds, groupId);
+        LOG_WARN("Both expiry and groupid should not be set, ignoring expiry. "
+                 "filename: {}, expiry: {}, groupid: {}",
+                 fileName, cacheExpirySeconds, groupId);
         cacheExpirySeconds = 0;
     }
 
@@ -373,9 +374,9 @@ shared_ptr<Snapshot> CacheManager::TakeSnapshot() const
     // savetimestamp > accesstimestamp for all files in snapshot
     snapshot->set_savetimestamp(time(NULL));
     LOG_INFO("Completed taking a snapshot. num entries: {}. toDeleteGroups: {} Snapshot size: {}",
-      nEntries,
-      snapshot->todeletegroups_size(),
-      snapshot->ByteSizeLong());
+                 nEntries,
+                 snapshot->todeletegroups_size(),
+                 snapshot->ByteSizeLong());
     TIMER_STOP_AND_LOG(takeSnapshot);
     return snapshot;
 }
@@ -900,14 +901,15 @@ void CacheManager::EvictionWorker()
             // Use dynamic eviction threshold that adapts based on cache size and access patterns
             evictionThreshold = CalculateDynamicEvictionThreshold();
             LOG_INFO("Using dynamic eviction threshold: {}",
-                     ctime(&evictionThreshold));
+                     LOG_READABLE_TIME_UTC(evictionThreshold));
         }
         else
         {
             // Use fixed threshold based on last access time
             time_t now = time(NULL);
             evictionThreshold = now - m_nEvictionLastAccessThresholdSeconds;
-            LOG_INFO("Using fixed eviction threshold: {}", ctime(&evictionThreshold));
+            LOG_INFO("Using fixed eviction threshold: {}", 
+                     LOG_READABLE_TIME_UTC(evictionThreshold));
         }
         if(evictionThreshold <= 0)
         {
@@ -924,7 +926,8 @@ void CacheManager::EvictByAccessTime(time_t nEvictionLastAccessTime)
     uint64_t nDeleteFileSize = 0;
     int nNumFilesDeleted = 0;
     vector<string> vecFilesToDelete;
-    LOG_INFO("Started evict by access time, Eviction last access time: {}", ctime(&nEvictionLastAccessTime));
+    LOG_INFO("Started evict by access time, Eviction last access time: {}", 
+             LOG_READABLE_TIME_UTC(nEvictionLastAccessTime));
 
     for(int bucket = 0; bucket < NUM_MAPS; bucket++)
     {
@@ -998,7 +1001,10 @@ void CacheManager::EvictByAccessTime(time_t nEvictionLastAccessTime)
     }
 
     m_totalCachedSize.fetch_sub(nDeleteFileSize);
-    LOG_INFO("Delete files by access time: {}, num files: {}, size: {}", ctime(&nEvictionLastAccessTime), nNumFilesDeleted, nDeleteFileSize);
+    LOG_INFO("Delete files by access time: {}, num files: {}, size: {}", 
+             LOG_READABLE_TIME_UTC(nEvictionLastAccessTime), 
+             nNumFilesDeleted, 
+             nDeleteFileSize);
     for (auto& filename : vecFilesToDelete)
     {
         // In the download path, we gracefully handle the case where cache entry
@@ -1042,7 +1048,9 @@ bool CacheManager::GetLastAccessTimeDistribution(
 
     for (auto it = lastAccessTimeDistribution.begin(); it != lastAccessTimeDistribution.end(); ++it)
     {
-        LOG_DEBUG("Last access time: {}, size: {}", ctime(&it->first), it->second);
+        LOG_DEBUG("Last access time: {}, size: {}", 
+                  LOG_READABLE_TIME_UTC(it->first), 
+                  it->second);
     }
 
     TIMER_STOP_AND_LOG(GetLastAccessTimeDistribution);
@@ -1068,7 +1076,11 @@ time_t CacheManager::CalculateDynamicEvictionThreshold()
     }
     
     LOG_INFO("Dynamic eviction calculation: current={}%, target={}%, currentSize={}, targetSize={}, toEvict={}", 
-             currentUtilization, targetUtilization, currentCacheSize, targetCacheSize, sizeToEvict);
+             currentUtilization, 
+             targetUtilization, 
+             currentCacheSize, 
+             targetCacheSize, 
+             sizeToEvict);
     
     // Get access time distribution with 1-hour buckets
     ::google::protobuf::Map<int64_t, uint64_t> accessTimeDistribution;
@@ -1102,7 +1114,8 @@ time_t CacheManager::CalculateDynamicEvictionThreshold()
     evictionThreshold = lastBucketTimestamp + 3600; // Add 1 hour to include all entries in this bucket
     
     LOG_INFO("Dynamic eviction threshold calculated: {}, will evict ~{} bytes", 
-             ctime(&evictionThreshold), accumulatedSize);
+             LOG_READABLE_TIME_UTC(evictionThreshold), 
+             accumulatedSize);
     
     return evictionThreshold;
 }

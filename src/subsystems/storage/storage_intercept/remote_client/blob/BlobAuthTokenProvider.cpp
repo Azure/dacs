@@ -7,10 +7,14 @@
 BlobAuthTokenProvider::BlobAuthTokenProvider()
     : m_rng(std::random_device{}()),
       m_tokenRefreshBufferSeconds(StorageInterceptConfig::GetInstance().GetTokenRefreshBufferInSeconds()),
-      m_tokenExpiryBufferSeconds(StorageInterceptConfig::GetInstance().GetTokenExpiryBufferInSeconds())
+      m_tokenExpiryBufferSeconds(StorageInterceptConfig::GetInstance().GetTokenExpiryBufferInSeconds()),
+      m_enableSSLVerification(StorageInterceptConfig::GetInstance().GetEnableSSLVerification())
 {
-    LOG_INFO("BlobAuthTokenProvider initialized with token refresh buffer: {} seconds, token expiry buffer: {} seconds",
-             m_tokenRefreshBufferSeconds, m_tokenExpiryBufferSeconds);  
+    LOG_INFO("BlobAuthTokenProvider initialized with token refresh buffer: {} seconds, "
+             "token expiry buffer: {} seconds, SSL verification enabled: {}",
+             m_tokenRefreshBufferSeconds, 
+             m_tokenExpiryBufferSeconds, 
+             m_enableSSLVerification);  
 
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -308,7 +312,22 @@ HttpResponse BlobAuthTokenProvider::PerformCurlRequestWithHeaders(const std::str
 
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
-
+    
+    // SSL configuration - enable or disable verification based on configuration
+    if (!m_enableSSLVerification)
+    {
+        LOG_INFO("SSL verification is disabled");
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);  // Disable peer certificate verification
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);  // Disable hostname verification
+    }
+    
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);  // Follow redirects
+    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);       // Max 5 redirects
+    
+    // Fixed timeout settings - liberal values for MSI endpoints
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, HTTP_TIMEOUT_SECONDS);           // 3 minutes total timeout
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, CONNECTION_TIMEOUT_SECONDS); // 30 seconds connection timeout
+    
     struct curl_slist* headers = nullptr;
     std::string secretHeader = "secret: " + msiSecret;
     headers = curl_slist_append(headers, "Metadata: true");

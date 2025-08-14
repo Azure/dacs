@@ -123,6 +123,9 @@ class StorageInterceptConfig
         uint32_t GetTokenRefreshBufferInSeconds();
         uint32_t GetTokenExpiryBufferInSeconds();
 
+        // Getter for SSL verification
+        bool GetEnableSSLVerification();
+
         bool IsRemoteDownloadOnlyWhenLockHeldEnabled();
         uint64_t GetRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs();
 

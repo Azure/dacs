@@ -133,6 +133,7 @@ attributesCachePutAllOnReaddir [Upload the readdir entries to remote attributes 
 enableZeroCopy [true or false - Try to download without any memcpy in case the user read spans over entire chunk(s). default - true]
 tokenRefreshBufferInSeconds [The buffer time before token expiry to start new access token fetch in background]
 tokenExpiryBufferInSeconds [ The buffer time before token expiry to consider the token as alredy expired]
+tokenRequestEnableSSLVerification [true or false - Enable SSL certificate verification for token requests. default - true]
 cacheServerDiscoveryEnabled [true or false - Whether to enable discovery endpoint based cache server set auto refresh or not]
 cacheServerDiscoveryIntervalInSeconds [Time in seonds - Frequency of refreshing cacheserver set via discovery endpoint ]
 cacheServerDiscoveryEndpoint [Endpoint as string - Cacheserver discovery endpoint]
