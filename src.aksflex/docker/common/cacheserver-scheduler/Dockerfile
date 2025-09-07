@@ -1,9 +1,12 @@
 FROM mcr.microsoft.com/oss/go/microsoft/golang:1.23 as builder
+ARG TARGETOS
+ARG TARGETARCH
 
 ENV CGO_ENABLED=0
 
 WORKDIR /src
-RUN --mount=target=/src,type=bind,source=. --mount=type=cache,target=/root/.cache/go-build go build -o /cacheserver-scheduler
+RUN --mount=target=/src,type=bind,source=. --mount=type=cache,target=/root/.cache/go-build \
+    GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build  -o /cacheserver-scheduler
 
 
 FROM mcr.microsoft.com/mirror/docker/library/busybox:1.35
