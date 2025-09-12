@@ -4,7 +4,6 @@
     <RepositoryRootPath>$([MSBuild]::NormalizeDirectory($(MSBuildThisFileDirectory)..))</RepositoryRootPath>
     <RepositorySrcRootPath>$([MSBuild]::NormalizeDirectory($(RepositoryRootPath)src))</RepositorySrcRootPath>
     <SubsystemsPath>$([MSBuild]::NormalizeDirectory($(RepositorySrcRootPath)subsystems))</SubsystemsPath>
-    <NativeBuildPath>$([MSBuild]::NormalizeDirectory($(SubsystemsPath)reliability\device_proxy))</NativeBuildPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <Configuration Condition=" '$(Configuration)'=='' ">Debug</Configuration>
     <SkipNativeSubmoduleBuild Condition=" '$(SkipNativeSubmoduleBuild)'=='' ">false</SkipNativeSubmoduleBuild>

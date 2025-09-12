@@ -24,7 +24,6 @@ add_executable(${CACHE_SERVER_EXEC} ${CACHE_SERVER_SOURCES})
 
 target_include_directories(${CACHE_SERVER_EXEC} PRIVATE
     ${CMAKE_SOURCE_DIR}/src/subsystems/common/native_lib/diagnostics
-    ${CMAKE_SOURCE_DIR}/src/subsystems/reliability/common/native
     ${CMAKE_CURRENT_LIST_DIR}
     ./operations
     ./utils
@@ -58,7 +57,6 @@ target_link_libraries(
     prometheus-cpp-core
     crypto
     diagnostics
-    reliability_common
     staticprotobuf
 )
 
@@ -79,7 +77,6 @@ add_executable(CacheServerUnitTests ${CACHE_SERVER_TEST_SOURCES})
 
 target_include_directories(CacheServerUnitTests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/subsystems/common/native_lib/diagnostics
-    ${CMAKE_SOURCE_DIR}/src/subsystems/reliability/common/native
     .
     ./operations
     ./utils
@@ -106,7 +103,6 @@ target_link_libraries(CacheServerUnitTests
         ibverbs
         crypto
         diagnostics
-        reliability_common
         staticprotobuf
         stdc++fs
         prometheus-cpp-pull
