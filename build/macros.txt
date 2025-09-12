@@ -53,7 +53,6 @@ up6=cd ..\..\..\..\..\..
 up7=cd ..\..\..\..\..\..\..
 src=pushd "%BUILDDIR%"
 bindir=pushd "%BINARIESDIR%"
-reliability=cd %BUILDDIR%\subsystems\reliability
 
 ;= ********************************************************************************
 ;= * Unit tests

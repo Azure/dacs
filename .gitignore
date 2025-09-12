@@ -3,15 +3,6 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
-/src/subsystems/reliability/ab_test
-/src/subsystems/reliability/ab_test.tests
-/src/subsystems/reliability/amd_nccl_intercept
-/src/subsystems/reliability/callstack_utils
-/src/subsystems/reliability/criu_deduper
-/src/subsystems/reliability/device_proxy
-/src/subsystems/reliability/dynamic_patches
-/src/subsystems/reliability/gpu_unit_tests
-
 # User-specific files
 *.rsuser
 *.sln
@@ -405,9 +396,6 @@ code-model-v1
 
 # Local dependencies install used for autorest SDK gen.
 .pipelines/deps/*
-src/subsystems/reliability/criu_deduper/out/
-src/subsystems/reliability/device_proxy/out/
-src/subsystems/reliability/callstack_utils/out/
 
 bin/**
 data/**
@@ -424,8 +412,5 @@ runs/**
 *.pb.h
 
 # Torch bench code - meant only for local dev - not to be checked in
-src/subsystems/reliability/gpu_unit_tests/models/torch_bench/benchmark
-src/subsystems/reliability/gpu_unit_tests/models/torch_bench/azcopy_linux_amd64_10.17.0
-src/subsystems/reliability/gpu_unit_tests/models/torch_bench/azcopy_linux_amd64_10.17.0/azcopy
 logs/**
 .hypothesis/**
