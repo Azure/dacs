@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -374,6 +376,20 @@ func SchedulerPeriodicStep(pods []Pod, nodes []Node, enableSchedulerCoordination
 		})
 	}
 
+	// Issue delete instructions for excess pods (index >= desired replicas)
+	excessPods := identifyExcessPods(pods, cacheServerNamespace)
+	for _, excessPod := range excessPods {
+		instructionReason := fmt.Sprintf("Pod %s has index >= desired replica count, cleaning up excess pod",
+			excessPod.PodName)
+		log.Infof("Issuing delete instruction for excess pod %s. Reason: %s", excessPod.PodName, instructionReason)
+		schedulerInstructions = append(schedulerInstructions, SchedulerInstruction{
+			Type:            DeleteInstruction,
+			PodName:         excessPod.PodName,
+			DestinationNode: "",
+			Reason:          instructionReason,
+		})
+	}
+
 	// Compute list of nodes without cacheserver pods
 	schedulableNodesWithoutPod := nodeList{}
 	for node := range schedulableNodes {
@@ -470,4 +486,43 @@ func syncNodeLocks(nodesWithPod nodeList, nodePodMap map[string]string, cacheSer
 
 	//Return the updated list of locks held by all namespaces
 	return coordinator.getAllNamespacesLocks()
+}
+
+// identifyExcessPods identifies pods with index >= desired replica count
+func identifyExcessPods(allPods []Pod, namespace string) []Pod {
+	desiredReplicas, err := GetDesiredReplicaCountFromK8s(namespace)
+	if err != nil {
+		log.Warnf("Unable to get desired replica count: %v. Skipping excess pod cleanup", err)
+		return []Pod{}
+	}
+
+	excessPods := []Pod{}
+	for _, pod := range allPods {
+		if pod.NodeName != "" {
+			index := extractPodIndexFromName(pod.PodName)
+			if index >= 0 && index >= desiredReplicas {
+				log.Infof("Identified excess pod %s (index=%d, desired=%d, state=%s)",
+					pod.PodName, index, desiredReplicas, pod.State)
+				excessPods = append(excessPods, pod)
+			}
+		}
+	}
+	return excessPods
+}
+
+// extractPodIndexFromName extracts numeric index from StatefulSet pod name
+// Example: "cacheserver-5" -> 5, "cacheserver-22" -> 22
+func extractPodIndexFromName(podName string) int {
+	lastDashIndex := strings.LastIndex(podName, "-")
+	if lastDashIndex == -1 {
+		return -1
+	}
+
+	indexStr := podName[lastDashIndex+1:]
+	index, err := strconv.Atoi(indexStr)
+	if err != nil {
+		return -1
+	}
+
+	return index
 }

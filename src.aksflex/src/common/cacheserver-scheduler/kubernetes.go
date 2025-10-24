@@ -365,3 +365,21 @@ func ExecuteSchedulerInstructionsOnK8s(instructions []SchedulerInstruction) []er
 
 	return errors
 }
+
+// GetDesiredReplicaCountFromK8s fetches desired replica count from K8s StatefulSet
+func GetDesiredReplicaCountFromK8s(namespace string) (int, error) {
+	lazyInit()
+	statefulset, err := clientset.AppsV1().StatefulSets(namespace).Get(context.TODO(), "cacheserver", metav1.GetOptions{})
+	if err != nil {
+		log.Warnf("Error getting StatefulSet 'cacheserver' in namespace %s: %v", namespace, err)
+		return 0, err
+	}
+
+	if statefulset.Spec.Replicas == nil {
+		return 0, fmt.Errorf("StatefulSet %s has no replicas specified", statefulset.Name)
+	}
+
+	replicas := int(*statefulset.Spec.Replicas)
+	log.Debugf("Found StatefulSet %s with desired replicas: %d", statefulset.Name, replicas)
+	return replicas, nil
+}
