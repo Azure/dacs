@@ -51,7 +51,7 @@ TestBase::TestBase()
         }
     });
 
-    const char* envUseEXistingConfig = std::getenv("STORAGE_INTERCEPT_USE_EXISITNG_CONFIG");
+    const char* envUseEXistingConfig = std::getenv("STORAGE_INTERCEPT_USE_EXISTING_CONFIG");
     if (envUseEXistingConfig && std::string(envUseEXistingConfig).compare("true") == 0)
     {
         m_bUsingMock = false;
