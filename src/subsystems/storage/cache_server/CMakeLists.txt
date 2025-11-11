@@ -17,6 +17,20 @@ execute_process(
                 --cpp_out=${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/snapshot/proto
                 ${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/snapshot/proto/snapshot.proto)
 
+file(GLOB CACHE_SERVER_UTILS_SOURCES ./utils/Utils.cpp)
+
+add_library(CacheServerUtils SHARED ${CACHE_SERVER_UTILS_SOURCES})
+
+target_include_directories(CacheServerUtils PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common
+    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/proto/compiled
+)
+
+add_dependencies(CacheServerUtils
+    StorageCommon
+    CacheProto
+)
+
 file(GLOB CACHE_SERVER_SOURCES *cpp ./operations/*cpp ./utils/*cpp ./state/*cpp ./infiniband/*cpp
     ./snapshot/*cpp ./snapshot/proto/*cc ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/*cpp)
 
