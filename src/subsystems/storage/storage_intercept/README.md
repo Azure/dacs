@@ -34,7 +34,7 @@ The following tests passed:
 ```
 
 ### Run Unit test against adls
-1. Set the STORAGE_INTERCEPT_USE_EXISITNG_CONFIG environment variable to true
+1. Set the STORAGE_INTERCEPT_USE_EXISTING_CONFIG environment variable to true
 2. Add the following file at `/tmp/storageIntercept.config`
 ```
 type adls
@@ -45,7 +45,7 @@ adlsAuthTokenUrl <adls-app-oauth2-token-url>
 ```
 
 ### Run Unit test against blob
-1. Set the STORAGE_INTERCEPT_USE_EXISITNG_CONFIG to true
+1. Set the STORAGE_INTERCEPT_USE_EXISTING_CONFIG to true
 2. Add the following file at `/tmp/storageIntercept.config`
 ```
 type blob
@@ -167,7 +167,7 @@ cacheServerPort 9065
 
 ### Run Unit test with cache enabled
 1. Start cache_server at port 20000 in the same container as the client
-2. Set the STORAGE_INTERCEPT_USE_EXISITNG_CONFIG to true
+2. Set the STORAGE_INTERCEPT_USE_EXISTING_CONFIG to true
 3. Add/edit the following to existing configuration at '/tmp/storageIntercept.config'
 ```
 cacheEnable true
@@ -188,7 +188,7 @@ cacheMaxConnectionsReuseSize 1024
 
 ### Run Unit test with attribute cache enabled
 1. Start cache_server at port 20000 in the same container as the client
-2. Set the STORAGE_INTERCEPT_USE_EXISITNG_CONFIG to true
+2. Set the STORAGE_INTERCEPT_USE_EXISTING_CONFIG to true
 3. Add/edit the following to existing configuration at '/tmp/storageIntercept.config'
 4. (Optional) Set the STORAGE_INTERCEPT_TESTCASES_DIR env to the directory that contains test cases
 ```

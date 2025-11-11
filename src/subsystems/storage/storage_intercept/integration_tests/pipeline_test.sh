@@ -10,8 +10,8 @@ CACHE_SERVER_PORT_RANGE_START=20100
 CACHE_SERVER_PORT_RANGE_LENGTH=10000
 export CACHE_SERVER_PORT=${CACHE_SERVER_PORT_RANGE_START}
 CACHE_SERVER_PID=-1
-CACHE_SERVER_PATH=/tmp/_cache
-CACHE_LOCAL_SSD_PATH=/tmp/_localcache
+CACHE_SERVER_PATH=/_cache
+CACHE_LOCAL_SSD_PATH=/_localcache
 # set the cache server metrics port to a 9096 for testing
 export CACHESERVER_METRICS_PORT="9096"
 echo "cache server metrics port set to ${CACHESERVER_METRICS_PORT}"
@@ -23,21 +23,26 @@ else
   BUILD_CONFIGURATION=$1
 fi
 
+# Detect architecture for proper library paths
+ARCH=$(uname -m)
+case $ARCH in
+    x86_64)
+        PLATFORM_ARCH="linux-x64"
+        ;;
+    aarch64|arm64)
+        PLATFORM_ARCH="linux-arm64"
+        ;;
+    *)
+        echo "Unsupported architecture: $ARCH"
+        exit 1
+        ;;
+esac
+echo "Detected architecture: $ARCH, using platform: $PLATFORM_ARCH"
+
 source /venv/bin/activate
 
-STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/libStorageIntercept.so"
+STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${PLATFORM_ARCH}/publish-storage/storage/libStorageIntercept.so"
 STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
-
-#set IMDS endpoint as MSI endpoint for testing
-MSI_ENDPOINT="http://169.254.169.254/metadata/identity/oauth2/token"
-#secret is not required for IMDS endpoint
-MSI_SECRET="dummy"
-# identity client id for mi used in the test pipeline
-# this is the user assigned identity used for the azdacs build pool
-# the identity has storage blob data contributor role on the storage account storageinterceptionpr1 and storageinterceptionpr2
-# internal-reference-removed
-MOUNT_IDENTITY_CLIENT_ID="00000000-0000-0000-0000-000000000000"
-
 
 function append_interception_config_blob_prefix() {
     MOUNT_PATH=$1
@@ -54,15 +59,21 @@ function append_interception_config_blob_prefix() {
     echo "${MOUNT_PREFIX}azBlobContainerName dataset" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "${MOUNT_PREFIX}maxConnsPerBlobClient 200" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
-    if [ -n "${MOUNT_SAS_TOKEN_NAME}" ]
+    # Authentication priority: SAS Token -> Access Token
+    if [ -n "${MOUNT_SAS_TOKEN_NAME}" ] && [ -n "${!MOUNT_SAS_TOKEN_NAME:-}" ]
     then
+      # SAS Token name provided and the actual token is non-empty
+      echo "DEBUG: Using SAS token authentication"
       echo "${MOUNT_PREFIX}azBlobSASToken \${${MOUNT_SAS_TOKEN_NAME}}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    elif [ -n "${SI_azBlobAccessToken:-}" ]
+    then
+      # Use access token (from Azure CLI authentication)
+      echo "DEBUG: Using access token authentication" 
+      echo "${MOUNT_PREFIX}azBlobAccessToken ${SI_azBlobAccessToken}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     else
-      echo "${MOUNT_PREFIX}azBlobIdentityClientId ${MOUNT_IDENTITY_CLIENT_ID}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-      echo "${MOUNT_PREFIX}azBlobMSIEndpoint ${MSI_ENDPOINT}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-      echo "${MOUNT_PREFIX}azBlobMSISecret ${MSI_SECRET}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+      # No valid authentication method available - this will cause the storage client to fail gracefully
+      echo "# No authentication configured - expecting authentication to be provided externally"
     fi
-    
 
     if [ "$IS_DYNAMIC" = true ]
     then
@@ -81,14 +92,22 @@ function append_interception_config_blob_prefix() {
 function add_dynamic_mount_config() {
     MOUNT_PATH=$1
 
-    rm ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    rm -f ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
     echo "storagePath ${MOUNT_PATH}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "type blob" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "azBlobDynamicAccount true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "azBlobIdentityClientId ${MOUNT_IDENTITY_CLIENT_ID}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "azBlobMSIEndpoint ${MSI_ENDPOINT}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "azBlobMSISecret ${MSI_SECRET}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    
+    # Add authentication configuration using same priority logic as main function
+    echo "DEBUG: STORAGE_INTCPT_SAS_TOKEN='${STORAGE_INTCPT_SAS_TOKEN:+SET}'"
+    echo "DEBUG: SI_azBlobAccessToken='${SI_azBlobAccessToken:+SET}'"
+    if [ -n "${STORAGE_INTCPT_SAS_TOKEN:-}" ]; then
+        echo "DEBUG: Using SAS token in dynamic mount"
+        echo "azBlobSASToken ${STORAGE_INTCPT_SAS_TOKEN}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    elif [ -n "${SI_azBlobAccessToken:-}" ]; then
+        echo "DEBUG: Using access token in dynamic mount"
+        echo "azBlobAccessToken ${SI_azBlobAccessToken}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    fi
 }
 
 function add_interception_config_blob() {
@@ -98,9 +117,9 @@ function add_interception_config_blob() {
 
     rm ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
-    # Note: STORAGE_INTERCEPT_SAS_TOKEN is set as a user-defined secret variable in the pipeline.
+    # Note: STORAGE_INTCPT_SAS_TOKEN is set as an environment variable by the pipeline setup.
+    # This provides SAS token authentication for storage account access.
     # See https://docs.microsoft.com/en-us/azure/devops/pipelines/process/variables?view=azure-devops&tabs=yaml%2Cbatch
-
     
     if [ "$TEST_MULTI_MOUNT" = true ]
     then
@@ -248,7 +267,7 @@ function stop_cache_server() {
 
 function test_liveness() {
   export TEST_CACHESERVER_ADDR_PORT="${CACHE_SERVER_PORT}"
-  TEST_CLIENT_CMD="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/LivenessProbe"
+  TEST_CLIENT_CMD="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${PLATFORM_ARCH}/publish-storage/storage/LivenessProbe"
   echo "Starting Cache Server Liveness test with command: ${TEST_CLIENT_CMD}"
   eval "${TEST_CLIENT_CMD}"
   if [ $? -ne 0 ]
@@ -262,7 +281,7 @@ function test_liveness() {
 
 function run_cacheserver_test() {
   export TEST_CACHESERVER_ADDR_PORT="${CACHE_SERVER_PORT}"
-  TEST_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/cacheServerTestClient"
+  TEST_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${PLATFORM_ARCH}/publish-storage/storage/cacheServerTestClient"
   TEST_CLIENT_CMD="${TEST_CLIENT_EXE}"
 
   echo "Starting Cache Server Test with command: ${TEST_CLIENT_CMD}"
@@ -329,7 +348,7 @@ function __run_perf_benchmark__() {
     GIT_COMMIT_MESSAGE="$(git log -1 --pretty=%B | head -n 1)"
   fi
 
-  TEST_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/cacheServerTestClient "
+  TEST_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${PLATFORM_ARCH}/publish-storage/storage/cacheServerTestClient "
   export TEST_CACHESERVER_ADDR_PORT="${CACHE_SERVER_PORT}"
 
   start_cache_server /dev/null
@@ -352,6 +371,9 @@ function __run_perf_benchmark__() {
   echo "Done running & uploading perf tracker benchmark"
 }
 
+# Enable existing config
+export STORAGE_INTERCEPT_USE_EXISTING_CONFIG=true
+
 #### BEGIN : Tests which DONT require cache server running ####
 
 __run_perf_benchmark__
@@ -369,7 +391,6 @@ __verify_nologs_unintercepted_
 
 echo "Running unit tests against blob"
 add_interception_config_blob /mnt/dataPathIntcpt
-export STORAGE_INTERCEPT_USE_EXISITNG_CONFIG=true
 cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
 eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
 if [ $? -ne 0 ]
@@ -384,7 +405,7 @@ add_interception_config_blob /mnt/quiverfs
 export SI_azBlobSASToken="incorrect-token"
 
 # Run the test
-export DACS_PATH=${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/
+export DACS_PATH=${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${PLATFORM_ARCH}/publish-storage/storage/
 pushd ${SCRIPT_DIR}
 LD_LIBRARY_PATH=$DACS_PATH CGO_CFLAGS="-I $DACS_PATH/include" CGO_LDFLAGS="-L $DACS_PATH" go run main.go
 if [ $? -ne 0 ];
@@ -405,7 +426,7 @@ then
 echo "Blob Integration test failed"
 exit 1
 fi
-echo -e "Blob Integration test with dynamic container mount passed\n\n"
+echo -e "Blob Integration test with dynamic container mount passed\n\n" 
 
 echo "Running integration test against blob with dynamic account mount"
 add_dynamic_mount_config /mnt/quiverfs
@@ -423,26 +444,25 @@ echo -e "Blob Integration test with dynamic account mount passed\n\n"
 start_cache_server /dev/null
 sleep 10
 
-
 # Ensure perf client is wired up correctly
-PERF_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/cache-test/PerfClient "
+PERF_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${PLATFORM_ARCH}/publish-storage/storage/cache-test/PerfClient "
 random_prefix=$(date +%s)
 eval "${PERF_CLIENT_EXE} --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT} --num-threads 16 --data-size-GiB 1 --prefix ${random_prefix} --mode upload"
 if [ $? -ne 0 ]
 then
-    echo "Perf client test failed"
+    echo "Perf client upload test failed"
     exit 1
 fi
 
 eval "${PERF_CLIENT_EXE} --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT} --num-threads 16 --data-size-GiB 1 --prefix ${random_prefix} --mode download"
 if [ $? -ne 0 ]
 then
-    echo "Perf client test failed"
+    echo "Perf client download test failed"
     exit 1
 fi
 
 # Ensure eviction client is wired up correctly
-EVICTION_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/cache-test/PerfClient "
+EVICTION_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${PLATFORM_ARCH}/publish-storage/storage/cache-test/PerfClient "
 eval "${EVICTION_CLIENT_EXE} --eviction-client --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT} --last-access-time "2024-04-02T20:00:00.000Z" | tee /tmp/eviction.log"
 if [ $? -ne 0 ]
 then
@@ -457,7 +477,7 @@ fi
 #END: Ensure eviction client is wired up correctly 
 
 #Ensure last access distribution client is wired up correctly
-LAST_ACCESS_DISTRIBUTION_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/cache-test/PerfClient "
+LAST_ACCESS_DISTRIBUTION_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${PLATFORM_ARCH}/publish-storage/storage/cache-test/PerfClient "
 eval "${LAST_ACCESS_DISTRIBUTION_CLIENT_EXE} --last-access-time-distribution-client --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT}  --distribution-bucket-size-in-hours 1 | tee /tmp/lastAccessDistribution.log"
 
 if [ $? -ne 0 ]
@@ -485,9 +505,9 @@ echo -e "cache client lib unit test passed\n\n"
 echo "Running rust cache client integration test"
 
 pushd ${REPOSITORY_ROOT}/src/subsystems/storage/cache_client/rust_tests
-export LD_LIBRARY_PATH="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage-cache-client:${LD_LIBRARY_PATH}"
-export LIBRARY_PATH="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage-cache-client"
-export CACHE_CLIENT_LIB_DIR="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage-cache-client"
+export LD_LIBRARY_PATH="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${PLATFORM_ARCH}/publish-storage-cache-client:${LD_LIBRARY_PATH}"
+export LIBRARY_PATH="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${PLATFORM_ARCH}/publish-storage-cache-client"
+export CACHE_CLIENT_LIB_DIR="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${PLATFORM_ARCH}/publish-storage-cache-client"
 export CACHE_CLIENT_HEADER_FILE="${REPOSITORY_ROOT}/src/subsystems/storage/cache_client/CacheClient.h"
 
 eval "cargo run"
@@ -500,9 +520,9 @@ popd
 echo -e "cache client lib integration test passed\n\n"
 
 stop_cache_server
-#### END : Tests against cache server with snapshot and auth disabled ####
+### END : Tests against cache server with snapshot and auth disabled ####
 
-#### BEGIN : Tests against cache server with auth enabled but snapshot disabled ####
+### BEGIN : Tests against cache server with auth enabled but snapshot disabled ####
 export CACHESERVER_AUTH_ENABLED="true"
 export CACHESERVER_AUTH_ACCOUNTNAME="us3rn@m3"
 export CACHESERVER_AUTH_ACCOUNTKEY="p@ssw0rd"
