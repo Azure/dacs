@@ -27,6 +27,7 @@ LocalAttributesCache::LocalAttributesCache()
     int nMaxConnectionsReuseSize = StorageInterceptConfig::GetInstance().GetCacheMaxConnectionsReuseSize();
     bool bReuseServerConnections = StorageInterceptConfig::GetInstance().GetCacheReuseServerConnections();
     bool bUseInfiniband = StorageInterceptConfig::GetInstance().GetCacheIBEnabled();
+    bool bEnableConsistentHashing = StorageInterceptConfig::GetInstance().IsConsistentHashingEnabled();
     m_spConnectionManager = make_unique<ConnectionManager>(serverPort,
                                                            true,
                                                            vector<string>(),
@@ -38,7 +39,8 @@ LocalAttributesCache::LocalAttributesCache()
                                                            bUseInfiniband,
                                                            false, // local server doesn't need discovery endpoint enabled
                                                            300,
-                                                           "127.0.0.1");
+                                                           "127.0.0.1",
+                                                           bEnableConsistentHashing);
 
     // start worker thread
     m_uploadThread = make_unique<thread>([this]() {

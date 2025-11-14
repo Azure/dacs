@@ -452,7 +452,8 @@ int EvictionClient(int argc, char* argv[])
                       true,                        /*bReuseConnections*/
                       false,                       /*bIsCacheServerDiscoveryEnabled*/
                       300,                         /*nCacheServerDiscoveryIntervalInSeconds*/
-                      LOCALHOST);                    /*nCacheServerDiscoveryEndpoint*/
+                      LOCALHOST,                   /*nCacheServerDiscoveryEndpoint*/
+                      true);                       /*bEnableConsistentHashing*/
 
     LOG_INFO("Requesting eviction from cache servers based on last access time time: {}",
              strLastAccessTime.c_str());
@@ -500,7 +501,8 @@ int LastAccessTimeDistributionClient(int argc, char* argv[])
                       true,                        /*bReuseConnections*/
                       false,                       /*bIsCacheServerDiscoveryEnabled*/
                       300,                         /*nCacheServerDiscoveryIntervalInSeconds*/
-                      LOCALHOST);                    /*nCacheServerDiscoveryEndpoint*/
+                      LOCALHOST,                   /*nCacheServerDiscoveryEndpoint*/
+                      true);                       /*bEnableConsistentHashing*/
 
     
     LastAccessTimeDistribution *pLastAccessTimeDistribution = new LastAccessTimeDistribution();

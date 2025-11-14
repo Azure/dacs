@@ -14,7 +14,12 @@ class CacheClientTests : public ::testing::TestWithParam<bool>
     void TearDown() override;
     const char* GetRandomBuffer(const uint64_t nLength) const;
     void SetCacheServerCount(int count) const;
-    static void InitializeClient(CacheClientImpl& client, bool bIsDiscoveryEnabled = false, bool bEnableCalculateChecksum = false, bool bEnableValidateChecksum = false);
+    static void InitializeClient(
+      CacheClientImpl& client,
+      bool bIsDiscoveryEnabled = false,
+      bool bEnableCalculateChecksum = false,
+      bool bEnableValidateChecksum = false,
+      bool bEnableConsistentHashing = false);
 
     // Discovery test helper methods
     bool WaitForServerCount(int expectedCount, int timeoutSeconds = 10) const;

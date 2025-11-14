@@ -1,4 +1,3 @@
-
 project(CacheClientSharedLib LANGUAGES CXX C)
 cmake_minimum_required(VERSION 3.10)
 
@@ -43,7 +42,7 @@ target_link_libraries(CacheClientSharedLib ${CommonLinks})
 target_link_libraries(CacheClientLib ${CommonLinks})
 
 enable_testing()
-add_executable(CacheClientLibTests tests/TestMain.cpp tests/CacheClientTests.cpp)
+add_executable(CacheClientLibTests tests/TestMain.cpp tests/CacheClientTests.cpp tests/ConsistentHashingTests.cpp)
 add_dependencies(CacheClientLibTests CacheClientLib)
 target_link_libraries(CacheClientLibTests
     CacheClientLib
@@ -55,6 +54,12 @@ target_link_libraries(CacheClientLibTests
     ${GMOCK_MAIN_LIBRARY}
     ${GTEST_LIBRARY}
     ${GTEST_MAIN_LIBRARY}
+)
+
+target_include_directories(CacheClientLibTests PRIVATE 
+    ${CMAKE_CURRENT_LIST_DIR}
+    ${CMAKE_CURRENT_LIST_DIR}/connection
+    tests  
 )
 
 # CMake archives dont include dependencies, only references.

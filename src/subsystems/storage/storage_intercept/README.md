@@ -137,6 +137,7 @@ tokenRequestEnableSSLVerification [true or false - Enable SSL certificate verifi
 cacheServerDiscoveryEnabled [true or false - Whether to enable discovery endpoint based cache server set auto refresh or not]
 cacheServerDiscoveryIntervalInSeconds [Time in seonds - Frequency of refreshing cacheserver set via discovery endpoint ]
 cacheServerDiscoveryEndpoint [Endpoint as string - Cacheserver discovery endpoint]
+cacheEnableConsistentHashing [true or false - Enable Consistent Hashing for Server Selection]
 ```
 
 ### Config for running interception on multiple mounts

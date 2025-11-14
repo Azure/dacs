@@ -71,6 +71,7 @@ typedef struct
  * @param pAuthCredentials Credentials to be used to connect to the cache-servers. Set the value to `NULL` to indicate
  *        authentication disabled. If enabled, each request to the cache-server will include account name, timestamp
  *        and signature of request header generated using the account key.
+ * @param bEnableConsistentHashing Enable consistent hashing for server selection
  * 
  * @returns CacheClientStatus indicating the status of the upload operation
  * 1. SUCCESS -- If the cache client is initialized successfully
@@ -85,7 +86,8 @@ CacheClientStatus Initialize(
     /*[in]*/ bool bEnableIB,
     /*[in]*/ bool bEnableCalculateChecksum,
     /*[in]*/ bool bEnableValidateChecksum,
-    /*[in]*/ const AuthCredentials* pAuthCredentials);
+    /*[in]*/ const AuthCredentials* pAuthCredentials,
+    /*[in]*/ bool bEnableConsistentHashing);
 //---------------------------------------------------------------------------------------------------------------------
 /**
  * Uploads nLength bytes of data from pBuffer to the cache server and associates it with the key strCacheKey.

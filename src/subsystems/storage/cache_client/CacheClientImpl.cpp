@@ -2,7 +2,6 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "CacheClientImpl.h"
-
 #include "CacheClient.h"
 #include "CacheClientLogger.h"
 #include "CacheUtils.h"
@@ -11,6 +10,7 @@
 #include "cache.pb.h"
 
 #include <boost/crc.hpp>
+#include <boost/algorithm/string.hpp>
 
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cacheutils;
@@ -40,6 +40,7 @@ CacheClientStatus CacheClientImpl::Initialize(
     /*[in]*/ const bool bIsCacheServerDiscoveryEnabled,
     /*[in]*/ const uint32_t nCacheServerDiscoveryIntervalInSeconds,
     /*[in]*/ const char* nCacheServerDiscoveryEndpoint,
+    /*[in]*/ const bool bEnableConsistentHashing,
     /*[inopt]*/ std::size_t nMaxBufferSizeBytes)
 {
     std::lock_guard<std::mutex> lock(m_mtxInitialization);
@@ -114,7 +115,8 @@ CacheClientStatus CacheClientImpl::Initialize(
                                                                 bEnableIB,
                                                                 bIsCacheServerDiscoveryEnabled,
                                                                 nCacheServerDiscoveryIntervalInSeconds,
-                                                                nCacheServerDiscoveryEndpoint);
+                                                                nCacheServerDiscoveryEndpoint,
+                                                                bEnableConsistentHashing);
     
     m_bInitialized = true;
     LOG_INFO("CacheClientImpl initialized. Num servers = {}. Port = {}. Enable IB = {}. Connection pool size = {}, Enable Calculate checksum = {}, Enable Validate checksum = {}",

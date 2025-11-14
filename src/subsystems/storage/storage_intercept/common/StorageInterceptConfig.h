@@ -133,6 +133,8 @@ class StorageInterceptConfig
         uint32_t CacheServerDiscoveryIntervalInSeconds();
         std::string CacheServerDiscoveryEndpoint();
 
+        bool IsConsistentHashingEnabled();
+
     private:
         // Constructor
         StorageInterceptConfig();

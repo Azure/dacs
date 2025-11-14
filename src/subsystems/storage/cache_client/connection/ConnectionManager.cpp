@@ -95,7 +95,8 @@ ConnectionManager::ConnectionManager(
     /*[in]*/ const bool bUseInfiniband,
     /*[in]*/ const bool bEnableCacheServerDiscovery,
     /*[in]*/ const uint32_t nCacheServerDiscoveryIntervalInSeconds,
-    /*[in]*/ const std::string& cacheDiscoveryEndpoint)
+    /*[in]*/ const std::string& cacheDiscoveryEndpoint,
+    /*[in]*/ const bool bEnableConsistentHashing)
     :  m_ServerPort(serverPort)
     ,  m_bAuthEnabled(bAuthEnabled)
     ,  m_strCacheAccountName(strCacheAccountName)
@@ -106,8 +107,18 @@ ConnectionManager::ConnectionManager(
     ,  m_bEnableCacheServerDiscovery(bEnableCacheServerDiscovery)
     ,  m_nCacheServerDiscoveryIntervalInSeconds(nCacheServerDiscoveryIntervalInSeconds)
     ,  m_cacheDiscoveryEndpoint(cacheDiscoveryEndpoint)
+    ,  m_hashingStrategy(bEnableConsistentHashing 
+        ? HashingStrategy::ConsistentHashing
+        : HashingStrategy::StaticModuloHashing)
 {
     m_ibDevice = {0};
+    m_hasher = HashingFactory::CreateHasher(m_hashingStrategy);
+    if (!m_hasher) {
+        LOG_ERROR("Failed to create hasher for strategy: {}", 
+                static_cast<int>(m_hashingStrategy));
+        throw std::runtime_error("Failed to initialize hashing strategy");
+    }
+
     if (useLocalServer)
     {
         // Infiniband is not necessary when using localhost
@@ -142,6 +153,7 @@ ConnectionManager::ConnectionManager(
             UpdateCacheServers(vecCacheServers);
         }
     }
+    m_hasher->UpdateServers(m_vecCacheServers);
 
     if (m_bUseInfiniband)
     {
@@ -151,14 +163,15 @@ ConnectionManager::ConnectionManager(
     LOG_INFO("Initialized Cache ConnectionManager. serverPort={} "
         "m_nMaxConnsPerServer={} m_bReuseServerConnections={} m_bUseInfiniband={} "
         "m_bEnableCacheServerDiscovery={} m_nCacheServerDiscoveryIntervalInSeconds={} "
-        "m_cacheDiscoveryEndpoint={}",
+        "m_cacheDiscoveryEndpoint={} HashingStrategy={}",
         serverPort,
         m_nMaxConnsPerServer,
         m_bReuseServerConnections,
         m_bUseInfiniband,
         m_bEnableCacheServerDiscovery,
         m_nCacheServerDiscoveryIntervalInSeconds,
-        m_cacheDiscoveryEndpoint
+        m_cacheDiscoveryEndpoint,
+        m_hashingStrategy == HashingStrategy::ConsistentHashing ? "ConsistentHashing" : "StaticModuloHashing"
     );
     
     if (m_bEnableCacheServerDiscovery) {
@@ -209,8 +222,8 @@ void ConnectionManager::UpdateCacheServers(const std::vector<std::string>& vecLa
     int nNewCacheServers = vecLatestCacheServers.size();
 
     // Check if the cache server list is changed. Using a Set<string> to eliminate duplicate hostnames (if any).
-    std::unordered_set<std::string> oldCacheServersSet(m_vecCacheServers.begin(), m_vecCacheServers.end());
-    std::unordered_set<std::string> newCacheServersSet(vecLatestCacheServers.begin(), vecLatestCacheServers.end());
+    std::set<std::string> oldCacheServersSet(m_vecCacheServers.begin(), m_vecCacheServers.end());
+    std::set<std::string> newCacheServersSet(vecLatestCacheServers.begin(), vecLatestCacheServers.end());
     if (oldCacheServersSet == newCacheServersSet)
     {
         LOG_DEBUG("Cache servers have not changed.");
@@ -255,6 +268,9 @@ void ConnectionManager::UpdateCacheServers(const std::vector<std::string>& vecLa
     m_vecCacheServers.assign(newCacheServersSet.begin(), newCacheServersSet.end());
     uint32_t nServerNodes = m_vecCacheServers.size();
     m_nMaxConnsPerServer = (m_nMaxConnectionsReuseSize + nServerNodes - 1) / nServerNodes;
+
+    m_hasher->UpdateServers(m_vecCacheServers);
+    LOG_DEBUG("Updated hasher with {} servers", m_vecCacheServers.size());
 
     LOG_INFO("New list of cache servers: {}", fmt::join(m_vecCacheServers, ", "));
     LOG_INFO("Cacheservers updated to {} cache servers", nServerNodes);
@@ -757,8 +773,8 @@ std::string ConnectionManager::GetCacheServerHostname(const std::string& strCach
         LOG_DEBUG("No cache servers available for key: {}. Discovery may still be in progress.", strCacheKey);
         return "";  // Return empty string to indicate no server available
     }
-    
-    return m_vecCacheServers[cacheutils::GetServerIndex(strCacheKey.c_str(), m_vecCacheServers.size())];
+
+    return m_hasher->GetServer(strCacheKey);
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::vector<std::string> ConnectionManager::GetAllCacheServerHostnames() const
