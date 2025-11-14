@@ -1,0 +1,14 @@
+name = "dacs_cache"
+description = "Python package for DACS Cache Client"
+readme = "README.md"
+requires-python = ">=3.8"
+
+[build-system]
+requires = ["setuptools", "wheel", "toml", "mashumaro", "msgpack", "torch", "requests"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
