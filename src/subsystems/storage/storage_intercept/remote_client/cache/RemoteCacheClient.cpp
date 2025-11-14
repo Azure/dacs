@@ -86,6 +86,7 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
     bool bIsCacheServerDiscoveryEnabled = StorageInterceptConfig::GetInstance().IsCacheServerDiscoveryEnabled();
     uint32_t nDiscoveryIntervalInSeconds = StorageInterceptConfig::GetInstance().CacheServerDiscoveryIntervalInSeconds();
     std::string nDiscoveryEndpoint = StorageInterceptConfig::GetInstance().CacheServerDiscoveryEndpoint();
+    bool bEnableConsistentHashing = StorageInterceptConfig::GetInstance().IsConsistentHashingEnabled();
 
     m_spCacheClientImpl = make_shared<CacheClientImpl>();
 
@@ -113,6 +114,7 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
                                                        bIsCacheServerDiscoveryEnabled,
                                                        nDiscoveryIntervalInSeconds,
                                                        nDiscoveryEndpoint.c_str(),
+                                                       bEnableConsistentHashing,
                                                        nMaxBufferSize);
     STORAGE_ASSERT(cacheStatus == CacheClientStatus::SUCCESS, "Failed to initialize CacheClientImpl");
     delete[] arrServers;

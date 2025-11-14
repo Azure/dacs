@@ -445,7 +445,7 @@ std::string StorageInterceptConfig::GetAdlsClientSecret(const std::string& mount
 {
     return StorageInterceptConfig::GetConfigStr(
         m_ConfigProps,
-        mountName,
+        mountName,  
         StorageInterceptConstants::ConfigNameAdlsClientSecret);
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -963,5 +963,13 @@ std::string StorageInterceptConfig::CacheServerDiscoveryEndpoint()
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameCacheServerDiscoveryEndpoint,
         "127.0.0.1");
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::IsConsistentHashingEnabled()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheEnableConsistentHashing,
+        true);
 }
 //---------------------------------------------------------------------------------------------------------------------

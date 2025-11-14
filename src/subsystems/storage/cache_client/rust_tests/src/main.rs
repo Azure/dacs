@@ -87,6 +87,7 @@ fn test_initialize() {
     let enable_ib = false;
     let enable_calculate_crc = false;
     let enable_validate_crc = false;
+    let enable_consistent_hashing = false;
 
     let accountName = "admin";
     let accountKey = "1234";
@@ -108,6 +109,7 @@ fn test_initialize() {
             enable_calculate_crc,
             enable_validate_crc,
             &auth_credentials as *const AuthCredentials,
+            enable_consistent_hashing,
         );
 
         assert!(status == 0, "Initialize failed")

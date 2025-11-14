@@ -5,6 +5,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "IConnection.h"
 #include "IBUtils.h"
+#include "hashing/HashingFactory.h"
 #include "cache.pb.h"
 #include <gtest/gtest.h>
 #include <vector>
@@ -20,11 +21,11 @@
 #include <infiniband/verbs.h>
 //---------------------------------------------------------------------------------------------------------------------
 class CacheClientTests;
+class ConsistentHashingTests;
 //---------------------------------------------------------------------------------------------------------------------
 class ConnectionManager
 {
     public:
-
         ConnectionManager(
             /*[in]*/ const uint16_t serverPort,
             /*[in]*/ const bool useLocalServer,
@@ -37,7 +38,8 @@ class ConnectionManager
             /*[in]*/ const bool bUseInfiniband,
             /*[in]*/ const bool bEnableCacheServerDiscovery,
             /*[in]*/ const uint32_t nCacheServerDiscoveryIntervalInSeconds,
-            /*[in]*/ const std::string& cacheDiscoveryEndpoint
+            /*[in]*/ const std::string& cacheDiscoveryEndpoint,
+            /*[in]*/ const bool bEnableConsistentHashing
         );
         ~ConnectionManager();
 
@@ -110,9 +112,12 @@ class ConnectionManager
         // Long running thread for refreshing cacheservers
         std::thread                                                                 m_cacheServerRefresherThread;
         std::atomic<bool>                                                           m_bStopCacheServerRefresher = false;
+        std::unique_ptr<BaseHasher> m_hasher;
+        const HashingStrategy m_hashingStrategy;
 
     // Friends for testing
     FRIEND_TEST(CacheClientTests, RefreshCacheServersWithDiscoveryEndpoint);
-
+    FRIEND_TEST(ConsistentHashingTests, ScaleUpDown);
+    FRIEND_TEST(ConsistentHashingTests, DistributionAnalysis);
 };
 //---------------------------------------------------------------------------------------------------------------------

@@ -44,7 +44,12 @@ using namespace cacheutils;
  *      with discovery disabled.
  */
 //---------------------------------------------------------------------------------------------------------------------
-void CacheClientTests::InitializeClient(CacheClientImpl& client, bool bIsDiscoveryEnabled , bool bEnableCalculateChecksum, bool bEnableValidateChecksum )
+void CacheClientTests::InitializeClient(
+    CacheClientImpl& client,
+    bool bIsDiscoveryEnabled,
+    bool bEnableCalculateChecksum,
+    bool bEnableValidateChecksum,
+    bool bEnableConsistentHashing)
 {
     static uint32_t nPort = atoi(getenv("CACHE_SERVER_PORT"));
     static char* authAccountName = getenv("CACHESERVER_AUTH_ACCOUNTNAME");
@@ -79,7 +84,8 @@ void CacheClientTests::InitializeClient(CacheClientImpl& client, bool bIsDiscove
                       true, /** bReuseConnections*/
                       bIsDiscoveryEnabled, /** bIsCacheServerDiscoveryEnabled*/
                       2, /** nCacheServerDiscoveryIntervalInSeconds*/
-                      arrServers[0] /** nCacheServerDiscoveryEndpoint*/
+                      arrServers[0], /** nCacheServerDiscoveryEndpoint*/
+                      bEnableConsistentHashing /** bEnableConsistentHashing*/
                     );
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -254,7 +260,8 @@ TEST_P(CacheClientTests, Initialization)
                                 true /**bReuseConnections*/,
                                 false /**bIsCacheServerDiscoveryEnabled*/,
                                 5 /**nCacheServerDiscoveryIntervalInSeconds*/,
-                                arrServers[0] /**nCacheServerDiscoveryEndpoint*/));
+                                arrServers[0] /**nCacheServerDiscoveryEndpoint*/,
+                                false /**bEnableConsistentHashing*/));
 
         // Re-initialization
         ASSERT_EQ(CacheClientStatus::INTERNAL_ERROR,
@@ -272,7 +279,8 @@ TEST_P(CacheClientTests, Initialization)
                                 true /**bReuseConnections*/,
                                 false /**bIsCacheServerDiscoveryEnabled*/,
                                 5 /**nCacheServerDiscoveryIntervalInSeconds*/,
-                                arrServers[0] /**nCacheServerDiscoveryEndpoint*/));
+                                arrServers[0] /**nCacheServerDiscoveryEndpoint*/,
+                                false /**bEnableConsistentHashing*/));
 
         // Re-initialization with discovery enabled
         ASSERT_EQ(CacheClientStatus::INTERNAL_ERROR,
@@ -290,7 +298,8 @@ TEST_P(CacheClientTests, Initialization)
                                 true /**bReuseConnections*/,
                                 true /**bIsCacheServerDiscoveryEnabled*/,
                                 2 /**nCacheServerDiscoveryIntervalInSeconds*/,
-                                arrServers[0] /**nCacheServerDiscoveryEndpoint*/));
+                                arrServers[0] /**nCacheServerDiscoveryEndpoint*/,
+                                false /**bEnableConsistentHashing*/));
     }
 
     // This test checks the behavior of CacheClientImpl initialization
@@ -315,7 +324,8 @@ TEST_P(CacheClientTests, Initialization)
                              true, /**bReuseConnections*/
                              true, /**bIsCacheServerDiscoveryEnabled*/
                              2, /**nCacheServerDiscoveryIntervalInSeconds*/
-                             "" /**nCacheServerDiscoveryEndpoint - Empty endpoint*/));
+                             "" /**nCacheServerDiscoveryEndpoint - Empty endpoint*/,
+                             false /**bEnableConsistentHashing*/));
     }
 
     // This test checks the behavior of CacheClientImpl initialization
@@ -338,9 +348,10 @@ TEST_P(CacheClientTests, Initialization)
                 true /**bReuseConnections*/,
                 false /**bIsCacheServerDiscoveryEnabled*/,
                 5 /**nCacheServerDiscoveryIntervalInSeconds*/,
-                arrServers[0] /**nCacheServerDiscoveryEndpoint*/));
+                arrServers[0] /**nCacheServerDiscoveryEndpoint*/,
+                false /**bEnableConsistentHashing*/));
     }
-}
+}   
 //---------------------------------------------------------------------------------------------------------------------
 TEST_P(CacheClientTests, DownloadNonExistent)
 {
@@ -799,7 +810,7 @@ TEST_P(CacheClientTests, DiscoveryEndpointConfigurationValidation) {
         
         ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT,
             client.Initialize(nullptr, 0, nPort, false, false, false, 0, false, "", "", 
-                             false, true, true, 2, ""));  // Empty endpoint
+                             false, true, true, 2, "", false));  // Empty endpoint
     }
     
     // Test valid configuration
@@ -821,7 +832,7 @@ TEST_P(CacheClientTests, ResilientInitializationWithNetworkFailures) {
     // Should succeed with unreachable endpoint (graceful degradation)
     ASSERT_EQ(CacheClientStatus::SUCCESS,
         client.Initialize(nullptr, 0, nPort, false, false, false, 0, false, "", "", 
-                         false, true, true, 2, UNREACHABLE_ENDPOINT));
+                         false, true, true, 2, UNREACHABLE_ENDPOINT, false));
     
     // Verify graceful degradation
     auto servers = client.m_spConnectionManager->GetAllCacheServerHostnames();

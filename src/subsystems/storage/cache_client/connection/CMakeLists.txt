@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.10)
 
 set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS_INIT} -fPIC -Wno-deprecated-declarations")
 
-file(GLOB CLIENT_UTILS_SOURCES ${CMAKE_CURRENT_LIST_DIR}/*.cpp)
+file(GLOB_RECURSE CLIENT_UTILS_SOURCES ${CMAKE_CURRENT_LIST_DIR}/*.cpp)
 
 add_library(ClientConnections ${CLIENT_UTILS_SOURCES})
 

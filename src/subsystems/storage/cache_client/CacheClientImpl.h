@@ -13,6 +13,7 @@
 #include "ConnectionManager.h"
 //---------------------------------------------------------------------------------------------------------------------
 class CacheClientTests;
+class ConsistentHashingTests;
 //---------------------------------------------------------------------------------------------------------------------
 class CacheClientImpl
 {
@@ -35,6 +36,7 @@ class CacheClientImpl
         /*[in]*/ const bool bIsCacheServerDiscoveryEnabled,
         /*[in]*/ const uint32_t nCacheServerDiscoveryIntervalInSeconds,
         /*[in]*/ const char* nCacheServerDiscoveryEndpoint,
+        /*[in]*/ const bool bEnableConsistentHashing,
         /*[inopt]*/ const std::size_t nMaxBufferSizeBytes = MAX_BUFFER_SIZE_BYTES);
 
     CacheClientStatus Upload(
@@ -90,11 +92,19 @@ class CacheClientImpl
 
     // Friends for testing
     friend class CacheClientTests;
+    friend class ConsistentHashingTests;
     FRIEND_TEST(CacheClientTests, ForceReuseConnections);
     FRIEND_TEST(CacheClientTests, Initialization);
     FRIEND_TEST(CacheClientTests, RefreshCacheServersWithDiscoveryEndpoint);
     FRIEND_TEST(CacheClientTests, DiscoveryEndpointConfigurationValidation);
     FRIEND_TEST(CacheClientTests, ResilientInitializationWithNetworkFailures);
     FRIEND_TEST(CacheClientTests, DiscoveryResilience);
+
+    FRIEND_TEST(ConsistentHashingTests, ServerSelectionConsistency);
+    FRIEND_TEST(ConsistentHashingTests, ServerDistribution);
+    FRIEND_TEST(ConsistentHashingTests, ScaleUpDown);
+    FRIEND_TEST(ConsistentHashingTests, ThreadSafety);
+    FRIEND_TEST(ConsistentHashingTests, Performance);
+    FRIEND_TEST(ConsistentHashingTests, DistributionAnalysis);
 };
 //---------------------------------------------------------------------------------------------------------------------
