@@ -88,6 +88,7 @@ fn test_initialize() {
     let enable_calculate_crc = false;
     let enable_validate_crc = false;
     let enable_consistent_hashing = false;
+    let checksum_algorithm = std::ptr::null();
 
     let accountName = "admin";
     let accountKey = "1234";
@@ -108,6 +109,7 @@ fn test_initialize() {
             enable_ib,
             enable_calculate_crc,
             enable_validate_crc,
+            checksum_algorithm,
             &auth_credentials as *const AuthCredentials,
             enable_consistent_hashing,
         );

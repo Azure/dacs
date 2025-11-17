@@ -68,6 +68,7 @@ class StorageInterceptConfig
         std::string GetCacheKeyGroupId();
         bool IsCacheCalculateChecksumEnabled();
         bool IsCacheValidateChecksumEnabled();
+        std::string GetCacheChecksumAlgorithm();
 
         // Getters for attribute cache
         bool GetAttributesCacheEnable(const std::string& mountName);

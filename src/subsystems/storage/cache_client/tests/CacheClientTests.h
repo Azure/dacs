@@ -19,6 +19,7 @@ class CacheClientTests : public ::testing::TestWithParam<bool>
       bool bIsDiscoveryEnabled = false,
       bool bEnableCalculateChecksum = false,
       bool bEnableValidateChecksum = false,
+      const char* strChecksumAlgorithm = nullptr,
       bool bEnableConsistentHashing = false);
 
     // Discovery test helper methods

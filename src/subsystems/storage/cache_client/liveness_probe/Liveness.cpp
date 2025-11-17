@@ -43,6 +43,7 @@ int main(int argc, char** argv)
                            false,   /*bEnableIB*/
                            false,   /*bEnableCalculateChecksum*/
                            false,   /*bEnableValidateChecksum*/
+                           nullptr, /*strChecksumAlgorithm*/
                            0,       /*nConnectionPoolSize*/
                            false,   /*bEnableAuth*/
                            nullptr, /*strAccountName*/

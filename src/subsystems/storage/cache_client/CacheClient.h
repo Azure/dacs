@@ -68,6 +68,7 @@ typedef struct
  * @param bEnableIB Enable InfiniBand when connecting to the cache-servers
  * @param bEnableCalculateChecksum Enable checksum calculation when uploading data to the cache-servers, (would impact performance)
  * @param bEnableValidateChecksum Enable checksum validation when downloading data from the cache-servers, (would impact performance)
+ * @param strChecksumAlgorithm Algorithm to use for checksum calculation. default- xxhash32
  * @param pAuthCredentials Credentials to be used to connect to the cache-servers. Set the value to `NULL` to indicate
  *        authentication disabled. If enabled, each request to the cache-server will include account name, timestamp
  *        and signature of request header generated using the account key.
@@ -86,6 +87,7 @@ CacheClientStatus Initialize(
     /*[in]*/ bool bEnableIB,
     /*[in]*/ bool bEnableCalculateChecksum,
     /*[in]*/ bool bEnableValidateChecksum,
+    /*[in]*/ const char* strChecksumAlgorithm,
     /*[in]*/ const AuthCredentials* pAuthCredentials,
     /*[in]*/ bool bEnableConsistentHashing);
 //---------------------------------------------------------------------------------------------------------------------

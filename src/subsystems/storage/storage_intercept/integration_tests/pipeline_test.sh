@@ -859,4 +859,6 @@ __run__test__last_access_time_distribution__
 
 # TODO: Future enhancement - Add comprehensive tests for ADLS (Azure Data Lake Storage)
 
+source "${SCRIPT_DIR}/checksum_e2e_test.sh"
+__run_checksum_e2e_test__ xxhash32
 echo "All Storage interception integration tests completed successfully!"

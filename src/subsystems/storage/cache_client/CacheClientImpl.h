@@ -11,6 +11,7 @@
 
 #include "CacheClient.h"
 #include "ConnectionManager.h"
+#include "ChecksumFactory.h"
 //---------------------------------------------------------------------------------------------------------------------
 class CacheClientTests;
 class ConsistentHashingTests;
@@ -27,6 +28,7 @@ class CacheClientImpl
         /*[in]*/ const bool bEnableIB,
         /*[in]*/ const bool bEnableCalculateChecksum,
         /*[in]*/ const bool bEnableValidateChecksum,
+        /*[in]*/ const char* strChecksumAlgorithm,
         /*[in]*/ const uint32_t nConnectionPoolSize,
         /*[in]*/ const bool bEnableAuth,
         /*[in]*/ const char* strAccountName,
@@ -75,6 +77,9 @@ class CacheClientImpl
 
   private:
     const char* const CACHE_META_CHUNK_CHECKSUM_KEY = "CHUNK_CHECKSUM";
+    const char* const CACHE_META_CHECKSUM_ALGORITHM_KEY = "CHECKSUM_ALGORITHM";
+    static constexpr ChecksumAlgorithm DEFAULT_CHECKSUM_ALGORITHM = ChecksumAlgorithm::XXHASH32;
+    
     std::atomic<bool> m_bInitialized;
     std::mutex m_mtxInitialization;
     bool m_bEnableIB;
@@ -83,12 +88,12 @@ class CacheClientImpl
     bool m_bEnableValidateChecksum;
     std::string m_strAccountName;
     std::string m_strAccountKey;
+    ChecksumAlgorithm m_checksumAlgorithm;
     uint32_t m_nConnectionPoolSize;
     std::unique_ptr<ConnectionManager> m_spConnectionManager;
     static std::size_t nDefaultConnectionPoolSize;
     size_t m_nMaxBufferSizeBytes;
 
-    uint32_t CalculateChecksum(const void* pBuffer, const std::size_t nBufferLength);
 
     // Friends for testing
     friend class CacheClientTests;
@@ -99,6 +104,15 @@ class CacheClientImpl
     FRIEND_TEST(CacheClientTests, DiscoveryEndpointConfigurationValidation);
     FRIEND_TEST(CacheClientTests, ResilientInitializationWithNetworkFailures);
     FRIEND_TEST(CacheClientTests, DiscoveryResilience);
+    
+    // Checksum validation test friends
+    FRIEND_TEST(CacheClientTests, ChecksumValidationWithXXH32Default);
+    FRIEND_TEST(CacheClientTests, ChecksumValidationSkippedWhenMissingMetadata);
+    FRIEND_TEST(CacheClientTests, DownloadFileWithChecksumMismatch);
+    FRIEND_TEST(CacheClientTests, ChecksumValidationDetectsBitFlipCorruptionXXH32);
+    FRIEND_TEST(CacheClientTests, ChecksumValidationWithCRC32Algorithm);
+    FRIEND_TEST(CacheClientTests, ChecksumValidationDetectsAlgorithmMismatch);
+    FRIEND_TEST(CacheClientTests, ChecksumValidationEdgeCases);
 
     FRIEND_TEST(ConsistentHashingTests, ServerSelectionConsistency);
     FRIEND_TEST(ConsistentHashingTests, ServerDistribution);

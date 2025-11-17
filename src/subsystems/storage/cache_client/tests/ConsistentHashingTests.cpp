@@ -36,7 +36,7 @@ void ConsistentHashingTests::InitializeClient(CacheClientImpl& client)
         "cacheserver-2.azureml.svc.cluster.local"
     };
     
-    client.Initialize(arrServers, 3, nPort, false, false, false, 0, false, "", "",
+    client.Initialize(arrServers, 3, nPort, false, false, false, nullptr, 0, false, "", "",
                         false, true, false, 5, "", true);
 }
 //---------------------------------------------------------------------------------------------------------------------

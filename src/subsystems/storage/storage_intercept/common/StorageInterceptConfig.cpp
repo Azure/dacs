@@ -715,7 +715,7 @@ bool StorageInterceptConfig::IsCacheCalculateChecksumEnabled()
     return StorageInterceptConfig::GetOptionalConfigBoolean(
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameCacheCalculateChecksumEnabled,
-        false);
+        true);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::IsCacheValidateChecksumEnabled()
@@ -724,6 +724,14 @@ bool StorageInterceptConfig::IsCacheValidateChecksumEnabled()
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameCacheValidateChecksumEnabled,
         false);
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::GetCacheChecksumAlgorithm()
+{
+    return StorageInterceptConfig::GetOptionalConfigStr(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheChecksumAlgorithm,
+        StorageInterceptConstants::ConfigDefaultCacheChecksumAlgorithm);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::IsRemoteDownloadOnlyWhenLockHeldEnabled()
