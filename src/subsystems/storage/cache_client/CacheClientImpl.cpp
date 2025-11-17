@@ -4,6 +4,7 @@
 #include "CacheClientImpl.h"
 #include "CacheClient.h"
 #include "CacheClientLogger.h"
+#include "ChecksumFactory.h"
 #include "CacheUtils.h"
 #include "EncryptionUtil.h"
 #include "LogUtils.h"
@@ -31,6 +32,7 @@ CacheClientStatus CacheClientImpl::Initialize(
     /*[in]*/ const bool bEnableIB,
     /*[in]*/ const bool bEnableCalculateChecksum,
     /*[in]*/ const bool bEnableValidateChecksum,
+    /*[in]*/ const char* strChecksumAlgorithm,
     /*[in]*/ const uint32_t nConnectionPoolSize,
     /*[in]*/ const bool bEnableAuth,
     /*[in]*/ const char* strAccountName,
@@ -104,6 +106,16 @@ CacheClientStatus CacheClientImpl::Initialize(
     m_bEnableValidateChecksum = bEnableValidateChecksum;
     m_strAccountName = strAccountName == nullptr ? "" : std::string(strAccountName);
     m_strAccountKey = strAccountKey == nullptr ? "" : std::string(strAccountKey);
+    std::string algorithmStr = (strChecksumAlgorithm == nullptr || strlen(strChecksumAlgorithm) == 0) ? 
+        "" : std::string(strChecksumAlgorithm);
+    
+    m_checksumAlgorithm = ChecksumFactory::ParseAlgorithm(algorithmStr);
+    if (m_checksumAlgorithm == ChecksumAlgorithm::INVALID)
+    {
+        m_checksumAlgorithm = DEFAULT_CHECKSUM_ALGORITHM;
+        LOG_INFO("Invalid checksum algorithm provided, using default {}", ChecksumFactory::GetAlgorithmName(m_checksumAlgorithm))
+    }
+    
     m_spConnectionManager = std::make_unique<ConnectionManager>(nPort,
                                                                 bUseLocalServer,
                                                                 vecServers,
@@ -119,13 +131,10 @@ CacheClientStatus CacheClientImpl::Initialize(
                                                                 bEnableConsistentHashing);
     
     m_bInitialized = true;
-    LOG_INFO("CacheClientImpl initialized. Num servers = {}. Port = {}. Enable IB = {}. Connection pool size = {}, Enable Calculate checksum = {}, Enable Validate checksum = {}",
-             nNumServers,
-             nPort,
-             bEnableIB,
-             m_nConnectionPoolSize,
+    LOG_INFO("CacheClientImpl initialized. Enable Calculate checksum = {}, Enable Validate checksum = {}, Checksum algorithm = {}",
              m_bEnableCalculateChecksum,
-             m_bEnableValidateChecksum);
+             m_bEnableValidateChecksum,
+             ChecksumFactory::GetAlgorithmName(m_checksumAlgorithm));
     return CacheClientStatus::SUCCESS;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -232,14 +241,15 @@ CacheClientStatus CacheClientImpl::Upload(
 
         if (m_bEnableCalculateChecksum && nBufferLength > 0)
         {
-            std::string bufferChecksum = std::to_string(CalculateChecksum(pBuffer, nBufferLength));
-
+            auto checksumCalculator = ChecksumFactory::GetChecksumStrategyInstance(m_checksumAlgorithm);   
+            uint32_t calculatedChecksum = checksumCalculator->CalculateChecksum(pBuffer, nBufferLength);  
+            std::string bufferChecksum = std::to_string(calculatedChecksum);
             fileMetadata[(char*)CACHE_META_CHUNK_CHECKSUM_KEY] = bufferChecksum;
-            LOG_DEBUG_REQID("Checksum for file: {}, checksum: {}", *uploadRequest, strCacheKey, bufferChecksum);
+            fileMetadata[(char*)CACHE_META_CHECKSUM_ALGORITHM_KEY] = std::to_string(static_cast<int>(m_checksumAlgorithm));
+            LOG_DEBUG_REQID("Checksum calculated: {}, algorithm: {}", 
+                           *uploadRequest, bufferChecksum, ChecksumFactory::GetAlgorithmName(m_checksumAlgorithm));
         }
-        
     }
-
 
     if(m_bEnableAuth && !AddAuthParams(request, m_strAccountName, m_strAccountKey))
     {
@@ -259,10 +269,8 @@ CacheClientStatus CacheClientImpl::Upload(
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
-        // encLen will be updated if encrypted data needs to be used
         if(encLen == nBufferLength)
         {
-            // Data encrypted to new buffer, replace original send buffer with the encrypted one
             pBuffer = encBuffer.get();
         }
     }
@@ -491,8 +499,9 @@ CacheClientStatus CacheClientImpl::Download(
                 return cacheClientStatus;
             }
 
-            if(!encryptionUtil.DoDecrypt(
-                   response, serverConnection.get(), static_cast<char*>(pOutBuffer), actualReadLen))
+            if (!encryptionUtil.DoDecrypt(
+                    response, serverConnection.get(), static_cast<char*>(pOutBuffer), 
+                    actualReadLen))
             {
                 LOG_WARN_REQID("Failed to complete read from server, key: {}", *downloadRequest, strCacheKey);
                 m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
@@ -508,30 +517,52 @@ CacheClientStatus CacheClientImpl::Download(
 
             if(checksumIter != metadata.end())
             {
-                uint32_t calculatedChecksum = CalculateChecksum(pOutBuffer, actualReadLen);
-                
-                uint32_t receivedChecksum = std::stoul(checksumIter->second);
-                LOG_DEBUG_REQID("Checksum for file: {}, receivedChecksum: {}, calculatedChecksum {}",
-                                *downloadRequest,
-                                strCacheKey,
-                                receivedChecksum,
-                                calculatedChecksum);
-                if(receivedChecksum != calculatedChecksum)
+                auto algorithmIter = metadata.find(CACHE_META_CHECKSUM_ALGORITHM_KEY);
+                if(algorithmIter != metadata.end() && !algorithmIter->second.empty())
                 {
-                    LOG_ERROR_REQID("Checksum mismatch, key: {}, received: {}, calculated: {}",
-                                   *downloadRequest,
-                                   strCacheKey,
-                                   receivedChecksum,
-                                   calculatedChecksum);
+                    try
+                    {
+                        int algorithmInt = std::stoi(algorithmIter->second);
+                        auto algorithm = static_cast<ChecksumAlgorithm>(algorithmInt);
 
-                    cacheClientStatus = CacheClientStatus::CHECKSUM_MISMATCH;
-                    m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), false);
-                    return cacheClientStatus;
+                        auto checksumCalculator = ChecksumFactory::GetChecksumStrategyInstance(algorithm);   
+                        uint32_t calculatedChecksum = checksumCalculator->CalculateChecksum(pOutBuffer, actualReadLen);             
+                        
+                        uint32_t receivedChecksum = std::stoul(checksumIter->second);
+                        LOG_DEBUG_REQID("Checksum for file: {}, algorithm: {}, receivedChecksum: {}, calculatedChecksum: {}",
+                                        *downloadRequest,
+                                        strCacheKey,
+                                        ChecksumFactory::GetAlgorithmName(algorithm),
+                                        receivedChecksum,
+                                        calculatedChecksum);
+                        if(receivedChecksum != calculatedChecksum)
+                        {
+                            LOG_ERROR_REQID("Checksum mismatch, key: {}, algorithm: {}, received: {}, calculated: {}",
+                                           *downloadRequest,
+                                           strCacheKey,
+                                           ChecksumFactory::GetAlgorithmName(algorithm),
+                                           receivedChecksum,
+                                           calculatedChecksum);
+
+                            cacheClientStatus = CacheClientStatus::CHECKSUM_MISMATCH;
+                            m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), false);
+                            return cacheClientStatus;
+                        }
+                    }
+                    catch (const std::exception& e)
+                    {
+                        LOG_WARN_REQID("Failed to parse algorithm enum from metadata: {}, key: {}", 
+                                      *downloadRequest, algorithmIter->second, strCacheKey);
+                    }
+                }
+                else
+                {
+                    LOG_DEBUG_REQID("No algorithm in metadata, skipping checksum validation, key: {}", *downloadRequest, strCacheKey);
                 }
             }
             else
             {
-                LOG_DEBUG_REQID("Checksum not found in metadata, key: {}", *downloadRequest, strCacheKey);
+                LOG_DEBUG_REQID("Checksum not found in metadata, skipping validation, key: {}", *downloadRequest, strCacheKey);
             }
         }
 
@@ -948,17 +979,4 @@ bool CacheClientImpl::IsInitialized() const
 {
     return m_bInitialized;
 }
-//---------------------------------------------------------------------------------------------------------------------
-uint32_t CacheClientImpl::CalculateChecksum(/*[in]*/ const void* pBuffer, /*[in]*/ const std::size_t nBufferLength)
-{
-    if(pBuffer == nullptr || nBufferLength == 0)
-    {
-        LOG_INFO("Invalid buffer or length passed to CalculateChecksum");
-        return 0;
-    }
-    boost::crc_32_type crc;
-    crc.process_bytes(pBuffer, nBufferLength);
-    uint32_t crcChecksum = crc.checksum();
-    return crcChecksum;
-}
-//---------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------

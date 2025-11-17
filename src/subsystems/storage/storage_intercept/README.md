@@ -124,8 +124,9 @@ cacheAuthEnabled [true or false - Required when cache server APIs have authentic
 cacheAuthAccountName [Account name to be used for authenticatio]
 cacheAuthAccountKey [Shared key used for authentication]
 cacheIBEnabled [true or false - Use infiniband for cache client-server communication]
-cacheCalculateChecksumEnabled [true or false - Enable checksum calculation for chunks before uploading them to cache server]
-cacheValidateChecksumEnabled [true or false - Enable checksum validation for chunks downloaded from cache server]
+cacheCalculateChecksumEnabled [true or false - Enable checksum calculation for chunks before uploading them to cache server, default - true]
+cacheValidateChecksumEnabled [true or false - Enable checksum validation for chunks downloaded from cache server, default - false]
+cacheChecksumAlgorithm ["xxhash32", "crc32" - Algorithm to use for checksum calculation. default - xxhash32]
 prefetchCacheTotalSizeInMB [Max in-memory data cache size]
 prefetchCachePerFileSizeInMB [Max in-memory data cache size per file]
 cacheEnableSyncUpload [After downloading chunk from remote blob on a cache miss upload to cache server synchronously in critical path. Note: This will increase client IO latency. default - false]
@@ -139,7 +140,6 @@ cacheServerDiscoveryIntervalInSeconds [Time in seonds - Frequency of refreshing 
 cacheServerDiscoveryEndpoint [Endpoint as string - Cacheserver discovery endpoint]
 cacheEnableConsistentHashing [true or false - Enable Consistent Hashing for Server Selection]
 ```
-
 ### Config for running interception on multiple mounts
 For running interception with multiple mounts, use this sample `/tmp/storageIntercept.config`
 ```

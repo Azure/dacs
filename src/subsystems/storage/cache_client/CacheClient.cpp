@@ -22,6 +22,7 @@ extern "C" CacheClientStatus Initialize(
     /*[in]*/ bool bEnableIB,
     /*[in]*/ bool bEnableCalculateChecksum,
     /*[in]*/ bool bEnableValidateChecksum,
+    /*[in]*/ const char* strChecksumAlgorithm,
     /*[in]*/ const AuthCredentials* pAuthCredentials,
     /*[in]*/ bool bEnableConsistentHashing)
 {
@@ -31,6 +32,7 @@ extern "C" CacheClientStatus Initialize(
                                          bEnableIB,
                                          bEnableCalculateChecksum,
                                          bEnableValidateChecksum,
+                                         strChecksumAlgorithm,
                                          0,                             /* nConnectionPoolSize */
                                          (pAuthCredentials != nullptr), /* bEnableAuth */
                                          pAuthCredentials ? pAuthCredentials->m_strAccountKey : nullptr,

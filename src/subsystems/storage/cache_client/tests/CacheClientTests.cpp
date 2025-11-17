@@ -19,6 +19,7 @@
 #include "CacheClient.h"
 #include "CacheClientImpl.h"
 #include "CacheUtils.h"
+#include "ChecksumFactory.h"
 #include "CommonLogger.h"
 #include "LogUtils.h"
 //---------------------------------------------------------------------------------------------------------------------
@@ -49,6 +50,7 @@ void CacheClientTests::InitializeClient(
     bool bIsDiscoveryEnabled,
     bool bEnableCalculateChecksum,
     bool bEnableValidateChecksum,
+    const char* strChecksumAlgorithm,
     bool bEnableConsistentHashing)
 {
     static uint32_t nPort = atoi(getenv("CACHE_SERVER_PORT"));
@@ -76,6 +78,7 @@ void CacheClientTests::InitializeClient(
                       enableIB, /** enableIB*/
                       enableCalculateChecksum, /** enableCalculateChecksum*/
                       enableValidateChecksum, /** enableValidateChecksum*/
+                      strChecksumAlgorithm,   /** strChecksumAlgorithm*/
                       0, /** nConnectionPoolSize*/
                       enableAuth, /** enableAuth*/
                       authAccountName ? authAccountName : "", /** strAccountName*/
@@ -236,6 +239,7 @@ TEST_P(CacheClientTests, Initialization)
     bool enableIB = false;
     bool enableCalculateChecksum = false;
     bool enableValidateChecksum = false;
+    const char* checksumAlgorithm = nullptr;
     const char* accountName = "my_account";
     const char* accountKey = "my_secret_key";
 
@@ -252,6 +256,7 @@ TEST_P(CacheClientTests, Initialization)
                                 enableIB /**enableIB*/,
                                 enableCalculateChecksum /**enableCalculateChecksum*/,
                                 enableValidateChecksum /**enableValidateChecksum*/,
+                                checksumAlgorithm /**strChecksumAlgorithm */,
                                 0 /**nConnectionPoolSize*/,
                                 true /**enableAuth*/,
                                 accountName /**accountName*/,
@@ -271,6 +276,7 @@ TEST_P(CacheClientTests, Initialization)
                                 enableIB /**enableIB*/,
                                 enableCalculateChecksum /**enableCalculateChecksum*/,
                                 enableValidateChecksum /**enableValidateChecksum*/,
+                                checksumAlgorithm /**strChecksumAlgorithm */,
                                 0 /**nConnectionPoolSize*/,
                                 true /**enableAuth*/,
                                 accountName /**accountName*/,
@@ -290,6 +296,7 @@ TEST_P(CacheClientTests, Initialization)
                                 enableIB /**enableIB*/,
                                 enableCalculateChecksum /**enableCalculateChecksum*/,
                                 enableValidateChecksum /**enableValidateChecksum*/,
+                                checksumAlgorithm /**strChecksumAlgorithm */,
                                 0 /**nConnectionPoolSize*/,
                                 true /**enableAuth*/,
                                 accountName /**accountName*/,
@@ -316,6 +323,7 @@ TEST_P(CacheClientTests, Initialization)
                              false, /**enableIB*/
                              false, /**enableCalculateChecksum*/
                              false, /**enableValidateChecksum*/
+                             nullptr, /**strChecksumAlgorithm */
                              0, /**nConnectionPoolSize*/
                              false, /**enableAuth*/
                              "", /**accountName*/
@@ -340,6 +348,7 @@ TEST_P(CacheClientTests, Initialization)
                 enableIB /**enableIB*/,
                 enableCalculateChecksum /**enableCalculateChecksum*/,
                 enableValidateChecksum /**enableValidateChecksum*/,
+                checksumAlgorithm /**strChecksumAlgorithm */,
                 0 /**nConnectionPoolSize*/,
                 true /**enableAuth*/,
                 "" /**accountName*/,
@@ -461,7 +470,7 @@ TEST_P(CacheClientTests, DownloadFilesWithEncryption)
     free((void*)pBuffer2);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_P(CacheClientTests, DownloadFilesWithChecksum)
+TEST_P(CacheClientTests, ChecksumValidationWithXXH32Default)
 {
     string filename = GetCorrelationId();
     uint64_t nLength = 1024;
@@ -481,7 +490,7 @@ TEST_P(CacheClientTests, DownloadFilesWithChecksum)
     free((void*)pBuffer2);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_P(CacheClientTests, DownloadFilesWithMissingChecksum)
+TEST_P(CacheClientTests, ChecksumValidationSkippedWhenMissingMetadata)
 {
     string filename = GetCorrelationId();
     uint64_t nLength = 1024;
@@ -525,10 +534,12 @@ TEST_P(CacheClientTests, DownloadFileWithChecksumMismatch)
     uint64_t nLength = 1024;
     const void* pBuffer = GetRandomBuffer(nLength);
     Metadata* pMetadata = new Metadata;
-    pMetadata->arrKeyValuePairs = new KeyValuePair[1];
-    pMetadata->nKeyValuePairs = 1;
+    pMetadata->arrKeyValuePairs = new KeyValuePair[2];
+    pMetadata->nKeyValuePairs = 2;
     pMetadata->arrKeyValuePairs[0].strKey = strdup("CHUNK_CHECKSUM");
     pMetadata->arrKeyValuePairs[0].strValue = strdup("1234567890");
+    pMetadata->arrKeyValuePairs[1].strKey = strdup("CHECKSUM_ALGORITHM");
+    pMetadata->arrKeyValuePairs[1].strValue = strdup(std::to_string(static_cast<int>(ChecksumAlgorithm::XXHASH32)).c_str());
 
     auto status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, pMetadata, nullptr);
     ASSERT_EQ(CacheClientStatus::SUCCESS, status);
@@ -540,6 +551,194 @@ TEST_P(CacheClientTests, DownloadFileWithChecksumMismatch)
 
     free((void*)pBuffer);
     free((void*)pBuffer2);
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Checksum Bit Flip Detection Test
+// This test verifies that checksum validation detects actual bit corruption in data
+// Simulates real-world scenario where data gets corrupted during storage/transmission
+//---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, ChecksumValidationDetectsBitFlipCorruptionXXH32)
+{
+    string filename = GetCorrelationId();
+    uint64_t nLength = 32 * 1024 * 1024;  // 32 MB chunk
+    char* pBuffer = (char*)GetRandomBuffer(nLength);
+    // First, test successful upload/download with correct checksum
+    string filenameSuccess = GetCorrelationId();
+
+    // Upload uncorrupted data with correct checksum - should succeed
+    auto status = m_cacheClientImplCRC.Upload(filenameSuccess.c_str(), pBuffer, nLength, 0, nullptr, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    // Download with checksum validation - should succeed
+    char* pBufferSuccess = (char*)malloc(nLength);
+    uint64_t readLength = nLength;
+    status = m_cacheClientImplCRC.Download(filenameSuccess.c_str(), pBufferSuccess, &readLength, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+    ASSERT_EQ(readLength, nLength);
+    ASSERT_EQ(memcmp(pBuffer, pBufferSuccess, nLength), 0);
+
+    // Calculate the checksum of the original (uncorrupted) data
+    IChecksumStrategy* checksumStrategy = ChecksumFactory::GetChecksumStrategyInstance(ChecksumAlgorithm::XXHASH32);
+    uint32_t originalChecksum = checksumStrategy->CalculateChecksum(pBuffer, nLength);
+
+    // Now simulate a bit flip: corrupt one bit in the data
+    size_t corruptPosition = nLength / 2;
+    pBuffer[corruptPosition] ^= 0x01;  // Flip the least significant bit
+    
+    // Create metadata with the ORIGINAL checksum (calculated before bit flip)
+    // This simulates the scenario where checksum was stored before corruption occurred
+    Metadata* pMetadata = new Metadata;
+    pMetadata->arrKeyValuePairs = new KeyValuePair[2];
+    pMetadata->nKeyValuePairs = 2;
+    pMetadata->arrKeyValuePairs[0].strKey = strdup("CHUNK_CHECKSUM");
+    pMetadata->arrKeyValuePairs[0].strValue = strdup(std::to_string(originalChecksum).c_str());
+    pMetadata->arrKeyValuePairs[1].strKey = strdup("CHECKSUM_ALGORITHM");
+    pMetadata->arrKeyValuePairs[1].strValue = strdup(std::to_string(static_cast<int>(ChecksumAlgorithm::XXHASH32)).c_str());
+
+    // Upload the CORRUPTED data with the ORIGINAL (wrong) checksum
+    // This simulates data that got corrupted after checksum was calculated
+    status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, pMetadata, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    // Try to download with checksum validation - should detect the bit flip
+    char* pBuffer2 = (char*)malloc(nLength);
+    readLength = nLength;
+    status = m_cacheClientImplCRC.Download(filename.c_str(), pBuffer2, &readLength, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::CHECKSUM_MISMATCH, status);
+
+    free(pBuffer);
+    free(pBufferSuccess);
+    free(pBuffer2);
+    delete[] pMetadata->arrKeyValuePairs;
+    delete pMetadata;
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, ChecksumValidationWithCRC32Algorithm)
+{
+    string filename = GetCorrelationId();
+    uint64_t nLength = 1024;
+    const void* pBuffer = GetRandomBuffer(nLength);
+
+    // Calculate expected CRC32 checksum
+    IChecksumStrategy* checksumCalculator = ChecksumFactory::GetChecksumStrategyInstance(ChecksumAlgorithm::CRC32);
+    uint32_t expectedChecksum = checksumCalculator->CalculateChecksum(pBuffer, nLength);
+
+    // Create metadata with CRC32 checksum and algorithm
+    Metadata* pMetadata = new Metadata;
+    pMetadata->arrKeyValuePairs = new KeyValuePair[2];
+    pMetadata->nKeyValuePairs = 2;
+    pMetadata->arrKeyValuePairs[0].strKey = strdup("CHUNK_CHECKSUM");
+    pMetadata->arrKeyValuePairs[0].strValue = strdup(std::to_string(expectedChecksum).c_str());
+    pMetadata->arrKeyValuePairs[1].strKey = strdup("CHECKSUM_ALGORITHM");
+    pMetadata->arrKeyValuePairs[1].strValue = strdup(std::to_string(static_cast<int>(ChecksumAlgorithm::CRC32)).c_str());
+
+
+    auto status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, pMetadata, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    void* pBuffer2 = malloc(nLength);
+    uint64_t readLength = nLength;
+    status = m_cacheClientImplCRC.Download(filename.c_str(), pBuffer2, &readLength, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+    ASSERT_EQ(readLength, nLength);
+    ASSERT_EQ(memcmp(pBuffer, pBuffer2, nLength), 0);
+
+    free((void*)pBuffer);
+    free(pBuffer2);
+    delete[] pMetadata->arrKeyValuePairs;
+    delete pMetadata;
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, ChecksumValidationDetectsAlgorithmMismatch)
+{
+    string filename = GetCorrelationId();
+    uint64_t nLength = 1024;
+    const void* pBuffer = GetRandomBuffer(nLength);
+
+    // Calculate checksum with CRC32 but store metadata claiming it's xxhash32
+    IChecksumStrategy* checksumStrategy = ChecksumFactory::GetChecksumStrategyInstance(ChecksumAlgorithm::CRC32);
+    uint32_t crc32Checksum = checksumStrategy->CalculateChecksum(pBuffer, nLength);
+
+    Metadata* pMetadata = new Metadata;
+    pMetadata->arrKeyValuePairs = new KeyValuePair[2];
+    pMetadata->nKeyValuePairs = 2;
+    pMetadata->arrKeyValuePairs[0].strKey = strdup("CHUNK_CHECKSUM");
+    pMetadata->arrKeyValuePairs[0].strValue = strdup(std::to_string(crc32Checksum).c_str());
+    pMetadata->arrKeyValuePairs[1].strKey = strdup("CHECKSUM_ALGORITHM");
+    pMetadata->arrKeyValuePairs[1].strValue = strdup(std::to_string(static_cast<int>(ChecksumAlgorithm::XXHASH32)).c_str());
+
+    auto status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, pMetadata, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    void* pBuffer2 = malloc(nLength);
+    uint64_t readLength = nLength;
+    status = m_cacheClientImplCRC.Download(filename.c_str(), pBuffer2, &readLength, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::CHECKSUM_MISMATCH, status);  // Should detect algorithm/checksum mismatch
+
+    free((void*)pBuffer);
+    free(pBuffer2);
+    delete[] pMetadata->arrKeyValuePairs;
+    delete pMetadata;
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, ChecksumValidationEdgeCases)
+{
+    string filename = GetCorrelationId();
+    uint64_t nLength = 1024;
+    const void* pBuffer = GetRandomBuffer(nLength);
+
+    // Test case 1: Algorithm key exists but value is empty string
+    {
+        Metadata* pMetadata = new Metadata;
+        pMetadata->arrKeyValuePairs = new KeyValuePair[2];
+        pMetadata->nKeyValuePairs = 2;
+        pMetadata->arrKeyValuePairs[0].strKey = strdup("CHUNK_CHECKSUM");
+        pMetadata->arrKeyValuePairs[0].strValue = strdup("123456789");
+        pMetadata->arrKeyValuePairs[1].strKey = strdup("CHECKSUM_ALGORITHM");
+        pMetadata->arrKeyValuePairs[1].strValue = strdup("");  // Empty algorithm value
+
+        string testFilename = filename + "_empty_algo";
+        auto status = m_cacheClientImpl.Upload(testFilename.c_str(), pBuffer, nLength, 0, nullptr, pMetadata, nullptr);
+        ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+        void* pBuffer2 = malloc(nLength);
+        uint64_t readLength = nLength;
+        status = m_cacheClientImplCRC.Download(testFilename.c_str(), pBuffer2, &readLength, nullptr, nullptr);
+        ASSERT_EQ(CacheClientStatus::SUCCESS, status);  // Should skip validation gracefully
+        ASSERT_EQ(readLength, nLength);
+        ASSERT_EQ(memcmp(pBuffer, pBuffer2, nLength), 0);
+
+        free(pBuffer2);
+        delete[] pMetadata->arrKeyValuePairs;
+        delete pMetadata;
+    }
+
+    // Test case 2: Checksum exists but algorithm key is missing entirely
+    {
+        Metadata* pMetadata = new Metadata;
+        pMetadata->arrKeyValuePairs = new KeyValuePair[1];
+        pMetadata->nKeyValuePairs = 1;
+        pMetadata->arrKeyValuePairs[0].strKey = strdup("CHUNK_CHECKSUM");
+        pMetadata->arrKeyValuePairs[0].strValue = strdup("987654321");
+        // No algorithm key at all
+
+        string testFilename = filename + "_missing_algo_key";
+        auto status = m_cacheClientImpl.Upload(testFilename.c_str(), pBuffer, nLength, 0, nullptr, pMetadata, nullptr);
+        ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+        void* pBuffer3 = malloc(nLength);
+        uint64_t readLength = nLength;
+        status = m_cacheClientImplCRC.Download(testFilename.c_str(), pBuffer3, &readLength, nullptr, nullptr);
+        ASSERT_EQ(CacheClientStatus::SUCCESS, status);  // Should skip validation gracefully
+        ASSERT_EQ(readLength, nLength);
+        ASSERT_EQ(memcmp(pBuffer, pBuffer3, nLength), 0);
+
+        free(pBuffer3);
+        delete[] pMetadata->arrKeyValuePairs;
+        delete pMetadata;
+    }
+
+    free((void*)pBuffer);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_P(CacheClientTests, FileExpiry)
@@ -809,7 +1008,7 @@ TEST_P(CacheClientTests, DiscoveryEndpointConfigurationValidation) {
         uint32_t nPort = atoi(getenv("CACHE_SERVER_PORT"));
         
         ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT,
-            client.Initialize(nullptr, 0, nPort, false, false, false, 0, false, "", "", 
+            client.Initialize(nullptr, 0, nPort, false, false, false, nullptr, 0, false, "", "", 
                              false, true, true, 2, "", false));  // Empty endpoint
     }
     
@@ -831,7 +1030,7 @@ TEST_P(CacheClientTests, ResilientInitializationWithNetworkFailures) {
     
     // Should succeed with unreachable endpoint (graceful degradation)
     ASSERT_EQ(CacheClientStatus::SUCCESS,
-        client.Initialize(nullptr, 0, nPort, false, false, false, 0, false, "", "", 
+        client.Initialize(nullptr, 0, nPort, false, false, false, nullptr, 0, false, "", "", 
                          false, true, true, 2, UNREACHABLE_ENDPOINT, false));
     
     // Verify graceful degradation

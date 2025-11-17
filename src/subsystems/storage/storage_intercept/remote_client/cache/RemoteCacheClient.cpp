@@ -37,6 +37,7 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
     bool bUseInfiniband = StorageInterceptConfig::GetInstance().GetCacheIBEnabled();
     bool bEnableCalculateChecksum = StorageInterceptConfig::GetInstance().IsCacheCalculateChecksumEnabled();
     bool bEnableValidateChecksum = StorageInterceptConfig::GetInstance().IsCacheValidateChecksumEnabled();
+    const std::string strChecksumAlgorithm = StorageInterceptConfig::GetInstance().GetCacheChecksumAlgorithm();
     uint32_t nChunkSizeConfig = StorageInterceptConfig::GetInstance().GetStreamingChunkSize();
 
     // Chunk size is configurable in new clients, so we need to include it in the cache key to prevent collisions
@@ -105,6 +106,7 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
                                                        bUseInfiniband,
                                                        bEnableCalculateChecksum,
                                                        bEnableValidateChecksum,
+                                                       strChecksumAlgorithm.c_str(),
                                                        nMaxConnectionsReuseSize,
                                                        bAuthEnabled,
                                                        accountName.c_str(),

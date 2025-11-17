@@ -240,8 +240,10 @@ po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
             "mode", po::value<std::string>(), "Mode ( 'upload' or 'download' )")(
             "num-iterations", po::value<int>()->default_value(1), "Number of times to run the perf test")(
             "ib-enabled", po::value<bool>()->default_value(false), "Enable Infiniband")(
-            "is-discovery-enabled", po::value<bool>()->default_value(false), "Enable discovery endpoint"
-            );
+            "is-discovery-enabled", po::value<bool>()->default_value(false), "Enable discovery endpoint")(
+            "enable-calculate-checksum", po::value<bool>()->default_value(false), "Enable checksum calculation on upload")(
+            "enable-validate-checksum", po::value<bool>()->default_value(false), "Enable checksum validation on download")(
+            "checksum-algorithm", po::value<std::string>()->default_value("xxhash32"), "Checksum algorithm to use ('xxhash32' or 'crc32')");
 
         po::variables_map vm;
         po::store(po::command_line_parser(argc, argv).options(description).allow_unregistered().run(), vm);
@@ -376,6 +378,9 @@ int PerfClient(int argc, char *argv[])
     std::size_t nNumIterations = args["num-iterations"].as<int>();
     bool bIsIBEnabled = args["ib-enabled"].as<bool>();
     bool bIsDiscoveryEnabled = args["is-discovery-enabled"].as<bool>();
+    bool bEnableCalculateChecksum = args["enable-calculate-checksum"].as<bool>();
+    bool bEnableValidateChecksum = args["enable-validate-checksum"].as<bool>();
+    std::string strChecksumAlgo = args["checksum-algorithm"].as<std::string>();
 
     if(strMode != "upload" && strMode != "download")
     {
@@ -392,20 +397,21 @@ int PerfClient(int argc, char *argv[])
     CacheClientImpl client;
     client.Initialize(vecCstrHostnames.data(),
                       vecCstrHostnames.size(),
-                      nPort,                /*nCacheServerPort*/
-                      bIsIBEnabled,         /*bEnableIB*/
-                      false,                /*bEnableCalculateChecksum*/
-                      false,                /*bEnableValidateChecksum*/
-                      nNumThreads * 2,      /*nConnectionPoolSize*/
-                      false,                /*bEnableAuth*/
-                      nullptr,              /*strAccountName*/
-                      nullptr,              /*strAccountKey*/
-                      false,                /*bUseLocalServer*/
-                      true,                 /*bReuseConnections*/
-                      bIsDiscoveryEnabled,  /*bIsCacheServerDiscoveryEnabled*/
-                      5,                  /*nCacheServerDiscoveryIntervalInSeconds*/
-                      LOCALHOST,            /*nCacheServerDiscoveryEndpoint*/
-                      CHUNK_SIZE);          /*nMaxBufferSizeBytes*/
+                      nPort,                        /*nCacheServerPort*/
+                      bIsIBEnabled,                 /*bEnableIB*/
+                      bEnableCalculateChecksum,     /*bEnableCalculateChecksum*/
+                      bEnableValidateChecksum,      /*bEnableValidateChecksum*/
+                      strChecksumAlgo.c_str(),      /*strChecksumAlgorithm*/
+                      nNumThreads * 2,              /*nConnectionPoolSize*/
+                      false,                        /*bEnableAuth*/
+                      nullptr,                      /*strAccountName*/
+                      nullptr,                      /*strAccountKey*/
+                      false,                        /*bUseLocalServer*/
+                      true,                         /*bReuseConnections*/
+                      bIsDiscoveryEnabled,          /*bIsCacheServerDiscoveryEnabled*/
+                      5,                            /*nCacheServerDiscoveryIntervalInSeconds*/
+                      LOCALHOST,                    /*nCacheServerDiscoveryEndpoint*/
+                      CHUNK_SIZE);                  /*nMaxBufferSizeBytes*/
 
     std::size_t nDataSizeBytes = nDataSizeGiB * 1024 * 1024 * 1024;
     bool bAllIterationsSucceeded = true;
@@ -444,6 +450,7 @@ int EvictionClient(int argc, char* argv[])
                       false,                       /*bEnableIB*/
                       false,                       /*bEnableCalculateChecksum*/
                       false,                       /*bEnableValidateChecksum*/
+                      nullptr,                     /*strChecksumAlgorithm*/
                       vecCstrHostnames.size() * 2, /*nConnectionPoolSize*/
                       false,                       /*bEnableAuth*/
                       nullptr,                     /*strAccountName*/
@@ -493,6 +500,7 @@ int LastAccessTimeDistributionClient(int argc, char* argv[])
                       false,                       /*bEnableIB*/
                       false,                       /*bEnableCalculateChecksum*/
                       false,                       /*bEnableValidateChecksum*/
+                      nullptr,                    /*strChecksumAlgorithm*/
                       vecCstrHostnames.size() * 2, /*nConnectionPoolSize*/
                       false,                       /*bEnableAuth*/
                       nullptr,                     /*strAccountName*/
@@ -504,7 +512,7 @@ int LastAccessTimeDistributionClient(int argc, char* argv[])
                       LOCALHOST,                   /*nCacheServerDiscoveryEndpoint*/
                       true);                       /*bEnableConsistentHashing*/
 
-    
+                      
     LastAccessTimeDistribution *pLastAccessTimeDistribution = new LastAccessTimeDistribution();
     pLastAccessTimeDistribution->arrKeyValuePairs = nullptr;
     pLastAccessTimeDistribution->nKeyValuePairs = 0;
