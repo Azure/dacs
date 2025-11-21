@@ -1,0 +1,35 @@
+{{- if and .Values.cacheServer.enabled (ne (int .Values.cacheServer.numServers) 0)}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: cacheserver
+  labels:
+    app: cacheserver
+  namespace: {{ .Release.Namespace }}
+spec:
+  ports:
+  - name: cacheserver
+    port: {{ .Values.cacheServer.port }}
+    targetPort: {{ .Values.cacheServer.port }}
+  - name: metrics
+    port: {{ .Values.cacheServer.metricsPort }}
+    targetPort: {{ .Values.cacheServer.metricsPort }}
+  clusterIP: None
+  selector:
+    app: cacheserver
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cacheserver-discovery
+  labels:
+    app: cacheserver
+  namespace: {{ .Release.Namespace }}
+spec:
+  ports:
+  - name: cacheserver
+    port: {{ .Values.cacheServer.port }}
+    targetPort: {{ .Values.cacheServer.port }}
+  selector:
+    app: cacheserver
+{{- end }}

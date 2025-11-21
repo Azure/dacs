@@ -5,6 +5,11 @@ usage="Usage : $0 [--no-tty]"
 
 TTY_OPTION="-t"
 
+# Auto-detect if running without TTY (e.g., in CI/CD)
+if [ ! -t 0 ]; then
+    TTY_OPTION=""
+fi
+
 if [ "$1" == "--no-tty" ]; then
     TTY_OPTION=""
     shift
@@ -29,6 +34,13 @@ case $ARCH in
         ;;
 esac
 
+# If arguments provided, run them; otherwise start interactive shell
+if [ $# -eq 0 ]; then
+    CMD="/bin/bash"
+else
+    CMD="$@"
+fi
+
 echo Running Native Build Container $nativeBuildRepository:$nativeBuildLabel
 docker run \
     --rm \
@@ -50,4 +62,4 @@ docker run \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /usr/share/dotnet/sdk/NuGetFallbackFolder:/usr/share/dotnet/sdk/NuGetFallbackFolder \
     -w $DIR \
-    $nativeBuildRepository:$nativeBuildLabel /bin/bash
+    $nativeBuildRepository:$nativeBuildLabel $CMD

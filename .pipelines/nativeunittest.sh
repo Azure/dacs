@@ -9,7 +9,9 @@ function execute_test() {
   log_file="`pwd`/Testing/Temporary/LastTest.log"
 
   if [ ! -z "$TEST_NAME" ]; then
-    ctest -V --no-tests=error -j -1 -R "$TEST_NAME"
+    export GTEST_FILTER="*${TEST_NAME}*"
+    ctest -V --no-tests=error -j -1
+    unset GTEST_FILTER
   else
     ctest -V --no-tests=error -j -1
   fi
