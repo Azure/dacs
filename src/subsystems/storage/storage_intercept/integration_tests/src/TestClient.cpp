@@ -646,6 +646,13 @@ int main(int argc, char** argv)
   std::cout << "Num bytes read              => " << numBytesRead  << std::endl;
   std::cout << "Average throughput obtained => " << avgThroughput <<  " B / sec"  << std::endl;
   std::cout << "========================================================" << std::endl;
+
+  // Allow time for async cache uploads to complete before program exit.
+  // File reads trigger background cache uploads in CacheUploadManager. 
+  // Without this sleep, the ContentHandler destructor can run while upload threads
+  // are still active, causing segfaults when threads access destroyed objects.
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
   return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
