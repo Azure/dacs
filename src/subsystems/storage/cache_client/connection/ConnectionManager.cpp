@@ -597,13 +597,14 @@ bool ConnectionManager::PerformIBHandshake(IConnection* connection, const std::s
     {
         std::lock_guard<std::mutex> lock(m_lockIBHandshakeStatusMap);
         // check if handshake is already performed
-        if (m_mapIbHandshakeStatus.at(cacheserver) == HandshakeStatus::SUCCESS)
+        auto mapIt = m_mapIbHandshakeStatus.find(cacheserver);
+        if (mapIt != m_mapIbHandshakeStatus.end() && mapIt->second == HandshakeStatus::SUCCESS)
         {
             LOG_DEBUG("IB handshake already successfully performed for qp={}, cacheserver={}", 
                 connection->GetId(), cacheserver);
             return true;
         }
-        else if (m_mapIbHandshakeStatus.at(cacheserver) == HandshakeStatus::FAILURE)
+        else if (mapIt != m_mapIbHandshakeStatus.end() && mapIt->second == HandshakeStatus::FAILURE)
         {
             LOG_DEBUG("Previous IB handshake failed for qp={}, cacheserver={}",
                 connection->GetId(), cacheserver);
