@@ -2,7 +2,19 @@
 <Project Sdk="Microsoft.Build.NoTargets">
   <PropertyGroup>
     <TargetFramework>netcoreapp3.1</TargetFramework>
-    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+    <!-- Support both x64 and ARM64 runtime identifiers -->
+    <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+  
+  <!-- Force RuntimeIdentifier based on BuildArchitecture parameter -->
+  <PropertyGroup Condition="'$(BuildArchitecture)' == 'arm64'">
+    <RuntimeIdentifier>linux-arm64</RuntimeIdentifier>
+    <PlatformTarget>ARM64</PlatformTarget>
+  </PropertyGroup>
+  
+  <PropertyGroup Condition="'$(BuildArchitecture)' != 'arm64'">
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+    <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
   <PropertyGroup>
     <CMakePathToSource>$(RepositoryRootPath).</CMakePathToSource>

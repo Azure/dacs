@@ -91,7 +91,7 @@ void TestStatInterception(const std::string& mountPath)
     throw "stat file failed";
   }
 
-  if (statBuf.st_mode & S_IFREG != S_IFREG)
+  if ((statBuf.st_mode & S_IFREG) != S_IFREG)
   {
     std::cout << "ERROR: expected regular file, got: " << statBuf.st_mode << std::endl;
     throw "stat file failed";
@@ -119,7 +119,7 @@ void TestStatInterception(const std::string& mountPath)
     throw "fstat file failed";
   }
 
-  if (statBuf1.st_mode & S_IFREG != S_IFREG)
+  if ((statBuf1.st_mode & S_IFREG) != S_IFREG)
   {
     std::cout << "ERROR: expected regular file, got: " << statBuf1.st_mode << std::endl;
     throw "stat file failed";

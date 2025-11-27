@@ -153,14 +153,46 @@ These are the steps used to run native unit tests.
    $ .pipelines/nativeunittest.sh [Release|Debug] [optional_name_of_unittest_to_run]
    ```
 
-## Updating native build container
+## Publishing packages
 
-- Run from Command Prompt
+- Publish for current architecture (auto-detects)
     ```
    $ cd <path to repository root>
-   $ dotnet restore src/images/native-build/native-build.dockerproj           
-   $ dotnet msbuild -M -t:ContainerPublish src/images/native-build/native-build.dockerproj           
+   $ .pipelines/publish.sh Debug
    ```
+
+- Publish for specific architecture
+    ```
+   $ cd <path to repository root>
+   $ .pipelines/publish.sh Debug arm64   # For ARM64 architecture
+   $ .pipelines/publish.sh Debug x64     # For x86-64 architecture
+   ```
+
+- Publish Release builds
+    ```
+   $ cd <path to repository root>
+   $ .pipelines/publish.sh Release arm64
+   $ .pipelines/publish.sh Release x64
+   ```
+
+**Note**: ARM64 builds automatically exclude the reliability subsystem components that are x86-specific.
+
+## Updating native build container
+
+- Run from Command Prompt (auto-detects architecture)
+    ```
+   $ cd <path to repository root>
+   $ dotnet restore src/images/native-build/native-build.dockerproj
+   $ dotnet msbuild -M -t:ContainerPublish src/images/native-build/native-build.dockerproj
+   ```
+
+- Override architecture if needed
+    ```
+   $ cd <path to repository root>
+   $ dotnet restore src/images/native-build/native-build.dockerproj
+   $ dotnet msbuild -M -t:ContainerPublish src/images/native-build/native-build.dockerproj -p:BuildArchitecture=arm64
+   ```
+
 - Make sure that the final update to build/.metadata/native-build.container.metadata is included in your PR.
 
 

@@ -786,7 +786,7 @@ TEST_P(CacheClientTests, RefreshCacheServersWithDiscoveryEndpoint) {
     SetCacheServerCount(2);
     ASSERT_TRUE(WaitForServerCount(2, DEFAULT_DISCOVERY_TIMEOUT));
     
-    // Reset for other tests - use extended timeout for reset
+    // Reset for other tests
     SetCacheServerCount(1);
     ASSERT_TRUE(WaitForServerCount(1, EXTENDED_DISCOVERY_TIMEOUT));
 }

@@ -441,7 +441,7 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(const int ser
         // Register an MR block
         unique_ptr<char[]> mrBufferBlock(new char[IB_BUFFER_SIZE]);
         unique_ibv_mr mr(ibv_reg_mr(m_ibDevice.pd.get(), mrBufferBlock.get(), IB_BUFFER_SIZE,
-            IBV_ACCESS_LOCAL_WRITE), FreeIbvMr);
+            static_cast<int>(IBV_ACCESS_LOCAL_WRITE)), FreeIbvMr);
         if (!mr)
         {
             LOG_WARN_REQID("ibv_reg_mr failed error={}", *ibRequest, strerror(errno));

@@ -3,7 +3,7 @@
 # Fundamentally these tests depend on timings between client making requests and server threads running eviction passes/snapshots
 # they should be stable, but if they fail, try adjusting the sleep times in the tests
 ########################################################################################################################
-TEST_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/linux-x64/publish-storage/storage/cacheServerTestClient"
+TEST_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${RUNTIME_IDENTIFIER}/publish-storage/storage/cacheServerTestClient"
 ########################################################################################################################
 # Log every second while sleeping
 function __logsleep__()
