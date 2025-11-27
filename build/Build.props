@@ -21,13 +21,19 @@
     <UsingOfficialContainerImageRepository>false</UsingOfficialContainerImageRepository>
     <UsingOfficialContainerImageRepository Condition=" '$(ContainerImageRepository)'=='dacsofficialacr' ">true</UsingOfficialContainerImageRepository>
     <PublishDir>$(IntermediateOutputPath)\$(RuntimeIdentifier)\publish\</PublishDir>
+    
+    <!-- Centralized architecture detection and conversion -->
+    <!-- Detect build architecture - prefer command line parameter, fallback to runtime detection -->
+    <BuildArchitecture Condition="'$(BuildArchitecture)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLower())</BuildArchitecture>
+    <!-- Convert .NET architecture names to our internal standard -->
+    <BuildArchitecture Condition="'$(BuildArchitecture)' == 'x64'">x86_64</BuildArchitecture>
+    
     <PowershellCoreCommand>pwsh</PowershellCoreCommand>
     <PowershellCommand Condition=" '$(OS)' != 'Windows_NT' ">pwsh</PowershellCommand>
     <PowershellCommand Condition=" '$(PowershellCommand)' == ''">powershell</PowershellCommand>
     <TargetFramework Condition=" '$(TargetFramework)' == '' ">netcoreapp3.1</TargetFramework>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <HighEntropyVA>true</HighEntropyVA>
-    <PlatformTarget>x64</PlatformTarget>
     <ContainerImageRepository Condition=" '$(ContainerImageRepository)'=='' ">dacs</ContainerImageRepository>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(SlnGenSolutionFileFullPath)' == '' ">

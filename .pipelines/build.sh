@@ -15,6 +15,7 @@ dotnet msbuild dirs.proj \
 -maxCpuCount \
 -p:TreatWarningsAsErrors=true \
 -p:Configuration=$BUILD_CONFIGURATION \
+-p:BuildArchitecture=$BUILD_ARCHITECTURE \
 -v:n -filelogger \
 -fileLoggerParameters:"logfile=$DIR/Log/msbuild.build.log" \
 "${@:2}"

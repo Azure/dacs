@@ -11,8 +11,20 @@ function invoke_cmake() {
 
   mkdir -p $cmake_build_dir
   cd $cmake_build_dir
+  
+  # Add architecture-specific flags if BUILD_ARCHITECTURE is set
+  local arch_flags=""
+  if [ ! -z "$BUILD_ARCHITECTURE" ]; then
+    if [ "$BUILD_ARCHITECTURE" = "arm64" ]; then
+      arch_flags="-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64"
+    elif [ "$BUILD_ARCHITECTURE" = "x86_64" ]; then
+      arch_flags="-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=x86_64"
+    fi
+  fi
+  
   echo "cmake \
     $cmake_extra_args \
+    $arch_flags \
     -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_CONFIGURATION \
     -DBUILD_WITH_DEBUG_SYMBOLS=$BUILD_WITH_DEBUG_SYMBOLS \
     -DGIT_COMMIT_HASH=${latest_git_hash} \
@@ -20,6 +32,7 @@ function invoke_cmake() {
     $source_dir"
   cmake \
     $cmake_extra_args \
+    $arch_flags \
     -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_CONFIGURATION \
     -DBUILD_WITH_DEBUG_SYMBOLS=$BUILD_WITH_DEBUG_SYMBOLS \
     -DGIT_COMMIT_HASH=${latest_git_hash} \

@@ -1,5 +1,11 @@
 # Project name, build system and c++ standards used
 cmake_minimum_required(VERSION 3.19)
+
+# Load toolchain file before project() command
+if(NOT CMAKE_TOOLCHAIN_FILE)
+    set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/build/toolchain.cmake)
+endif()
+
 project(DACS LANGUAGES CXX C)
 
 set(CMAKE_BINARY_DIR $ENV{CMAKE_BINARY_DIR})

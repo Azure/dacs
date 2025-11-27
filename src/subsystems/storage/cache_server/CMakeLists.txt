@@ -24,6 +24,8 @@ add_executable(${CACHE_SERVER_EXEC} ${CACHE_SERVER_SOURCES})
 
 target_include_directories(${CACHE_SERVER_EXEC} PRIVATE
     ${CMAKE_SOURCE_DIR}/src/subsystems/common/native_lib/diagnostics
+    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common
+    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/proto/compiled
     ${CMAKE_CURRENT_LIST_DIR}
     ./operations
     ./utils
@@ -33,7 +35,6 @@ target_include_directories(${CACHE_SERVER_EXEC} PRIVATE
     ./snapshot/proto
     /opt/protobufstatic-3.0.0/include
 )
-
 
 # Statically link to precompiled protobuf library to prevent mismatch with system installed versions
 ADD_LIBRARY(staticprotobuf STATIC IMPORTED)
@@ -47,10 +48,13 @@ add_dependencies(${CACHE_SERVER_EXEC}
     diagnostics
 )
 
-target_link_libraries(
-    ${CACHE_SERVER_EXEC}
+target_link_libraries(CacheServer 
     StorageCommon
     CacheProto
+    xxhash
+    stdc++fs
+    dl
+    rt
     pthread
     ibverbs
     prometheus-cpp-pull
@@ -77,6 +81,8 @@ add_executable(CacheServerUnitTests ${CACHE_SERVER_TEST_SOURCES})
 
 target_include_directories(CacheServerUnitTests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/subsystems/common/native_lib/diagnostics
+    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common
+    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/proto/compiled
     .
     ./operations
     ./utils

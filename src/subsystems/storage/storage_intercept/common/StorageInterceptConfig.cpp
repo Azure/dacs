@@ -27,7 +27,8 @@ void StorageInterceptConfig::LoadConfig()
     // There should be no logging from this function to prevent deadlock with LFS interceptor.
 
     const mode_t CONFIG_FILE_OPEN_MODE=0777;
-    const int XSTAT_VERSION=1;
+    // Use version 0 for __xstat64 system call to ensure cross-platform compatibility
+    const int XSTAT_VERSION=0;
 
     std::string strConfigFilePath = StorageInterceptConstants::DefaultConfigFilePath;
     const char* configFilePath = std::getenv(StorageInterceptConstants::ConfigFilePathEnv);

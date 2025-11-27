@@ -141,7 +141,7 @@
 
     <AssembleDockerFile
       InputDockerTemplateFileName="%(DockerTemplateFiles.Identity)"
-      OutputDockerFileName="@(DockerTemplateFiles->'$(OutDir)%(RecursiveDir)Dockerfile')"
+      OutputDockerFileName="$(OutDir)Dockerfile"
       ReplacementProperties="$(DockerfileReplacementProperties)">
     </AssembleDockerFile>
 
@@ -162,7 +162,7 @@
 
     <AssembleDockerFile
       InputDockerTemplateFileName="%(DockerTemplateFiles.Identity)"
-      OutputDockerFileName="@(DockerTemplateFiles->'$(OutDir)%(RecursiveDir)Dockerfile')"
+      OutputDockerFileName="$(OutDir)Dockerfile"
       ReplacementProperties="$(DockerfileReplacementProperties)">
     </AssembleDockerFile>
 
@@ -345,9 +345,13 @@
     <PropertyGroup>
       <EnableDockerBuildKit>1</EnableDockerBuildKit>
       <EnableDockerBuildKit Condition=" '$(ContainerImagePlatform)' == 'Windows' ">1</EnableDockerBuildKit>
+      <!-- Map BuildArchitecture to Docker TARGETARCH format -->
+      <DockerTargetArch Condition="'$(BuildArchitecture)' == 'x86_64'">amd64</DockerTargetArch>
+      <DockerTargetArch Condition="'$(BuildArchitecture)' == 'arm64'">arm64</DockerTargetArch>
+      <DockerTargetArch Condition="'$(DockerTargetArch)' == ''">amd64</DockerTargetArch>
     </PropertyGroup>
-    <Message Text="Running Command 'docker build -t $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value) .' from directory '$(OutDir)'" />
-    <Exec WorkingDirectory="$(OutDir)" EnvironmentVariables="DOCKER_BUILDKIT=$(EnableDockerBuildKit)" Command="docker build -t $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value) ." IgnoreStandardErrorWarningFormat="true" />
+    <Message Text="Running Command 'docker build --build-arg TARGETARCH=$(DockerTargetArch) -t $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value) .' from directory '$(OutDir)'" />
+    <Exec WorkingDirectory="$(OutDir)" EnvironmentVariables="DOCKER_BUILDKIT=$(EnableDockerBuildKit)" Command="docker build --build-arg TARGETARCH=$(DockerTargetArch) -t $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value) ." IgnoreStandardErrorWarningFormat="true" />
     <Message Text="Running Command 'docker images -q $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value)' from directory '$(OutDir)'" />
 
     <Exec WorkingDirectory="$(OutDir)" Command="docker images -q $(ContainerImageRepository).azurecr.io/$(ContainerImageName):%(ContainerImageLabel.Value)" IgnoreExitCode="true" ConsoleToMsBuild="true" >

@@ -25,6 +25,7 @@
       <PackageVersion>$(CurrentDate).$(BranchHash).$(PackageRevision)</PackageVersion>
 
       <PackagePublishDir>$(IntermediateOutputPath)$(ReferenceRuntimeIdentifier)\publish</PackagePublishDir>
+      <!-- Use same directory structure for all architectures -->
       <StoragePackagePublishDir>$(IntermediateOutputPath)$(ReferenceRuntimeIdentifier)\publish-storage</StoragePackagePublishDir>
       <StorageCacheClientPackagePublishDir>$(IntermediateOutputPath)$(ReferenceRuntimeIdentifier)\publish-storage-cache-client</StorageCacheClientPackagePublishDir>
     </PropertyGroup>

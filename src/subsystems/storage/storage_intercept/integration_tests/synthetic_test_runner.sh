@@ -10,21 +10,8 @@ SCRIPT_DIR="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 SCRIPT_NAME="$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")"
 REPOSITORY_ROOT="$(readlink -f ${SCRIPT_DIR}/../../../../../)"
 
-# Detect architecture for proper library paths
-ARCH=$(uname -m)
-case $ARCH in
-    x86_64)
-        PLATFORM_ARCH="linux-x64"
-        ;;
-    aarch64|arm64)
-        PLATFORM_ARCH="linux-arm64"
-        ;;
-    *)
-        echo "Unsupported architecture: $ARCH"
-        exit 1
-        ;;
-esac
-echo "Detected architecture: $ARCH, using platform: $PLATFORM_ARCH"
+# Use RuntimeIdentifier from environment, fallback to linux-x64 if not set
+RUNTIME_IDENTIFIER=${RUNTIME_IDENTIFIER:-linux-x64}
 
 # ==================================================
 # Help with usage
@@ -238,8 +225,8 @@ then
     echo -n "127.0.{}.1" > /serverConfig/cache_server_endpoint_format
 fi
 
-STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${build_configuration}/native/${PLATFORM_ARCH}/publish-storage/storage/libStorageIntercept.so"
-LFS_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${build_configuration}/native/${PLATFORM_ARCH}/publish/libLfsIntercept.so"
+STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${build_configuration}/native/${RUNTIME_IDENTIFIER}/publish-storage/storage/libStorageIntercept.so"
+LFS_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${build_configuration}/native/${RUNTIME_IDENTIFIER}/publish/libLfsIntercept.so"
 PYTHON_IO_TEST="${SCRIPT_DIR}/io_test.py"
 EXE_TEST="${REPOSITORY_ROOT}/bin/${build_configuration}/native-storage/storage/StorageInterceptIntegTest"
 

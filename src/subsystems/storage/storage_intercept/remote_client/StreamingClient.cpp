@@ -70,14 +70,14 @@ StreamingClient::StreamingClient(
     , m_vecRemoteDownloadLatencies(m_nLatencySamplesVecSize, UINT_MAX)
     , m_nTotalCacheDownloadLatencySamples(0)
     , m_nTotaRemotelDownloadLatencySamples(0)
-    , m_nReadFileTotal({0, 0})
-    , m_nReadTotalBytes({0, 0})
-    , m_nRead128K({0, 0})
-    , m_nRead4MB({0, 0})
-    , m_nRead100MB({0, 0})
-    , m_nRead1GB({0, 0})
-    , m_nReadLarge({0, 0})
-    , m_nReadMax({0, 0})
+    , m_nReadFileTotal{}
+    , m_nReadTotalBytes{}
+    , m_nRead128K{}
+    , m_nRead4MB{}
+    , m_nRead100MB{}
+    , m_nRead1GB{}
+    , m_nReadLarge{}
+    , m_nReadMax{}
     , m_bStopLogging(false)
     , m_bEnableZeroCopy(StorageInterceptConfig::GetInstance().GetEnableZeroCopy(mountName))
 {

@@ -93,7 +93,7 @@ bool IBManager::Init()
     uint64_t nMRBufferSize = static_cast<uint64_t>(MAX_RECEIVE_BUFFERS) * IB_BUFFER_SIZE;
     std::unique_ptr<char[]> mrBufferBlock(new char[nMRBufferSize]);
     unique_ibv_mr mrBuffer(ibv_reg_mr(pd.get(), mrBufferBlock.get(),
-        nMRBufferSize, IBV_ACCESS_LOCAL_WRITE), FreeIbvMr);
+        nMRBufferSize, static_cast<int>(IBV_ACCESS_LOCAL_WRITE)), FreeIbvMr);
 
     if (!mrBuffer)
     {

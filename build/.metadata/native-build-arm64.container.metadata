@@ -1,0 +1,4 @@
+native-build-arm64-imagename=native-build-arm64
+native-build-arm64-imagelabel=20251001T103941756
+native-build-arm64-githash=5e2534eada3788631ec60725c2163c1904434c5e
+native-build-arm64-publicpublish=false

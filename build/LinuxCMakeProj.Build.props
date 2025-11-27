@@ -8,8 +8,17 @@
   </PropertyGroup>
 
   <PropertyGroup>
+    <!-- Debug build architecture setting -->
+    <_LogBuildArch>BuildArchitecture is: $(BuildArchitecture)</_LogBuildArch>
+    
+    <!-- Set runtime identifier based on build architecture -->
+    <RuntimeIdentifier Condition="'$(BuildArchitecture)' == 'arm64'">linux-arm64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(BuildArchitecture)' == 'x86_64'">linux-x64</RuntimeIdentifier>
+    <!-- Fallback RuntimeIdentifier if none of the above match -->
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">linux-x64</RuntimeIdentifier>
+    
     <CMAKE_BINARY_DIR>$(OutputPath)</CMAKE_BINARY_DIR>
-    <CMAKE_LIBRARY_OUTPUT_DIRECTORY>$(IntermediateOutputPath)/linux-x64/publish</CMAKE_LIBRARY_OUTPUT_DIRECTORY>
+    <CMAKE_LIBRARY_OUTPUT_DIRECTORY>$(IntermediateOutputPath)/$(RuntimeIdentifier)/publish</CMAKE_LIBRARY_OUTPUT_DIRECTORY>
     <CMAKE_RUNTIME_OUTPUT_DIRECTORY>$(CMAKE_BINARY_DIR)</CMAKE_RUNTIME_OUTPUT_DIRECTORY>
     <CMAKE_CXX_STANDARD>23</CMAKE_CXX_STANDARD>
     <CMAKE_CXX_STANDARD_REQUIRED>TRUE</CMAKE_CXX_STANDARD_REQUIRED>
@@ -22,7 +31,7 @@
     <BUILD_PYTHON_VERSION>$(BuildPythonVersion)</BUILD_PYTHON_VERSION>
     <SKIP_NATIVE_SUBMODULE_BUILD>$(SkipNativeSubmoduleBuild)</SKIP_NATIVE_SUBMODULE_BUILD>
     <BUILD_WITH_DEBUG_SYMBOLS>$(BuildWithDebugSymbols)</BUILD_WITH_DEBUG_SYMBOLS>
-    <CMAKE_REMOTE_PUBLISH_DIRECTORY>$(IntermediateOutputPath)/linux-x64/publish</CMAKE_REMOTE_PUBLISH_DIRECTORY>
+    <CMAKE_REMOTE_PUBLISH_DIRECTORY>$(IntermediateOutputPath)/$(RuntimeIdentifier)/publish</CMAKE_REMOTE_PUBLISH_DIRECTORY>
     <CTEST_REMOTE_LIB_DIRECTORY>/usr/local/cuda/compat/</CTEST_REMOTE_LIB_DIRECTORY>
   </PropertyGroup>
 
@@ -47,6 +56,7 @@
     <LinuxCMakeEnvironmentProperties Include="CMAKE_REMOTE_PUBLISH_DIRECTORY=$(CMAKE_REMOTE_PUBLISH_DIRECTORY)"/>
     <LinuxCMakeEnvironmentProperties Include="CTEST_REMOTE_LIB_DIRECTORY=$(CTEST_REMOTE_LIB_DIRECTORY)"/>
     <LinuxCMakeEnvironmentProperties Include="OBJ_DIR=$(IntermediateOutputPath)"/>
+    <LinuxCMakeEnvironmentProperties Include="RUNTIME_IDENTIFIER=$(RuntimeIdentifier)"/>
   </ItemGroup>
 
 </Project>

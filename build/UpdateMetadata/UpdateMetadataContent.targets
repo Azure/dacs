@@ -37,7 +37,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <MetadataFiles Include="$(MetadataPath)**" />
+    <!-- For Docker projects, prefer the specific container metadata file if it exists, otherwise use all files -->
+    <MetadataFiles Include="$(ContainerMetadataFilePath)" Condition=" '$(MSBuildProjectExtension)'=='.dockerproj' and Exists('$(ContainerMetadataFilePath)') " />
+    <MetadataFiles Include="$(MetadataPath)**" Condition=" '$(MSBuildProjectExtension)'!='.dockerproj' or !Exists('$(ContainerMetadataFilePath)') " />
   </ItemGroup>
 
   <Target Name="GetBuildMetadata" Condition=" '$(MetadataUpdateContent)' != '' or '$(MSBuildProjectExtension)'=='.dockerproj' or '$(MSBuildProjectExtension)'=='.linuxcmakeproj' ">
@@ -47,7 +49,8 @@
     </ReadLinesFromFile>
 
     <ItemGroup>
-      <BuildMetadata Include="$([System.String]::Copy('%(ItemsFromFile.Identity)').Split('=')[0])" >
+      <BuildMetadata Include="$([System.String]::Copy('%(ItemsFromFile.Identity)').Split('=')[0])" 
+                     Condition="$([System.String]::Copy('%(ItemsFromFile.Identity)').Contains('=')) and !$([System.String]::Copy('%(ItemsFromFile.Identity)').StartsWith('#'))" >
         <Value>$([System.String]::Copy('%(ItemsFromFile.Identity)').Split('=')[1])</Value>
       </BuildMetadata>
     </ItemGroup>
