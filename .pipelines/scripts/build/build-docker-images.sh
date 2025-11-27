@@ -1,11 +1,12 @@
 #!/bin/bash
+# Build Docker images for cache server and client components
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 DOCKER_DIR="$REPOSITORY_ROOT/Docker"
 
-# Load configuration
+# Load configuration from k8s config file
 CONFIG_FILE="$REPOSITORY_ROOT/scripts/k8s/config/local.config"
 if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
@@ -23,6 +24,7 @@ echo "Cache Client Image: $CACHECLIENT_IMAGE"
 
 cd "$DOCKER_DIR"
 
+# Build Docker images from Dockerfiles
 docker build -f CacheServer.Dockerfile -t "$CACHESERVER_IMAGE" .
 docker build -f CacheClient.Dockerfile -t "$CACHECLIENT_IMAGE" .
 

@@ -2,7 +2,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # Load configuration
 if [[ -f "$SCRIPT_DIR/config/local.config" ]]; then
