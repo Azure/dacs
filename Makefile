@@ -29,7 +29,7 @@ BUILD_TYPE ?= Debug
 MODE ?= upload
 
 build:
-	@./bldenv.sh /bin/bash "./scripts/build/build-storage.sh $(BUILD_TYPE)"
+	@./bldenv.sh /bin/bash "./.pipelines/scripts/build/build-storage.sh $(BUILD_TYPE)"
 
 clean:
 	@echo "Cleaning build artifacts..."
@@ -41,9 +41,9 @@ test:
 
 images:
 	@echo "Copying binaries..."
-	@BUILD_TYPE=$(BUILD_TYPE) ./scripts/build/copy-binaries.sh
+	@BUILD_TYPE=$(BUILD_TYPE) ./.pipelines/scripts/build/copy-binaries.sh
 	@echo "Building Docker images..."
-	@./scripts/build/build-images.sh
+	@./.pipelines/scripts/build/build-docker-images.sh
 
 deploy-minikube:
 ifndef SKIP_BUILD
@@ -55,9 +55,9 @@ else
 	@echo "Skipping build (SKIP_BUILD=1)"
 endif
 	@echo "Creating Minikube cluster..."
-	@./scripts/k8s/create-minikube-cluster.sh
+	@./.pipelines/scripts/k8s/create-minikube-cluster.sh
 	@echo "Deploying cache server to Minikube..."
-	@./scripts/k8s/deploy-cacheserver.sh
+	@./.pipelines/scripts/k8s/deploy-cacheserver.sh
 	@echo ""
 	@echo "Running default performance tests..."
 	@$(MAKE) perf-client MODE=upload
@@ -65,10 +65,10 @@ endif
 	@$(MAKE) perf-client MODE=download
 
 perf-client:
-	@./scripts/k8s/run-perf-client.sh $(MODE)
+	@./.pipelines/scripts/k8s/run-perf-client.sh $(MODE)
 
 storage-intercept-client:
-	@./scripts/k8s/run-storageintercept-client.sh
+	@./.pipelines/scripts/k8s/run-storageintercept-client.sh
 
 clean-minikube:
 	@echo "Deleting Minikube cluster..."
