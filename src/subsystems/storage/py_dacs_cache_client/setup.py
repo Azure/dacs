@@ -3,8 +3,6 @@ import os
 from setuptools import setup
 import shutil
 
-# While changing the version, please update the version in the following file as well:
-# - src/sdk/Microsoft.DACS/storage/2020-12-01-preview/_build_generated.ps1
 VERSION = '1.2.0'
 
 setup_dir = os.path.abspath(os.path.dirname(__file__))
@@ -33,6 +31,11 @@ class CustomPackageLogic(install):
     def run(self):
         # Packing the required dependencies into the whl package
         print('\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Start custom packaging logic')
+        
+        # Get architecture from environment variable
+        build_arch = os.environ.get('BUILD_ARCHITECTURE', 'linux-x64')
+        print(f"Building for architecture: {build_arch}")
+        
         entry_file_path = None
         for root, _, files in os.walk(setup_dir):
             if 'configure.py' in files:
@@ -53,26 +56,70 @@ class CustomPackageLogic(install):
                 print(f"{storage_dir} directory does not exist")
 
             so_files_source = f'{setup_dir}/storage/libStorageIntercept.so'
-            # For Pipeline: Check if the required library is in some path C:\__w\1\s\bin\Release\storage\publish\az-dacs-storage-official\storage\libStorageIntercept.so
+            so_files_source_direct = f'{setup_dir}/storage/libStorageDirect.so'
+            # For new repo: Check if the library is in obj/{Configuration}/native/{arch}/publish-storage/storage/libStorageIntercept.so
+            so_new_repo_release = f'{setup_dir}/../../../../obj/Release/native/{build_arch}/publish-storage/storage/libStorageIntercept.so'
+            so_new_repo_debug = f'{setup_dir}/../../../../obj/Debug/native/{build_arch}/publish-storage/storage/libStorageIntercept.so'
+            so_new_repo_release_direct = f'{setup_dir}/../../../../obj/Release/native/{build_arch}/publish-storage/storage/libStorageDirect.so'
+            so_new_repo_debug_direct = f'{setup_dir}/../../../../obj/Debug/native/{build_arch}/publish-storage/storage/libStorageDirect.so'
+            # For old pipeline: Check if the required library is in C:\__w\1\s\bin\Release\storage\publish\az-dacs-storage-official\storage\libStorageIntercept.so
             so_pipeline_files_source = f'{setup_dir}/../../../../../../bin/Release/storage/publish/az-dacs-storage-official/storage/libStorageIntercept.so'
+            so_pipeline_files_source_direct = f'{setup_dir}/../../../../../../bin/Release/storage/publish/az-dacs-storage-official/storage/libStorageDirect.so'
 
+            # Copy libStorageIntercept.so
             if os.path.isfile(so_files_source):
                 shutil.copy(so_files_source, current_build_folder)
                 print(f"Found & Copied {so_files_source} to {current_build_folder}")
+            elif os.path.isfile(so_new_repo_release):
+                shutil.copy(so_new_repo_release, current_build_folder)
+                print(f"New Repo (Release): Found & Copied {so_new_repo_release} to {current_build_folder}")
+            elif os.path.isfile(so_new_repo_debug):
+                shutil.copy(so_new_repo_debug, current_build_folder)
+                print(f"New Repo (Debug): Found & Copied {so_new_repo_debug} to {current_build_folder}")
             elif os.path.isfile(so_pipeline_files_source):
                 shutil.copy(so_pipeline_files_source, current_build_folder)
-                print(f"Pipeline: Found & Copied {so_pipeline_files_source} to {current_build_folder}")
+                print(f"Old Pipeline: Found & Copied {so_pipeline_files_source} to {current_build_folder}")
             else:
-                print(f"libStorageIntercept.so not found in {setup_dir}/storage and {so_pipeline_files_source}")
-                raise FileNotFoundError(f"libStorageIntercept.so not found in {setup_dir} and {so_pipeline_files_source}")
+                print(f"Warning !!! libStorageIntercept.so not found in:")
+                print(f"  - {so_files_source}")
+                print(f"  - {so_new_repo_release}")
+                print(f"  - {so_new_repo_debug}")
+                print(f"  - {so_pipeline_files_source}")
+                raise FileNotFoundError(f"libStorageIntercept.so not found in any expected location")
+
+            # Copy libStorageDirect.so
+            if os.path.isfile(so_files_source_direct):
+                shutil.copy(so_files_source_direct, current_build_folder)
+                print(f"Found & Copied {so_files_source_direct} to {current_build_folder}")
+            elif os.path.isfile(so_new_repo_release_direct):
+                shutil.copy(so_new_repo_release_direct, current_build_folder)
+                print(f"New Repo (Release): Found & Copied {so_new_repo_release_direct} to {current_build_folder}")
+            elif os.path.isfile(so_new_repo_debug_direct):
+                shutil.copy(so_new_repo_debug_direct, current_build_folder)
+                print(f"New Repo (Debug): Found & Copied {so_new_repo_debug_direct} to {current_build_folder}")
+            elif os.path.isfile(so_pipeline_files_source_direct):
+                shutil.copy(so_pipeline_files_source_direct, current_build_folder)
+                print(f"Old Pipeline: Found & Copied {so_pipeline_files_source_direct} to {current_build_folder}")
+            else:
+                print(f"Warning !!! libStorageDirect.so not found in:")
+                print(f"  - {so_files_source_direct}")
+                print(f"  - {so_new_repo_release_direct}")
+                print(f"  - {so_new_repo_debug_direct}")
+                print(f"  - {so_pipeline_files_source_direct}")
+                # Commenting out the exception raise for libStorageDirect.so for now
+                # raise FileNotFoundError(f"libStorageDirect.so not found in any expected location")
             print('\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> End custom packaging logic')
         install.run(self)
 
 with open(os.path.join(setup_dir, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
+# Get architecture from environment to make package name unique
+build_arch = os.environ.get('BUILD_ARCHITECTURE', 'linux-x64')
+arch_suffix = build_arch.replace('-', '_')  # Convert linux-x64 to linux_x64 for valid package name
+
 setup(
-    name='dacs-client',
+    name=f'dacs-client-{arch_suffix}',
     version=VERSION,
     packages=[
         "py_dacs_cache_client",
