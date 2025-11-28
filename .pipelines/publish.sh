@@ -25,6 +25,10 @@ if [ $? -ne 0 ]
     exit 1
 fi
 
+# Build and publish Python package
+chmod +x $DIR/build-python-package.sh
+$DIR/build-python-package.sh --publish
+
 echo Validate no source files modified. Any files found sent to stderr
 echo git clean -x -d -n src
 git clean -x -d -n src 1>&2
