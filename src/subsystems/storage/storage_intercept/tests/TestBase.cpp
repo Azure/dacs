@@ -78,6 +78,20 @@ void TestBase::OverrideConfig(const char* configName, const std::string& configV
     m_bConfigUpdated = true;
 }
 //---------------------------------------------------------------------------------------------------------------------
+/* static */ std::string TestBase::GenerateRandomString(uint16_t length)
+{
+    const char charset[] = "abcdefghijklmnopqrstuvwxyz"
+                           "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                           "0123456789";
+    const size_t maxIndex = sizeof(charset) - 1;
+    std::string randomString;
+    randomString.reserve(length);
+    for (uint16_t i = 0; i < length; ++i) {
+        randomString += charset[rand() % maxIndex];
+    }
+    return randomString;
+}
+//---------------------------------------------------------------------------------------------------------------------
 void TestBase::GenerateRandomValueBuf()
 {
     m_vecFileBuf.clear();
@@ -89,6 +103,42 @@ void TestBase::GenerateRandomValueBuf()
         char randomValue = 'A' + rand() % 26;
         m_vecFileBuf[randomIdx] = randomValue;
     }
+}
+//---------------------------------------------------------------------------------------------------------------------
+/* static */ bool TestBase::FileDataEquals(
+    const std::shared_ptr<FileData>& spFirst,
+    const std::shared_ptr<FileData>& spSecond)
+{
+    if (spFirst->BufferSize != spSecond->BufferSize)
+    {
+        return false;
+    }
+
+    bool bResult = true;
+    const size_t nSize = spFirst->BufferSize;
+    const char* pFirstData = static_cast<const char*>(spFirst->Buffer.get());
+    const char* pSecondData = static_cast<const char*>(spSecond->Buffer.get());
+
+    for (size_t idx = 0; idx < nSize; idx++)
+    {
+        if (pFirstData[idx] != pSecondData[idx])
+        {
+            bResult = false;
+            break;
+        }
+    }
+    return bResult;
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::shared_ptr<FileData> TestBase::GetRandDataBuffer(uint64_t size)
+{
+    std::shared_ptr<FileData> fileData = std::make_shared<FileData>(
+        0,
+        size,
+        nullptr /* userBuf */,
+        false /* setToZeros */);
+    std::generate(fileData->Buffer.get(), fileData->Buffer.get() + size, []{return rand() % 255;});
+    return fileData;
 }
 //---------------------------------------------------------------------------------------------------------------------
 void TestBase::SetupMockRemoteClient()

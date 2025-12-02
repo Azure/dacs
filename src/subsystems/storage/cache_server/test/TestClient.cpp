@@ -107,9 +107,6 @@ unique_ptr<IConnection> GetConnection()
     }
 
     unique_ptr<IConnection> socketConnection = make_unique<SocketConnection>(clientSocketFd);
-
-    // To prevent timeout when testing large upload/downloads.
-    static_cast<SocketConnection*>(socketConnection.get())->__UnitTest_SetSocketTimeoutMillis(200000);
     return socketConnection;
 }
 //---------------------------------------------------------------------------------------------------------------------

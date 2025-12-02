@@ -19,6 +19,7 @@ struct FileDescriptor
         : ParentDirFd(-1)
         , OpenFlags(0x0)
         , FileOffset(0)
+        , IsWriteMode(false)
     {}
 
     // Input params
@@ -42,5 +43,11 @@ struct FileDescriptor
 
     // File pointer
     std::unique_ptr<FILE> FileStream;
+
+    // Write mode enabled or not
+    bool IsWriteMode;
+
+    // Is write in progress
+    bool IsWriteInProgress;
 };
 //---------------------------------------------------------------------------------------------------------------------

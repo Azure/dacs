@@ -250,7 +250,8 @@ bool LocalFSCacheClient::Upload(
     const std::string& mountName,
     const std::string& filePath,
     off64_t fileOffset,
-    std::shared_ptr<const FileReadData> fileData)
+    std::shared_ptr<const FileData> fileData,
+    bool isWrite)
 {
     {
         CheckBufferMemory();

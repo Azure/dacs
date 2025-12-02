@@ -33,6 +33,19 @@ class AdlsClient : public IRemoteClient
       /*[in] */ const std::string& remotePath,
       /*[out]*/ FileAttributes& attr) override;
 
+    void PrepareBlocksForUpload(
+      /*[in]*/ const std::string& remotePath,
+      /*[in]*/ size_t numBlocks) override;
+
+    int StageBlocksForUpload(
+      /*[in]*/ const std::string& remotePath,
+      /*[in]*/ const void* buf,
+      /*[in]*/ size_t length,
+      /*[in]*/ off64_t blockId) override;
+    
+    int CommitBlocksForUpload(
+      /*[in]*/ const std::string& remotePath) override;
+
   private:
     void GetConfig(const std::string& mountName);
 

@@ -34,7 +34,8 @@ class RemoteCacheClient : public ICacheClient, public IAttributesCache
             /*[in] */ const std::string& mountName,
             /*[in] */ const std::string& filePath,
             /*[in] */ off64_t fileOffset,
-            /*[in] */ std::shared_ptr<const FileReadData> fileData) override;
+            /*[in] */ std::shared_ptr<const FileData> fileData,
+            /*[in]*/ bool isWrite) override;
 
         cacheutils::CacheStatus Get(
             /*[in] */ const std::string& path,

@@ -326,6 +326,7 @@ int ContentHandler::HandleOpen64(const char* path, int flags, mode_t mode)
 void* ContentHandler::HandleFopen(const char* path, const char* mode, bool isOpen64)
 {
     // Check for binary and readonly flags "rb"
+    // NOTE: Write modes support is not added for fopen\fopen64, but is for open\open64 as python package uses it.
     const bool isReadonlyOpen = (strcmp(mode, "rb") == 0);
     std::string relPath;
     MountInfo* mountInfo = CheckInterceptionForPath(path, relPath);
@@ -406,7 +407,7 @@ int ContentHandler::HandleFClose(void* stream)
     m_mapOpenHandles.erase(fdIt);
     openHandlesLock.unlock();
 
-    GetStreamingClient(mountInfo).Close(remotePath);
+    GetStreamingClient(mountInfo).Close(remotePath, false /* isWriteMode */);
 
     LOG_DEBUG("Intercepted the fclose system call at fd={} path={} mountName={}",
         fd,
@@ -422,21 +423,11 @@ int ContentHandler::HandleOpenAt(int dirfd, const char* path, int flags, mode_t 
     // this should be treated same as regular open.
     if (dirfd < 0 || dirfd == AT_FDCWD || (path != nullptr && path[0] == '/'))
     {
-        const bool isReadonlyOpen = ((flags & O_RDONLY) == O_RDONLY);
         std::string relPath;
         MountInfo* mountInfo = CheckInterceptionForPath(path, relPath);
         const bool isRelative = (mountInfo != nullptr);
-        if (isRelative && !isReadonlyOpen)
-        {
-            LOG_WARN(
-                "Skipped intercepting non-readonly {} for mountName={} path={} with flags={}",
-                isOpen64 ? "openat64" : "openat",
-                mountInfo->MountName,
-                path,
-                flags)
-        }
 
-        if (!isRelative || !isReadonlyOpen)
+        if (!isRelative)
         {
             if (!isOpen64)
             {
@@ -492,20 +483,98 @@ int ContentHandler::OpenValidatedPathInternal(
     int flags,
     std::unique_ptr<FILE> fileStream)
 {
+    // Validate the flags.
+    if ((flags & O_ACCMODE) != O_RDONLY && (flags & O_ACCMODE) != O_WRONLY)
+    {
+        LOG_ERROR("Only O_RDONLY and O_WRONLY access modes are supported for open, "
+            "mountName={} path={} flags={}",
+            mountInfo.MountName,
+            relativePath,
+            flags);
+        return -1;
+    }
+    if ((flags & O_WRONLY) && (flags != (O_WRONLY | O_CREAT | O_EXCL)))
+    {
+        LOG_ERROR("Only (O_WRONLY | O_CREAT | O_EXCL) flags are supported for O_WRONLY open, "
+            "mountName={} path={} flags={}",
+            mountInfo.MountName,
+            relativePath,
+            flags);
+        return -1;
+    }
+
     std::unique_ptr<FileDescriptor> fullFd = std::make_unique<FileDescriptor>();
     fullFd->MountName = mountInfo.MountName;
     fullFd->RemotePath = relativePath;
     fullFd->OpenFlags = flags;
     fullFd->FileStream = move(fileStream);
+    const bool isWriteMode = ((flags & O_ACCMODE) == O_WRONLY);
+    fullFd->IsWriteMode = isWriteMode;
+
+    if (fullFd->IsWriteMode)
+    {
+        if (!StorageInterceptConfig::GetInstance().IsWriteSupportEnabled())
+        {
+            LOG_ERROR("Write support is not enabled, mountName={} path={}", mountInfo.MountName, relativePath);
+            return -1;
+        }
+
+        uint32_t openFileHandleCount = GetOpenFileHandleCount(relativePath);
+        if (openFileHandleCount > 0)
+        {
+            LOG_ERROR("Client already has {} open file descriptor(s). Cannot open another for writing."
+                " mountName={} path={}",
+                openFileHandleCount,
+                mountInfo.MountName,
+                relativePath);
+            return -1;
+        }
+    }
+    else
+    {
+        if (IsOpenedForWrite(relativePath))
+        {
+            LOG_ERROR("Client already has another open file descriptor for writing, cannot read/write to the same "
+                "file at once. mountName={} path={}",
+                mountInfo.MountName, relativePath);
+            return -1;
+        }
+    }
 
     int getPropertiesResult = GetStreamingClient(mountInfo).GetProperties(relativePath, fullFd->Attributes);
     if (getPropertiesResult < 0)
     {
-        LOG_WARN("Error in getProperties during open for remote mountName={} path={}, errno={}",
-            mountInfo.MountName,
-            relativePath,
-            strerror(errno));
-        return -1;
+        // GetProperties is allowed to fail with ENOENT only if the open is in write mode with O_CREAT flag.
+        if (errno == ENOENT && isWriteMode && (flags & O_CREAT) != 0)
+        {
+            LOG_INFO("Intercepted a write open for a non-existent file, creating a new file mountName={} path={}",
+                mountInfo.MountName,
+                relativePath);
+            fullFd->Attributes.size = 0;
+            fullFd->Attributes.isDir = false;
+            struct timespec curTimeSpec;
+            clock_gettime(CLOCK_REALTIME, &curTimeSpec);
+            fullFd->Attributes.mTime = fullFd->Attributes.aTime = fullFd->Attributes.cTime = curTimeSpec;
+        }
+        else
+        {
+            LOG_ERROR("Error in getProperties during open for remote mountName={} path={}, errno={}",
+                mountInfo.MountName,
+                relativePath,
+                strerror(errno));
+            return -1;
+        }
+    }
+    else
+    {
+        // If O_EXCL is specified with O_CREAT, and the file already exists, open() will fail.
+        if (isWriteMode && (flags & O_CREAT) != 0 && (flags & O_EXCL) != 0)
+        {
+            LOG_ERROR("Cannot overwrite an existing file mountName={} path={}",
+                mountInfo.MountName,
+                relativePath);
+            return -1;
+        }
     }
 
     GetStreamingClient(mountInfo).OpenFile(relativePath);
@@ -523,22 +592,11 @@ int ContentHandler::OpenValidatedPathInternal(
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::OpenInternal(const char* path, int flags, mode_t mode, bool isOpen64)
 {
-    const bool isReadonlyOpen = ((flags & O_RDONLY) == O_RDONLY);
-
     std::string relPath;
     MountInfo* mountInfo = CheckInterceptionForPath(path, relPath);
     const bool isRelative = (mountInfo != nullptr);
-    if (isRelative && !isReadonlyOpen)
-    {
-        LOG_WARN(
-            "Skipped intercepting non-readonly {} for mountName={} path={} with flags={}",
-            isOpen64 ? "open64" : "open",
-            mountInfo->MountName,
-            path,
-            flags)
-    }
 
-    if (!isRelative || !isReadonlyOpen)
+    if (!isRelative)
     {
         if (!isOpen64)
         {
@@ -662,6 +720,104 @@ ssize_t ContentHandler::HandlePRead(int fd, void *buf, size_t nBytes, off64_t of
     return result;
 }
 //---------------------------------------------------------------------------------------------------------------------
+ssize_t ContentHandler::WriteInternal(
+    int fd,
+    const void *buf,
+    size_t nBytes,
+    bool isPwrite,
+    off64_t offset)
+{
+    if(!IsFdInRange(fd))
+    {
+        return isPwrite ?
+            StorageLibcApiWrapper::pwrite(fd, buf, nBytes, offset) : StorageLibcApiWrapper::write(fd, buf, nBytes);
+    }
+
+    std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
+    auto fdIt = m_mapOpenHandles.find(fd);
+    if(fdIt == m_mapOpenHandles.end())
+    {
+        return isPwrite ?
+            StorageLibcApiWrapper::pwrite(fd, buf, nBytes, offset) : StorageLibcApiWrapper::write(fd, buf, nBytes);
+    }
+
+    if(!fdIt->second->IsWriteMode)
+    {
+        LOG_ERROR("Attempting to call {} on a file not opened with write flags. mountName={} path={}",
+            isPwrite ? "pwrite" : "write", fdIt->second->MountName, fdIt->second->RemotePath);
+        return -1;
+    }
+    STORAGE_ASSERT(StorageInterceptConfig::GetInstance().IsWriteSupportEnabled(), 
+        "Write support must be enabled to receive write calls on write-enabled file descriptors.");
+    
+    if (fdIt->second->IsWriteInProgress)
+    {
+        LOG_ERROR("Concurrent write calls are not supported on the same file descriptor. mountName={} path={}",
+            fdIt->second->MountName, fdIt->second->RemotePath);
+        return -1;
+    }
+    fdIt->second->IsWriteInProgress = true;
+
+    const off64_t writeOffset = isPwrite ? offset : fdIt->second->FileOffset;
+    const std::string path = fdIt->second->RemotePath;
+    MountInfo& mountInfo = GetMountInfo(fdIt->second->MountName);
+    openHandlesLock.unlock();
+
+    LOG_DEBUG("Intercepting the {} system call at fd={} mountName={} path={} nBytes={} writeOffset={}",
+        isPwrite ? "pwrite" : "write",
+        fd,
+        mountInfo.MountName,
+        path,
+        nBytes,
+        writeOffset);
+    ssize_t result = GetStreamingClient(mountInfo).WriteFile(path, buf, nBytes, writeOffset);
+    if(result < 0)
+    {
+        LOG_ERROR("StreamingClient write returned error for fd={} mountName={} path={} nBytes={} writeOffset={}",
+            fd,
+            mountInfo.MountName,
+            path,
+            nBytes,
+            writeOffset);
+        return result;
+    }
+
+    openHandlesLock.lock();
+    fdIt = m_mapOpenHandles.find(fd);
+    if(fdIt != m_mapOpenHandles.end())
+    {
+        if (!isPwrite) fdIt->second->FileOffset = (writeOffset + result);
+        fdIt->second->IsWriteInProgress = false;
+    }
+    else
+    {
+        LOG_WARN("File descriptor not found post write(), skipped updating the file offset. fd={} "
+            "mountName={} path={}",
+            fd,
+            mountInfo.MountName,
+            path)
+    }
+    openHandlesLock.unlock();
+    return result;
+}
+//---------------------------------------------------------------------------------------------------------------------
+ssize_t ContentHandler::HandleWrite(
+    /*[in] */ int fd,
+    /*[in] */ const void *buf,
+    /*[in] */ size_t nBytes)
+{
+    return WriteInternal(fd, buf, nBytes, false /* isPwrite */, 0 /* offset */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+ssize_t ContentHandler::HandlePWrite(
+    /*[in] */ int fd,
+    /*[in] */ const void *buf,
+    /*[in] */ size_t nBytes,
+    /*[in] */ off64_t offset)
+{
+    return WriteInternal(fd, buf, nBytes, true /* isPwrite */, offset);
+}
+//---------------------------------------------------------------------------------------------------------------------
 off64_t ContentHandler::HandleLseek(int fd, off64_t offset, int whence)
 {
     if (!IsFdInRange(fd))
@@ -744,16 +900,50 @@ int ContentHandler::HandleClose(int fd)
     auto fdIt = m_mapOpenHandles.find(fd);
     if (fdIt == m_mapOpenHandles.end())
     {
-        openHandlesLock.unlock();
         return StorageLibcApiWrapper::close(fd);
     }
 
     const std::string remotePath = fdIt->second->RemotePath;
+    const bool isWriteMode = fdIt->second->IsWriteMode;
     MountInfo& mountInfo = GetMountInfo(fdIt->second->MountName);
-    m_mapOpenHandles.erase(fdIt);
     openHandlesLock.unlock();
 
-    GetStreamingClient(mountInfo).Close(remotePath);
+    // TODO: StreamingClient throws on close errors, change to return codes?
+    GetStreamingClient(mountInfo).Close(remotePath, isWriteMode);
+
+    openHandlesLock.lock();
+    fdIt = m_mapOpenHandles.find(fd);
+    if (fdIt == m_mapOpenHandles.end())
+    {
+        LOG_WARN("File descriptor not found post close(), skipped updating the open files metadata. fd={} "
+            "mountName={} path={}",
+            fd,
+            mountInfo.MountName,
+            remotePath)
+    }
+    else
+    {
+        m_mapOpenHandles.erase(fdIt);
+    }
+    auto fdListIt = m_mapFileToFds.find(remotePath);
+    if (fdListIt != m_mapFileToFds.end())
+    {
+        fdListIt->second.erase(fd);
+        if (fdListIt->second.empty())
+        {
+            // No more open file descriptors for this file, remove the metadata entry
+            m_mapFileToFds.erase(fdListIt);
+        }
+    }
+    else
+    {
+        LOG_WARN("File path not found in file to fds map post close(), skipped updating it."
+            " fd={} mountName={} path={}",
+            fd,
+            mountInfo.MountName,
+            remotePath)
+    }
+    openHandlesLock.unlock();
 
     LOG_DEBUG("Intercepted the close system call at fd={} mountName={} path={}",
         fd,
@@ -885,7 +1075,7 @@ int ContentHandler::HandleAccess(const char* pathname, int mode)
     LOG_DEBUG("Intercepted access call for path={} mountName={}", pathname, mountInfo->MountName);
     if ((mode & W_OK) == W_OK)
     {
-        // We don't allow write access
+        // We don't allow write access - revisit if FUSE support for this API is added
         LOG_ERROR("Write access not permitted for file={} mountName={}", pathname, mountInfo->MountName);
         errno = EACCES;
         return -1;
@@ -1561,12 +1751,48 @@ int ContentHandler::GetFdFromStream(void* stream)
 
     return fd;
 }
+//---------------------------------------------------------------------------------------------------------------------
+uint32_t ContentHandler::GetOpenFileHandleCount(const std::string& remotePath)
+{
+    std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
+    auto fdListIt = m_mapFileToFds.find(remotePath);
+    if (fdListIt == m_mapFileToFds.end())
+    {
+        return 0;
+    }
 
+    return fdListIt->second.size();
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool ContentHandler::IsOpenedForWrite(const std::string& remotePath)
+{
+    std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
+    auto fdListIt = m_mapFileToFds.find(remotePath);
+    if (fdListIt == m_mapFileToFds.end())
+    {
+        return false;
+    }
+
+    // Loop over open FDs and check if any is open for write
+    for (const int fd : fdListIt->second)
+    {
+        auto fdIt = m_mapOpenHandles.find(fd);
+        if (fdIt != m_mapOpenHandles.end() && fdIt->second->IsWriteMode)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
 //---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::AllotNewFd(std::unique_ptr<FileDescriptor> fd)
 {
     const uint8_t maxAttempts = 5;
     uint8_t nAttempts = 0;
+
+    const bool isWriteMode = fd->IsWriteMode;
+    const std::string remotePath = fd->RemotePath;
 
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
     while(nAttempts < maxAttempts)
@@ -1583,7 +1809,8 @@ int ContentHandler::AllotNewFd(std::unique_ptr<FileDescriptor> fd)
                 fd->FileStream->_fileno = -1;
                 fd->FileStream->_flags = newFd;
             }
-            m_mapOpenHandles[newFd] = std::move(fd);            
+            m_mapOpenHandles[newFd] = std::move(fd);
+            m_mapFileToFds[remotePath].insert(newFd);
             return newFd;
         }
 

@@ -67,6 +67,11 @@ off64_t StorageInterceptorImpl::lseek64(int fd, off64_t offset, int whence)
     return ContentHandler::GetInstance().HandleLseek(fd, offset, whence);
 }
 //---------------------------------------------------------------------------------------------------------------------
+ssize_t StorageInterceptorImpl::pwrite(int fd, const void* buf, size_t size, off64_t offset)
+{
+    return ContentHandler::GetInstance().HandlePWrite(fd, buf, size, offset);
+}
+//---------------------------------------------------------------------------------------------------------------------
 int StorageInterceptorImpl::close(int fd)
 {
     return ContentHandler::GetInstance().HandleClose(fd);

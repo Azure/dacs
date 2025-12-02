@@ -25,8 +25,14 @@ class StreamingClientTest : public TestBase
             /*[in]*/ size_t offset,
             /*[in]*/ ssize_t expectedBytesRead,
             /*[in]*/ int expectedZeroCopyReads);
+        
+        void WriteAppendsTest(
+            /*[in]*/ const std::string& remotePath,
+            /*[in]*/ std::shared_ptr<FileData> writeData,
+            /*[in]*/ size_t appendSize);
 
         std::vector<char>                   m_vecBuffer;
+        std::shared_ptr<ICacheClient>       m_cacheClient;
         std::shared_ptr<StreamingClient>    m_spStreamingClient;
 };
 //---------------------------------------------------------------------------------------------------------------------

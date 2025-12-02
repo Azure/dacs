@@ -604,7 +604,7 @@ uint32_t StorageInterceptConfig::GetCacheKeyExpirySeconds()
     return StorageInterceptConfig::GetOptionalConfigUint32(
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameCacheKeyExpirySeconds,
-        24 * 60 * 60 /* 1 day */);
+        0);
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::string StorageInterceptConfig::GetCacheKeyGroupId()
@@ -864,21 +864,21 @@ uint64_t StorageInterceptConfig::GetMaxBlobConnectionsPerClient(const std::strin
         10);
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool StorageInterceptConfig::GetChunkDownloadParallelismEnabled(const std::string& mountName)
+bool StorageInterceptConfig::GetChunkOperationParallelismEnabled(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(
         m_ConfigProps,
         mountName,
-        StorageInterceptConstants::ConfigNameChunkDownloadParallelismEnabled,
+        StorageInterceptConstants::ConfigNameChunkOperationParallelismEnabled,
         true);
 }
 //---------------------------------------------------------------------------------------------------------------------
-uint64_t StorageInterceptConfig::GetChunkDownloadMaxConcurrency(const std::string& mountName)
+uint64_t StorageInterceptConfig::GetChunkOperationMaxConcurrency(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigUint64(
         m_ConfigProps,
         mountName,
-        StorageInterceptConstants::ConfigNameChunkDownloadMaxConcurrency,
+        StorageInterceptConstants::ConfigNameChunkOperationMaxConcurrency,
         GetMaxBlobConnectionsPerClient(mountName));
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -915,6 +915,38 @@ uint64_t StorageInterceptConfig::GetPrefetchWindowSizeInMB(const std::string& mo
         StorageInterceptConstants::ConfigNamePrefetchSizeInMB,
         96);
 }
+//---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::IsWriteSupportEnabled()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameWriteEnable,
+        false);
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::IsRemoteWriteEnabled()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameWriteEnableRemote,
+        true);
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::IsRemoteWriteAsyncEnabled()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameWriteEnableRemoteAsync,
+        true);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint32_t StorageInterceptConfig::GetRemoteAsyncWriteFileConcurrency()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint32(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameRemoteAsyncWriteFileConcurrency,
+        16);
+} 
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetEnableZeroCopy(const std::string& mountName)
 {

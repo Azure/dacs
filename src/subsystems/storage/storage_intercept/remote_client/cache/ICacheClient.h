@@ -2,7 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #pragma once
-#include "FileReadData.h"
+#include "FileData.h"
 #include "CacheUtils.h"
 #include <string>
 #include <unistd.h>
@@ -24,7 +24,8 @@ class ICacheClient
             /*[in] */ const std::string& mountName,
             /*[in] */ const std::string& filePath,
             /*[in] */ off64_t fileOffset,
-            /*[in] */ std::shared_ptr<const FileReadData> fileData) = 0;
+            /*[in] */ std::shared_ptr<const FileData> fileData,
+            /*[in] */ bool isWrite) = 0;
 
         virtual ~ICacheClient() {};
 };

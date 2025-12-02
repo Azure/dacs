@@ -3,6 +3,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include <gtest/gtest.h>
 #include <string>
+#include "FileData.h"
 //---------------------------------------------------------------------------------------------------------------------
 class TestBase : public ::testing::Test
 {
@@ -13,7 +14,12 @@ class TestBase : public ::testing::Test
         void OverrideConfig(const char* configName, const std::string& configValue);
 
         static void SetupMockRemoteClient();
+        static std::string GenerateRandomString(uint16_t length);
         static void GenerateRandomValueBuf();
+        static std::shared_ptr<FileData> GetRandDataBuffer(uint64_t size);
+        static bool FileDataEquals(
+            /*[in]*/ const std::shared_ptr<FileData>& spFirst,
+            /*[in]*/ const std::shared_ptr<FileData>& spSecond);
 
         // Is using mock
         static bool m_bUsingMock;

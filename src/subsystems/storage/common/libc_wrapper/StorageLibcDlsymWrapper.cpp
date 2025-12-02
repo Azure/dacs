@@ -73,6 +73,18 @@ ssize_t StorageLibcApiWrapper::pread(int fd, void *buf, size_t nByte, off64_t of
     return m_originalPRead(fd, buf, nByte, offset);
 }
 //---------------------------------------------------------------------------------------------------------------------
+ssize_t StorageLibcApiWrapper::write(int fd, const void *buf, size_t nByte)
+{
+    static Original_write m_originalWrite = (Original_write)dlsym(RTLD_NEXT, "write");
+    return m_originalWrite(fd, buf, nByte);
+}
+//---------------------------------------------------------------------------------------------------------------------
+ssize_t StorageLibcApiWrapper::pwrite(int fd, const void *buf, size_t nByte, off64_t offset)
+{
+    static Original_pwrite m_originalPWrite = (Original_pwrite)dlsym(RTLD_NEXT, "pwrite");
+    return m_originalPWrite(fd, buf, nByte, offset);
+}
+//---------------------------------------------------------------------------------------------------------------------
 off64_t StorageLibcApiWrapper::lseek64(int fd, off64_t offset, int whence)
 {
     static Original_lseek64 m_OriginalLseek64 = (Original_lseek64)dlsym(RTLD_NEXT, "lseek64");

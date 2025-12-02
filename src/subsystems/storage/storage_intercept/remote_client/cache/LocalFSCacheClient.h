@@ -30,7 +30,8 @@ class LocalFSCacheClient : public ICacheClient
             /*[in] */ const std::string& mountName,
             /*[in] */ const std::string& filePath,
             /*[in] */ off64_t fileOffset,
-            /*[in] */ std::shared_ptr<const FileReadData> fileData) override;
+            /*[in] */ std::shared_ptr<const FileData> fileData,
+            /*[in]*/ bool isWrite) override;
 
     private:
 
@@ -47,13 +48,13 @@ class LocalFSCacheClient : public ICacheClient
         {
             UploadContext(
                 /*[in] */ const std::string& cacheKey,
-                /*[in] */ std::shared_ptr<const FileReadData> fileData)
+                /*[in] */ std::shared_ptr<const FileData> fileData)
             : m_strCacheKey(cacheKey), m_fileData(fileData)
             {                
             }
 
             std::string                         m_strCacheKey;
-            std::shared_ptr<const FileReadData> m_fileData;
+            std::shared_ptr<const FileData> m_fileData;
         };
 
         // TODO: The async uploader pattern is repeated at multple places in code (remote and attr cache),

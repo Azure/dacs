@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <unordered_set>
 #include <map>
 #include <mutex>
 #include "DirectoryStream.h"
@@ -65,6 +66,17 @@ class ContentHandler
         ssize_t HandlePRead(
             /*[in] */ int fd,
             /*[out]*/ void *buf,
+            /*[in] */ size_t nByte,
+            /*[in] */ off64_t offset);
+
+        ssize_t HandleWrite(
+            /*[in] */ int fd,
+            /*[in] */ const void *buf,
+            /*[in] */ size_t nByte);
+        
+        ssize_t HandlePWrite(
+            /*[in] */ int fd,
+            /*[in] */ const void *buf,
             /*[in] */ size_t nByte,
             /*[in] */ off64_t offset);
 
@@ -312,6 +324,13 @@ class ContentHandler
             /*[in]*/ int flags,
             /*[in]*/ mode_t mode,
             /*[in]*/ bool isOpen64);
+        
+        ssize_t WriteInternal(
+            /*[in] */ int fd,
+            /*[in] */ const void *buf,
+            /*[in] */ size_t nByte,
+            /*[in] */ bool isPwrite,
+            /*[in] */ off64_t offset);
 
         // Helper method to add a unique fd for a new open.
         // Returns new fd in case of success, -1 in case of error
@@ -337,6 +356,14 @@ class ContentHandler
         // Get FD value if the stream was managed by us, if not return -1
         int GetFdFromStream(/*[in]*/ void* stream);
 
+        // Get the count of open file handles for a given remote path
+        uint32_t GetOpenFileHandleCount(
+            /*[in]*/ const std::string& remotePath);
+        
+        // Check if a given remote path is opened for write
+        bool IsOpenedForWrite(
+            /*[in]*/ const std::string& remotePath);
+
     private:
         // file fd allocated range (min/max) we use internally
         static constexpr uint32_t                                    FD_VALUE_START = 90000;
@@ -356,7 +383,11 @@ class ContentHandler
         bool                                                         m_bCacheClientsInitialized;
         std::mutex                                                   m_lockCacheClients;
 
+        // Open file handles
+        // Map of open handles by fd. Key is the fd value, value is the FileDescriptor structure
         std::map<int, std::unique_ptr<FileDescriptor>>               m_mapOpenHandles;
+        // Map of fds opened for each file. Key is file relative path, value is set of open fds
+        std::map<std::string, std::set<int>>                         m_mapFileToFds;
         std::mutex                                                   m_lockOpenHandles;
 
         std::map<DirectoryStream*, std::unique_ptr<DirectoryStream>> m_mapDirectoryStreams;

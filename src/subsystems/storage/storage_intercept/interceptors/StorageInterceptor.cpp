@@ -75,6 +75,11 @@ extern "C" ssize_t pread(int fd, void* buf, size_t nByte, off64_t offset)
     return StorageInterceptorImpl::pread(fd, buf, nByte, offset);
 }
 //---------------------------------------------------------------------------------------------------------------------
+extern "C" ssize_t pwrite(int fd, const void* buf, size_t nByte, off64_t offset)
+{
+    return StorageInterceptorImpl::pwrite(fd, buf, nByte, offset);
+}
+//---------------------------------------------------------------------------------------------------------------------
 extern "C" int close(int fd)
 {
    return StorageInterceptorImpl::close(fd);

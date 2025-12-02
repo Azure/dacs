@@ -3,7 +3,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "TestBase.h"
 #include <string>
-#include "FileReadData.h"
+#include "FileData.h"
 //---------------------------------------------------------------------------------------------------------------------
 class PrefetchCacheTest : public TestBase
 {
@@ -11,7 +11,7 @@ class PrefetchCacheTest : public TestBase
         PrefetchCacheTest();
         void SetUp() override;
 
-        std::shared_ptr<FileReadData> GetRandDataBuffer(off64_t offset, uint64_t size);
+        std::shared_ptr<FileData> GetRandDataBuffer(off64_t offset, uint64_t size);
 
         template <typename T>
         void AssertEqArray(T* left, T* right, int arraySize)

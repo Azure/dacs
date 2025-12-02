@@ -30,8 +30,6 @@ file(GLOB STORAGE_INTERCEPT_SOURCES_COMMON ./remote_client/*cpp ./remote_client/
 
 file(GLOB STORAGE_INTERCEPT_SOURCES_INTERCEPTOR ${STORAGE_INTERCEPT_SOURCES_COMMON} ./interceptors/StorageInterceptor.cpp)
 file(GLOB STORAGE_INTERCEPT_SOURCES_CACHE_CLIENT ${STORAGE_INTERCEPT_SOURCES_COMMON} ./interceptors/CacheClientInterface.cpp)
-# StorageIntercept Lib
-add_library(StorageIntercept SHARED ${STORAGE_INTERCEPT_SOURCES_INTERCEPTOR})
 add_library(CacheClient SHARED ${STORAGE_INTERCEPT_SOURCES_CACHE_CLIENT})
 
 # Statically link to precompiled protobuf and azurestorage sdk library to prevent mismatch with system installed versions
@@ -44,12 +42,18 @@ SET_TARGET_PROPERTIES(static-azurestorage PROPERTIES
 
 set(CommonDeps CacheClientLib StorageCommon CacheProto ClientConnections EncryptionUtils diagnostics curl static-azurestorage jsoncpp dl uuid crypto staticprotobuf)
 
+# storage intercept library meant to be LD_PRELOADed, so needs to link to the dlsym wrapper
+add_library(StorageIntercept SHARED ${STORAGE_INTERCEPT_SOURCES_INTERCEPTOR})
 add_dependencies(StorageIntercept StorageLibcDlsymWrapper StorageCommon CacheProto ClientConnections EncryptionUtils)
-
 target_link_libraries(StorageIntercept StorageLibcDlsymWrapper ${CommonDeps} ibverbs)
 
-add_dependencies(CacheClient StorageLibcDirectWrapper StorageCommon CacheProto ClientConnections EncryptionUtils)
+# cache storage client library called directly without LD_PRELOAD (from python package for example)
+# No dlsym wrapper needed here.
+add_library(StorageDirect SHARED ${STORAGE_INTERCEPT_SOURCES_INTERCEPTOR})
+add_dependencies(StorageDirect StorageLibcDirectWrapper StorageCommon CacheProto ClientConnections EncryptionUtils)
+target_link_libraries(StorageDirect StorageLibcDirectWrapper ${CommonDeps} ibverbs)
 
+add_dependencies(CacheClient StorageLibcDirectWrapper StorageCommon CacheProto ClientConnections EncryptionUtils)
 target_link_libraries(CacheClient StorageLibcDirectWrapper ${CommonDeps})
 
 add_custom_command(

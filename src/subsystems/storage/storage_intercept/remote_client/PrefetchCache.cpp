@@ -37,7 +37,7 @@ std::set<off64_t> PrefetchCache::GetCachedOffsets(const std::string& path) const
     return offsetIt->second;
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::shared_ptr<const FileReadData> PrefetchCache::Get(const std::string& path, off64_t offset) const
+std::shared_ptr<const FileData> PrefetchCache::Get(const std::string& path, off64_t offset) const
 {
     std::shared_lock<std::shared_mutex> buffersLock(m_mutexBuffers);
 
@@ -50,7 +50,7 @@ std::shared_ptr<const FileReadData> PrefetchCache::Get(const std::string& path, 
     return it->second;
 }
 //---------------------------------------------------------------------------------------------------------------------
-void PrefetchCache::Put(const std::string& path, std::shared_ptr<const FileReadData> buffer)
+void PrefetchCache::Put(const std::string& path, std::shared_ptr<const FileData> buffer)
 {
     STORAGE_ASSERT(!(buffer.get() && buffer->bIsUserBuffer), "PrefetchCache insert attempted with user buffer!!");
     std::unique_lock<std::shared_mutex> buffersLock(m_mutexBuffers);
