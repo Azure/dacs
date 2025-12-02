@@ -1,0 +1,68 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cache-write-client
+spec:
+  parallelism: 1
+  template:
+    metadata:
+      labels:
+        app: cache-write-client
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: dacs.azure.com/processing-unit
+                operator: In
+                values:
+                - 'gpu'
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - cache-write-client
+            topologyKey: kubernetes.io/hostname
+      imagePullSecrets:
+      - name: prestageacrcred
+      containers:
+      - name: write-container
+        image: dacs.azurecr.io/storage/cache-write-test:20251121_3
+        imagePullPolicy: Always
+        env:
+        - name: STORAGE_INTCPT_SAS_TOKEN
+          value: "<placeholder_for_sas_token>"
+        - name: CACHE_SERVER_PORT
+          value: "9065"
+        - name: CACHE_SERVER_LIST
+          value: "cacheserver-0.cacheserver.azureml.svc.cluster.local#cacheserver-1.cacheserver.azureml.svc.cluster.local#cacheserver-2.cacheserver.azureml.svc.cluster.local#cacheserver-3.cacheserver.azureml.svc.cluster.local#cacheserver-4.cacheserver.azureml.svc.cluster.local#cacheserver-5.cacheserver.azureml.svc.cluster.local"
+        - name: SI_enableWrite
+          value: "true"
+        - name: SI_enableWriteRemote
+          value: "true"
+        - name: SI_enableWriteRemoteAsync
+          value: "false"
+        - name: SI_cacheKeyExpirySeconds
+          value: "1200"
+        - name: SI_cacheIBEnabled
+          value: "false"
+        - name: AZ_BLOB_DIR
+          value: "az://storageintercepttestae.blob.core.windows.net/dataset/writePerfTests"
+        - name: ASYNC_UPLOAD_WAIT_TIME_SECONDS
+          value: "20"
+        resources:
+          requests:
+            rdma/hca_rdma_infiniband: 1
+          limits:
+            rdma/hca_rdma_infiniband: 1
+        command: ["/bin/bash", "-cx"]
+        args:
+        - |
+          cd /
+          python3 -m py_dacs_cache_client.sample.dacs_cache_client_test --azBlobDirPath $AZ_BLOB_DIR --nBlobs 100 --blobSizeToBeRead 1073741824
+          echo "Test done"
+      restartPolicy: Never 

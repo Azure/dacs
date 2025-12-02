@@ -17,6 +17,8 @@
 #ifdef __linux__
 #undef __linux__
 #include <blob/blob_client.h>
+#include <base64.h>
+#include <utility.h>
 #define __linux__
 #endif
 
@@ -31,6 +33,8 @@ class BlobClient : public IRemoteClient
     typedef azure::storage_lite::blob_client azBlobClient_t;
     typedef azure::storage_lite::storage_account azStorageAccount_t;
     typedef azure::storage_lite::list_blobs_segmented_item azBlobItem_t;
+    typedef azure::storage_lite::put_block_list_request_base::block_type azBlockType_t;
+    typedef azure::storage_lite::put_block_list_request_base::block_item azBlockItem_t;
 
     public:
         BlobClient(const std::string& mountName);
@@ -50,6 +54,19 @@ class BlobClient : public IRemoteClient
         int GetProperties(
             /*[in] */ const std::string& remotePath,
             /*[out]*/ FileAttributes& attr) override;
+
+        void PrepareBlocksForUpload(
+            /*[in]*/ const std::string& remotePath,
+            /*[in]*/ size_t numBlocks) override;
+
+        int StageBlocksForUpload(
+            /*[in]*/ const std::string& remotePath,
+            /*[in]*/ const void* buf,
+            /*[in]*/ size_t length,
+            /*[in]*/ off64_t blockId) override;
+        
+        int CommitBlocksForUpload(
+            /*[in]*/ const std::string& remotePath) override;
 
     private:
         void GetConfigProperties();
@@ -74,6 +91,8 @@ class BlobClient : public IRemoteClient
 
         std::string GetBlobName(/*[in] */ const std::string& remotePath) const;
 
+        std::string GetUrlSafeBase64(/*[in]*/ const std::string& uuid, /*[in] */ const off64_t blockId) const;
+
         bool IsTokenRefreshed();
     private:
         const std::string                                           m_strMountName;
@@ -90,7 +109,13 @@ class BlobClient : public IRemoteClient
         static constexpr bool                                       USE_HTTPS=true;
         static constexpr uint64_t                                   DIRENTS_BATCH_SIZE=10000;
         static const std::string                                    DIRECTORY_DELIMITER;
+        static const std::string                                    EMPTY_FILENAME;
         static constexpr size_t                                     DIRECTORY_SIZE=4096;
+
+        // Key is remotepath, if multiple threads are trying to upload the same file using different file descriptors
+        // then we need to use a different key
+        std::map<std::string, std::vector<azBlockItem_t>>           m_mapBlockList;
+        std::mutex                                                  m_lockBlockList;
 
         /* Static set containing <http-status>s' that could be ignored */
         static const std::set<HttpStatus>                           m_setIgnorableErrors;

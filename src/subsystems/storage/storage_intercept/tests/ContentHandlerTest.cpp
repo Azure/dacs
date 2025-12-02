@@ -568,6 +568,48 @@ TEST_F(ContentHandlerTest, OpenAtFailureTest)
     fd = ContentHandler::GetInstance().HandleOpenAt(AT_FDCWD, nonExistingfilePath.c_str(), O_RDWR, true, 0);
     ASSERT_EQ(fd, -1);
 }
+//-----------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, OpenWriteModeTest)
+{
+    std::string nonExistingFilePath = m_strInterceptPath + '/' + "some-non-existing-file";
+
+    // Open in write mode should fail
+    int fd = ContentHandler::GetInstance().HandleOpen64(nonExistingFilePath.c_str(), O_WRONLY);
+    ASSERT_EQ(fd, -1);
+
+    //Override the config to enable write support.
+    OverrideConfig(StorageInterceptConstants::ConfigNameWriteEnable, "true");
+    ContentHandler::GetInstance().ForkHandlerPrepare();
+    ContentHandler::GetInstance().ForkHandlerParent(); // these are to reset the streaming\cache clients after config change
+
+    // Open in O_RDWR mode should fail
+    fd = ContentHandler::GetInstance().HandleOpen64(nonExistingFilePath.c_str(), O_RDWR);
+    ASSERT_EQ(fd, -1);
+
+    // Open in write mode with O_APPEND should fail
+    fd = ContentHandler::GetInstance().HandleOpen64(nonExistingFilePath.c_str(), O_WRONLY | O_APPEND);
+    ASSERT_EQ(fd, -1);
+
+    // Open in write mode with O_TRUNC should fail
+    fd = ContentHandler::GetInstance().HandleOpen64(nonExistingFilePath.c_str(), O_WRONLY | O_TRUNC);
+    ASSERT_EQ(fd, -1);
+
+    // Open in write mode should succeed now
+    fd = ContentHandler::GetInstance().HandleOpen64(nonExistingFilePath.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
+    ASSERT_NE(fd, -1);
+
+    // A read handle should not be allowed while a write handle is open
+    int readFd = ContentHandler::GetInstance().HandleOpen64(nonExistingFilePath.c_str(), O_RDONLY);
+    ASSERT_EQ(readFd, -1);
+
+    // Another write handle should not be allowed while a write handle is open
+    int writeFd = ContentHandler::GetInstance().HandleOpen64(nonExistingFilePath.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
+    ASSERT_EQ(writeFd, -1);
+
+    // Closing the write handle should work.
+    //const int closeRet = ContentHandler::GetInstance().HandleClose(fd);
+    //ASSERT_EQ(closeRet, 0);
+}
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(ContentHandlerTest, AccessTest)
 {

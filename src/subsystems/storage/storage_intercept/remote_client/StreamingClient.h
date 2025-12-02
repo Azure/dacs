@@ -10,9 +10,11 @@
 #include <map>
 #include <vector>
 #include <array>
+#include <queue>
 #include <thread>
+#include <future>
 #include "IRemoteClient.h"
-#include "FileReadData.h"
+#include "FileData.h"
 #include "ICacheClient.h"
 #include "IAttributesCache.h"
 //---------------------------------------------------------------------------------------------------------------------
@@ -35,6 +37,12 @@ class StreamingClient
             /*[in] */ off64_t readOffset,
             /*[in] */ off64_t fileSize);
 
+        ssize_t WriteFile(
+            /*[in] */ const std::string& remotePath,
+            /*[in] */ const void *buf,
+            /*[in] */ size_t writeSize,
+            /*[in] */ off64_t writeOffset);
+
         std::string ReadDirectory(
             /*[in] */ const std::string& remotePath,
             /*[in] */ const std::string& continuationToken,
@@ -44,7 +52,9 @@ class StreamingClient
             /*[in] */ const std::string& remotePath,
             /*[out]*/ FileAttributes& attributes);
 
-        void Close(/*[in] */ const std::string& remotePath);
+        void Close(
+            /*[in] */ const std::string& remotePath,
+            /*[in]*/ const bool isWriteMode);
 
         // APIs to handle shared state when a process is forked (invoked by ContentHandler)
         // Processes which are forked share the system state including memory and open file descriptors.
@@ -71,6 +81,20 @@ class StreamingClient
         #endif
 
     private:
+        struct RemoteUploadContext
+        {
+            RemoteUploadContext(
+                const std::string& remotePath,
+                const off64_t fileSize)
+                : m_strRemotePath(remotePath)
+                , m_fileSize(fileSize)
+            {
+            }
+
+            const std::string                   m_strRemotePath;
+            const off64_t                       m_fileSize;
+        };
+
         const std::string                  m_strMountName;
         const std::string                  m_strRemotePathPrefix;
 
@@ -91,15 +115,30 @@ class StreamingClient
         const uint32_t                     m_nChunkSize;
 
         // Parallel chunk download related
-        const bool                         m_bEnableReadChunkParallelism;
-        const uint32_t                     m_nMaxReadChunkConcurrency;
-        std::atomic_uint64_t               m_nReadChunksInProgress;
-        std::mutex                         m_mutexReadChunk;
-        std::condition_variable            m_cvReadChunk;
+        const bool                         m_bEnableChunkOpParallelism;
+        const uint32_t                     m_nMaxChunkOpConcurrency;
+        std::atomic_uint64_t               m_nHighPriorityChunkOpsPending;
+        std::atomic_uint64_t               m_nChunkOpsInProgress;
+        std::mutex                         m_mutexChunkOps;
+        std::condition_variable            m_cvChunkOps;
 
         // Prefetch cache related
         const bool                         m_bEnableLargePrefetch;
         size_t                             m_nPrefetchWindowSize;
+
+        // Write support related
+        const bool                         m_bEnableWrite;
+        const bool                         m_bEnableRemoteWrite;
+        const bool                         m_bEnableRemoteWriteAsync;
+        std::atomic_bool                   m_stopRemoteAsyncUpload;
+        std::queue<RemoteUploadContext>    m_uploadQueue;
+        std::mutex                         m_mutexQueue;
+        std::condition_variable            m_cvQueue;
+        std::vector<std::unique_ptr<std::thread>> m_remoteAsyncUploadThreads;
+
+        // Stats for cache and remote writes
+        std::atomic_uint64_t               m_nCacheBytesWritten;
+        std::atomic_uint64_t               m_nRemoteBytesWritten;
 
         // Stats for chunk cache and attributes cache
         std::atomic_uint64_t               m_nReadChunksTotal;
@@ -107,10 +146,17 @@ class StreamingClient
         std::atomic_uint64_t               m_nReadChunksRemoteCache;
         std::atomic_uint64_t               m_nReadChunksRemoteClient;
         std::atomic_uint64_t               m_nReadChunksZeroCopy;
+        std::atomic_uint64_t               m_nWriteChunksTotalStarted;
+        std::atomic_uint64_t               m_nWriteChunksTotalCompleted;
+        std::atomic_uint64_t               m_nWriteChunksRemoteCache;
+        std::atomic_uint64_t               m_nWriteChunksRemoteStoreSync;
+        std::atomic_uint64_t               m_nWriteChunksRemoteStoreAsync;
+        std::atomic_uint64_t               m_nWriteChunksZeroCopy;
         std::atomic_uint64_t               m_nGetPropertiesTotal;
         std::atomic_uint64_t               m_nGetPropertiesCache;
         std::atomic_uint64_t               m_nGetPropertiesRemoteClient;
         std::atomic_uint64_t               m_nLastLoggedReadChunksTotal;
+        std::atomic_uint64_t               m_nLastLoggedWriteChunksTotal;
 
         // Stats for download latencies
         static constexpr unsigned          m_nLatencySamplesVecSize = 1000;
@@ -140,7 +186,7 @@ class StreamingClient
         const bool                         m_bEnableZeroCopy;
 
         // Wrapper to call ReadChunkImpl() and update the counters tracking read chunk concurrency
-        std::shared_ptr<const FileReadData> ReadChunk(
+        std::shared_ptr<const FileData> ReadChunk(
             /*[in] */ const std::string& remotePath,
             /*[in] */ off64_t chunkOffset,
             /*[in] */ void* pUserBuf);
@@ -152,7 +198,7 @@ class StreamingClient
          * Note: Do NOT call this function directly but via ReadChunk(), so that read chunk concurrency can be
          *       properly controlled.
          */
-        std::shared_ptr<const FileReadData> ReadChunkImpl(
+        std::shared_ptr<const FileData> ReadChunkImpl(
             /*[in] */ const std::string& remotePath,
             /*[in] */ off64_t chunkOffset,
             /*[in] */ void* pUserPassedbuffer);
@@ -187,11 +233,39 @@ class StreamingClient
             /*[in] */ size_t totalReadSize,
             /*[in] */ off64_t readOffset,
             /*[in] */ off64_t fileSize);
-        
-        // Function to be called before starting any read chunk (sync or async).
+
+        // Function to be called before starting any chunk operation.
         // It increments the counter for concurrent read chunks and waits till the concurrency is below the allowed
         // max concurrency limit.
-        void PreReadChunkCheck();
+        void PreChunkOpCheck(/*[in] */ bool isLowPriority);
+
+        // Function to be called after completing any chunk operation.
+        void PostChunkOpComplete();
+
+        // Helper functions to flush upload cache to cache server
+        bool WriteChunksToCache(/*[in]*/ const std::string& remotePath, /*[in]*/ const FileAttributes& attributes);
+        bool WriteChunkToCacheImpl(
+            /*[in] */ const std::string& filePath,
+            /*[in] */ const off64_t chunkOffset,
+            /*[in] */ const std::shared_ptr<const FileData> fileData);
+
+        // Helper functions to flush upload cache to remote store
+        bool WriteChunksToRemoteStore(/*[in]*/ const std::string& remotePath, /*[in]*/ const off64_t fileSize);
+        bool WriteChunksToRemoteStoreImpl(/*[in]*/ const std::string& remotePath, /*[in]*/ const off64_t fileSize, /*[in]*/ bool copyFromCacheToRemote);
+        std::future<bool> WriteChunkToRemoteStoreFromCacheAsync(
+            /*[in] */ const std::string& remotePath,
+            /*[in] */ const off64_t chunkOffset,
+            /*[in] */ const size_t chunkSize);
+        std::future<bool> WriteChunkToRemoteStoreFromUploadCacheAsync(
+            /*[in] */ const std::string& remotePath,
+            /*[in] */ const off64_t chunkOffset,
+            /*[in] */ const size_t chunkSize);
+        // Upload an individual data chunk to remote store
+        bool StageChunk(
+            /*[in] */ const std::string& remotePath,
+            /*[in] */ const off64_t chunkOffset,
+            /*[in] */ std::shared_ptr<FileData> fileData);
+        void WriteRemoteAsyncUploadWorker();
 
         // Helper funtions to log stats
         void LongRunningLogStats(const uint32_t);

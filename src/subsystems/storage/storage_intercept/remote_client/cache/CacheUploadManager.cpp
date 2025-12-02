@@ -174,14 +174,17 @@ void CacheUploadManager::UploadWorker()
 bool CacheUploadManager::Upload(
     const std::string& mountName,
     const std::string& cacheKey,
-    std::shared_ptr<const FileReadData> fileData,
+    std::shared_ptr<const FileData> fileData,
     const std::string& strEncryptionKey,
-    std::unique_ptr<::FileAttributes> fileAttributes)
+    std::unique_ptr<::FileAttributes> fileAttributes,
+    bool isWrite)
 {
-    if (m_enableSyncUpload)
+    bool useSync = m_enableSyncUpload || isWrite; // Writes to cache are always sync
+
+    if (useSync)
     {
-        auto uploadContext = make_unique<UploadContext>(mountName, cacheKey, fileData, strEncryptionKey,
-            move(fileAttributes));
+        auto uploadContext = make_unique<UploadContext>(
+            mountName, cacheKey, fileData, strEncryptionKey, move(fileAttributes));
         return StartUpload(move(uploadContext));
     }
     else

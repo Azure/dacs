@@ -91,8 +91,8 @@ namespace StorageInterceptConstants
     const char* const ConfigNameAzIgnoreAccountNameInCacheKey = "azIgnoreAccountNameInCacheKey";
 
     // Config constants for chunk download parallelism
-    const char* const ConfigNameChunkDownloadParallelismEnabled = "chunkDownloadParallelismEnabled";
-    const char* const ConfigNameChunkDownloadMaxConcurrency = "chunkDownloadMaxConcurrency";
+    const char* const ConfigNameChunkOperationParallelismEnabled = "chunkOperationParallelismEnabled";
+    const char* const ConfigNameChunkOperationMaxConcurrency = "chunkOperationMaxConcurrency";
 
     // Config constants for prefetch cache
     const char* const ConfigPrefetchCacheTotalSizeInMB = "prefetchCacheTotalSizeInMB";
@@ -122,5 +122,11 @@ namespace StorageInterceptConstants
     const char* const CACHE_META_FILE_SIZE = "FILE_SIZE";
     const char* const CACHE_META_FILE_ATIME = "FILE_ATIME";
     const char* const CACHE_META_FILE_MTIME = "FILE_MTIME";
+
+    // Config constants for write support
+    const char* const ConfigNameWriteEnable = "enableWrite";
+    const char* const ConfigNameWriteEnableRemote = "enableWriteRemote";
+    const char* const ConfigNameWriteEnableRemoteAsync = "enableWriteRemoteAsync";
+    const char* const ConfigNameRemoteAsyncWriteFileConcurrency = "remoteAsyncWriteFileConcurrency";
 };
 //---------------------------------------------------------------------------------------------------------------------

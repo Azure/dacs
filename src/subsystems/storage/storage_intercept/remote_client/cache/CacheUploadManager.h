@@ -4,7 +4,7 @@
 #pragma once
 #include "CacheClientImpl.h"
 #include "ConnectionManager.h"
-#include "FileReadData.h"
+#include "FileData.h"
 #include "FileAttributes.h"
 #include <vector>
 #include <queue>
@@ -31,9 +31,10 @@ class CacheUploadManager
         bool Upload(
             const std::string& mountName,
             const std::string& cacheKey,
-            std::shared_ptr<const FileReadData> fileData,
+            std::shared_ptr<const FileData> fileData,
             const std::string& strEncryptionKey,
-            std::unique_ptr<FileAttributes> fileAttributes);
+            std::unique_ptr<FileAttributes> fileAttributes,
+            bool isWrite);
 
     private:
         struct UploadContext
@@ -41,7 +42,7 @@ class CacheUploadManager
             UploadContext(
                 const std::string& mountName,
                 const std::string& cacheKey,
-                std::shared_ptr<const FileReadData> fileData,
+                std::shared_ptr<const FileData> fileData,
                 const std::string& encryptionKey,
                 std::unique_ptr<FileAttributes> fileAttributes)
             : m_strMountName(mountName)
@@ -49,12 +50,12 @@ class CacheUploadManager
             , m_fileData(fileData)
             , m_encryptionKey(encryptionKey)
             , m_fileAttributes(std::move(fileAttributes))
-            {                
+            {
             }
 
             const std::string                   m_strMountName;
             const std::string                   m_strCacheKey;
-            std::shared_ptr<const FileReadData> m_fileData;
+            std::shared_ptr<const FileData>     m_fileData;
             const std::string                   m_encryptionKey;
             std::unique_ptr<FileAttributes>     m_fileAttributes;
         };

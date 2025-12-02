@@ -17,6 +17,9 @@ This library provides interfaces to perform file operations with caching mechani
 - **`read_blob(blob_path, buffer, size, offset)`**:
   Read data from a file using managed interfaces; users do not need to manually close the file.
 
+- **`write_blob(blob_path, buffer, size, offset)`**:
+  Write data to a file using managed interfaces; users do not need to manually close the file.
+
 - **`list_dir(blob_dir_path)`**:
   List all blobs in a specified directory.
 
@@ -35,7 +38,7 @@ This module provides utility functions to enhance the functionality of the DACS 
 
 ### Utility Functions
 
-- **`get_buffer_to_read(size)`**:
+- **`alloc_buffer(size)`**:
   Allocates a memory buffer of the specified size for reading operations.
 
 - **`release_buffer(buffer)`**:

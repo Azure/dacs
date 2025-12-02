@@ -27,6 +27,19 @@ class IRemoteClient
       /*[in] */ const std::string& remotePath,
       /*[out]*/ FileAttributes& attr) = 0;
 
+    virtual void PrepareBlocksForUpload(
+      /*[in]*/ const std::string& remotePath,
+      /*[in]*/ size_t numBlocks) = 0;
+
+    virtual int StageBlocksForUpload(
+      /*[in]*/ const std::string& remotePath,
+      /*[in]*/ const void* buf,
+      /*[in]*/ size_t length,
+      /*[in]*/ off64_t blockId) = 0;
+    
+    virtual int CommitBlocksForUpload(
+      /*[in]*/ const std::string& remotePath) = 0;
+
     virtual ~IRemoteClient() {};
 };
 //---------------------------------------------------------------------------------------------------------------------

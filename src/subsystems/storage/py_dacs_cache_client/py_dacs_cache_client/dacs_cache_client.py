@@ -43,7 +43,7 @@ class _FileHandleManager:
         # Using asyncio.Lock to ensure thread safety
         self.lock = asyncio.Lock()
 
-    async def get_file_handle(self, pathname: str) -> int:
+    async def get_file_handle(self, pathname: str, flags: int) -> int:
         # Check if the file handle is already opened or in-progress
         filehandle = None
         filehandle_open_op = None
@@ -58,7 +58,7 @@ class _FileHandleManager:
             if not filehandle_open_op:
                 loop = asyncio.get_event_loop()
                 filehandle_open_op = loop.run_in_executor(
-                    self.executor, DACSCacheDataLoader.open, pathname, os.O_RDONLY, 0o644
+                    self.executor, DACSCacheDataLoader.open, pathname, flags, 0o644
                 )
                 self.open_operations[pathname] = filehandle_open_op
 
@@ -78,6 +78,7 @@ class _FileHandleManager:
         return filehandle
 
     async def release_file_handle(self, pathname: str, filehandle: int) -> None:
+        close_op = None
         async with self.lock:
             # Release file handle reference
             # If one of instances of DACSCacheFileHandle for the same file goes off,
@@ -88,15 +89,22 @@ class _FileHandleManager:
             elif self.file_handle_counter[filehandle] == 1:
                 self.file_handle_counter.pop(filehandle, None)
                 self.file_handle_map.pop(pathname, None)
-                # Not running in executor as close() as it does not involve any blocking I/O within cache client lib
-                ret = DACSCacheDataLoader.close(filehandle)
-                if ret < 0:
-                    error_message = os.strerror(ctypes.get_errno())
-                    logger.warning(f"Failed to close file handle {filehandle}: {error_message}")
+
+                # Close may take time due for write flushes, so do not hold the lock during close
+                loop = asyncio.get_event_loop()
+                close_op = loop.run_in_executor(self.executor, DACSCacheDataLoader.close, filehandle)
             else:
                 raise RuntimeError(f"File handle counter for {filehandle} is already zero or negative.")
+        
+        if close_op:
+            ret = await close_op
+            if ret < 0:
+                error_message = os.strerror(ctypes.get_errno())
+                logger.error(f"Failed to close file handle {filehandle}: {error_message}")
+        return
 
     async def clear_file_handle_entries(self) -> None:
+        close_ops = []
         async with self.lock:
             for pathname in list(self.file_handle_map.keys()):
                 filehandle = self.file_handle_map[pathname]
@@ -107,12 +115,18 @@ class _FileHandleManager:
                 self.file_handle_counter.pop(filehandle, None)
                 self.file_handle_map.pop(pathname, None)
                 # Close the file handle irrespective of the reference count, ignore errors
-                ret = DACSCacheDataLoader.close(filehandle)
-                if ret < 0:
-                    error_message = os.strerror(ctypes.get_errno())
-                    logger.warning(f"Failed to close file handle {filehandle}: {error_message}")
+                close_ops.append(asyncio.get_event_loop().run_in_executor(
+                    self.executor, DACSCacheDataLoader.close, filehandle
+                ))
             self.file_handle_map.clear()
             self.file_handle_counter.clear()
+        
+        # Wait for all close operations to complete
+        for close_op in close_ops:
+            ret = await close_op
+            if ret < 0:
+                error_message = os.strerror(ctypes.get_errno())
+                logger.error(f"Failed to close file handle during clear: {error_message}")
         return
 
 
@@ -167,14 +181,15 @@ async def _list_dir_inner(pathname: str, executor: concurrent.futures.Executor) 
 
 # Managed file operations with context manager
 class DACSCacheFileHandle:
-    def __init__(self, pathname: str, file_handle_manager: _FileHandleManager):
+    def __init__(self, pathname: str, flags: int, file_handle_manager: _FileHandleManager):
         self.pathname = pathname
+        self.flags = flags
         self.fd = None
         self.file_handle_manager = file_handle_manager
         self.executor = file_handle_manager.executor
 
     async def __aenter__(self) -> "DACSCacheFileHandle":
-        self.fd = await self.file_handle_manager.get_file_handle(self.pathname)
+        self.fd = await self.file_handle_manager.get_file_handle(self.pathname, self.flags)
         logger.debug(f"DACSCacheFileHandle: Got file handle {self.fd} for {self.pathname}")
         return self
 
@@ -182,6 +197,7 @@ class DACSCacheFileHandle:
         if self.fd is not None:
             await self.file_handle_manager.release_file_handle(self.pathname, self.fd)
             logger.debug(f"DACSCacheFileHandle: Released file handle {self.fd} for {self.pathname}")
+            self.fd = None
 
     async def read(self, buf: ctypes.c_void_p, size: int, offset: int) -> int:
         logger.debug(f"DACSCacheFileHandle: Reading {size} bytes from offset {offset} for file handle {self.fd}")
@@ -191,6 +207,13 @@ class DACSCacheFileHandle:
             self.executor, DACSCacheDataLoader.pread, ctypes.c_int(self.fd), buf, size, offset
         )
 
+    async def write(self, buf: ctypes.c_void_p, size: int, offset: int) -> int:
+        logger.debug(f"DACSCacheFileHandle: Writing {size} bytes to offset {offset} for file handle {self.fd}")
+        if self.fd is None:
+            raise ValueError("File descriptor is None")
+        return await asyncio.get_event_loop().run_in_executor(
+            self.executor, DACSCacheDataLoader.pwrite, ctypes.c_int(self.fd), buf, size, offset
+        )
 
 def _dacs_cache_get_intercept_file_path(
     intercept_base_path: str, storage_account_name: str, blob_path: str
@@ -240,7 +263,9 @@ class DACSCacheClient:
         # metrics to track
         self.metrics_lock = asyncio.Lock()
         self.num_reads = 0
+        self.num_writes = 0
         self.bytes_read = 0
+        self.bytes_written = 0
         self.start_time = time.time()
 
     async def get_file_size(self, blob_path: str) -> int:
@@ -252,6 +277,16 @@ class DACSCacheClient:
             f"DACS_Cache_Client:Preloaded blob {blob_path} using interception path {open_path} and returned size:{fileSize}"
         )
         return fileSize
+    
+    async def get_file_handle(self, blob_path: str, flags: int) -> DACSCacheFileHandle:
+        open_path = _dacs_cache_get_intercept_file_path(
+            self.intercept_base_path, self.storage_account_name, blob_path
+        )
+        file_handle = await DACSCacheFileHandle(open_path, flags, self.file_handle_manager).__aenter__()
+        logger.debug(
+            f"DACS_Cache_Client:Got file handle {file_handle} for blob {blob_path} using interception path {open_path}"
+        )
+        return file_handle
 
     async def read_blob(self, blob_path: str, buffer: ctypes.c_void_p, size: int, offset: int) -> int:
         open_path = _dacs_cache_get_intercept_file_path(
@@ -262,7 +297,7 @@ class DACSCacheClient:
         )
 
         # Managed Interface to read file, not need to worry about opening file or closing the file handle
-        async with DACSCacheFileHandle(open_path, self.file_handle_manager) as cacheFileHandle:
+        async with DACSCacheFileHandle(open_path, os.O_RDONLY, self.file_handle_manager) as cacheFileHandle:
             read_size = await cacheFileHandle.read(buffer, size, offset)
             if read_size != size:
                 logger.error(f"Expected to read {size} bytes but only read {read_size} bytes from offset:{offset}")
@@ -275,6 +310,29 @@ class DACSCacheClient:
             self.num_reads += 1
             self.bytes_read += read_size
         return read_size
+    
+    async def write_blob(self, blob_path: str, buffer: ctypes.c_void_p, size: int) -> int:
+        open_path = _dacs_cache_get_intercept_file_path(
+            self.intercept_base_path, self.storage_account_name, blob_path
+        )
+        logger.debug(
+            f"DACS_Cache_Client:Writing blob {blob_path} using interception path {open_path} size:{size}"
+        )
+
+        # Using Managed Interface to write file, not need to worry about opening file or closing the file handle
+        async with DACSCacheFileHandle(open_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, self.file_handle_manager) as cacheFileHandle:
+            write_size = await cacheFileHandle.write(buffer, size, 0)
+            if write_size != size:
+                logger.error(f"Expected to write {size} bytes but only wrote {write_size} bytes")
+                raise IOError(f"Incomplete write: expected {size} bytes but wrote {write_size} bytes")
+        logger.debug(
+            f"DACS_Cache_Client:managed_write_inner - Successfully wrote blob with size:{write_size} to offset:0"
+        )
+
+        async with self.metrics_lock:
+            self.num_writes += 1
+            self.bytes_written += write_size
+        return write_size
 
     async def list_dir(self, blob_path: str) -> AsyncIterator[Dict[str, object]]:
         open_path = _dacs_cache_get_intercept_file_path(
@@ -299,4 +357,5 @@ class DACSCacheClient:
             logger.info(
                 f"DACS_Cache_Client:Shutdown complete, "
                 f"total_reads:{self.num_reads}, total_bytes_read:{self.bytes_read}, elapsed_time:{elapsed_time:.2f} seconds"
+                f"total_writes:{self.num_writes}, total_bytes_written:{self.bytes_written}"
             )

@@ -72,6 +72,16 @@ ssize_t StorageLibcApiWrapper::pread(int fd, void *buf, size_t nByte, off64_t of
     return ::pread(fd, buf, nByte, offset);
 }
 //---------------------------------------------------------------------------------------------------------------------
+ssize_t StorageLibcApiWrapper::write(int fd, const void *buf, size_t nByte)
+{
+    return ::write(fd, buf, nByte);
+}
+//---------------------------------------------------------------------------------------------------------------------
+ssize_t StorageLibcApiWrapper::pwrite(int fd, const void *buf, size_t nByte, off64_t offset)
+{
+    return ::pwrite(fd, buf, nByte, offset);
+}
+//---------------------------------------------------------------------------------------------------------------------
 off64_t StorageLibcApiWrapper::lseek64(int fd, off64_t offset, int whence)
 {
     return ::lseek64(fd, offset, whence);

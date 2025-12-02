@@ -1,10 +1,10 @@
 ///--------------------------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
-#include "FileReadData.h"
+#include "FileData.h"
 #include "StorageInterceptLogger.h"
 //---------------------------------------------------------------------------------------------------------------------
-FileReadData::FileReadData(off64_t offset, size_t bufSize, char* pUserBuf)
+FileData::FileData(off64_t offset, size_t bufSize, char* pUserBuf, bool setToZeros)
     : Offset(offset), BufferSize(bufSize), bIsUserBuffer(pUserBuf != nullptr)
 {
     if (bIsUserBuffer) {
@@ -34,10 +34,15 @@ FileReadData::FileReadData(off64_t offset, size_t bufSize, char* pUserBuf)
         STORAGE_ASSERT(Buffer,
             "Failed to create aligned buffer. alignment={} bufSize={} allocSize={}",
             BufferAlignmentSize, bufSize, allocSize);
+        
+        if (setToZeros)
+        {
+            ::memset(Buffer.get(), 0, allocSize);
+        }
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-void FileReadData::FreeAlignedBuffer(char* buffer)
+void FileData::FreeAlignedBuffer(char* buffer)
 {
     if (buffer)
     {

@@ -40,13 +40,6 @@ string LocalFSCacheClientTest::GetRandFilename()
     return "test-" + m_strTestId + "-" + std::to_string(m_fileCount++);
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::shared_ptr<FileReadData> LocalFSCacheClientTest::GetRandDataBuffer(uint64_t size)
-{
-    std::shared_ptr<FileReadData> fileData = std::make_shared<FileReadData>(0, size, nullptr);
-    std::generate(fileData->Buffer.get(), fileData->Buffer.get() + size, []{return rand() % 255;});
-    return fileData;
-}
-//---------------------------------------------------------------------------------------------------------------------
 TEST_F(LocalFSCacheClientTest, SimpleUploadDownloadTest)
 {
     if (this->m_cacheClient == nullptr)
@@ -69,7 +62,7 @@ TEST_F(LocalFSCacheClientTest, SimpleUploadDownloadTest)
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
 
     auto dataBuffer = GetRandDataBuffer(1024*1024*4);
-    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer);
+    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer, false /*isWrite*/);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
@@ -111,7 +104,7 @@ TEST_F(LocalFSCacheClientTest, DifferentFileSizesUploadDownloadTest)
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
 
     auto dataBuffer = GetRandDataBuffer(1);
-    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer);
+    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer, false /*isWrite*/);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
@@ -130,7 +123,7 @@ TEST_F(LocalFSCacheClientTest, DifferentFileSizesUploadDownloadTest)
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
 
     dataBuffer = GetRandDataBuffer(1024*1024*4 - 1);
-    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer);
+    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer, false /*isWrite*/);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
@@ -149,7 +142,7 @@ TEST_F(LocalFSCacheClientTest, DifferentFileSizesUploadDownloadTest)
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
 
     dataBuffer = GetRandDataBuffer(1024*1024*4 + 1);
-    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer);
+    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer, false /*isWrite*/);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
@@ -167,7 +160,7 @@ TEST_F(LocalFSCacheClientTest, DifferentFileSizesUploadDownloadTest)
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
 
     dataBuffer = GetRandDataBuffer(1024*1024*10);
-    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer);
+    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer, false /*isWrite*/);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
@@ -197,7 +190,7 @@ TEST_F(LocalFSCacheClientTest, ZeroSizeUploadDownloadTest)
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
 
     auto dataBuffer = GetRandDataBuffer(0);
-    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer);
+    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer, false /*isWrite*/);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
@@ -223,7 +216,7 @@ TEST_F(LocalFSCacheClientTest, ParallelUploadDownloadTest)
     // Create many files of different file sizes
     int numFiles = 200;
     string strFileName = GetRandFilename();
-    vector<std::shared_ptr<FileReadData>> dataBuffer(numFiles);
+    vector<std::shared_ptr<FileData>> dataBuffer(numFiles);
     vector<vector<char>> outBuffer(numFiles);
     vector<string> fileNames(numFiles);
     for (int i = 0; i < numFiles; i++)
@@ -257,7 +250,7 @@ TEST_F(LocalFSCacheClientTest, ParallelUploadDownloadTest)
     for (int i = 0; i < numFiles; ++i)
     {
         auto t = make_unique<thread>([i, &dataBuffer, &fileNames, this]() {
-            bool bRetVal = this->m_cacheClient->Upload("", fileNames[i], 0, dataBuffer[i]);
+            bool bRetVal = this->m_cacheClient->Upload("", fileNames[i], 0, dataBuffer[i], false /*isWrite*/);
             ASSERT_EQ(bRetVal, true);
         });
         testThreads.push_back(move(t));

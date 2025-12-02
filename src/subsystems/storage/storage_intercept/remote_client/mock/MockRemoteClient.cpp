@@ -1,9 +1,11 @@
 ///--------------------------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
+#include <fcntl.h>
 #include "StorageInterceptConfig.h"
 #include "StorageInterceptLogger.h"
 #include "StorageInterceptUtils.h"
+#include "StorageLibcApiWrapper.h"
 #include "MockRemoteClient.h"
 #include "MockReadChunkApi.h"
 #include "MockReadDirectoryApi.h"
@@ -52,5 +54,144 @@ int MockRemoteClient::GetProperties(
         attributes);
     api.Execute();
     return api.GetResult();
+}
+//---------------------------------------------------------------------------------------------------------------------
+void MockRemoteClient::PrepareBlocksForUpload(
+  const std::string& remotePath,
+  size_t numBlocks)
+{
+    // No-op
+    return;
+}
+//---------------------------------------------------------------------------------------------------------------------
+int MockRemoteClient::StageBlocksForUpload(
+    /*[in]*/ const std::string& remotePath,
+    /*[in]*/ const void* buf,
+    /*[in]*/ size_t length,
+    /*[in]*/ off64_t blockId)
+{
+    // Implement by storing the chunk in a temp file
+    const std::string tempBlockPath =
+        StorageInterceptUtils::CombinePath(m_strFsRoot, remotePath)
+        + "_upload_temp_"
+        + std::to_string(blockId);
+    LOG_INFO("Staging blockId={} of size={} to temp file={}", blockId, length, tempBlockPath);
+
+    const int fd = StorageLibcApiWrapper::open64(
+        tempBlockPath.c_str(),
+        O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (fd == -1)
+    {
+        LOG_ERROR("Failed to open temp block file for writing at path {}", tempBlockPath);
+        return -1;
+    }
+
+    ssize_t nBytesWritten = StorageLibcApiWrapper::pwrite(
+        fd,
+        buf,
+        length,
+        0);
+    if (nBytesWritten != static_cast<ssize_t>(length))
+    {
+        LOG_ERROR("Failed to write all bytes to temp block file at path {}. Expected={}, Written={}",
+            tempBlockPath,
+            length,
+            nBytesWritten);
+    }
+
+    StorageLibcApiWrapper::close(fd);
+    LOG_INFO("Staged blockId={} of size={} to temp file={}", blockId, nBytesWritten, tempBlockPath);
+    return 0;
+}
+//---------------------------------------------------------------------------------------------------------------------
+int MockRemoteClient::CommitBlocksForUpload(
+    /*[in]*/ const std::string& remotePath)
+{
+    // Implement by reading the blocks, combining them into the final file and deleting the temp files.
+    const std::string baseFilePath =
+        StorageInterceptUtils::CombinePath(m_strFsRoot, remotePath);
+    const std::string tempBlockPathPrefix = baseFilePath + "_upload_temp_";
+    int blockId = 0;;
+    const int fdFinal = StorageLibcApiWrapper::open64(
+        baseFilePath.c_str(),
+        O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (fdFinal == -1)
+    {
+        LOG_ERROR("Failed to open final file for writing at path {}", baseFilePath);
+        return -1;
+    }
+
+    uint32_t nChunks = 0;
+    off64_t writeOffset = 0;
+    while (true)
+    {
+        const std::string tempBlockPath =
+            tempBlockPathPrefix + std::to_string(blockId);
+        const int fdBlock = StorageLibcApiWrapper::open64(
+            tempBlockPath.c_str(),
+            O_RDONLY, 0666);
+        if (fdBlock == -1)
+        {
+            // No more blocks
+            break;
+        }
+
+        struct stat64 statBuf;
+        if (StorageLibcApiWrapper::fstat64(fdBlock, &statBuf) == -1)
+        {
+            LOG_ERROR("Failed to stat temp block file at path {}", tempBlockPath);
+            StorageLibcApiWrapper::close(fdBlock);
+            return -1;
+        }
+        const size_t fileSize = statBuf.st_size;
+
+        std::unique_ptr<char[]> buffer(new char[fileSize]);
+        ssize_t nBytesRead = 0;
+        nBytesRead = StorageLibcApiWrapper::pread(
+                    fdBlock,
+                    buffer.get(),
+                    fileSize,
+                    0);
+        if (nBytesRead != static_cast<ssize_t>(fileSize))
+        {
+            LOG_ERROR("Failed to read all bytes from temp block file at path {}. Expected={}, Read={}",
+                tempBlockPath,
+                fileSize,
+                nBytesRead);
+            StorageLibcApiWrapper::close(fdBlock);
+            return -1;
+        }
+
+        LOG_INFO("Appending blockId={} of size={} at offset={} to final file={}",
+            blockId,
+            nBytesRead,
+            writeOffset,
+            baseFilePath);
+        ssize_t nBytesWritten = StorageLibcApiWrapper::pwrite(
+            fdFinal,
+            buffer.get(),
+            nBytesRead,
+            writeOffset);
+        if (nBytesWritten != nBytesRead)
+        {
+            LOG_ERROR("Failed to write all bytes to final file at path {}. Expected={}, Written={}",
+                baseFilePath,
+                nBytesRead,
+                nBytesWritten);
+            StorageLibcApiWrapper::close(fdBlock);
+            return -1;
+        }
+
+        StorageLibcApiWrapper::close(fdBlock);
+        // Delete the temp block file
+        ::unlink(tempBlockPath.c_str());
+        blockId++;
+        nChunks++;
+        writeOffset += nBytesRead;
+    }
+
+    StorageLibcApiWrapper::close(fdFinal);
+    LOG_INFO("Committed all {} blocks to final file={}", nChunks, baseFilePath);
+    return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------

@@ -6,6 +6,9 @@
 #include "StorageInterceptLogger.h"
 #include "StorageInterceptUtils.h"
 #include "RemoteClientException.h"
+#include <algorithm>
+#include <dirent.h>
+#include <functional>
 #include "BlobAuthTokenProvider.h"
 #include <dirent.h>
 #include <random>
@@ -306,13 +309,6 @@ std::string BlobClient::ReadDirectory(
 
     for (auto const& blob : blobOutcome.response().blobs)
     {
-        dirEntries.push_back(DirectoryEntry());
-
-        dirEntries.back().d_ino = D_INO_VAL;
-        dirEntries.back().d_off = dirEntries.size() - 1;
-        dirEntries.back().d_reclen = sizeof(DirectoryEntry);
-        dirEntries.back().d_type = blob.is_directory ? DT_DIR : DT_REG;
-
         std::string lastComponentName;
         if(blob.name.back() == DIRECTORY_DELIMITER.back())
         {
@@ -326,6 +322,14 @@ std::string BlobClient::ReadDirectory(
         {
             lastComponentName = blob.name.substr(blob.name.find_last_of(DIRECTORY_DELIMITER.back()) + 1);
         }
+
+
+        dirEntries.push_back(DirectoryEntry());
+        dirEntries.back().d_ino = D_INO_VAL;
+        dirEntries.back().d_off = dirEntries.size() - 1;
+        dirEntries.back().d_reclen = sizeof(DirectoryEntry);
+        dirEntries.back().d_type = blob.is_directory ? DT_DIR : DT_REG;
+
         strncpy(dirEntries.back().d_name, lastComponentName.c_str(), D_NAME_LEN);
 
         dirEntries.back().d_size = blob.content_length;
@@ -462,6 +466,139 @@ int BlobClient::GetProperties(const std::string& remotePath, FileAttributes& att
       remotePath,
       attr.isDir,
       attr.size);
+    return 0;
+}
+//---------------------------------------------------------------------------------------------------------------------
+void BlobClient::PrepareBlocksForUpload(
+    const std::string& remotePath,
+    size_t numBlocks)
+{
+    std::lock_guard<std::mutex> lock(m_lockBlockList);
+    if(m_mapBlockList.find(remotePath) != m_mapBlockList.end())
+    {
+        LOG_ERROR("Block list already exists for path={}", remotePath);
+        throw RemoteClientException("BlobClientError: Block list already exists for path=" + remotePath);
+    }
+
+    auto [blockListIter, inserted] = m_mapBlockList.emplace(remotePath, std::vector<azBlockItem_t>());
+    blockListIter->second.reserve(numBlocks);
+
+    std::string uuid = azure::storage_lite::get_uuid();
+    for(size_t blockId = 0; blockId < numBlocks; blockId++)
+    {
+        std::string base64BlockId = GetUrlSafeBase64(uuid, blockId);
+        blockListIter->second.emplace_back(azBlockItem_t{ std::move(base64BlockId), azBlockType_t::uncommitted });
+    }
+
+    return;
+}
+//---------------------------------------------------------------------------------------------------------------------
+int BlobClient::StageBlocksForUpload(
+    /*[in]*/ const std::string& remotePath,
+    /*[in]*/ const void* buf,
+    /*[in]*/ size_t length,
+    /*[in]*/ off64_t blockId)
+{
+    std::shared_ptr<azBlobClient_t> blobClient = GetBlobClient(remotePath);
+    const std::string blobPath = GetBlobName(remotePath);
+    const std::string containerName = GetContainerName(remotePath);
+
+    std::unique_lock<std::mutex> lock(m_lockBlockList);
+    if(m_mapBlockList.find(remotePath) == m_mapBlockList.end())
+    {
+        LOG_ERROR("Block list not found for path={}", remotePath);
+        throw RemoteClientException("BlobClientError: Block list not found for path=" + remotePath);
+    }
+
+    const std::string& blockIdBase64 = m_mapBlockList[remotePath][blockId].id;
+    const int nTotalBlocks = static_cast<int>(m_mapBlockList[remotePath].size());
+    lock.unlock();
+
+    const auto blobOutcome = blobClient->upload_block_from_buffer(
+        containerName,
+        blobPath,
+        blockIdBase64,
+        (const char*)buf,
+        length).get();
+    LOG_DEBUG("Staged block for upload at path={}, container={}, blobPath={}, block-id={}, nblock={}",
+        remotePath,
+        containerName,
+        blobPath,
+        blockId,
+        nTotalBlocks);
+
+    if(!blobOutcome.success())
+    {
+        LOG_ERROR(
+            "Error occurred while staging block for upload at path={}, container={}, blobPath={},"
+            " block-id={} status-code={}, code-name={}, error-msg={}",
+            remotePath,
+            containerName,
+            blobPath,
+            blockId,
+            blobOutcome.error().code,
+            blobOutcome.error().code_name,
+            blobOutcome.error().message);
+        throw RemoteClientException("BlobClientError: " + blobOutcome.error().code_name + ", " + blobOutcome.error().message);
+    }
+
+    return 0;
+}
+//---------------------------------------------------------------------------------------------------------------------
+int BlobClient::CommitBlocksForUpload(
+    /*[in]*/ const std::string& remotePath)
+{
+    std::shared_ptr<azBlobClient_t> blobClient = GetBlobClient(remotePath);
+    const std::string blobPath = GetBlobName(remotePath);
+    const std::string containerName = GetContainerName(remotePath);
+
+    std::vector<std::pair<std::string, std::string>> metadata;
+    std::vector<azBlockItem_t> blockList;
+
+    {
+        std::unique_lock<std::mutex> lock(m_lockBlockList);
+
+        // If the block list is not found, we are uploading an empty blob
+        if(m_mapBlockList.find(remotePath) != m_mapBlockList.end())
+        {
+            blockList = std::move(m_mapBlockList[remotePath]);
+        }
+    }
+
+    const auto blobOutcome = blobClient->put_block_list(
+        containerName,
+        blobPath,
+        blockList,
+        metadata).get();
+
+    if (!blobOutcome.success())
+    {
+        LOG_ERROR(
+            "Error occurred while committing blocks for upload at path={}, container={}, blobPath={},"
+            " status-code={}, code-name={}, error-msg={}",
+            remotePath,
+            containerName,
+            blobPath,
+            blobOutcome.error().code,
+            blobOutcome.error().code_name,
+            blobOutcome.error().message);
+        throw RemoteClientException("BlobClientError: " + blobOutcome.error().code_name + ", " + blobOutcome.error().message);
+    }
+
+    // Clear the block list
+    {
+        std::unique_lock<std::mutex> lock(m_lockBlockList);
+        if(m_mapBlockList.find(remotePath) != m_mapBlockList.end())
+        {
+            m_mapBlockList.erase(remotePath);
+        }
+    }
+
+    LOG_INFO("Committed blocks for upload at path={}, container={}, blobPath={}, nBlocks={}",
+        remotePath,
+        containerName,
+        blobPath,
+        blockList.size());
     return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -653,5 +790,18 @@ std::string BlobClient::GetBlobName(const std::string& remotePath) const
     }
 
     return m_bIsDynamicContainer ? StorageInterceptUtils::RemoveFirstComponentFromPath(remotePath) : remotePath;
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string BlobClient::GetUrlSafeBase64(const std::string& uuid, const off64_t blockId) const
+{
+    // Logic derived from
+    // https://github.com/Azure/azure-storage-cpplite/blob/33a807a3984681a604c41659a4a2030ea81194e7/src/blob/blob_client.cpp#L249
+    // Note: Azure requires block ids to be base64 encoded strings of max length 64 bytes, we create block ids
+    // by concatenating a uuid and block number with '-' padding in between to ensure fixed length before base64 encoding.
+    std::string base64BlockId = std::to_string(blockId);
+    base64BlockId = uuid + std::string(48 - uuid.length() - base64BlockId.length(), '-') + base64BlockId;
+    base64BlockId = azure::storage_lite::to_base64(reinterpret_cast<const unsigned char*>(base64BlockId.data()), base64BlockId.length());
+
+    return base64BlockId;
 }
 //---------------------------------------------------------------------------------------------------------------------

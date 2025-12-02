@@ -8,7 +8,7 @@
 # blob access tokens.
 #
 # Utility functions:
-#    - get_buffer_to_read(size): Allocate a buffer of the specified size
+#    - alloc_buffer(size): Allocate a buffer of the specified size
 #    - release_buffer(buffer): Release the allocated buffer and log the memory released
 #    - configure_managed_identity_mode(azure_client_id): Configure managed identity mode for blob access token
 #    - initialize_dacs_cache_client_config(intercept_path, sas_token): Initialize the dacs cache client with the given
@@ -78,8 +78,30 @@ libc.free.argtypes = (c_void_p,)
 libc.free.restype = None
 
 
-def get_buffer_to_read(size: int) -> c_void_p:
-    return (c_char * size).from_address(libc.malloc(size))
+def alloc_buffer(size: int) -> c_void_p:
+    """Allocate a raw C buffer of the requested size.
+
+    Ensures the incoming size is an int > 0, attempts to coerce from str/float, and
+    raises helpful exceptions. Also validates malloc success before creating the
+    Python object pointing at that memory region.
+    """
+    # Coerce to int if not already
+    if not isinstance(size, int):
+        try:
+            size = int(size)  # may raise ValueError/TypeError which we convert below
+        except Exception as e:
+            raise TypeError(f"alloc_buffer: size must be an int-convertible value, got {type(size)}: {size!r}") from e
+
+    if size <= 0:
+        raise ValueError(f"alloc_buffer: size must be > 0, got {size}")
+
+    ptr = libc.malloc(size)
+    if not ptr:
+        # malloc failed
+        raise MemoryError(f"Failed to allocate buffer of size {size} bytes")
+
+    # Create a ctypes char array *without* copying that memory
+    return (c_char * size).from_address(ptr)
 
 
 def release_buffer(buffer: c_void_p) -> None:
@@ -110,7 +132,7 @@ class BoundedBufferManager:
         while True:
             async with self.lock:
                 if (self.current_memory_usage + buf_size <= self.max_memory_limit) or (buf_size > self.max_memory_limit):
-                    buffer = get_buffer_to_read(buf_size)
+                    buffer = alloc_buffer(buf_size)
                     if not buffer:
                         raise MemoryError("Failed to allocate buffer for reading blob chunk")
 
@@ -185,9 +207,11 @@ def initialize_dacs_cache_client_config(intercept_path: str, sas_token: str) -> 
         config_file.write("enableLargePrefetch false\n")
         config_file.write("prefetchWindowSizeInMB 64\n")
         config_file.write("streamingChunkSize 33554432\n")
-        config_file.write("maxConnsPerBlobClient 80\n")
-        config_file.write("logRefreshIntervalInSeconds 60\n")
+        config_file.write("maxConnsPerBlobClient 84\n")
         config_file.write("attributesCacheEnable true\n")
+        config_file.write("enableWrite false\n")
+        config_file.write("enableWriteRemote false\n")
+        config_file.write("enableWriteRemoteAsync false\n")
         # Check if CACHE_SERVER_LIST and CACHE_SERVER_PORT are set
         cache_server_list = os.environ.get("CACHE_SERVER_LIST")
         cache_server_port = os.environ.get("CACHE_SERVER_PORT")
@@ -197,8 +221,8 @@ def initialize_dacs_cache_client_config(intercept_path: str, sas_token: str) -> 
             config_file.write("cacheEnableRemote true\n")
             config_file.write(f"cacheServerPort {cache_server_port}\n")
             config_file.write(f"cacheServerList {cache_server_list}\n")
-            config_file.write("cacheMaxUploadBufferSizePerProcessGB 200\n")
-            config_file.write("cacheNumUploadThreadsPerProcess 20\n")
+            config_file.write("cacheMaxUploadBufferSizePerProcessGB 400\n")
+            config_file.write("cacheNumUploadThreadsPerProcess 80\n")
             config_file.write("attributesCacheUseLocalServer false\n")
             config_file.write("attributesCacheUseRemoteServer true\n")
             logger.debug(f"Configured cache related configurations in {config_path}")

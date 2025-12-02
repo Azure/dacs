@@ -94,6 +94,15 @@ class StorageLibcApiWrapper
                              /*[in]*/ size_t nByte,
                              /*[in]*/ off64_t offset);
 
+        static ssize_t write(/*[in]*/ int fd,
+                             /*[in]*/ const void *buf,
+                             /*[in]*/ size_t nByte);
+
+        static ssize_t pwrite(/*[in]*/ int fd,
+                              /*[in]*/ const void *buf,
+                              /*[in]*/ size_t nByte,
+                              /*[in]*/ off64_t offset);
+
         static void* opendir(/*[in]*/ const char* pathname);
 
         static void* readdir(/*[in]*/ void* dirp);
@@ -157,6 +166,9 @@ class StorageLibcApiWrapper
         typedef int (*Original_close) (/*[in]*/ int fd);
         typedef ssize_t (*Original_read) (/*[in]*/ int fd, /*[out]*/ void *buf, /*[in]*/ size_t nByte);
         typedef ssize_t (*Original_pread) (/*[in]*/ int fd, /*[out]*/ void *buf, /*[in]*/ size_t nByte,
+            /*[in]*/ off64_t offset);
+        typedef ssize_t (*Original_write) (/*[in]*/ int fd, /*[in]*/ const void *buf, /*[in]*/ size_t nByte);
+        typedef ssize_t (*Original_pwrite) (/*[in]*/ int fd, /*[in]*/ const void *buf, /*[in]*/ size_t nByte,
             /*[in]*/ off64_t offset);
         typedef off64_t (*Original_lseek64) (/*[in]*/ int fd, /*[in]*/ off64_t offset, /*[in]*/ int whence);
         typedef void* (*Original_opendir) (/*[in]*/ const char* pathname);

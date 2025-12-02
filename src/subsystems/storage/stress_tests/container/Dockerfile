@@ -24,6 +24,10 @@ RUN \
     iproute2 \
     vim
 
+RUN \
+    pip3 install --upgrade pip && \
+    pip3 install requests
+
 # Where the storage containers will be mounted to
 RUN mkdir -p /app/mounts
 RUN mkdir -p /app/lib
@@ -38,6 +42,6 @@ COPY bin/Release/native-storage/storage/PerfClient /app/PerfClient
 COPY src/subsystems/storage/stress_tests/storageIntercept.config /tmp/storageIntercept.config
 COPY obj/Release/native/linux-x64/publish-storage/storage/libStorageIntercept.so /app/lib/libStorageIntercept.so
 
-RUN apt-get install -yq libfuse-dev libfuse3-dev
 COPY /bin/Release/native-storage/storage/rslex-fuse-cli /app/rslex-fuse-cli
 COPY /bin/Release/native-storage/storage/dacsfs /app/dacsfs
+COPY src/subsystems/storage/py_dacs_cache_client /app/py_dacs_cache_client

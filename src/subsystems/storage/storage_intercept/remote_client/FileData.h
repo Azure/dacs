@@ -12,21 +12,21 @@
  * Represents a portion of data read from a file.
  */
 using unique_aligned_buffer = std::unique_ptr<char, std::function<void(char*)>>;
-class FileReadData
+class FileData
 {
     public:
-    FileReadData(off64_t offset, size_t bufSize, char* pUserBuf);
-    ~FileReadData() = default;
+    FileData(off64_t offset, size_t bufSize, char* pUserBuf, bool setToZeros);
+    ~FileData() = default;
 
-    // The offset at which data was read from.
+    // The offset at which data was read from or written into
     const off64_t       Offset;
 
-    // The data bytes read.
+    // The data bytes read or written.
     unique_aligned_buffer       Buffer;
     size_t                      BufferSize;
     const bool                  bIsUserBuffer;
 
-    // Set alignment size to filesytem's logical block size to enable IO optimizations
+    // Set alignment size to filesystem's logical block size to enable IO optimizations
     static constexpr size_t     BufferAlignmentSize = 512;
 
     static void FreeAlignedBuffer(char* buffer);

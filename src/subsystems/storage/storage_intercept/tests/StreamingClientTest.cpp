@@ -3,8 +3,10 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "StreamingClientTest.h"
 #include "StorageInterceptConstants.h"
+#include "StorageInterceptConfig.h"
 #include "StreamingClient.h"
 #include "InMemoryAttributesCache.h"
+#include "RemoteCacheClient.h"
 #include <atomic>
 #include <vector>
 #include <mutex>
@@ -19,7 +21,18 @@ StreamingClientTest::StreamingClientTest()
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClientTest::SetUp()
 {
-    m_spStreamingClient = std::make_shared<StreamingClient>("", nullptr, std::make_shared<InMemoryAttributesCache>());
+    const bool isRemoteCacheEnabled = StorageInterceptConfig::GetInstance().GetCacheEnable("") && 
+        !StorageInterceptConfig::GetInstance().GetCacheUseLocalFS();
+    if (isRemoteCacheEnabled)
+    {
+        m_cacheClient = 
+            std::make_shared<RemoteCacheClient>(StorageInterceptConfig::GetInstance().GetStreamingChunkSize());
+    }
+
+    m_spStreamingClient = std::make_shared<StreamingClient>(
+        "",
+        m_cacheClient,
+        std::make_shared<InMemoryAttributesCache>());
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StreamingClientTest::BufferEqualsInRange(
@@ -77,7 +90,7 @@ void StreamingClientTest::PerformReadTest(size_t bufferSize,
 
     ASSERT_EQ(m_spStreamingClient->GetReadChunksZeroCopy(), expectedZeroCopyReads);
     // Close the file, forcing to purge the cache
-    m_spStreamingClient->Close(m_strRemoteFilePath);
+    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(StreamingClientTest, RootDirPathTest)
@@ -286,4 +299,226 @@ TEST_F(StreamingClientTest, ReadSizeMoreThanFileSizeTestZC)
 }
 //---------------------------------------------------------------------------------------------------------------------
 // END: Test cases for streaming client with zero copy enabled
+//---------------------------------------------------------------------------------------------------------------------
+//---------------------------------------------------------------------------------------------------------------------
+// START: Test cases for writes
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ResetStreamingClientForWriteTests)
+{
+    // Save the current streaming client instance
+    auto originalStreamingClient = m_spStreamingClient;
+
+    const bool isCacheEnabled = m_cacheClient != nullptr;
+
+    // Ensure write support is enabled if using mock or running against cache
+    if (m_bUsingMock || isCacheEnabled)
+    {
+        OverrideConfig(StorageInterceptConstants::ConfigNameWriteEnable, "true");
+    }
+    // Disable async remote writes if cache is not enabled
+    if (!isCacheEnabled)
+    {
+        OverrideConfig(StorageInterceptConstants::ConfigNameWriteEnableRemoteAsync, "false");
+    }
+    // Disable remote(blob) writes if not using mock as pipeline auth doesnt give blob write permissions.
+    if (!m_bUsingMock)
+    {
+        OverrideConfig(StorageInterceptConstants::ConfigNameWriteEnableRemote, "false");
+    }
+
+    // Reset the streaming client
+    m_spStreamingClient.reset();
+
+    // Reinitialize the streaming client
+    SetUp();
+
+    // Since the new streaming client is created, don't wanna reset the config again
+    m_bConfigUpdated = false;
+
+    // Validate that the streaming client instance has changed
+    ASSERT_NE(originalStreamingClient, m_spStreamingClient);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, WriteWholeFileTest)
+{
+    if (!StorageInterceptConfig::GetInstance().IsWriteSupportEnabled())
+    {
+        GTEST_SKIP();
+    }
+
+    auto writeData = GetRandDataBuffer(REMOTE_FILE_SIZE);
+    std::string writeFileName = "wholeFileWriteTest" + GenerateRandomString(4);
+    ssize_t nBytesWritten = m_spStreamingClient->WriteFile(
+        writeFileName,
+        writeData->Buffer.get(),
+        writeData->BufferSize,
+        0 /* offset */);
+    ASSERT_EQ(nBytesWritten, writeData->BufferSize);
+
+    // Close the file to flush the writes
+    m_spStreamingClient->Close(writeFileName, true /* isWriteMode */);
+
+    // Read back the file to verify data integrity
+    std::shared_ptr<FileData> readData = std::make_shared<FileData>(
+        0,
+        writeData->BufferSize,
+        nullptr,
+        false /* setToZeros */);
+    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
+        writeFileName,
+        readData->Buffer.get(),
+        readData->BufferSize,
+        0 /* offset */,
+        REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, writeData->BufferSize);
+    ASSERT_TRUE(FileDataEquals(writeData, readData));
+
+    // Close the file
+    m_spStreamingClient->Close(writeFileName, false /* isWriteMode */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void StreamingClientTest::WriteAppendsTest(
+    const std::string& remotePath,
+    std::shared_ptr<FileData> writeData,
+    size_t appendSize)
+{
+    ssize_t totalBytesWritten = 0;
+    for(size_t offset = 0; offset < writeData->BufferSize; offset += appendSize)
+    {
+        const size_t writeSize = std::min(appendSize, writeData->BufferSize - offset); // Last append may be smaller
+        ssize_t nBytesWritten = m_spStreamingClient->WriteFile(
+            remotePath,
+            writeData->Buffer.get() + offset,
+            writeSize,
+            offset /* offset */);
+        ASSERT_EQ(nBytesWritten, writeSize);
+        totalBytesWritten += nBytesWritten;
+    }
+    ASSERT_EQ(totalBytesWritten, writeData->BufferSize);
+
+    // Close the file to flush the writes
+    m_spStreamingClient->Close(remotePath, true /* isWriteMode */);
+
+    // Get properties to verify file size updated
+    FileAttributes attributes;
+    int nResult = m_spStreamingClient->GetProperties(
+        remotePath,
+        attributes /* [out] attributes */);
+    ASSERT_EQ(nResult, 0);
+    ASSERT_EQ(attributes.size, writeData->BufferSize);
+
+    // Read back the file to verify data integrity
+    std::shared_ptr<FileData> readData = std::make_shared<FileData>(
+        0,
+        writeData->BufferSize,
+        nullptr,
+        false /* setToZeros */);
+    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
+        remotePath,
+        readData->Buffer.get(),
+        readData->BufferSize,
+        0 /* offset */,
+        writeData->BufferSize);
+    ASSERT_EQ(nBytesRead, writeData->BufferSize);
+    ASSERT_TRUE(FileDataEquals(writeData, readData));
+    m_spStreamingClient->Close(remotePath, false /* isWriteMode */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, WriteFileAppendsAtChunkBoundaryTest)
+{
+    if (!StorageInterceptConfig::GetInstance().IsWriteSupportEnabled())
+    {
+        GTEST_SKIP();
+    }
+
+    auto writeData = GetRandDataBuffer(REMOTE_FILE_SIZE);
+    std::string writeFileName = "fileAppendsTest" + GenerateRandomString(4);
+
+    // Perform multiple appends and close
+    WriteAppendsTest(
+        writeFileName,
+        writeData,
+        REMOTE_FILE_SIZE / 4 /* appendSize */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, WriteFileTinyAppendsTest)
+{
+    if (!StorageInterceptConfig::GetInstance().IsWriteSupportEnabled())
+    {
+        GTEST_SKIP();
+    }
+
+    auto writeData = GetRandDataBuffer(REMOTE_FILE_SIZE + 1024); // To test file size not a multiple of chunk size
+    std::string writeFileName = "fileTinyAppendsTest" + GenerateRandomString(4);
+
+    // Perform multiple tiny appends and close
+    WriteAppendsTest(
+        writeFileName,
+        writeData,
+        10 * 1024 /* appendSize such that it would not align with 4M chunk boundaries */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, WriteSparseFileTest)
+{
+    if (!StorageInterceptConfig::GetInstance().IsWriteSupportEnabled())
+    {
+        GTEST_SKIP();
+    }
+
+    auto writeData = GetRandDataBuffer(REMOTE_FILE_SIZE / 2);
+    std::string writeFileName = "sparseFileWriteTest" + GenerateRandomString(4);
+
+    // Write first half of the file
+    ssize_t nBytesWritten = m_spStreamingClient->WriteFile(
+        writeFileName,
+        writeData->Buffer.get(),
+        writeData->BufferSize,
+        0 /* offset */);
+    ASSERT_EQ(nBytesWritten, writeData->BufferSize);
+
+    // Write second half of the file, leaving a hole in between
+    const size_t holeSize = REMOTE_FILE_SIZE / 4;
+    ssize_t nBytesWrittenSecondHalf = m_spStreamingClient->WriteFile(
+        writeFileName,
+        writeData->Buffer.get() + writeData->BufferSize / 2,
+        writeData->BufferSize / 2,
+        writeData->BufferSize + holeSize /* offset */);
+    ASSERT_EQ(nBytesWrittenSecondHalf, writeData->BufferSize / 2);
+
+    // Close the file to flush the writes
+    m_spStreamingClient->Close(writeFileName, true /* isWriteMode */);
+
+    // Read back the file to verify data integrity
+    std::shared_ptr<FileData> readData = std::make_shared<FileData>(
+        0,
+        REMOTE_FILE_SIZE,
+        nullptr,
+        false /* setToZeros */);
+    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
+        writeFileName,
+        readData->Buffer.get(),
+        readData->BufferSize,
+        0 /* offset */,
+        REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, REMOTE_FILE_SIZE);
+
+    // Verify first half
+    ASSERT_TRUE(FileDataEquals(
+        std::make_shared<FileData>(0, writeData->BufferSize, writeData->Buffer.get(), false),
+        std::make_shared<FileData>(0, writeData->BufferSize, readData->Buffer.get(), false)));
+
+    // Verify hole is zeros
+    for (size_t idx = writeData->BufferSize; idx < writeData->BufferSize + holeSize; idx++)
+    {
+        ASSERT_EQ(readData->Buffer.get()[idx], 0);
+    }
+
+    // Verify after hole
+    ASSERT_TRUE(FileDataEquals(
+        std::make_shared<FileData>(
+            0, writeData->BufferSize / 2, writeData->Buffer.get() + writeData->BufferSize / 2, false),
+        std::make_shared<FileData>(
+            0, writeData->BufferSize / 2, readData->Buffer.get() + writeData->BufferSize + holeSize, false)));
+    m_spStreamingClient->Close(writeFileName, false /* isWriteMode */);
+}
 //---------------------------------------------------------------------------------------------------------------------

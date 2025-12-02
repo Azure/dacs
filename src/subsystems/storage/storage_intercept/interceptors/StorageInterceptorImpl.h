@@ -26,6 +26,8 @@ class StorageInterceptorImpl
         static off64_t lseek(int fd, off64_t offset, int whence);
         static off64_t lseek64(int fd, off64_t offset, int whence);
 
+        static ssize_t pwrite(int fd, const void* buf, size_t size, off64_t offset);
+
         static int close(int fd);
 
         static void* opendir(const char* pathname);

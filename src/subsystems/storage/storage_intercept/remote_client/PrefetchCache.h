@@ -9,7 +9,7 @@
 #include <map>
 #include <set>
 #include <shared_mutex>
-#include "FileReadData.h"
+#include "FileData.h"
 #include <gtest/gtest.h>
 //---------------------------------------------------------------------------------------------------------------------
 /*
@@ -31,13 +31,13 @@ class PrefetchCache
 
         std::set<off64_t> GetCachedOffsets(/*[in]*/  const std::string& path) const;
 
-        std::shared_ptr<const FileReadData> Get(
+        std::shared_ptr<const FileData> Get(
             /*[in]*/  const std::string& path,
             /*[in]*/  off64_t offset) const;
 
         void Put(
             /*[in]*/ const std::string& path,
-            /*[in]*/ std::shared_ptr<const FileReadData> buffer);
+            /*[in]*/ std::shared_ptr<const FileData> buffer);
 
         void PurgeOffsets(
             /*[in] */ const std::string& path,
@@ -58,7 +58,7 @@ class PrefetchCache
             /*[in]*/  const std::string& path,
             /*[in]*/  off64_t offset);
 
-        std::map<std::string, std::shared_ptr<const FileReadData>>    m_mapBuffers;
+        std::map<std::string, std::shared_ptr<const FileData>>        m_mapBuffers;
         std::map<std::string, std::set<off64_t>>                      m_mapCachedOffsets;
         mutable std::shared_mutex                                     m_mutexBuffers;
 };

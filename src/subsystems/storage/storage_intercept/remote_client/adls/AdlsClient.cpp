@@ -6,6 +6,7 @@
 #include "AdlsReadChunkApi.h"
 #include "AdlsReadDirectoryApi.h"
 #include "AdlsGetPropertiesApi.h"
+#include "RemoteClientException.h"
 #include <vector>
 //---------------------------------------------------------------------------------------------------------------------
 #define RETURN_IF(condition, x, ...)                               if (condition) { LOG_ERROR(__VA_ARGS__); return x; }
@@ -69,5 +70,27 @@ int AdlsClient::GetProperties(const std::string& remotePath, FileAttributes& att
   api.Execute();
   nApiResult = api.GetResult();
   return nApiResult;
+}
+//---------------------------------------------------------------------------------------------------------------------
+void AdlsClient::PrepareBlocksForUpload(
+  const std::string& remotePath,
+  size_t numBlocks)
+{
+  throw RemoteClientException("Adls backend does not currently have support for write operations");
+}
+//---------------------------------------------------------------------------------------------------------------------
+int AdlsClient::StageBlocksForUpload(
+  /*[in]*/ const std::string& remotePath,
+  /*[in]*/ const void* buf,
+  /*[in]*/ size_t length,
+  /*[in]*/ off64_t blockId)
+{
+  throw RemoteClientException("Adls backend does not currently have support for write operations");
+}
+//---------------------------------------------------------------------------------------------------------------------
+int AdlsClient::CommitBlocksForUpload(
+  /*[in]*/ const std::string& remotePath)
+{
+  throw RemoteClientException("Adls backend does not currently have support for write operations");
 }
 //---------------------------------------------------------------------------------------------------------------------

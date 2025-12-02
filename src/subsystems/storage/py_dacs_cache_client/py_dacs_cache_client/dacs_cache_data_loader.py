@@ -48,10 +48,13 @@ class Stat64(Structure):
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Construct the full path to the shared library
-lib_path = os.path.join(current_dir, "libStorageIntercept.so")
-logger.debug(f"Loading shared library from path {lib_path}")
+# If direct lib doesn't exist, check for intercept lib
+lib_path = os.path.join(current_dir, "libStorageDirect.so")
+if not os.path.isfile(lib_path):
+    lib_path = os.path.join(current_dir, "libStorageIntercept.so")
+logger.info(f"Loading storage cache client library from path {lib_path}")
 
-# Load the shared libStorageIntercept library
+# Load the library
 storage_intercept_lib = CDLL(lib_path)
 
 # Defining the args and return types for the required functions in the shared library
@@ -133,6 +136,11 @@ class DACSCacheDataLoader:
     def pread(fd: int, buf: c_void_p, size: int, offset: int) -> int:
         logger.debug(f"Entering DACSCacheDataLoader.pread for fd {fd} with size {size} and offset {offset}")
         return storage_intercept_lib.pread(fd, buf, size, offset)
+    
+    @staticmethod
+    def pwrite(fd: int, buf: c_void_p, size: int, offset: int) -> int:
+        logger.debug(f"Entering DACSCacheDataLoader.pwrite for fd {fd} with size {size} and offset {offset}")
+        return storage_intercept_lib.pwrite(fd, buf, size, offset)
 
     @staticmethod
     def close(fd: int) -> int:

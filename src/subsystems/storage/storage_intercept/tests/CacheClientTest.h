@@ -3,7 +3,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #pragma once
 #include "TestBase.h"
-#include "FileReadData.h"
+#include "FileData.h"
 #include <string>
 #include <atomic>
 #include <vector>
@@ -22,7 +22,6 @@ class CacheClientTest : public TestBase
         bool                            m_bRunExtensiveTests;
 
         std::string GetRandFilename();
-        std::shared_ptr<FileReadData> GetRandDataBuffer(uint64_t size);
 
         template <typename T>
         void AssertEqArray(T* left, T* right, int arraySize)

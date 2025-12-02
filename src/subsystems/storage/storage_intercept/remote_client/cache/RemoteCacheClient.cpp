@@ -268,10 +268,17 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(const std::string& mount
 bool RemoteCacheClient::Upload(const std::string& mountName,
                                const std::string& filePath,
                                off64_t fileOffset,
-                               std::shared_ptr<const FileReadData> fileData)
+                               std::shared_ptr<const FileData> fileData,
+                               bool isWrite)
 {
     const std::string cacheKey = GetCacheKey(mountName, filePath, fileOffset);
-    return m_spUploadManager->Upload(mountName, cacheKey, fileData, GetEncryptionKeyForMount(mountName), nullptr);
+    return m_spUploadManager->Upload(
+        mountName,
+        cacheKey,
+        fileData,
+        GetEncryptionKeyForMount(mountName),
+        nullptr,
+        isWrite);
 }
 //---------------------------------------------------------------------------------------------------------------------
 CacheStatus RemoteCacheClient::Get(const std::string& path, ::FileAttributes& fileAttributes)
@@ -298,7 +305,13 @@ void RemoteCacheClient::Put(const std::string& path, const ::FileAttributes& fil
     m_inMemAttributeCache.Put(path, fileAttributes);
     const string cacheKey = GetAttributeCacheKey(path);
     const string strEcncryptionKey = "";
-    m_spUploadManager->Upload("", cacheKey, nullptr, strEcncryptionKey, make_unique<::FileAttributes>(fileAttributes));
+    m_spUploadManager->Upload(
+        "", /* mountName */
+        cacheKey,
+        nullptr, /* file data */
+        strEcncryptionKey,
+        make_unique<::FileAttributes>(fileAttributes),
+        false /* isWrite */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 void RemoteCacheClient::PutAll(const std::string& pathPrefix,
@@ -329,7 +342,12 @@ void RemoteCacheClient::PutAll(const std::string& pathPrefix,
             const string cacheKey = GetAttributeCacheKey(StorageInterceptUtils::CombinePath(pathPrefix, dirEntry.d_name));
             const string strEcncryptionKey = "";
             m_spUploadManager->Upload(
-                "", cacheKey, nullptr, strEcncryptionKey, make_unique<::FileAttributes>(fileAttributes));
+                "", /* mountName */
+                cacheKey,
+                nullptr, /* file data */
+                strEcncryptionKey,
+                make_unique<::FileAttributes>(fileAttributes),
+                false /* isWrite */);
         }
     }
 }
