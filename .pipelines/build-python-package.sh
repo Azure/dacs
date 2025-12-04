@@ -114,7 +114,7 @@ if [ "$PUBLISH_FLAG" = true ]; then
     # Publish to feed (without --skip-existing as Azure Artifacts doesn't support it)
     $PYTHON_CMD -m twine upload \
       --repository-url internal-reference-removed \
-      --username "DACS" \
+      --username "internal" \
       --password "$AZURE_DEVOPS_EXT_PAT" \
       dist/*.whl
     

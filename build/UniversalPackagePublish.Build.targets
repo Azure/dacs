@@ -45,7 +45,7 @@
     <Message Importance="high"  text="Publishing Python wheel package for dacs-client" />
     <PropertyGroup>
       <PythonPackageDir>$(MSBuildThisFileDirectory)..\src\subsystems\storage\py_dacs_cache_client</PythonPackageDir>
-      <PyPIFeedUrl>$(AzOrganization)$(AzProject)/_packaging/$(PyPIFeedName)/pypi/upload/</PyPIFeedUrl>
+      <PyPIFeedUrl>internal-reference-removed)/$(AzProject)/_packaging/$(PyPIFeedName)/pypi/upload/</PyPIFeedUrl>
     </PropertyGroup>
     
     <!-- Check for python3 or python -->
