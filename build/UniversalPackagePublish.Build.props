@@ -5,5 +5,6 @@
     <AzOrganization>internal-reference-removed</AzOrganization>
     <AzProject>dacs</AzProject>
     <AzArtifactFeed>Storage-Cache-Feed</AzArtifactFeed>
+    <PyPIFeedName>Storage-Cache-Feed</PyPIFeedName>
   </PropertyGroup>
 </Project>
