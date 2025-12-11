@@ -1,4 +1,4 @@
-.PHONY: help build clean test images deploy-minikube clean-minikube perf-client storage-intercept-client
+.PHONY: help build clean test test-go test-native images deploy-minikube clean-minikube perf-client storage-intercept-client helm-build helm-push
 
 help:
 	@echo "dacs Build"
@@ -15,6 +15,8 @@ help:
 	@echo "  make perf-client MODE=<upload|download> - Run performance client tests"
 	@echo "  make storage-intercept-client      	- Run storage intercept client tests"
 	@echo "  make clean-minikube                	- Delete Minikube cluster"
+	@echo "  make helm-build                    	- Build Helm chart package"
+	@echo "  make helm-push                     	- Build and push Helm chart to registry"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make test"
@@ -24,6 +26,8 @@ help:
 	@echo "  make perf-client MODE=upload"
 	@echo "  make perf-client MODE=download"
 	@echo "  make storage-intercept-client"
+	@echo "  make helm-build"
+	@echo "  BUILD_NUMBER=1.0.0 make helm-push"
 
 BUILD_TYPE ?= Debug
 BUILD_ARCH ?= amd64
@@ -48,11 +52,22 @@ clean:
 	fi
 	@echo "Clean complete."
 
-test:
+test: test-native test-go
+
+test-native:
+	@echo "Running native unit tests..."
 	@if [ "$(USE_CONTAINER)" = "1" ]; then \
 		BUILD_ARCH=$(BUILD_ARCH) ./bldenv.sh /bin/bash "./.pipelines/nativeunittest.sh $(BUILD_TYPE) $(TEST)"; \
 	else \
 		BUILD_ARCH=$(BUILD_ARCH) ./.pipelines/nativeunittest.sh $(BUILD_TYPE) $(TEST); \
+	fi
+
+test-go: 
+	@echo "Running Go unit tests..."
+	@if [ "$(USE_CONTAINER)" = "1" ]; then \
+		./bldenv.sh /bin/bash "./.pipelines/unittest_go.sh $(TEST)"; \
+	else \
+		./.pipelines/unittest_go.sh $(TEST); \
 	fi
 
 images:
@@ -60,6 +75,10 @@ images:
 	@BUILD_CONFIGURATION=$(BUILD_TYPE) BUILD_ARCH=$(BUILD_ARCH) ./.pipelines/scripts/build/copy-binaries.sh
 	@echo "Building Docker images..."
 	@./.pipelines/scripts/build/build-docker-images.sh
+
+publish-images:
+	@echo "Publishing Docker images..."
+	@./.pipelines/scripts/build/publish-images.sh
 
 deploy-minikube:
 ifndef SKIP_BUILD
@@ -89,3 +108,9 @@ storage-intercept-client:
 clean-minikube:
 	@echo "Deleting Minikube cluster..."
 	@minikube delete
+
+helm-build:
+	@./.pipelines/scripts/build/publish-helm-chart.sh
+
+helm-push:
+	@./.pipelines/scripts/build/publish-helm-chart.sh --push

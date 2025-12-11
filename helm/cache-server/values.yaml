@@ -1,16 +1,3 @@
-## global
-global:
-  registry: {{cnf["registry"]}}
-  prefix: {{cnf["prefix"]}}
-  version: {{cnf["version"]}}
-
-## settings from Azure
-Azure:
-  containerRegistry:
-    repository:
-    username:
-    password:
-
 # -- Node selector for system pod assignment.
 nodeSelector:
   dacs.azure.com/processing-unit: system
@@ -19,18 +6,21 @@ nodeSelector:
 # Lab clusters: 
 # Partner cloud clusters: 
 # Azure clusters: 
-dacsManagedById: "" # The default value is for Azure clusters
+managedById : ""
 
 ## Core Components Start
 cacheServer:
-  enabled: false
-  image: cache-server
+  enabled: true
+  image: 
+    repository: acstor/dacs-server
+    tag: ""
+    imagePullPolicy: IfNotPresent
   identifier: ""
-  numServers: 1
-  serverSizeInGB: 1
-  serverThreads: 4
-  cpuLimit: 1
-  memoryLimitMB: 400
+  numServers: 3
+  serverSizeInGB: 4
+  serverThreads: 80
+  cpuLimit: 4
+  memoryLimitMB: 3200
   evictionEnabled: true
   evictionLastAccessThreshold: 30d
   evictionSizeThreshold: 90
@@ -39,8 +29,8 @@ cacheServer:
   evictionMaintainFreeSpace: true
   evictionSizeTarget: 80
   mountSsdPath: /host/mnt/ssd0
-  port: 9165
-  metricsPort: 9196
+  port: 9065
+  metricsPort: 9096
   useEphemeralStorage: false
   ibResourceCountLimit: 0
   enableTrafficControl: true # If true, traffic control will be enabled for the cacheserver pods
@@ -50,10 +40,12 @@ cacheServer:
   useHostPath: true # If true, PV/PVC will not be created and cacheserver pods will use hostPath for storage
   scheduler:
     enabled: true
-    image: cacheserver-scheduler
+    image:
+      repository: acstor/dacs-scheduler
+      tag: ""
+      imagePullPolicy: IfNotPresent
     debugLevel: "info"
     schedulerPollInterval: 15s
-    cacheserverNamespace: cache-server
     enableSchedulerCoordination: true
 
 ## Core Components end

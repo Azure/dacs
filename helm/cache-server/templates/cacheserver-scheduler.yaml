@@ -74,15 +74,17 @@ spec:
     metadata:
       labels:
         app: cacheserver-scheduler
-        kubernetes.azure.com/managedby: {{ .Values.dacsManagedById }}
+{{- if .Values.managedById  }}
+        kubernetes.azure.com/managedby: {{ .Values.managedById  }}
+{{- end }}
     spec:
       nodeSelector:
         {{- toYaml .Values.nodeSelector | nindent 8 }}
       serviceAccount: cacheserver-scheduler
       containers:
         - name: cacheserver-scheduler
-          image: {{ include "amlArcExtension.getImage" (dict "image" .Values.cacheServer.scheduler.image "Values" .Values) }}
-          imagePullPolicy: Always
+          image: "{{ .Values.cacheServer.scheduler.image.repository }}:{{ .Values.cacheServer.scheduler.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.cacheServer.scheduler.image.imagePullPolicy | default "IfNotPresent" }}
           env:
           - name: CACHESERVER_SCHEDULER_LOGLEVEL
             value: {{ .Values.cacheServer.scheduler.debugLevel | quote }}
@@ -91,7 +93,7 @@ spec:
           - name: CACHESERVER_SCHEDULER_PROCESSINGUNITLABELKEY
             value: {{ .Values.cacheServer.nodeSelectorLabelKey | quote }}
           - name: CACHESERVER_SCHEDULER_CACHESERVERNAMESPACE
-            value: {{ .Values.cacheServer.scheduler.cacheserverNamespace | quote }}
+            value: {{ .Values.cacheServer.scheduler.cacheserverNamespace | default .Release.Namespace | quote }}
           - name: CACHESERVER_SCHEDULER_ENABLESCHEDULERCOORDINATION
             value: {{ .Values.cacheServer.scheduler.enableSchedulerCoordination | quote }}
           - name: CACHESERVER_SCHEDULER_ISHOSTPATHMOUNTENABLED

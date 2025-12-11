@@ -14,7 +14,7 @@ fi
 
 # Cluster configuration (with defaults from config or hardcoded)
 CLUSTER_NAME="${CLUSTER_NAME:-minikube}"
-NUM_NODES="${MINIKUBE_NODES:-4}"
+NUM_NODES="${MINIKUBE_NODES:-5}"
 MEMORY="${MINIKUBE_MEMORY:-2048}"
 CPUS="${MINIKUBE_CPUS:-2}"
 
@@ -33,8 +33,19 @@ echo "Cluster created successfully!"
 
 # Label nodes for cache server pod scheduling
 echo "Labeling nodes for cache server scheduling..."
-for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  kubectl label nodes "$node" dacs.azure.com/processing-unit=cpu --overwrite
+NODES=($(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'))
+FIRST_NODE=true
+for node in "${NODES[@]}"; do
+  if $FIRST_NODE; then
+    # First node is system node for scheduler
+    kubectl label nodes "$node" dacs.azure.com/processing-unit=system --overwrite
+    echo "Labeled $node as system node"
+    FIRST_NODE=false
+  else
+    # Other nodes are cpu nodes for cache servers
+    kubectl label nodes "$node" dacs.azure.com/processing-unit=cpu --overwrite
+    echo "Labeled $node as cpu node"
+  fi
 done
 
 # Create the required directory on all nodes
@@ -52,7 +63,7 @@ done
 # Show node labels
 echo ""
 echo "Node labels:"
-kubectl get nodes --show-labels | grep dacs.azure.com/processing-unit
+kubectl get nodes --show-labels | grep -E "(dacs\.azure\.com/processing-unit|dacs\.azure\.com/processing-unit)"
 
 echo ""
 echo "Cluster setup complete!"

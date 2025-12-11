@@ -210,8 +210,9 @@ make images                   # Build CacheServer and CacheClient images
 ```
 
 Uses locally built binaries from the `bin/` directory. Images are tagged as:
-- `cache-server:latest`
-- `cache-client:latest`
+- `cache-server:local`
+- `cache-test-client:local`
+- `cacheserver-scheduler:local`
 
 ---
 

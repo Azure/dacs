@@ -37,7 +37,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
       - name: job
-        image: cacheclient:local
+        image: cache-test-client:local
         imagePullPolicy: Never
         command: ['/bin/bash', '-c']
         args: 
