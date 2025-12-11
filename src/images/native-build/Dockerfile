@@ -10,9 +10,17 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 COPY cmake $CMAKE_DEP_INSTALL_DIR/cmake/
 
-RUN \
+# Add Microsoft package repository for msft-golang
+ADD https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb /tmp/packages-microsoft-prod.deb
+
+RUN apt-get update && \
+    apt-get install -yq --no-install-recommends apt-transport-https ca-certificates && \
+    dpkg -i /tmp/packages-microsoft-prod.deb && \
+    rm /tmp/packages-microsoft-prod.deb && \
     apt-get update && \
-    apt-get install -yq python3 \
+    apt-get install -yq --no-install-recommends \
+    wget \
+    python3 \
     libjsoncpp-dev \
     libcurl4-openssl-dev \
     libibverbs-dev \
@@ -27,7 +35,6 @@ RUN \
     pciutils \
     cmake \
     docker.io \
-    wget \
     ethtool \
     pkg-config \
     iproute2 \
@@ -42,7 +49,6 @@ RUN \
     gnupg-agent \
     software-properties-common \
     lsb-release \
-    python3 \
     python3-dev \
     python3-pip \
     sudo \
@@ -54,14 +60,11 @@ RUN \
     clang \
     build-essential \
     gdb \
-    locales && \
+    locales \
+    python3-venv \
+    python3-setuptools \
+    msft-golang && \
     # Clean up package cache to save disk space
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-  
-RUN apt-get update && \
-    apt-get install -y python3-venv python3-pip python3-setuptools && \
-    # Clean up package cache after Python installation
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
@@ -94,19 +97,6 @@ RUN TARGETARCH=${TARGETARCH:-amd64} && \
     fi
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Architecture-specific Go installation
-RUN TARGETARCH=${TARGETARCH:-amd64} && \
-    if [ "$TARGETARCH" = "amd64" ]; then \
-        wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz && \
-        rm -rf /usr/local/go && tar -C /usr/local -xzf go1.20.5.linux-amd64.tar.gz && \
-        rm go1.20.5.linux-amd64.tar.gz; \
-    elif [ "$TARGETARCH" = "arm64" ]; then \
-        wget https://go.dev/dl/go1.20.5.linux-arm64.tar.gz && \
-        rm -rf /usr/local/go && tar -C /usr/local -xzf go1.20.5.linux-arm64.tar.gz && \
-        rm go1.20.5.linux-arm64.tar.gz; \
-    fi
-ENV PATH="/usr/local/go/bin:${PATH}"
-
 # Configure Git to trust mounted repository directories
 RUN git config --global --add safe.directory '*'
 
@@ -133,7 +123,7 @@ RUN set -ex && cd $CMAKE_DEP_INSTALL_DIR && \
              -DCMAKE_VERBOSE_MAKEFILE=ON \
              -G Ninja $CMAKE_DEP_INSTALL_DIR/cmake || exit 1; \
     fi && \
-    echo "=== Checking for build.ninja ===" && \
+    echo "=== Checking for build.ninja make===" && \
     test -f build.ninja || (echo "ERROR: build.ninja not generated!" && exit 1) && \
     # Build with reduced parallelism to avoid memory/space pressure
     ninja -j2 || exit 1 && \

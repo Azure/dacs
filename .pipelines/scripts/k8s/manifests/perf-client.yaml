@@ -45,7 +45,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
       - name: job
-        image: cacheclient:local
+        image: cache-test-client:local
         command: ['/app/PerfClient']
         args: ['--server-port', '9065', '--server-hostname', 'cacheserver-0.cacheserver.default.svc.cluster.local#cacheserver-1.cacheserver.default.svc.cluster.local#cacheserver-2.cacheserver.default.svc.cluster.local', '--num-threads', '1', '--data-size-GiB', '1', '--prefix', 'test', '--mode', 'MODE_PLACEHOLDER', '--num-iterations', '1', '--ib-enabled', 'false']
       restartPolicy: Never

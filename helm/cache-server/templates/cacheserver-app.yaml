@@ -14,7 +14,9 @@ spec:
     metadata:
       labels:
         app: cacheserver
-        kubernetes.azure.com/managedby: {{ .Values.dacsManagedById }}
+{{- if .Values.managedById  }}
+        kubernetes.azure.com/managedby: {{ .Values.managedById  }}
+{{- end }}
 {{- if and (not .Values.cacheServer.enableTrafficControl) .Values.cacheServer.egressBandwidthInGb }}
       annotations:
         kubernetes.io/egress-bandwidth: {{ .Values.cacheServer.egressBandwidthInGb }}G
@@ -45,8 +47,8 @@ spec:
 {{- end }}
       containers:
       - name: cacheserver
-        image: {{ include "amlArcExtension.getImage" (dict "image" .Values.cacheServer.image "Values" .Values) }}
-        imagePullPolicy: Always
+        image: "{{ .Values.cacheServer.image.repository }}:{{ .Values.cacheServer.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.cacheServer.image.imagePullPolicy | default "IfNotPresent" }}
         env:
         - name: CACHESERVER_THREADPOOL_SIZE
           value: {{ .Values.cacheServer.serverThreads | quote }}

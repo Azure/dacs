@@ -14,20 +14,23 @@ if [[ -f "$CONFIG_FILE" ]]; then
 fi
 
 # Image names (from config or defaults)
-CACHESERVER_IMAGE="${CACHE_SERVER_IMAGE:-cacheserver:local}"
-CACHECLIENT_IMAGE="${CACHE_CLIENT_IMAGE:-cacheclient:local}"
+CACHESERVER_IMAGE="${CACHE_SERVER_IMAGE:-cache-server:local}"
+CACHECLIENT_IMAGE="${CACHE_CLIENT_IMAGE:-cache-test-client:local}"
+CACHESERVER_SCHEDULER_IMAGE="${CACHE_SERVER_SCHEDULER_IMAGE:-cacheserver-scheduler:local}"
 
 echo "Building Docker images..."
 echo "Docker directory: $DOCKER_DIR"
 echo "Cache Server Image: $CACHESERVER_IMAGE"
 echo "Cache Client Image: $CACHECLIENT_IMAGE"
+echo "Cache Server Scheduler Image: $CACHESERVER_SCHEDULER_IMAGE"
 
 cd "$DOCKER_DIR"
 
 # Build Docker images from Dockerfiles
 docker build -f CacheServer.Dockerfile -t "$CACHESERVER_IMAGE" .
 docker build -f CacheClient.Dockerfile -t "$CACHECLIENT_IMAGE" .
+docker build -f CacheServerScheduler.Dockerfile -t "$CACHESERVER_SCHEDULER_IMAGE" "$REPOSITORY_ROOT/src/subsystems/storage/cache_server_scheduler"
 
 echo ""
 echo "Images built successfully"
-docker images | grep -E "(cacheserver|cacheclient)" | grep local
+docker images | grep -E "(cache-server|cache-test-client|cacheserver-scheduler)" | grep local
