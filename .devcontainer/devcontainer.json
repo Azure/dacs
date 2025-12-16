@@ -1,0 +1,70 @@
+{
+  "name": "DACS Native Build",
+  "build": {
+    "context": "../src/images/native-build",
+    "dockerfile": "../src/images/native-build/Dockerfile",
+    "args": {
+      "TARGETARCH": "amd64"
+    }
+  },
+  "runArgs": [
+    "--init",
+    "--privileged",
+    "--ipc=host",
+    "--memory=16g",
+    "--cpus=4"
+  ],
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "moby": true,
+      "dockerDashComposeVersion": "v2"
+    },
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": false,
+      "installOhMyZsh": false,
+      "username": "vscode",
+      "uid": "automatic",
+      "gid": "automatic"
+    }
+  },
+  "remoteUser": "vscode",
+  "overrideCommand": true,
+  "command": ["/bin/sh", "-c", "sleep infinity"],
+  "containerEnv": {
+    "USE_CONTAINER": "0"
+  },
+  "remoteEnv": {
+    "BUILD_TYPE": "Debug",
+    "PATH": "/venv/bin:${containerEnv:PATH}",
+    "CCACHE_DIR": "${containerWorkspaceFolder}/.ccache"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools",
+        "ms-python.python",
+        "ms-docker.docker",
+        "eamodio.gitlens",
+        "GitHub.copilot",
+        "GitHub.copilot-chat"
+      ],
+      "settings": {
+        "cmake.configureOnOpen": false,
+        "cmake.buildDirectory": "${workspaceFolder}/bin/Debug/native/storage",
+        "cmake.sourceDirectory": "${workspaceFolder}/src",
+        "cmake.generator": "Ninja",
+        "C_Cpp.default.compilerPath": "/usr/bin/clang++",
+        "C_Cpp.default.cppStandard": "c++17"
+      }
+    }
+  },
+  "mounts": [
+    "source=${localWorkspaceFolder}/bin,target=${containerWorkspaceFolder}/bin,type=bind,consistency=cached",
+    "source=${localWorkspaceFolder}/build,target=${containerWorkspaceFolder}/build,type=bind,consistency=cached",
+    "source=${localWorkspaceFolder}/.ccache,target=${containerWorkspaceFolder}/.ccache,type=bind,consistency=cached"
+  ],
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "initializeCommand": "docker info > /dev/null 2>&1 || echo 'Note: Ensure Docker Desktop is running on the host'"
+}

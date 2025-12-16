@@ -1,4 +1,5 @@
 #!/bin/bash
+BUILD_ARCH="${BUILD_ARCH:-amd64}"
 # This script is useful for running the E2E pytorch job with storage interceptor.
 # DL job parameters:
 # 1. Total number of nodes in the distributed DL job
@@ -13,9 +14,6 @@ SCRIPT_DIR="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 SCRIPT_NAME="$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")"
 REPOSITORY_ROOT="$(readlink -f ${SCRIPT_DIR}/../../../../../)"
 
-# Use RuntimeIdentifier from environment, fallback to linux-x64 if not set
-RUNTIME_IDENTIFIER=${RUNTIME_IDENTIFIER:-linux-x64}
-
 # ==================================================
 # Run DL job
 # ==================================================
@@ -27,7 +25,7 @@ _run_deep_learning_job()
     _NUM_DATALOADER_WORKERS=$4
     _ENABLE_FP16=$5
     
-    STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/obj/Debug/native/${RUNTIME_IDENTIFIER}/publish-storage/storage/libStorageIntercept.so"
+    STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/bin/${BUILD_ARCH}/Debug/native-storage/storage/libStorageIntercept.so"
     runTestCmd="LD_PRELOAD=${STORAGE_INTERCEPTOR} python3 resnet_distributed.py -n ${_NUM_NODES} -nr ${_GLOBAL_NODE_RANK} -g ${_NUM_GPUS} -w ${_NUM_DATALOADER_WORKERS}"
 
     if [ $_ENABLE_FP16 = true ]

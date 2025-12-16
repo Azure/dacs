@@ -1,4 +1,5 @@
 #!/bin/bash
+BUILD_ARCH="${BUILD_ARCH:-amd64}"
 
 # This script is an integration test to intercept the I/O related system calls
 # made from a test client via LD_PRELOAD and process the request from files present
@@ -9,9 +10,6 @@
 SCRIPT_DIR="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 SCRIPT_NAME="$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")"
 REPOSITORY_ROOT="$(readlink -f ${SCRIPT_DIR}/../../../../../)"
-
-# Use RuntimeIdentifier from environment, fallback to linux-x64 if not set
-RUNTIME_IDENTIFIER=${RUNTIME_IDENTIFIER:-linux-x64}
 
 # ==================================================
 # Help with usage
@@ -80,7 +78,7 @@ _test_runner()
         export DACS_LOG_OUTPUT_FILE="${REPOSITORY_ROOT}/dacsfs.log"
         export DACS_LOG_ERROR_FILE="${REPOSITORY_ROOT}/dacsfs.err"
 
-        STORAGE_FUSE_MOUNT="${REPOSITORY_ROOT}/bin/${build_configuration}/native-storage/storage/dacsfs"
+        STORAGE_FUSE_MOUNT="${REPOSITORY_ROOT}/bin/${build_configuration}/${BUILD_ARCH}/native-storage/storage/dacsfs"
 
         echo "Doing mount1"
         umount /mnt/quiverfs
@@ -225,10 +223,10 @@ then
     echo -n "127.0.{}.1" > /serverConfig/cache_server_endpoint_format
 fi
 
-STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${build_configuration}/native/${RUNTIME_IDENTIFIER}/publish-storage/storage/libStorageIntercept.so"
-LFS_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${build_configuration}/native/${RUNTIME_IDENTIFIER}/publish/libLfsIntercept.so"
+STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/bin/${build_configuration}/${BUILD_ARCH}/native-storage/storage/libStorageIntercept.so"
+LFS_INTERCEPTOR="${REPOSITORY_ROOT}/bin/${build_configuration}/${BUILD_ARCH}/native-storage/storage/libLfsIntercept.so"
 PYTHON_IO_TEST="${SCRIPT_DIR}/io_test.py"
-EXE_TEST="${REPOSITORY_ROOT}/bin/${build_configuration}/native-storage/storage/StorageInterceptIntegTest"
+EXE_TEST="${REPOSITORY_ROOT}/bin/${build_configuration}/${BUILD_ARCH}/native-storage/storage/StorageInterceptIntegTest"
 
 echo "$(readlink -f ${STORAGE_INTERCEPTOR})"
 echo "$(readlink -f ${EXE_TEST})"

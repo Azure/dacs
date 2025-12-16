@@ -1,4 +1,5 @@
 #!/bin/bash
+BUILD_ARCH="${BUILD_ARCH:-amd64}"
 # Ensure this script is sourced, not executed directly
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     echo "Error: This script should be sourced, not executed directly."
@@ -19,7 +20,7 @@ function __run_checksum_e2e_test__()
     echo "Checksum Validation & Performance Test (${checksum_algorithm^^})"
     echo "=================================================="
 
-    PERF_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${RUNTIME_IDENTIFIER}/publish-storage/storage/cache-test/PerfClient"
+    PERF_CLIENT_EXE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/cache-test/PerfClient"
     
     if [[ ! -f "${PERF_CLIENT_EXE}" ]]; then
         echo "ERROR: PerfClient executable not found at: ${PERF_CLIENT_EXE}"

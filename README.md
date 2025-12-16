@@ -1,235 +1,330 @@
-# DACS
+# dacs — Developer Guide
 
-This repository contains the native components of DACS, including device proxy, CRIU deduper, LFS interceptor and storage cache layer. 
-To set up you development enviornment, you can follow [this wiki](internal-reference-removed).
+This repository contains the storage cache layer components for DACS, including CacheServer, CacheClient, and StorageInterception libraries.
+
+## Prerequisites
+
+Before starting, ensure you have:
+- **Windows 11** or **Windows 10 version 2004+** (for WSL2 support)
+- **16GB RAM minimum** (recommended for building and testing)
+- **50GB free disk space**
+
+---
 
 ## Getting Started
 
-These steps need to be only run the first-time you setup your machine. Upon completion, you will have a copy of the project on your local machine for development and testing purposes.
+### 1. Clone Repository
 
-### Windows 10
+```bash
+cd ~
+git clone internal-reference-removed dacs
+cd dacs
+```
 
-1. Install Visual Studio 2019, .Net Core SDK, and (optional, but highly recommended!) Visual Studio Code
-    ```
-    Visual Studio 2019 Workloads: ASP.Net and web development, Azure Development, Python Development, Linux Development with C++ 
-    https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=Enterprise&rel=16
-    .Net Core SDK
-    https://dotnet.microsoft.com/download/dotnet-core/thank-you/sdk-3.0.100-windows-x64-installer
-    Visual Studio Code - (Default Install)
-    https://code.visualstudio.com/Download
-    ```
+**Authentication:** Git will prompt for credentials. Generate a Personal Access Token (PAT):
+1. Go to [Azure DevOps Personal Access Tokens](internal-reference-removed)
+2. Click "New Token"
+3. Set expiration and select **Code (Read & Write)** scope
+4. Copy the generated token
+5. When prompted:
+   - **Username**: Your Microsoft alias (e.g., `v-john`)
+   - **Password**: Paste the PAT token
 
-2. Install GIT and GIT LFS
-    ```
-    GIT Install
-    https://git-scm.com/download/win
-    - Take Defaults.
-    - Consider changing Git default editor to Visual Studio Code
-    ```
+**Note for WSL users:** Always clone into the Linux filesystem (`~` or `/home/username`), not Windows paths (`/mnt/c`), for better I/O performance.
 
-3. Clone the DACS repository
+---
 
-    ```
-    internal-reference-removed
-    Click 'Clone' (Upper Right of Page)
-    Under IDE, Select Visual Studio or Visual Studio Code
-    Follow Prompts to Login, Specify local path, Click Clone
-    ```
-    **Note**: The local path you designate will automatically include the 'DACS' subfolder. So if you choose 'c:\repo' as local path, the repository will be created under 'c:\repo\DACS'.
+## Development Environments
 
-4. Install Prerequisites (one time only)
-    ```
-    File Explorer => <path to repository root>\bldenvcmd.cmd
-    > git lfs install
-    > git config --global user.email "you@users.noreply.github.com"
-    > git config --global user.name "Your Name"
-    > powershell Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser
-    > powershell Install-Module -Name Az -AllowClobber -Scope CurrentUser
-    ```
+Choose **one** of the two options below. Both provide identical development experiences.
 
-5. Install Docker
-    ```
-    https://download.docker.com/win/stable/Docker%20Desktop%20Installer.exe
-    ```
+### Option 1: Devcontainer (Recommended for VS Code users)
 
+The devcontainer provides a pre-configured Docker-based development environment with all dependencies pre-installed.
 
-### Ubuntu 18.4
+**Prerequisites:**
+- [Docker Desktop for Windows](https://docs.docker.com/desktop/install/windows-install/) (Enable "Use WSL 2 based engine" in Settings)
+- [VS Code](https://code.visualstudio.com/Download)
+- [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
 
-1. Install GIT and GIT LFS
-    ```
-    $ sudo apt update
-    $ sudo apt install git
-    $ sudo apt install git-lfs
-    ```
+**Setup Steps:**
+1. Open the repository folder in VS Code
+2. Run Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → **"Dev Containers: Reopen in Container"**
+3. Wait for the container to build (~10-15 minutes on first run)
+4. VS Code will reload inside the container when ready
 
-2. Clone the DACS repository
-    ```
-    $ git clone https://github.com/Azure/dacs.git
-    ```
+**Before opening the devcontainer (host):**
+```bash
+git config --global user.email "you@example.com"
+git config --global user.name "Your Name"
+```
+This creates `%USERPROFILE%\.gitconfig` (Windows) or `$HOME/.gitconfig` (Linux/macOS) so the devcontainer Git config mount succeeds.
 
-4. Install Prerequisites
-    ```
-    $ cd <path to repository root>
-    $ git lfs install
-    $ git config --global user.email "you@users.noreply.github.com"
-    $ git config --global user.name "Your Name"
-    ```
+**Note on Docker/Minikube in devcontainer:**
+- The devcontainer uses **Docker-in-Docker (DinD)**, providing an isolated Docker daemon inside the container.
+- This enables `make build` and `make images` to work reliably.
+- Docker images built inside the devcontainer are **isolated from the host** (separate Docker daemon).
+- **Minikube may work in devcontainer** but can be slow or unstable with multi-node clusters due to nested virtualization.
+- **Recommended workflow:** Build and test in devcontainer, run `make deploy-minikube` on WSL host for best reliability.
 
-5. Install and Login with Visual Studio Credential Provider
-    ```
-    $ cd <path to repository root>
-    $ curl -s https://raw.githubusercontent.com/microsoft/artifacts-credprovider/master/helpers/installcredprovider.sh | sudo bash
-    $ dotnet restore --interactive /p:NugetInteractive="true"  (follow device login link to complete signin)
-    ```
+**Verification:**
+```bash
+# Inside the devcontainer terminal
+docker --version
+go version
+make --version
+```
 
-6. Install Visual Studio Code (optional, but highly recommended!)
-    ```
-    Visual Studio Code
-    https://code.visualstudio.com/Download
-    ```
+All dependencies (Docker, Go, Rust, build tools, Kubernetes tools) are pre-installed in the container image.
 
-## Build
-These are the steps used to compile the DACS project.
+---
 
-### Windows 10
+### Option 2: Local WSL2 Setup (Recommended for terminal users)
 
-- Building from Visual Studio IDE
-    ```
-    File Explorer => <path to repository root>\bldenvide.cmd
-    Build Menu => Build Solution
-    ```
-- or, Building from Command Prompt
-    ```
-    File Explorer => <path to repository root>\bldenvcmd.cmd
-    > type 'b'
-    ```
+For developers who prefer working directly in WSL2 without VS Code.
 
-### Ubuntu 18.4
+**Prerequisites:**
+- Windows with WSL2 enabled
+- Ubuntu 22.04 or Ubuntu 24.04 installed in WSL2
 
-- Building from Command Prompt
-   ```
-   $ cd <path to repository root>
-   $ ./bldenv.sh
-   $ build_type=[Release|Debug] && .pipelines/restore.sh $build_type -p:NuGetInteractive="true" && .pipelines/build.sh $build_type
-   ```
+**Step 1: Configure WSL2 Resources**
 
-## Run C# unit tests 
-These are the steps used to run C# unit tests.
+Create or edit `%USERPROFILE%\.wslconfig` on Windows (use Notepad):
+```ini
+[wsl2]
+memory=16GB
+processors=4
+swap=4GB
 
-### Windows 10
+[boot]
+systemd=true
+```
 
-- Run from Command Prompt
-    ```
-    File Explorer => <path to repository root>\bldenvcmd.cmd
-    > type 'ut'
-    ```
+Restart WSL to apply changes:
+```powershell
+# In PowerShell or CMD (as Administrator)
+wsl --shutdown
+```
 
-### Ubuntu 18.4
+Wait 10 seconds, then restart WSL:
+```powershell
+wsl -d Ubuntu-22.04
+```
 
-- Run from Command Prompt
-    ```
-   $ cd <path to repository root>
-   $ ./bldenv.sh
-   $ .pipelines/nativeunittest.sh [Release|Debug] [optional_name_of_unittest_to_run]
-   ```
+**Step 2: Install Dependencies**
 
-## Run native unit tests 
-These are the steps used to run native unit tests.
+Navigate to the cloned repository and run the installation script:
 
-### Windows 10
+```bash
+cd ~/dacs
+chmod +x dev-setup.sh
+./dev-setup.sh
+```
 
-- Run from Command Prompt
-    ```
-    File Explorer => <path to repository root>\bldenvcmd.cmd
-    > type 'nut'
-    ```
+This script installs (~5 minutes):
+- Build tools: `build-essential`, `cmake`, `ninja-build`, `clang`, `make`, `git`, `git-lfs`
+- Docker and Docker CLI
+- Kubernetes tools: `minikube`, `kubectl`, `helm`
 
-### Ubuntu 18.4
+**Step 3: Restart WSL Session (Required for Docker permissions)**
 
-- Run from Command Prompt
-    ```
-   $ cd <path to repository root>
-   $ ./bldenv.sh
-   $ .pipelines/nativeunittest.sh [Release|Debug] [optional_name_of_unittest_to_run]
-   ```
+```bash
+exit
+```
 
-## Publishing packages
+Then in PowerShell/CMD:
+```powershell
+wsl -d Ubuntu-22.04
+```
 
-- Publish for current architecture (auto-detects)
-    ```
-   $ cd <path to repository root>
-   $ .pipelines/publish.sh Debug
-   ```
+Navigate back to the project:
+```bash
+cd ~/dacs
+```
 
-- Publish for specific architecture
-    ```
-   $ cd <path to repository root>
-   $ .pipelines/publish.sh Debug arm64   # For ARM64 architecture
-   $ .pipelines/publish.sh Debug x64     # For x86-64 architecture
-   ```
+**Verification:**
+```bash
+docker --version    # Should work without sudo
+go version
+make --version
+```
 
-- Publish Release builds
-    ```
-   $ cd <path to repository root>
-   $ .pipelines/publish.sh Release arm64
-   $ .pipelines/publish.sh Release x64
-   ```
+---
 
-**Note**: ARM64 builds automatically exclude the reliability subsystem components that are x86-specific.
+## Building and Testing
 
-## Updating native build container
+All commands work identically in both devcontainer and WSL environments.
 
-- Run from Command Prompt (auto-detects architecture)
-    ```
-   $ cd <path to repository root>
-   $ dotnet restore src/images/native-build/native-build.dockerproj
-   $ dotnet msbuild -M -t:ContainerPublish src/images/native-build/native-build.dockerproj
-   ```
+### Quick Start
 
-- Override architecture if needed
-    ```
-   $ cd <path to repository root>
-   $ dotnet restore src/images/native-build/native-build.dockerproj
-   $ dotnet msbuild -M -t:ContainerPublish src/images/native-build/native-build.dockerproj -p:BuildArchitecture=arm64
-   ```
+```bash
+# From repository root
+make build                    # Build all components (Debug build, ~15-20 mins first time)
+make test                     # Run unit tests (~2 mins)
+make images                   # Build Docker images (~5 mins)
+```
 
-- Make sure that the final update to build/.metadata/native-build.container.metadata is included in your PR.
+**First Build Note:** The initial `make build` takes 15-20 minutes because it:
+- Builds the `native-build:dev` Docker image with all dependencies
+- Downloads and compiles external dependencies (protobuf, spdlog, etc.)
+- Compiles all C++ source files
 
+Subsequent builds are incremental and much faster (~2-5 minutes).
 
-## AMD support guidelines
+### Build Commands
 
-DACS supports builds for both NVIDIA and AMD. Most code is written for NVIDIA's CUDA APIs,
-and during build, the code is translated to AMD's HIP APIs.
-This works well for most cases, but there are some cases where the code is not compatible with AMD's HIP APIs.
-If you get compilation errors, here's what you can do:
+```bash
+make build                    # Debug build (default)
+make build BUILD_TYPE=Release # Release build (optimized, smaller binaries)
+make clean                    # Remove build artifacts
+```
 
-### The build process:
+**Binary Output Locations:**
+- Debug: `bin/Debug/native-storage/storage/`
+- Release: `bin/Release/native-storage/storage/`
 
-1. When building for AMD, the build script copies the entire `src` tree to `bin/amd_code_copy`.
-1. Then, the tool located at `.pipelines/amd/code_translation.py` runs `hipify-perl`
-   and some custom logic on all the files in `bin/amd_code_copy` to translate CUDA APIs to HIP APIs (eg. `cudaMemcpy` to `hipMemcpy`).
-1. Then, the code is compiled against ROCm's HIP APIs.
+**Key Binaries:**
+- `CacheServer` - Main cache server executable
+- `CacheClient` - Cache client library test binary
+- `libStorageIntercept.so` - Storage interception shared library
+- `StorageInterceptUnitTests` - Unit test binary
 
-### Resolving issues:
+### Unit Tests
 
-If you get compilation errors, you can look at the files in `bin/amd_code_copy` to see what the code looks like after translation.
-Sometimes, AMD's APIs are not compatible with NVIDIA's APIs, and you will have to write custom code for AMD - by keeping a common
-file for both AMD and NVIDIA, and writing AMD-specific and NVIDIA-specific code in a separate file. Then, in the CMake file for the project,
-you will need to use the `GPU_TYPE` CMake variable to specify the correct version to be picked up during compilation. See `/home/divagrawal/DACS/src/subsystems/reliability/device_proxy/CMakeLists.txt` as an examle.
+```bash
+make test                                   # Run all unit tests
+make test TEST=FileLogger                   # Filter by test name (partial match)
+make test TEST=Cache                        # Run cache-related tests
+make test TEST=StorageInterceptUnitTests    # Run specific test binary
+```
 
-- For example, you can look at `src/subsystems/reliability/device_proxy/profiler/gpu_profiler/` to see how we have support for both NVIDIA
-  and AMD profiling.
-- Usually, you will find the need to write separate files for API mocking.
-- We avoid using `#ifdef AMD_BUILD` as much as possible, and instead use separate files for AMD and NVIDIA.
-  We also try to keep as much logic common to both as possible.
+**Common Test Filters:**
+- `TEST=CacheServer` - Cache server tests
+- `TEST=StorageIntercept` - Storage interception tests
+- `TEST=Snapshot` - Snapshot functionality tests
 
-### Examples:
+### Build Docker Images
 
-- Even though some APIs look similar, they may not be compatible. For example, `hipLaunchCooperativeKernel` is not compatible with
-  `cudaLaunchCooperativeKernel` due a slight difference in their signatures.
-- Some macros to reduce code duplication are present in `src/subsystems/reliability/device_proxy/common/{amd/nvidia}/commonUtils.h`.
-- See the `nvidia` and `amd` directories in `src/subsystems/reliability/device_proxy/proxy_server/elasticity_utils/nvidia/kernel_utils` for
-  how subtle differences in API support are resolved.
-- Some concepts don't exist in AMD. For example, cuDNN is an NVIDIA-specific library. To prevent major refactoring in the code base, we created empty structs and enumns for 
-  cuDNN ( which gets translated to hipIgnore by our custom python translator ), so that the code can compile but remain no-op.
-  See `src/subsystems/reliability/device_proxy/common/amd/hipIgnore.h and hipIgnoreEnums.h`. If in the future, a new NVIDIA-only lib is added, a similar approach could be considered.
+```bash
+make images                   # Build CacheServer and CacheClient images
+```
+
+Uses locally built binaries from the `bin/` directory. Images are tagged as:
+- `cache-server:latest`
+- `cache-client:latest`
+
+---
+
+## Local Kubernetes Deployment
+
+Deploy CacheServer to a local Minikube cluster for integration and end-to-end testing.
+
+**Note:** `make deploy-minikube` is **recommended to run on the WSL host** (not inside the devcontainer) due to potential networking issues with multi-node minikube clusters in nested Docker environments. You can still build and test components inside the devcontainer, but deployment to Kubernetes should be done on the host.
+
+### Deploy to Minikube
+
+```bash
+make deploy-minikube                  # Build, create cluster, deploy, and run tests (~10-15 mins)
+make deploy-minikube SKIP_BUILD=1     # Deploy only (skip build/images, ~5 mins)
+```
+
+**What this does:**
+1. Creates a 4-node Minikube cluster (if not exists)
+2. Loads Docker images into Minikube
+3. Deploys CacheServer with 3 replicas using Helm charts
+4. Configures port forwarding (localhost:9091 → CacheServer)
+5. Runs performance client tests
+
+**Minikube Cluster Details:**
+- Nodes: 4 (1 control plane + 3 workers)
+- CPUs per node: 2
+- Memory per node: 2GB
+- Driver: Docker
+
+### Integration Tests
+
+**Prerequisites:** CacheServer must be deployed (`make deploy-minikube`) before running integration tests.
+
+```bash
+# Performance tests
+make perf-client MODE=upload          # Test upload performance
+make perf-client MODE=download        # Test download performance
+
+# Storage intercept test
+make storage-intercept-client         # Test storage intercept functionality
+```
+
+**Storage Intercept Configuration:** Edit `scripts/k8s/config/storageIntercept.config` with your Azure Storage credentials:
+```bash
+# Example configuration
+STORAGE_ACCOUNT=mystorageaccount
+CONTAINER_NAME=mycontainer
+SAS_TOKEN=sv=2021-06-08&ss=...
+```
+
+Generate a SAS token from [Azure Portal](https://portal.azure.com) → Storage Account → Shared access signature.
+
+### Configuration Files
+
+- **Minikube cluster settings**: `scripts/k8s/config/local.config`
+- **Storage intercept settings**: `scripts/k8s/config/storageIntercept.config`
+- **Helm values**: `helm/cache-server/values.yaml`
+
+### Clean Up
+
+```bash
+make clean-minikube           # Delete Minikube cluster and free resources
+```
+
+**When to clean up:**
+- After testing is complete
+- Before switching branches
+- If cluster becomes unstable
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+**1. "permission denied while trying to connect to Docker socket"**
+```bash
+# WSL only: Restart WSL session after running dev-setup.sh
+exit
+wsl -d Ubuntu-22.04
+cd ~/dacs
+```
+
+**2. "make build" fails with "No space left on device"**
+```bash
+# Clean up Docker
+docker system prune -a -f
+# Clean build artifacts
+make clean
+# Rebuild
+make build
+```
+
+**3. "Permission denied" on .pb.cc files during build**
+```bash
+# Fix ownership of generated protobuf files
+sudo chown -R vscode:vscode src/ build/
+# Clean and rebuild
+make clean
+make build
+```
+
+**4. "Image 'native-build:dev' failed to build"**
+```bash
+# Delete existing image and rebuild
+docker rmi native-build:dev
+make build
+```
+
+**5. Minikube fails to start**
+```bash
+# Delete and recreate cluster
+make clean-minikube
+make deploy-minikube
+```
+---

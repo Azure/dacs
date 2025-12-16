@@ -15,21 +15,20 @@ fi
 # Cluster configuration (with defaults from config or hardcoded)
 CLUSTER_NAME="${CLUSTER_NAME:-minikube}"
 NUM_NODES="${MINIKUBE_NODES:-4}"
-MEMORY="${MINIKUBE_MEMORY:-4096}"
-CPUS="${MINIKUBE_CPUS:-4}"
+MEMORY="${MINIKUBE_MEMORY:-2048}"
+CPUS="${MINIKUBE_CPUS:-2}"
 
 echo "Cluster config: $NUM_NODES nodes, ${MEMORY}MB RAM, $CPUS CPUs"
 
-# Check if cluster already exists
+# Check if cluster already exists and delete it
 if minikube profile list 2>/dev/null | grep -q "$CLUSTER_NAME"; then
-  echo "Minikube cluster already exists. Skipping creation..."
-  echo "To delete the existing cluster, run: make clean-minikube"
-  minikube status
-  exit 0
+  echo "Existing Minikube cluster found. Deleting it..."
+  minikube delete
+  echo "Cluster deleted successfully!"
 fi
 
 echo "Creating Minikube cluster with $NUM_NODES nodes..."
-minikube start --nodes="$NUM_NODES" --memory="$MEMORY" --cpus="$CPUS" --driver=docker
+minikube start --nodes="$NUM_NODES" --memory="$MEMORY" --cpus="$CPUS" --driver=docker --force
 echo "Cluster created successfully!"
 
 # Label nodes for cache server pod scheduling
