@@ -336,6 +336,7 @@ ssize_t StreamingClient::WriteFile(
             remotePath,
             writeOffset,
             fileSize);
+        errno = EOPNOTSUPP;  // Operation not supported
         return -1;
     }
 
