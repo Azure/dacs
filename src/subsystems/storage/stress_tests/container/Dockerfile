@@ -36,12 +36,12 @@ RUN mkdir -p /app/_cacheTemp
 
 COPY src/subsystems/storage/stress_tests/launcher.py /app/launcher.py
 COPY src/subsystems/storage/stress_tests/StorageClient.py /app/StorageClient.py
-COPY bin/Release/native-storage/storage/CacheStorageClient /app/CacheStorageClient
-COPY bin/Release/native-storage/storage/DeleteClient /app/DeleteClient
-COPY bin/Release/native-storage/storage/PerfClient /app/PerfClient
+COPY bin/Release/amd64/native-storage/storage/CacheStorageClient /app/CacheStorageClient
+COPY bin/Release/amd64/native-storage/storage/DeleteClient /app/DeleteClient
+COPY bin/Release/amd64/native-storage/storage/PerfClient /app/PerfClient
 COPY src/subsystems/storage/stress_tests/storageIntercept.config /tmp/storageIntercept.config
 COPY obj/Release/native/linux-x64/publish-storage/storage/libStorageIntercept.so /app/lib/libStorageIntercept.so
 
-COPY /bin/Release/native-storage/storage/rslex-fuse-cli /app/rslex-fuse-cli
-COPY /bin/Release/native-storage/storage/dacsfs /app/dacsfs
+COPY /bin/Release/amd64/native-storage/storage/rslex-fuse-cli /app/rslex-fuse-cli
+COPY /bin/Release/amd64/native-storage/storage/dacsfs /app/dacsfs
 COPY src/subsystems/storage/py_dacs_cache_client /app/py_dacs_cache_client

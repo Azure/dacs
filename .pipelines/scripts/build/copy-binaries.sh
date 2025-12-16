@@ -5,47 +5,40 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 BUILD_CONFIGURATION="${BUILD_CONFIGURATION:-Debug}"
+BUILD_ARCH="${BUILD_ARCH:-amd64}"
 
 DOCKER_STORAGE="$REPOSITORY_ROOT/Docker/storage"
 CACHE_TEST="$DOCKER_STORAGE/cache-test"
-BINARIES_PATH="$REPOSITORY_ROOT/bin/$BUILD_CONFIGURATION/native-storage/storage"
-OBJ_PATH="$REPOSITORY_ROOT/obj/$BUILD_CONFIGURATION/native/linux-x64/publish-storage/storage"
+BINARIES_PATH="$REPOSITORY_ROOT/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage"
 STRESS_TESTS_PATH="$REPOSITORY_ROOT/src/subsystems/storage/stress_tests"
 
 echo "Build configuration: $BUILD_CONFIGURATION"
+echo "Build architecture: $BUILD_ARCH"
 echo "Copying binaries from: $BINARIES_PATH"
-echo "Alternative path: $OBJ_PATH"
 echo "Destination: $DOCKER_STORAGE"
 
-# Detect binary location (try primary and fallback paths)
-FOUND_BINARIES=""
-if [ -d "$BINARIES_PATH" ] && [ -f "$BINARIES_PATH/CacheServer" ]; then
-  FOUND_BINARIES="$BINARIES_PATH"
-elif [ -d "$OBJ_PATH" ] && [ -f "$OBJ_PATH/CacheServer" ]; then
-  FOUND_BINARIES="$OBJ_PATH"
-  echo "Using alternative binary path: $OBJ_PATH"
-else
-  echo "ERROR: Binaries not found in either location:"
-  echo "  Primary: $BINARIES_PATH"
-  echo "  Alternative: $OBJ_PATH"
+# Verify binaries exist
+if [ ! -d "$BINARIES_PATH" ] || [ ! -f "$BINARIES_PATH/CacheServer" ]; then
+  echo "ERROR: Binaries not found at $BINARIES_PATH"
   echo "Available files in bin directory:"
-  ls -la "$REPOSITORY_ROOT/bin/$BUILD_CONFIGURATION/" 2>/dev/null || echo "  Directory does not exist"
-  echo "Available files in obj directory:"
-  ls -la "$REPOSITORY_ROOT/obj/$BUILD_CONFIGURATION/" 2>/dev/null || echo "  Directory does not exist"
+  ls -la "$REPOSITORY_ROOT/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/" 2>/dev/null || echo "  Directory does not exist"
   exit 1
 fi
 
 # Set up Docker build directories
 mkdir -p "$DOCKER_STORAGE" "$CACHE_TEST"
 
+# Ensure write permissions for current user (fixes root-owned files from containers)
+chmod -R u+w "$DOCKER_STORAGE" 2>/dev/null || true
+
 # Copy server and client binaries to Docker context
-echo "Copying binaries from: $FOUND_BINARIES"
-cp "$FOUND_BINARIES/CacheServer" "$DOCKER_STORAGE/CacheServer"
-cp "$FOUND_BINARIES/LivenessProbe" "$DOCKER_STORAGE/LivenessProbe"
-cp "$FOUND_BINARIES/CacheStorageClient" "$CACHE_TEST/CacheStorageClient"
-cp "$FOUND_BINARIES/DeleteClient" "$CACHE_TEST/DeleteClient"
-cp "$FOUND_BINARIES/PerfClient" "$CACHE_TEST/PerfClient"
-cp "$OBJ_PATH/libStorageIntercept.so" "$DOCKER_STORAGE/libStorageIntercept.so"
+echo "Copying binaries from: $BINARIES_PATH"
+cp "$BINARIES_PATH/CacheServer" "$DOCKER_STORAGE/CacheServer"
+cp "$BINARIES_PATH/LivenessProbe" "$DOCKER_STORAGE/LivenessProbe"
+cp "$BINARIES_PATH/CacheStorageClient" "$CACHE_TEST/CacheStorageClient"
+cp "$BINARIES_PATH/DeleteClient" "$CACHE_TEST/DeleteClient"
+cp "$BINARIES_PATH/PerfClient" "$CACHE_TEST/PerfClient"
+cp "$BINARIES_PATH/libStorageIntercept.so" "$DOCKER_STORAGE/libStorageIntercept.so"
 
 # Copy Python test scripts and configuration files
 cp "$STRESS_TESTS_PATH/launcher.py" "$CACHE_TEST/launcher.py"

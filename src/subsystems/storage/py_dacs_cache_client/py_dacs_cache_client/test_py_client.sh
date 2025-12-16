@@ -1,4 +1,5 @@
 #!/bin/bash
+BUILD_ARCH="${BUILD_ARCH:-amd64}"
 # This script is useful for testing the python storage client
 
 # print commands and their arguments as they are executed
@@ -45,7 +46,7 @@ function start_cache_server() {
   done
   
   # Start cache server in the background and save pid
-  CACHE_SERVER_EXE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/native-storage/storage/CacheServer"
+  CACHE_SERVER_EXE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/CacheServer"
   TTL_WINDOW_IN_SECONDS=5
   CacheServerCommand="${CACHE_SERVER_EXE} ${CACHE_SERVER_PORT} ${CACHE_SERVER_PATH} 100000000000 10000000 ${TTL_WINDOW_IN_SECONDS}"
 

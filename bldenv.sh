@@ -10,29 +10,23 @@ if [ ! -t 0 ]; then
     TTY_OPTION=""
 fi
 
+# Allow explicit --no-tty flag to override
 if [ "$1" == "--no-tty" ]; then
     TTY_OPTION=""
     shift
 fi
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+WORKSPACE_NAME="$(basename "$DIR")"
 
-# Detect system architecture and use appropriate container
-ARCH=$(uname -m)
-case $ARCH in
-    x86_64)
-        nativeBuildRepository="dacs.azurecr.io/native-build"
-        nativeBuildLabel=$(grep native-build-imagelabel build/.metadata/native-build.container.metadata | awk -F= '{print $2}')
-        ;;
-    aarch64)
-        nativeBuildRepository="dacs.azurecr.io/native-build-arm64"
-        nativeBuildLabel=$(grep native-build-arm64-imagelabel build/.metadata/native-build-arm64.container.metadata | awk -F= '{print $2}')
-        ;;
-    *)
-        echo "Unsupported architecture: $ARCH"
-        exit 1
-        ;;
-esac
+# Use local native-build image
+nativeBuildImage="native-build:dev"
+
+# Ensure local image exists, build if missing
+if ! docker image inspect "$nativeBuildImage" >/dev/null 2>&1; then
+    echo "Image '$nativeBuildImage' not found. Building it now..."
+    docker build -f src/images/native-build/Dockerfile -t native-build:dev src/images/native-build
+fi
 
 # If arguments provided, run them; otherwise start interactive shell
 if [ $# -eq 0 ]; then
@@ -41,25 +35,19 @@ else
     CMD="$@"
 fi
 
-echo Running Native Build Container $nativeBuildRepository:$nativeBuildLabel
+echo Running Native Build Container $nativeBuildImage
 docker run \
     --rm \
     -i \
     --ipc host \
     $TTY_OPTION \
     --privileged \
-    --env VSS_NUGET_URI_PREFIXES \
-    --env VSS_NUGET_ACCESSTOKEN \
-    --env VSS_NUGET_EXTERNAL_FEED_ENDPOINTS \
     --env AZURE_DEVOPS_EXT_PAT \
     -v /etc/group:/etc/group:ro \
     -v /etc/passwd:/etc/passwd:ro \
     -v /etc/shadow:/etc/shadow:ro \
-    -v /root/.dotnet:/root/.dotnet \
     -v ~:/root \
-    -v $HOME:$HOME \
-    -v $DIR:$DIR\
+    -v $DIR:/workspaces/$WORKSPACE_NAME \
     -v /var/run/docker.sock:/var/run/docker.sock \
-    -v /usr/share/dotnet/sdk/NuGetFallbackFolder:/usr/share/dotnet/sdk/NuGetFallbackFolder \
-    -w $DIR \
-    $nativeBuildRepository:$nativeBuildLabel $CMD
+    -w /workspaces/$WORKSPACE_NAME \
+    $nativeBuildImage $CMD

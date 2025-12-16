@@ -1,0 +1,14 @@
+{
+  "cmake.configureOnOpen": false,
+  "cmake.buildDirectory": "${workspaceFolder}/bin/Debug/native/storage",
+  "cmake.sourceDirectory": "${workspaceFolder}/src",
+  "cmake.generator": "Ninja",
+  "C_Cpp.default.compilerPath": "/usr/bin/clang++",
+  "C_Cpp.default.cppStandard": "c++17",
+  "C_Cpp.default.intelliSenseEngine": "Tag Parser",
+  "files.exclude": {
+    "**/.git": true,
+    "**/bin": true,
+    "**/obj": true
+  }
+}

@@ -12,7 +12,6 @@ CLASSIFIERS = [
     'Development Status :: 5 - Production/Stable',
     'Intended Audience :: Developers',
     'Intended Audience :: Science/Research',
-    'License :: Other/Proprietary License',
     'Programming Language :: Python',
     'Programming Language :: Python :: 3 :: Only',
     'Programming Language :: Python :: 3.7',
@@ -57,14 +56,15 @@ class CustomPackageLogic(install):
 
             so_files_source = f'{setup_dir}/storage/libStorageIntercept.so'
             so_files_source_direct = f'{setup_dir}/storage/libStorageDirect.so'
-            # For new repo: Check if the library is in obj/{Configuration}/native/{arch}/publish-storage/storage/libStorageIntercept.so
-            so_new_repo_release = f'{setup_dir}/../../../../obj/Release/native/{build_arch}/publish-storage/storage/libStorageIntercept.so'
-            so_new_repo_debug = f'{setup_dir}/../../../../obj/Debug/native/{build_arch}/publish-storage/storage/libStorageIntercept.so'
-            so_new_repo_release_direct = f'{setup_dir}/../../../../obj/Release/native/{build_arch}/publish-storage/storage/libStorageDirect.so'
-            so_new_repo_debug_direct = f'{setup_dir}/../../../../obj/Debug/native/{build_arch}/publish-storage/storage/libStorageDirect.so'
-            # For old pipeline: Check if the required library is in C:\__w\1\s\bin\Release\storage\publish\az-dacs-storage-official\storage\libStorageIntercept.so
-            so_pipeline_files_source = f'{setup_dir}/../../../../../../bin/Release/storage/publish/az-dacs-storage-official/storage/libStorageIntercept.so'
-            so_pipeline_files_source_direct = f'{setup_dir}/../../../../../../bin/Release/storage/publish/az-dacs-storage-official/storage/libStorageDirect.so'
+            
+            # Determine architecture for bin path
+            arch_for_bin = 'amd64' if 'x64' in build_arch else 'arm64'
+            
+            # bin/<config>/<arch>/native-storage/storage/
+            so_new_repo_release = f'{setup_dir}/../../../../bin/Release/{arch_for_bin}/native-storage/storage/libStorageIntercept.so'
+            so_new_repo_debug = f'{setup_dir}/../../../../bin/Debug/{arch_for_bin}/native-storage/storage/libStorageIntercept.so'
+            so_new_repo_release_direct = f'{setup_dir}/../../../../bin/Release/{arch_for_bin}/native-storage/storage/libStorageDirect.so'
+            so_new_repo_debug_direct = f'{setup_dir}/../../../../bin/Debug/{arch_for_bin}/native-storage/storage/libStorageDirect.so'
 
             # Copy libStorageIntercept.so
             if os.path.isfile(so_files_source):
@@ -76,15 +76,11 @@ class CustomPackageLogic(install):
             elif os.path.isfile(so_new_repo_debug):
                 shutil.copy(so_new_repo_debug, current_build_folder)
                 print(f"New Repo (Debug): Found & Copied {so_new_repo_debug} to {current_build_folder}")
-            elif os.path.isfile(so_pipeline_files_source):
-                shutil.copy(so_pipeline_files_source, current_build_folder)
-                print(f"Old Pipeline: Found & Copied {so_pipeline_files_source} to {current_build_folder}")
             else:
                 print(f"Warning !!! libStorageIntercept.so not found in:")
                 print(f"  - {so_files_source}")
                 print(f"  - {so_new_repo_release}")
                 print(f"  - {so_new_repo_debug}")
-                print(f"  - {so_pipeline_files_source}")
                 raise FileNotFoundError(f"libStorageIntercept.so not found in any expected location")
 
             # Copy libStorageDirect.so
@@ -97,15 +93,11 @@ class CustomPackageLogic(install):
             elif os.path.isfile(so_new_repo_debug_direct):
                 shutil.copy(so_new_repo_debug_direct, current_build_folder)
                 print(f"New Repo (Debug): Found & Copied {so_new_repo_debug_direct} to {current_build_folder}")
-            elif os.path.isfile(so_pipeline_files_source_direct):
-                shutil.copy(so_pipeline_files_source_direct, current_build_folder)
-                print(f"Old Pipeline: Found & Copied {so_pipeline_files_source_direct} to {current_build_folder}")
             else:
                 print(f"Warning !!! libStorageDirect.so not found in:")
                 print(f"  - {so_files_source_direct}")
                 print(f"  - {so_new_repo_release_direct}")
                 print(f"  - {so_new_repo_debug_direct}")
-                print(f"  - {so_pipeline_files_source_direct}")
                 # Commenting out the exception raise for libStorageDirect.so for now
                 # raise FileNotFoundError(f"libStorageDirect.so not found in any expected location")
             print('\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> End custom packaging logic')

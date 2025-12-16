@@ -1,7 +1,0 @@
-﻿<Project Sdk="Microsoft.Build.Traversal">
-  <ItemGroup>
-    <ProjectReference Include="native\native_publish.upackpublishproj" Condition=" '$(SKIP_NATIVE_BUILD)' != 'TRUE' " />
-    <ProjectReference Include="images\native-build\native-build.dockerproj" />
-    <ProjectReference Include="scripts\scripts.copyproj" />
-  </ItemGroup>
-</Project>

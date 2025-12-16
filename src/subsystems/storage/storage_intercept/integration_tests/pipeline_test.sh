@@ -54,35 +54,18 @@ else
   BUILD_CONFIGURATION=$1
 fi
 
-# 1.5 Runtime Architecture Auto-Detection
-# Auto-detect runtime identifier if not set
-if [ -z "${RUNTIME_IDENTIFIER}" ]; then
-    ARCH=$(uname -m)
-    case $ARCH in
-        x86_64)
-            RUNTIME_IDENTIFIER="linux-x64"
-            ;;
-        aarch64|arm64)
-            RUNTIME_IDENTIFIER="linux-arm64"
-            ;;
-        *)
-            echo "Warning: Unknown architecture $ARCH, defaulting to linux-x64"
-            RUNTIME_IDENTIFIER="linux-x64"
-            ;;
-    esac
-fi
-echo "Detected runtime identifier: $RUNTIME_IDENTIFIER"
+# 1.5 Build Architecture Detection
+BUILD_ARCH="${BUILD_ARCH:-amd64}"
 
 # 1.6 Python Virtual Environment Activation
 source /venv/bin/activate
 
 # 1.7 Storage Interceptor Library Path Configuration
-STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${RUNTIME_IDENTIFIER}/publish-storage/storage/libStorageIntercept.so"
+STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/libStorageIntercept.so"
 STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
 
-# 1.8 Export Environment Variables for Test Framework
+# 1.7 Export Environment Variables for Test Framework
 export STORAGE_INTERCEPT_USE_EXISTING_CONFIG=true
-export RUNTIME_IDENTIFIER
 
 #===============================================================================
 # SECTION 2: CONFIGURATION GENERATION FUNCTIONS
@@ -341,7 +324,7 @@ function start_cache_server() {
   done
   
   # Start cache server in the background and save pid
-  CACHE_SERVER_EXE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/native-storage/storage/CacheServer"
+  CACHE_SERVER_EXE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/CacheServer"
   CacheServerCommand="${CACHE_SERVER_EXE} ${CACHE_SERVER_PORT} ${CACHE_SERVER_PATH} 100000000000 10000000 1 $"
 
   echo "Starting CacheServer using command: ${CacheServerCommand}"
@@ -382,7 +365,7 @@ function stop_cache_server() {
 # Uses the LivenessProbe utility to verify server health
 function test_liveness() {
   export TEST_CACHESERVER_ADDR_PORT="${CACHE_SERVER_PORT}"
-  TEST_CLIENT_CMD="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${RUNTIME_IDENTIFIER}/publish-storage/storage/LivenessProbe"
+  TEST_CLIENT_CMD="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/LivenessProbe"
   echo "Starting Cache Server Liveness test with command: ${TEST_CLIENT_CMD}"
   eval "${TEST_CLIENT_CMD}"
   if [ $? -ne 0 ]
@@ -399,7 +382,7 @@ function test_liveness() {
 # Uses the cacheServerTestClient utility to validate server functionality
 function run_cacheserver_test() {
   export TEST_CACHESERVER_ADDR_PORT="${CACHE_SERVER_PORT}"
-  TEST_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${RUNTIME_IDENTIFIER}/publish-storage/storage/cacheServerTestClient"
+  TEST_CLIENT_EXE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/cacheServerTestClient"
   TEST_CLIENT_CMD="${TEST_CLIENT_EXE}"
 
   echo "Starting Cache Server Test with command: ${TEST_CLIENT_CMD}"
@@ -479,7 +462,7 @@ function __run_perf_benchmark__() {
     GIT_COMMIT_MESSAGE="$(git log -1 --pretty=%B | head -n 1)"
   fi
 
-  TEST_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${RUNTIME_IDENTIFIER}/publish-storage/storage/cacheServerTestClient "
+  TEST_CLIENT_EXE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/cacheServerTestClient "
   export TEST_CACHESERVER_ADDR_PORT="${CACHE_SERVER_PORT}"
 
   start_cache_server /dev/null
@@ -512,7 +495,7 @@ function __run_perf_benchmark__() {
 __run_perf_benchmark__
 
 echo "Running cache server unit tests"
-cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
+cd ${REPOSITORY_ROOT}/build/$BUILD_CONFIGURATION/$BUILD_ARCH
 eval "ctest -V --no-tests=error -j -1 -R CacheServer"
 if [ $? -ne 0 ]
 then
@@ -524,7 +507,7 @@ __verify_nologs_unintercepted_
 
 echo "Running unit tests against blob"
 add_interception_config_blob /mnt/dataPathIntcpt
-cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
+cd ${REPOSITORY_ROOT}/build/$BUILD_CONFIGURATION/$BUILD_ARCH
 eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
 if [ $? -ne 0 ]
 then
@@ -534,21 +517,25 @@ fi
 echo -e "Unit tests against blob passed\n\n"
 
 echo "Running go integration test against blob"
-add_interception_config_blob /mnt/quiverfs
-export SI_azBlobSASToken="incorrect-token"
+if command -v go >/dev/null 2>&1; then
+  add_interception_config_blob /mnt/quiverfs
+  export SI_azBlobSASToken="incorrect-token"
 
-# Run the test
-export DACS_PATH=${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${RUNTIME_IDENTIFIER}/publish-storage/storage/
-pushd ${SCRIPT_DIR}
-LD_LIBRARY_PATH=$DACS_PATH CGO_CFLAGS="-I $DACS_PATH/include" CGO_LDFLAGS="-L $DACS_PATH" go run main.go
-if [ $? -ne 0 ];
-then
-echo "Go integration test failed"
-exit 1
+  # Run the test
+  export DACS_PATH=${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/
+  pushd ${SCRIPT_DIR}
+  LD_LIBRARY_PATH=$DACS_PATH CGO_CFLAGS="-I $DACS_PATH/include" CGO_LDFLAGS="-L $DACS_PATH" go run main.go
+  if [ $? -ne 0 ];
+  then
+  echo "Go integration test failed"
+  exit 1
+  fi
+  popd
+  unset SI_azBlobSASToken
+  echo -e "Go integration test passed\n\n"
+else
+  echo "Go compiler not found. Skipping Go integration test."
 fi
-popd
-unset SI_azBlobSASToken
-echo -e "Go integration test passed\n\n"
 
 echo "Running integration test against blob with dynamic container mount"
 pip3 install h5py
@@ -583,7 +570,7 @@ start_cache_server /dev/null
 sleep 10
 
 # Ensure perf client is wired up correctly
-PERF_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${RUNTIME_IDENTIFIER}/publish-storage/storage/cache-test/PerfClient "
+PERF_CLIENT_EXE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/cache-test/PerfClient "
 random_prefix=$(date +%s)
 eval "${PERF_CLIENT_EXE} --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT} --num-threads 16 --data-size-GiB 1 --prefix ${random_prefix} --mode upload"
 if [ $? -ne 0 ]
@@ -600,7 +587,7 @@ then
 fi
 
 # Ensure eviction client is wired up correctly
-EVICTION_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${RUNTIME_IDENTIFIER}/publish-storage/storage/cache-test/PerfClient "
+EVICTION_CLIENT_EXE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/cache-test/PerfClient "
 eval "${EVICTION_CLIENT_EXE} --eviction-client --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT} --last-access-time "2024-04-02T20:00:00.000Z" | tee /tmp/eviction.log"
 if [ $? -ne 0 ]
 then
@@ -614,7 +601,7 @@ if ! grep -q "Successfully requested eviction" /tmp/eviction.log; then
 fi
 
 # Ensure last access distribution client is wired up correctly
-LAST_ACCESS_DISTRIBUTION_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${RUNTIME_IDENTIFIER}/publish-storage/storage/cache-test/PerfClient "
+LAST_ACCESS_DISTRIBUTION_CLIENT_EXE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/cache-test/PerfClient "
 eval "${LAST_ACCESS_DISTRIBUTION_CLIENT_EXE} --last-access-time-distribution-client --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT}  --distribution-bucket-size-in-hours 1 | tee /tmp/lastAccessDistribution.log"
 
 if [ $? -ne 0 ]
@@ -629,7 +616,7 @@ if ! grep -q "Successfully requested get last access distribution" /tmp/lastAcce
 fi
 
 echo "Running cache client lib test"
-cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
+cd ${REPOSITORY_ROOT}/build/$BUILD_CONFIGURATION/$BUILD_ARCH
 eval "ctest -V --no-tests=error -j -1 -R CacheClientLibTests"
 if [ $? -ne 0 ]
 then
@@ -641,9 +628,9 @@ echo -e "cache client lib unit test passed\n\n"
 echo "Running rust cache client integration test"
 
 pushd ${REPOSITORY_ROOT}/src/subsystems/storage/cache_client/rust_tests
-export LD_LIBRARY_PATH="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${RUNTIME_IDENTIFIER}/publish-storage-cache-client:${LD_LIBRARY_PATH}"
-export LIBRARY_PATH="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${RUNTIME_IDENTIFIER}/publish-storage-cache-client"
-export CACHE_CLIENT_LIB_DIR="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${RUNTIME_IDENTIFIER}/publish-storage-cache-client"
+export LD_LIBRARY_PATH="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage-cache-client:${LD_LIBRARY_PATH}"
+export LIBRARY_PATH="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage-cache-client"
+export CACHE_CLIENT_LIB_DIR="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage-cache-client"
 export CACHE_CLIENT_HEADER_FILE="${REPOSITORY_ROOT}/src/subsystems/storage/cache_client/CacheClient.h"
 
 eval "cargo run"
@@ -672,7 +659,7 @@ start_cache_server /dev/null
 sleep 10
 
 echo "Running cache client lib test with authentication enabled"
-cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
+cd ${REPOSITORY_ROOT}/build/$BUILD_CONFIGURATION/$BUILD_ARCH
 eval "ctest -V --no-tests=error -j -1 -R CacheClientLibTests"
 if [ $? -ne 0 ]
 then
@@ -721,7 +708,7 @@ run_cacheserver_test
 
 echo "Running unit tests against blob with cache enabled"
 add_interception_config_blob_with_cache /mnt/dataPathIntcpt
-cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
+cd ${REPOSITORY_ROOT}/build/$BUILD_CONFIGURATION/$BUILD_ARCH
 eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
 if [ $? -ne 0 ]
 then
@@ -752,7 +739,7 @@ echo -e "Blob Integration test with discovery cache enabled passed\n\n"
 
 echo "Running unit tests against blob with cache and encryption enabled"
 add_interception_config_blob_with_cache_encryption /mnt/dataPathIntcpt
-cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
+cd ${REPOSITORY_ROOT}/build/$BUILD_CONFIGURATION/$BUILD_ARCH
 eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
 if [ $? -ne 0 ]
 then
@@ -773,7 +760,7 @@ echo -e "Running integration test against blob with cache and encryption passed\
 
 echo "Running unit tests against blob with remote attribute and data cache enabled"
 add_interception_config_blob_with_remote_cache /mnt/dataPathIntcpt
-cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
+cd ${REPOSITORY_ROOT}/build/$BUILD_CONFIGURATION/$BUILD_ARCH
 ctest -V --no-tests=error -j -1 -R StorageIntercept
 if [ $? -ne 0 ]
 then
@@ -805,7 +792,7 @@ echo -e "Blob Integration test with multi-mount and remote attribute and data ca
 echo "Running unit tests against blob with local ssd cache"
 reset_local_ssd_cache
 add_interception_config_blob_with_localssdcache /mnt/dataPathIntcpt
-cd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
+cd ${REPOSITORY_ROOT}/build/$BUILD_CONFIGURATION/$BUILD_ARCH
 eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
 if [ $? -ne 0 ]
 then

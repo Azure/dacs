@@ -1,7 +1,8 @@
 # This sub-script is used to test the get distribution and delete apis based on last access time.
+BUILD_ARCH="${BUILD_ARCH:-amd64}"
 # Can not run independently, should be sourced by `storage_intercept/integration_tests/pipeline_test.sh`
 ########################################################################################################################
-TEST_CLIENT_EXE="${REPOSITORY_ROOT}/obj/${BUILD_CONFIGURATION}/native/${RUNTIME_IDENTIFIER}/publish-storage/storage/cacheServerTestClient"
+TEST_CLIENT_EXE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/cacheServerTestClient"
 ########################################################################################################################
 # Log every second while sleeping
 function __logsleep__()

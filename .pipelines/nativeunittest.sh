@@ -4,8 +4,11 @@ function execute_test() {
   local target=$1
   echo "Testing for ${target} projects......"
 
-  echo "PWD = $DIR/../bin/$BUILD_CONFIGURATION/native//${target}/"
-  cd $DIR/../bin/$BUILD_CONFIGURATION/native//${target}/
+  local arch_root=${BUILD_ARCH:-amd64}
+  # Run CTest from the CMake build directory where CTestTestfile.cmake is generated
+  local build_root="$DIR/../build/${BUILD_CONFIGURATION}/${arch_root}"
+  echo "PWD = ${build_root}"
+  cd "${build_root}"
   log_file="`pwd`/Testing/Temporary/LastTest.log"
 
   if [ ! -z "$TEST_NAME" ]; then
@@ -31,6 +34,9 @@ then
 else
   BUILD_CONFIGURATION=$1
 fi
+
+# Build architecture (env override), default amd64
+BUILD_ARCH=${BUILD_ARCH:-amd64}
 
 if [ -z "$2" ]
 then

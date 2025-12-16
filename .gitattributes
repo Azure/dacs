@@ -44,6 +44,8 @@
 90-dacs-news eol=lf
 *.json   text eol=lf
 Dockerfile*   text eol=lf
+*.config text eol=lf
+*.cfg    text eol=lf
 ###############################################################################
 # Set line ending behavior for SDK setup.py files.
 #
