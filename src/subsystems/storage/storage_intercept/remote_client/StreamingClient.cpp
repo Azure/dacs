@@ -1046,17 +1046,27 @@ void StreamingClient::PostChunkOpComplete()
 bool StreamingClient::WriteChunksToCache(const std::string& remotePath, const FileAttributes& attributes)
 {
     auto cacheClient = std::atomic_load(&m_spCacheClient);
+    const std::string cacheFilePath = GetCacheFilePath(remotePath);
+    const off64_t fileSize = attributes.size;
+
+    // Always update attributes cache even if cache client is not configured
+    // This ensures GetProperties returns correct values for newly written files
+    auto attributesCache = std::atomic_load(&m_spAttributesCache);
+    if(attributesCache)
+    {
+        // This is best effort, okay if failures occur
+        attributesCache->Put(cacheFilePath, attributes);
+        LOG_DEBUG("Updated attributes cache for newly written file: {}, size={}", remotePath, fileSize);
+    }
+
     if (!cacheClient)
     {
-        LOG_DEBUG("Cache client not configured, skipping write to cache for path={}", remotePath);
-        return true; // No-op
+        LOG_DEBUG("Cache client not configured, skipping chunk upload to cache for path={}", remotePath);
+        return true; // No-op for cache upload, but attributes cache was updated
     }
 
     time_t writeStartTime = time(NULL);
 
-    // Upload any chunks to the cache server and update the attributes cache
-    const std::string cacheFilePath = GetCacheFilePath(remotePath);
-    const off64_t fileSize = attributes.size;
     const off64_t lastChunkOffset = (fileSize % m_nChunkSize == 0) ? (fileSize - m_nChunkSize) : (fileSize - (fileSize % m_nChunkSize));
     off64_t chunkOffset = 0;
     std::vector<std::future<bool>> writeChunkFutures;
@@ -1121,14 +1131,6 @@ bool StreamingClient::WriteChunksToCache(const std::string& remotePath, const Fi
                 m_strMountName,
                 remotePath,
                 cacheWriteThroughputMbps);
-        }
-
-        // Regardless of file size, upload the file attributes to the attribute cache
-        auto attributesCache = std::atomic_load(&m_spAttributesCache);
-        if(attributesCache)
-        {
-            // This is best effort, okay if failures occur
-            attributesCache->Put(cacheFilePath, attributes);
         }
     }
 
