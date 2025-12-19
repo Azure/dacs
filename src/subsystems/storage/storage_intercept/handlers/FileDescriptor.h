@@ -18,8 +18,14 @@ struct FileDescriptor
     FileDescriptor()
         : ParentDirFd(-1)
         , OpenFlags(0x0)
+        , MountName()
+        , RemotePath()
         , FileOffset(0)
+        , Attributes()
+        , DirStream(nullptr)
+        , FileStream(nullptr)
         , IsWriteMode(false)
+        , IsWriteInProgress(false)
     {}
 
     // Input params
