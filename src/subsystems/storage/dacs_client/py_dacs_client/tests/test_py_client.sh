@@ -6,7 +6,7 @@ BUILD_ARCH="${BUILD_ARCH:-amd64}"
 set -x
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
-REPOSITORY_ROOT=$(realpath $SCRIPT_DIR/../../../../..)
+REPOSITORY_ROOT=$(realpath $SCRIPT_DIR/../../../../../..)
 BUILD_CONFIGURATION=Debug
 
 # Helper functions
@@ -80,30 +80,26 @@ function stop_cache_server() {
   echo "Stopped CacheServer"
 }
 
-function install_dependencies() {
-  # install required dependencies
-  pip3 install requests # This can be removed once the token fetch code inside python package is removed
-}
-
 # change to the package parent directory
 ORIGNAL_DIR=$(pwd)
 cd $SCRIPT_DIR/..
 
 # copy the intercept library to package directory
-cp -v $REPOSITORY_ROOT/obj/$BUILD_CONFIGURATION/native/linux-x64/publish-storage/storage/libStorageDirect.so ./py_dacs_cache_client/
-
-# install dependencies
-install_dependencies
+arch_dir_name=$([[ "${BUILD_ARCH}" == *"x64"* ]] || [[ "${BUILD_ARCH}" == "amd64" ]] && echo "amd64" || echo "arm64")
+cp -v $REPOSITORY_ROOT/bin/$BUILD_CONFIGURATION/${arch_dir_name}/native-storage/storage/libStorageDirect.so ./dacs_cache_client/
 
 # start the cache server
 start_cache_server $REPOSITORY_ROOT/out_test_py_client_cache_server.log
 
-# run the tests
-python3 -m py_dacs_cache_client.sample.dacs_cache_client_test --nBlobs 10 --blobSizeToBeRead 1073741824
+# Run the tests - Write and Read 10 blobs of size 32MB
+python3 $SCRIPT_DIR/../sample/dacs_cache_client_test.py --nBlobs 10 --blobSizeToBeRead 33554432
+
+# Run the tests - ReadOnly mode - Read 10 blobs of size 32MB
+python3 $SCRIPT_DIR/../sample/dacs_cache_client_test.py --nBlobs 10 --blobSizeToBeRead 33554432 --readOnly
 
 # cleanup
 stop_cache_server
-rm -f ./py_dacs_cache_client/libStorageDirect.so
+rm -f ./dacs_cache_client/libStorageDirect.so
 
 # go back to original directory
 cd $ORIGNAL_DIR

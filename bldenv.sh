@@ -36,6 +36,16 @@ else
 fi
 
 echo Running Native Build Container $nativeBuildImage
+
+# Debug: Print environment variables being passed to container
+echo "=== Environment variables being passed to container ==="
+echo "BUILD_ARCH: ${BUILD_ARCH:-not set}"
+echo "STORAGE_INTCPT_SAS_TOKEN: ${STORAGE_INTCPT_SAS_TOKEN:+[SET]}"
+echo "SI_azBlobAccessToken: ${SI_azBlobAccessToken:+[SET]}"
+echo "AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-not set}"
+echo "USER_VM_AZURE_CLIENT_ID: ${USER_VM_AZURE_CLIENT_ID:-not set}"
+echo "========================================================"
+
 docker run \
     --rm \
     -i \
@@ -43,6 +53,11 @@ docker run \
     $TTY_OPTION \
     --privileged \
     --env AZURE_DEVOPS_EXT_PAT \
+    --env STORAGE_INTCPT_SAS_TOKEN \
+    --env SI_azBlobAccessToken \
+    --env AZURE_CLIENT_ID \
+    --env USER_VM_AZURE_CLIENT_ID \
+    --env BUILD_ARCH \
     -v /etc/group:/etc/group:ro \
     -v /etc/passwd:/etc/passwd:ro \
     -v /etc/shadow:/etc/shadow:ro \

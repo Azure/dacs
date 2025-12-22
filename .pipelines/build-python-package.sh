@@ -45,7 +45,7 @@ else
   exit 0
 fi
 
-cd $DIR/../src/subsystems/storage/py_dacs_cache_client
+cd $DIR/../src/subsystems/storage/dacs_client
 
 # Get build number from environment or use timestamp
 if [ ! -z "$BUILD_BUILDNUMBER" ]; then
@@ -60,9 +60,10 @@ fi
 
 echo "Build tag: $BUILD_TAG"
 
-# Update VERSION in setup.py to append build tag (e.g., 1.2.0.123456)
+# While updating version, ensure to update in dacs_client/setup.py as well.
+BASE_VERSION="0.9.0"
+# Update VERSION in setup.py to append build tag (e.g., 1.0.0.12345678)
 SETUP_FILE="setup.py"
-BASE_VERSION="1.2.0"
 
 # Create a temporary setup.py with updated version
 sed "s/VERSION = '${BASE_VERSION}'/VERSION = '${BASE_VERSION}.${BUILD_TAG}'/" $SETUP_FILE > ${SETUP_FILE}.tmp

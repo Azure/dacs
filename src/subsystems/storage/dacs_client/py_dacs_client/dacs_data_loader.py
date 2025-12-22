@@ -1,8 +1,8 @@
 # --------------------------------------------------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
-# DACS Cache Data Loader
+# DACS Data Loader
 # --------------------------------------------------------------------------------------------------------------------
-from py_dacs_cache_client.dacs_cache_utils import logger
+from py_dacs_client.dacs_utils import logger
 import os
 from ctypes import (
     CDLL,
@@ -48,14 +48,23 @@ class Stat64(Structure):
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Construct the full path to the shared library
-# If direct lib doesn't exist, check for intercept lib
+# libStorageDirect.so is required - fail fast if not present
 lib_path = os.path.join(current_dir, "libStorageDirect.so")
 if not os.path.isfile(lib_path):
-    lib_path = os.path.join(current_dir, "libStorageIntercept.so")
+    error_msg = (
+        f"FATAL: Required library 'libStorageDirect.so' not found!\n"
+        f"  Expected path: {lib_path}\n"
+        f"  Current directory: {current_dir}\n"
+        f"  Directory contents: {os.listdir(current_dir) if os.path.isdir(current_dir) else 'N/A'}\n"
+        f"\n"
+    )
+    logger.error(error_msg)
+    raise FileNotFoundError(error_msg)
+
 logger.info(f"Loading storage cache client library from path {lib_path}")
 
-# Load the library
-storage_intercept_lib = CDLL(lib_path)
+# Load the library with use_errno=True to properly capture errno values
+storage_intercept_lib = CDLL(lib_path, use_errno=True)
 
 # Defining the args and return types for the required functions in the shared library
 storage_intercept_lib.open.argtypes = [c_char_p, c_int, c_int]
@@ -63,6 +72,9 @@ storage_intercept_lib.open.restype = c_int
 
 storage_intercept_lib.pread.argtypes = [c_int, c_void_p, c_size_t, c_ulong]
 storage_intercept_lib.pread.restype = c_ssize_t
+
+storage_intercept_lib.pwrite.argtypes = [c_int, c_void_p, c_size_t, c_ulong]
+storage_intercept_lib.pwrite.restype = c_ssize_t
 
 storage_intercept_lib.close.argtypes = [c_int]
 storage_intercept_lib.close.restype = c_int
@@ -127,16 +139,14 @@ storage_intercept_lib.closedir.restype = c_int
 class DACSCacheDataLoader:
     @staticmethod
     def open(pathname: str, flags: int, mode: int) -> int:
-        logger.debug(
-            f"Entering DACSCacheDataLoader.open for pathname {pathname} with flags {flags} and mode {mode}"
-        )
+        logger.debug(f"Entering DACSCacheDataLoader.open for pathname {pathname} with flags {flags} and mode {mode}")
         return storage_intercept_lib.open(pathname.encode("utf-8"), flags, mode)
 
     @staticmethod
     def pread(fd: int, buf: c_void_p, size: int, offset: int) -> int:
         logger.debug(f"Entering DACSCacheDataLoader.pread for fd {fd} with size {size} and offset {offset}")
         return storage_intercept_lib.pread(fd, buf, size, offset)
-    
+
     @staticmethod
     def pwrite(fd: int, buf: c_void_p, size: int, offset: int) -> int:
         logger.debug(f"Entering DACSCacheDataLoader.pwrite for fd {fd} with size {size} and offset {offset}")

@@ -62,7 +62,13 @@ spec:
         command: ["/bin/bash", "-cx"]
         args:
         - |
-          cd /
-          python3 -m py_dacs_cache_client.sample.dacs_cache_client_test --azBlobDirPath $AZ_BLOB_DIR --nBlobs 100 --blobSizeToBeRead 1073741824
+          echo "Starting cache client tests..."
+          echo "AZ_BLOB_DIR: $AZ_BLOB_DIR"
+          echo "Running dacs_client_test with 100 blobs, size: 1GB"
+          python3 -m py_dacs_client.sample.dacs_client_test --azBlobDirPath $AZ_BLOB_DIR --nBlobs 100 --blobSizeToBeRead 1073741824
+          echo "dacs_client_test completed"
+          echo "Running dacs_client_download_test..."
+          python3 -m py_dacs_client.sample.dacs_client_download_test
+          echo "dacs_client_download_test completed"
           echo "Test done"
       restartPolicy: Never 

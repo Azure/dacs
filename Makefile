@@ -1,4 +1,4 @@
-.PHONY: help build clean test test-go test-native images deploy-minikube clean-minikube perf-client storage-intercept-client helm-build helm-push
+.PHONY: help build clean test pytest test-go test-native images deploy-minikube clean-minikube perf-client storage-intercept-client helm-build helm-push
 
 help:
 	@echo "dacs Build"
@@ -9,6 +9,8 @@ help:
 	@echo "  make clean BUILD_TYPE=Release      	- Clean Release build artifacts"
 	@echo "  make test                          	- Run all unit tests"
 	@echo "  make test TEST=<pattern>           	- Run specific unit tests"
+	@echo "  make pytest                        	- Run Python unit tests (pytest)"
+	@echo "  make pytest PYTEST_ARGS=<args>     	- Run pytest with additional arguments"
 	@echo "  make images                        	- Build Docker images"
 	@echo "  make deploy-minikube               	- Build, create images, deploy, and run perf tests"
 	@echo "  make deploy-minikube SKIP_BUILD=1  	- Deploy without rebuilding"
@@ -21,6 +23,8 @@ help:
 	@echo "Examples:"
 	@echo "  make test"
 	@echo "  make test TEST=StorageInterceptUnitTests"
+	@echo "  make pytest"
+	@echo "  make pytest PYTEST_ARGS=\"-v -k test_read\""
 	@echo "  make deploy-minikube"
 	@echo "  make deploy-minikube SKIP_BUILD=1"
 	@echo "  make perf-client MODE=upload"
@@ -68,6 +72,21 @@ test-go:
 		./bldenv.sh /bin/bash "./.pipelines/unittest_go.sh $(TEST)"; \
 	else \
 		./.pipelines/unittest_go.sh $(TEST); \
+	fi
+
+PYTEST_ARGS ?=
+
+pytest:
+	@if [ "$(USE_CONTAINER)" = "1" ]; then \
+		echo "Using Container mode..." && \
+		BUILD_ARCH=$(BUILD_ARCH) \
+		STORAGE_INTCPT_SAS_TOKEN="$(STORAGE_INTCPT_SAS_TOKEN)" \
+		SI_azBlobAccessToken="$(SI_azBlobAccessToken)" \
+		AZURE_CLIENT_ID="$(AZURE_CLIENT_ID)" \
+		USER_VM_AZURE_CLIENT_ID="$(USER_VM_AZURE_CLIENT_ID)" \
+		./bldenv.sh /bin/bash "./.pipelines/pytest.sh $(BUILD_TYPE) $(PYTEST_ARGS)"; \
+	else \
+		BUILD_ARCH=$(BUILD_ARCH) ./.pipelines/pytest.sh $(BUILD_TYPE) $(PYTEST_ARGS); \
 	fi
 
 images:

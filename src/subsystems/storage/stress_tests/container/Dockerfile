@@ -41,7 +41,8 @@ COPY bin/Release/amd64/native-storage/storage/DeleteClient /app/DeleteClient
 COPY bin/Release/amd64/native-storage/storage/PerfClient /app/PerfClient
 COPY src/subsystems/storage/stress_tests/storageIntercept.config /tmp/storageIntercept.config
 COPY obj/Release/native/linux-x64/publish-storage/storage/libStorageIntercept.so /app/lib/libStorageIntercept.so
+COPY obj/Release/native/linux-x64/publish-storage/storage/libStorageDirect.so /app/lib/libStorageDirect.so
 
 COPY /bin/Release/amd64/native-storage/storage/rslex-fuse-cli /app/rslex-fuse-cli
 COPY /bin/Release/amd64/native-storage/storage/dacsfs /app/dacsfs
-COPY src/subsystems/storage/py_dacs_cache_client /app/py_dacs_cache_client
+COPY src/subsystems/storage/dacs_client /app/dacs_client
