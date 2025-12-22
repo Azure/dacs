@@ -46,6 +46,13 @@ if command -v sudo >/dev/null 2>&1; then
   sudo chown -R vscode:vscode /workspaces/dacs/build 2>/dev/null || true
 fi
 
+# Install pytest in the virtual environment
+echo "Installing pytest in virtual environment..."
+if [ -d "/venv" ]; then
+  /venv/bin/pip install --quiet pytest pytest-timeout
+  echo "✅ pytest installed in /venv"
+fi
+
 echo ""
 echo "========================================"
 echo "Setup complete! Ready to build."
@@ -53,13 +60,16 @@ echo "========================================"
 echo ""
 echo "Quick start:"
 echo "  make build          # Build all components"
-echo "  make test           # Run unit tests"
+echo "  make test           # Run native unit tests"
+echo "  make pytest         # Run Python unit tests"
 echo "  make deploy-minikube # Deploy to Kubernetes"
 echo ""
 echo "✅ Docker: $(docker --version 2>/dev/null || echo 'Installing...')"
 echo "⚓ Kubectl: $(kubectl version --client --short 2>/dev/null || echo 'Installing...')"
 echo "🔧 Minikube: $(minikube version --short 2>/dev/null || echo 'Installing...')"
+echo "🐍 Pytest: $(/venv/bin/pytest --version 2>/dev/null || echo 'Installing...')"
 echo "  make build    # Build all components"
 echo "  make test     # Run unit tests"
+echo "  make pytest   # Run Python tests"
 echo "  make images   # Build Docker images"
 echo ""

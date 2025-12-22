@@ -1,5 +1,5 @@
 name = "dacs_cache"
-description = "Python package for DACS Cache Client"
+description = "Python package for DACS Client"
 readme = "README.md"
 requires-python = ">=3.8"
 

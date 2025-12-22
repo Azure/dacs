@@ -1,6 +1,6 @@
 # --------------------------------------------------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
-# Sample code to integrate and test, DACS Cache Client
+# Sample code to integrate and test, DACS Client
 # --------------------------------------------------------------------------------------------------------------------
 import argparse
 import asyncio
@@ -9,8 +9,9 @@ import random
 import sys
 import time
 from ctypes import memset  # Added for fast buffer initialization
-from py_dacs_cache_client.dacs_cache_utils import alloc_buffer, logger, release_buffer
-from py_dacs_cache_client.dacs_cache_client import DACSCacheClient, DACSCacheFileHandle
+from py_dacs_client.dacs_utils import alloc_buffer, logger, release_buffer
+from py_dacs_client.dacs_client import DACSCacheClient, DACSCacheFileHandle
+
 
 def run_all_tasks(tasks: list[asyncio.Task]) -> None:
     async def _run_all():
@@ -18,8 +19,9 @@ def run_all_tasks(tasks: list[asyncio.Task]) -> None:
 
     asyncio.run(_run_all())
 
+
 # Sample code for reference and also to be used in the test
-def perf_test(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobSizeToBeRead: int) -> None:
+def perf_test_read(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobSizeToBeRead: int) -> None:
     """
     Perform a performance test by reading blobs from a given directory.
     Args:
@@ -34,19 +36,8 @@ def perf_test(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobSizeToB
     if not azBlobDirPath.startswith("az://"):
         raise Exception("azBlobDirPath is not a valid path. Please set it to run the test.")
 
-    # Parse the azBlobDirPath to extract the storage account name
-    if azBlobDirPath.startswith("az://"):
-        storage_account_name = azBlobDirPath.split("//")[1].split(".")[0]
-    else:
-        raise Exception("Invalid azBlobDirPath format. Expected format: az://<storage_account_name>.<rest_of_path>")
-
-    # Check if STORAGE_INTCPT_SAS_TOKEN is set
-    storage_sas_token = os.environ.get("STORAGE_INTCPT_SAS_TOKEN")
-    if not storage_sas_token:
-        raise Exception("STORAGE_INTCPT_SAS_TOKEN environment variable is not set. Please set it to run the test.")
-
     # Initialize the DACSCacheClient
-    dacs_cache_client_instance = DACSCacheClient(storage_account_name, storage_sas_token)
+    dacs_client_instance = DACSCacheClient()
 
     # TODO: also test list blobs api to get the blob names matching the pattern
     # For now, we will construct the blob names based on the pattern
@@ -60,9 +51,8 @@ def perf_test(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobSizeToB
 
     # Read the blobs
     read_tasks = []
-    async def read_blob_async(
-        dacs_cache_client_instance: DACSCacheClient,
-        blob_path: str) -> None:
+
+    async def read_blob_async(dacs_client_instance: DACSCacheClient, blob_path: str) -> None:
 
         nonlocal total_bytes_read
         # Use the size from blob_dict
@@ -72,7 +62,7 @@ def perf_test(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobSizeToB
         if not buffer:
             raise MemoryError("Failed to allocate buffer for reading blob")
         logger.info(f"Reading blob {blob_path} with size {blob_size} bytes")
-        size_read = await dacs_cache_client_instance.read_blob(blob_path, buffer, blob_size, 0)
+        size_read = await dacs_client_instance.read_blob(blob_path, buffer, blob_size, 0)
         if size_read != blob_size:
             logger.error(f"Error reading blob {blob_path}, expected size: {blob_size}, read size: {size_read}")
             raise IOError(f"Error reading blob {blob_path}, expected size: {blob_size}, read size: {size_read}")
@@ -82,8 +72,8 @@ def perf_test(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobSizeToB
 
     for i in range(nBlobs):
         blob_path = os.path.join(azBlobDirPath, blob_dict[i]["name"])
-        read_tasks.append(read_blob_async(dacs_cache_client_instance, blob_path))
-    
+        read_tasks.append(read_blob_async(dacs_client_instance, blob_path))
+
     run_all_tasks(read_tasks)
     end_time = time.time()
     downloadSpeedMBps = (total_bytes_read / (end_time - start)) / (1024 * 1024)
@@ -93,7 +83,8 @@ def perf_test(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobSizeToB
     )
 
     # Shutdown the client
-    asyncio.run(dacs_cache_client_instance.shutdown())
+    asyncio.run(dacs_client_instance.shutdown())
+
 
 def perf_test_write(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobSize: int):
     """
@@ -104,7 +95,7 @@ def perf_test_write(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobS
     # 1. write in chunks to open file handle, write in chunks parallely and then close the handle
     # 2. keep memory usage in check
     # 3. read back the written file and validate contents
-    
+
     # Check if the azBlobDirPath is set
     if not azBlobDirPath:
         raise Exception("azBlobDirPath is not set. Please set it to run the test.")
@@ -112,19 +103,8 @@ def perf_test_write(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobS
     if not azBlobDirPath.startswith("az://"):
         raise Exception("azBlobDirPath is not a valid path. Please set it to run the test.")
 
-    # Parse the azBlobDirPath to extract the storage account name
-    if azBlobDirPath.startswith("az://"):
-        storage_account_name = azBlobDirPath.split("//")[1].split(".")[0]
-    else:
-        raise Exception("Invalid azBlobDirPath format. Expected format: az://<storage_account_name>.<rest_of_path>")
-
-    # Check if STORAGE_INTCPT_SAS_TOKEN is set
-    storage_sas_token = os.environ.get("STORAGE_INTCPT_SAS_TOKEN")
-    if not storage_sas_token:
-        raise Exception("STORAGE_INTCPT_SAS_TOKEN environment variable is not set. Please set it to run the test.")
-
     # Initialize the DACSCacheClient
-    dacs_cache_client_instance = DACSCacheClient(storage_account_name, storage_sas_token)
+    dacs_client_instance = DACSCacheClient()
 
     # Generate write buffers for each blob
     start_time = time.time()
@@ -146,20 +126,23 @@ def perf_test_write(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobS
     for i in range(nBlobs):
         blob_name = f"testWrite_{i}_{blobNamePattern}"
         blob_path = os.path.join(azBlobDirPath, blob_name)
+
         async def open_file_handle_async(
-            dacs_cache_client_instance: DACSCacheClient,
+            dacs_client_instance: DACSCacheClient,
             blob_path: str,
         ) -> None:
-            file_handle = await dacs_cache_client_instance.get_file_handle(blob_path, os.O_CREAT | os.O_WRONLY | os.O_EXCL)
+            file_handle = await dacs_client_instance.get_file_handle(
+                blob_path, os.O_CREAT | os.O_WRONLY | os.O_EXCL
+            )
             write_file_handles.append(file_handle)
             logger.info(f"Opened file handle for blob {blob_path}")
 
-        open_tasks.append(open_file_handle_async(dacs_cache_client_instance, blob_path))
-    
+        open_tasks.append(open_file_handle_async(dacs_client_instance, blob_path))
+
     run_all_tasks(open_tasks)
     open_handles_time = time.time() - start_time
     logger.info(f"Opened {nBlobs} file handles in {open_handles_time:.2f} seconds")
-    
+
     write_tasks = []
     start = time.time()
     total_bytes_written = 0
@@ -173,7 +156,7 @@ def perf_test_write(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobS
         logger.info(f"Writing blob {blob_path} with size {blobSize} bytes")
 
         async def write_blob_async(
-            dacs_cache_client_instance: DACSCacheClient,
+            dacs_client_instance: DACSCacheClient,
             file_handle: DACSCacheFileHandle,
             buffer: memoryview,
             blobSize: int,
@@ -181,22 +164,26 @@ def perf_test_write(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobS
             nonlocal total_bytes_written
             bytes_written = await file_handle.write(buffer, blobSize, 0)
             if bytes_written != blobSize:
-                logger.error(f"Error writing blob {blob_path}, expected size: {blobSize}, written size: {bytes_written}")
-                raise IOError(f"Error writing blob {blob_path}, expected size: {blobSize}, written size: {bytes_written}")
+                logger.error(
+                    f"Error writing blob {blob_path}, expected size: {blobSize}, written size: {bytes_written}"
+                )
+                raise IOError(
+                    f"Error writing blob {blob_path}, expected size: {blobSize}, written size: {bytes_written}"
+                )
             total_bytes_written += bytes_written
             # Release the buffer after closing the file handle
             await file_handle.__aexit__(None, None, None)
             release_buffer(buffer)
             logger.info(f"Completed writing blob {blob_path}, total size: {bytes_written} bytes")
 
-        write_tasks.append(
-            write_blob_async(dacs_cache_client_instance, write_file_handles[i], buffer, blobSize)
-        )
+        write_tasks.append(write_blob_async(dacs_client_instance, write_file_handles[i], buffer, blobSize))
 
     run_all_tasks(write_tasks)
     end_time = time.time()
     write_and_close_elapsed = end_time - start
-    uploadSpeedMBps = (total_bytes_written / write_and_close_elapsed) / (1024 * 1024) if write_and_close_elapsed > 0 else 0
+    uploadSpeedMBps = (
+        (total_bytes_written / write_and_close_elapsed) / (1024 * 1024) if write_and_close_elapsed > 0 else 0
+    )
     logger.info(
         f"DACS_Cache_Client_Test:Wrote {nBlobs} blobs with total {total_bytes_written} bytes"
         f" ({total_bytes_written /(1024*1024*1024)} GBs) in {write_and_close_elapsed:.2f} seconds at {uploadSpeedMBps / 128} Gbps"
@@ -206,7 +193,7 @@ def perf_test_write(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobS
 
 # main entrypoint
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run DACS Cache Client performance test.")
+    parser = argparse.ArgumentParser(description="Run DACS Client performance test.")
     parser.add_argument("--nBlobs", type=int, default=1, help="Number of blobs to read")
     parser.add_argument(
         "--azBlobDirPath",
@@ -218,18 +205,21 @@ if __name__ == "__main__":
         "--blobNamePattern", type=str, default="1000G", help="Specific file name to be used for testing"
     )
     parser.add_argument("--blobSizeToBeRead", type=int, default=0, help="Size of the blob to be read")
+    parser.add_argument("--readOnly", action="store_true", help="Skip write test and only perform read test")
     args = parser.parse_args()
 
     logger.info(
-        f"DACS_Cache_Client_Test:Starting Perf test with nBlobs:{args.nBlobs} azBlobDirPath:{args.azBlobDirPath} blobNamePattern:{args.blobNamePattern}"
+        f"\n\nDACS_Cache_Client_Test:Starting Perf test with nBlobs:{args.nBlobs} azBlobDirPath:{args.azBlobDirPath} blobNamePattern:{args.blobNamePattern}\n\n"
     )
-    perf_test_write(args.nBlobs, args.azBlobDirPath, args.blobNamePattern, args.blobSizeToBeRead)
 
-    # sleep for a while to allow async uploads to complete if any
-    async_upload_wait_time = os.environ.get("ASYNC_UPLOAD_WAIT_TIME_SECONDS", "20")
-    time.sleep(int(async_upload_wait_time))
+    if not args.readOnly:
+        perf_test_write(args.nBlobs, args.azBlobDirPath, args.blobNamePattern, args.blobSizeToBeRead)
+
+        # sleep for a while to allow async uploads to complete if any
+        async_upload_wait_time = os.environ.get("ASYNC_UPLOAD_WAIT_TIME_SECONDS", "20")
+        time.sleep(int(async_upload_wait_time))
 
     logger.info(
-        f"\n\n\nDACS_Cache_Client_Test:Starting Read back test with nBlobs:{args.nBlobs} azBlobDirPath:{args.azBlobDirPath} blobNamePattern:{args.blobNamePattern}"
+        f"\n\nDACS_Cache_Client_Test:Starting Read back test with nBlobs:{args.nBlobs} azBlobDirPath:{args.azBlobDirPath} blobNamePattern:{args.blobNamePattern}\n\n"
     )
-    perf_test(args.nBlobs, args.azBlobDirPath, args.blobNamePattern, args.blobSizeToBeRead)
+    perf_test_read(args.nBlobs, args.azBlobDirPath, args.blobNamePattern, args.blobSizeToBeRead)

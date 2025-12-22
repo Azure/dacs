@@ -84,7 +84,7 @@ RUN TARGETARCH=${TARGETARCH:-amd64} && \
     fi
 
 RUN python3 -m venv /venv && . /venv/bin/activate && \
-    python -m pip install --no-cache-dir --upgrade pip setuptools opencensus-ext-azure h5py
+    python -m pip install --no-cache-dir --upgrade pip setuptools opencensus-ext-azure h5py pytest pytest-timeout
 
 # Architecture-specific Rust installation
 RUN TARGETARCH=${TARGETARCH:-amd64} && \

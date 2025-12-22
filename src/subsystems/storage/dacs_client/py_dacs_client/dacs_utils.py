@@ -1,24 +1,23 @@
 # --------------------------------------------------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
-# DACS Cache Client Library Utils
+# DACS Client Library Utils
 # --------------------------------------------------------------------------------------------------------------------
 #
-# This module provides utility functions for managing memory buffers and configuring the DACS Cache client.
+# This module provides utility functions for managing memory buffers and configuring the DACS client.
 # It includes functions to allocate and release memory buffers, as well as to configure the managed identity mode for
 # blob access tokens.
 #
 # Utility functions:
 #    - alloc_buffer(size): Allocate a buffer of the specified size
 #    - release_buffer(buffer): Release the allocated buffer and log the memory released
-#    - configure_managed_identity_mode(azure_client_id): Configure managed identity mode for blob access token
-#    - initialize_dacs_cache_client_config(intercept_path, sas_token): Initialize the dacs cache client with the given
-#       intercept path and SAS token
+#
+# Internal functions:
+#    - _initialize_dacs_client_config(intercept_path): Initialize the DACS client with authentication
+#       (supports both SAS token and managed identity modes, internal use only)
 #
 # Notes:
-#     - The configure_managed_identity_mode function is a temporary solution to update the token.
-#       The token gets invalidated after an hour, but it is valid for 24 hours.
-#       NB: There is ongoing work to move this logic inside the StorageIntercept library and to get & refresh the token
-#         internally.
+#     - Authentication modes: SAS token (dev) via STORAGE_INTCPT_SAS_TOKEN env var, or managed identity (production) via AZURE_CLIENT_ID
+#     - MSI endpoint and secret default to IMDS values for testing but can be overridden
 # ---------------------------------------------------------------------------------------------------------------------
 import asyncio
 import logging
@@ -39,6 +38,7 @@ log_level = os.environ.get(
 )  # Default logging level is INFO, unless overridden via env var
 logger.setLevel(log_level)
 logger.propagate = False  # Prevents duplicate logging if this module is imported in other modules
+
 
 # Helper function to get the number of CPU cores
 def get_cpu_cores() -> int:
@@ -100,6 +100,8 @@ def alloc_buffer(size: int) -> c_void_p:
         # malloc failed
         raise MemoryError(f"Failed to allocate buffer of size {size} bytes")
 
+    logger.debug(f"Buffer memory allocated: {size} bytes at address {ptr}")
+
     # Create a ctypes char array *without* copying that memory
     return (c_char * size).from_address(ptr)
 
@@ -131,7 +133,9 @@ class BoundedBufferManager:
     async def acquire_buffer(self, buf_size: int) -> c_void_p:
         while True:
             async with self.lock:
-                if (self.current_memory_usage + buf_size <= self.max_memory_limit) or (buf_size > self.max_memory_limit):
+                if (self.current_memory_usage + buf_size <= self.max_memory_limit) or (
+                    buf_size > self.max_memory_limit
+                ):
                     buffer = alloc_buffer(buf_size)
                     if not buffer:
                         raise MemoryError("Failed to allocate buffer for reading blob chunk")
@@ -165,56 +169,105 @@ class BoundedBufferManager:
             self.buffer_released_event.set()
 
 
-# NB: This is a temporary solution to update the token in the config file
-# There is an ongoing effort to move this logic inside StorageIntercept library later
-# as below token gets invalidated after an hour(But the token is valid for 24 hours)
-# and the token is not refreshed internally.
-def configure_managed_identity_mode(azure_client_id: str) -> None:
-    logger.info("Fetching access token for {azure_client_id}")
-    msi_endpoint = os.getenv("MSI_ENDPOINT")
-    msi_secret = os.getenv("MSI_SECRET")
+def _initialize_dacs_client_config(intercept_path: str = None, write_mode=None) -> None:
+    """Internal API: Initialize DACS client configuration.
 
-    response = requests.get(
-        f"{msi_endpoint}?api-version=2017-09-01&resource=https://storage.azure.com&clientid={azure_client_id}",
-        headers={"secret": msi_secret},
-    )
+    This is an internal function and should only be called from within the library.
 
-    if response.status_code != 200:
-        raise Exception(f"Failed to fetch access token:{response.text}")
+    Args:
+        intercept_path: Path to the intercept mount point
+        write_mode: Write mode configuration (from WriteMode enum in dacs_blobfile)
+    """
 
-    msi_token_response = response.json()
-    logger.debug(f"MSI token response:{msi_token_response}")
-    az_blob_access_token = msi_token_response.get("access_token")
-
-    if not az_blob_access_token:
-        raise Exception("Access token not found in the response")
-    logger.info("Fetched access token and setting it in the environment variable")
-
-    # Avoid the updation of the config file, rather set the environment variables
-    os.environ["SI_AZBLOBACCESSTOKEN"] = az_blob_access_token
-    os.environ["SI_AZBLOBSASTOKEN"] = ""
-
-    return
-
-
-def initialize_dacs_cache_client_config(intercept_path: str, sas_token: str) -> None:
     config_path = "/tmp/storageIntercept.config"
+
+    # Check if config file already exists to avoid duplicate initialization
+    if os.path.exists(config_path):
+        logger.warning(f"Config file {config_path} already exists, skipping initialization")
+        return
+
     with open(config_path, "w") as config_file:
         config_file.write(f"storagePath {intercept_path}\n")
         config_file.write("type blob\n")
         config_file.write("azBlobDynamicAccount true\n")
-        config_file.write(f"azBlobSASToken {sas_token}\n")
+
+        # Check if SAS token is provided (for dev operations), otherwise use managed identity
+        sas_token = os.environ.get("STORAGE_INTCPT_SAS_TOKEN")
+        if sas_token:
+            config_file.write(f"azBlobSASToken {sas_token}\n")
+            logger.info("Using SAS token for authentication")
+        else:
+            # Use managed identity for authentication
+            azure_client_id = os.environ.get("AZURE_CLIENT_ID")
+            # Set defaults for MSI endpoint and secret if not provided (IMDS endpoint for testing)
+            msi_endpoint = os.environ.get("MSI_ENDPOINT", "http://169.254.169.254/metadata/identity/oauth2/token")
+            msi_secret = os.environ.get("MSI_SECRET", "dummy")
+
+            # Validate that AZURE_CLIENT_ID is set (required for managed identity)
+            if not azure_client_id:
+                raise ValueError(
+                    "Managed identity authentication requires AZURE_CLIENT_ID environment variable to be set. "
+                    "Alternatively, set STORAGE_INTCPT_SAS_TOKEN for SAS token authentication."
+                )
+
+            config_file.write(f"azBlobIdentityClientId {azure_client_id}\n")
+            config_file.write(f"azBlobMSIEndpoint {msi_endpoint}\n")
+            config_file.write(f"azBlobMSISecret {msi_secret}\n")
+
+            logger.info("Using managed identity for authentication")
+
         config_file.write("enableLargePrefetch false\n")
         config_file.write("prefetchWindowSizeInMB 64\n")
         config_file.write("streamingChunkSize 33554432\n")
         config_file.write("maxConnsPerBlobClient 84\n")
         config_file.write("attributesCacheEnable true\n")
-        config_file.write("enableWrite false\n")
-        config_file.write("enableWriteRemote false\n")
-        config_file.write("enableWriteRemoteAsync false\n")
+
+        # Configure write settings based on write_mode when cache is enabled
+        # write_mode options:
+        # - WRITE_DISABLED: Disable all write operations (read-only mode)
+        # - WRITE_CACHE_ONLY: Write to local cache only, no remote blob writes
+        # - WRITE_BLOB_ONLY: Write directly to remote blob, bypass cache
+        # - WRITE_CACHE_BLOB_ASYNC: Write to cache first, async upload to blob in background
+        # - WRITE_SYNC: Write to cache and blob synchronously (default)
+        if write_mode is not None:
+            write_mode_str = str(write_mode.value) if hasattr(write_mode, "value") else str(write_mode)
+            logger.info(f"Configuring write mode (with cache): {write_mode_str}")
+
+            if write_mode_str == "write_disabled":
+                # Disable all write operations (read-only mode)
+                config_file.write("enableWrite false\n")
+                config_file.write("enableWriteRemote false\n")
+                config_file.write("enableWriteRemoteAsync false\n")
+            elif write_mode_str == "write_cache_only":
+                # Write to cache only, no remote blob writes
+                config_file.write("enableWrite true\n")
+                config_file.write("enableWriteRemote false\n")
+                config_file.write("enableWriteRemoteAsync false\n")
+            elif write_mode_str == "write_blob_only":
+                # Write directly to blob, bypass cache
+                config_file.write("enableWrite true\n")
+                config_file.write("enableWriteRemote true\n")
+                config_file.write("enableWriteRemoteAsync false\n")
+            elif write_mode_str == "write_cache_blob_async":
+                # Write to cache first, async upload to blob
+                config_file.write("enableWrite true\n")
+                config_file.write("enableWriteRemote true\n")
+                config_file.write("enableWriteRemoteAsync true\n")
+            else:  # write_sync (default)
+                # Write to cache and blob synchronously
+                config_file.write("enableWrite true\n")
+                config_file.write("enableWriteRemote true\n")
+                config_file.write("enableWriteRemoteAsync false\n")
+        else:
+            # Default: disable write supports
+            config_file.write("enableWrite false\n")
+            config_file.write("enableWriteRemote false\n")
+            config_file.write("enableWriteRemoteAsync false\n")
+
         # Check if CACHE_SERVER_LIST and CACHE_SERVER_PORT are set
         cache_server_list = os.environ.get("CACHE_SERVER_LIST")
         cache_server_port = os.environ.get("CACHE_SERVER_PORT")
+
         # If both are set, append and configure cache related configurations to /tmp/storageIntercept.config
         if cache_server_list and cache_server_port:
             config_file.write("cacheEnable true\n")

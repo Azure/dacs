@@ -1,9 +1,9 @@
 # --------------------------------------------------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
-# Wrapper APIs build from function exposed by DACS Cache Client
+# Wrapper APIs build from function exposed by DACS Client
 # --------------------------------------------------------------------------------------------------------------------
 #
-# This module provides wrapper APIs for the DACS Cache Client.
+# This module provides wrapper APIs for the DACS Client.
 # It includes functions to download blobs from Azure Blob Storage to local disk.
 #
 # Functions:
@@ -18,19 +18,19 @@ import multiprocessing
 import os
 import time
 from ctypes import c_void_p
-from py_dacs_cache_client.dacs_cache_utils import logger, get_cpu_cores, get_memory_limit
-from py_dacs_cache_client.dacs_cache_utils import BoundedBufferManager
-from py_dacs_cache_client.dacs_cache_client import DACSCacheClient
+from py_dacs_client.dacs_utils import logger, get_cpu_cores, get_memory_limit
+from py_dacs_client.dacs_utils import BoundedBufferManager
+from py_dacs_client.dacs_client import DACSCacheClient
 from typing import Dict, AsyncIterator
 
 
 async def recursive_list_blobs(
-    dacs_cache_client_instance: DACSCacheClient, blob_dirname: str
+    dacs_client_instance: DACSCacheClient, blob_dirname: str
 ) -> tuple[dict, list[str]]:
     """
     Recursively list blobs in the given directory and store them in the blob_dict.
     Args:
-        dacs_cache_client_instance (DACSCacheClient): Instance of the DACSCacheClient.
+        dacs_client_instance (DACSCacheClient): Instance of the DACSCacheClient.
         blob_dirname (str): Directory name to list blobs from.
     Returns:
         tuple: A tuple containing:
@@ -43,7 +43,7 @@ async def recursive_list_blobs(
     dir_list = []
     subdir_list_tasks = []
 
-    async for entry in dacs_cache_client_instance.list_dir(blob_dirname):
+    async for entry in dacs_client_instance.list_dir(blob_dirname):
         if entry.get("d_name") == "." or entry.get("d_name") == "..":
             continue
 
@@ -52,7 +52,7 @@ async def recursive_list_blobs(
             # Directory
             dir_list.append(entry_path)
             subdir_list_tasks.append(
-                asyncio.create_task(recursive_list_blobs(dacs_cache_client_instance, entry_path))
+                asyncio.create_task(recursive_list_blobs(dacs_client_instance, entry_path))
             )
         else:
             # File
@@ -68,7 +68,7 @@ async def recursive_list_blobs(
 
 
 async def fetch_blob_chunk(
-    dacs_cache_client_instance: DACSCacheClient,
+    dacs_client_instance: DACSCacheClient,
     blob_name: str,
     offset: int,
     chunk_size: int,
@@ -81,14 +81,14 @@ async def fetch_blob_chunk(
         raise MemoryError("Failed to allocate buffer for reading blob chunk")
 
     logger.info(f"Started reading chunkIdx={chunkIdx} of blob {blob_name} at offset {offset} with size {chunk_size}")
-    await dacs_cache_client_instance.read_blob(blob_name, buffer, chunk_size, offset)
+    await dacs_client_instance.read_blob(blob_name, buffer, chunk_size, offset)
     logger.info(f"Finished reading chunkIdx={chunkIdx} of blob {blob_name} at offset {offset} with size {chunk_size}")
 
     return buffer
 
 
 async def read_iter_blob_chunks(
-    dacs_cache_client_instance: DACSCacheClient,
+    dacs_client_instance: DACSCacheClient,
     blob_name: str,
     blob_size: int,
     chunk_size: int,
@@ -97,7 +97,7 @@ async def read_iter_blob_chunks(
     """
     Read blob chunks from the given blob name.
     Args:
-        dacs_cache_client_instance (DACSCacheClient): Instance of the DACSCacheClient.
+        dacs_client_instance (DACSCacheClient): Instance of the DACSCacheClient.
         blob_name (str): Blob name to read.
         blob_size (int): Size of the blob to be read.
         chunk_size (int): Size of each chunk to be read.
@@ -113,7 +113,7 @@ async def read_iter_blob_chunks(
         chunk_read_size = min(chunk_size, blob_size - offset)
         chunk_read_task = asyncio.create_task(
             fetch_blob_chunk(
-                dacs_cache_client_instance, blob_name, offset, chunk_read_size, chunkIdx, read_buffer_manager
+                dacs_client_instance, blob_name, offset, chunk_read_size, chunkIdx, read_buffer_manager
             )
         )
         chunk_read_tasks.append(chunk_read_task)
@@ -131,7 +131,7 @@ async def read_iter_blob_chunks(
 
 
 async def download_blob_to_local(
-    dacs_cache_client_instance: DACSCacheClient,
+    dacs_client_instance: DACSCacheClient,
     blob_name: str,
     local_path: str,
     blob_size: int,
@@ -142,7 +142,7 @@ async def download_blob_to_local(
     """
     Download a blob file from the given blob name to the local path.
     Args:
-        dacs_cache_client_instance (DACSCacheClient): Instance of the DACSCacheClient.
+        dacs_client_instance (DACSCacheClient): Instance of the DACSCacheClient.
         blob_name (str): Blob name to download.
         local_path (str): Local path to save the downloaded file.
         blob_size (int): Size of the blob to be downloaded.
@@ -158,7 +158,7 @@ async def download_blob_to_local(
     with writeHandle as f:
         chunkIdx = 0
         async for chunk in read_iter_blob_chunks(
-            dacs_cache_client_instance, blob_name, blob_size, chunk_size, buffer_manager
+            dacs_client_instance, blob_name, blob_size, chunk_size, buffer_manager
         ):
             # Write the chunk to the file
             logger.info(f"Writing chunkIdx={chunkIdx} with {len(chunk)} bytes to {local_path}")
@@ -178,13 +178,12 @@ async def download_blob_to_local(
     logger.info(f"Downloaded blob {blob_name} to {local_path} with size {blob_size} bytes")
 
 
-async def download_remote_blob_to_disk_async(blob_dirname: str, local_dir: str, storage_sas_token: str) -> None:
+async def download_remote_blob_to_disk_async(blob_dirname: str, local_dir: str) -> None:
     """
     Download a folder from the given blob directory to the local directory.
     Args:
         blob_dirname (str): Blob directory name to download.
         local_dir (str): Local directory to save the downloaded files.
-        storage_sas_token (str): Storage SAS token for authentication.
     """
 
     logger.info(f"Starting download of {blob_dirname} to {local_dir}")
@@ -208,13 +207,12 @@ async def download_remote_blob_to_disk_async(blob_dirname: str, local_dir: str, 
 
     if not blob_dirname.startswith("az://"):
         raise ValueError(f"Invalid blob directory name: {blob_dirname}. It should start with 'az://'")
-    storage_account_name = blob_dirname.split("//")[1].split(".")[0]
-    dacs_cache_client_instance = DACSCacheClient(storage_account_name, storage_sas_token, threadpool)
+    dacs_client_instance = DACSCacheClient(threadpool)
 
     time_start = time.time()
     file_dict = {}
     dir_list = []
-    file_dict, dir_list = await recursive_list_blobs(dacs_cache_client_instance, blob_dirname)
+    file_dict, dir_list = await recursive_list_blobs(dacs_client_instance, blob_dirname)
     total_time_listdir = time.time() - time_start
     logger.info(f"Listed {len(file_dict)} files and {len(dir_list)} directories in {total_time_listdir:.2f} seconds")
 
@@ -235,7 +233,7 @@ async def download_remote_blob_to_disk_async(blob_dirname: str, local_dir: str, 
         file_download_tasks.append(
             asyncio.create_task(
                 download_blob_to_local(
-                    dacs_cache_client_instance,
+                    dacs_client_instance,
                     blob_name,
                     local_path,
                     blob_size,
@@ -250,7 +248,7 @@ async def download_remote_blob_to_disk_async(blob_dirname: str, local_dir: str, 
     logger.info(f"Downloaded {len(file_dict)} files in {total_time_download:.2f} seconds")
 
     threadpool.shutdown(wait=True)
-    await dacs_cache_client_instance.shutdown()
+    await dacs_client_instance.shutdown()
     total_time = time.time() - time_start
 
     total_blob_size_bytes = sum(file_dict.values())
@@ -269,13 +267,12 @@ async def download_remote_blob_to_disk_async(blob_dirname: str, local_dir: str, 
     )
 
 
-def download_remote_blobs_to_disk(storage_sas_token: str, remote_blob_uri: str, local_disk_path: str) -> None:
+def download_remote_blobs_to_disk(remote_blob_uri: str, local_disk_path: str) -> None:
     """
     Download all blobs from a given Az Blob directory to a local path.
     Args:
-        storage_sas_token (str): Azure Blob storage SAS token.
         remote_blob_uri (str): Azure Blob directory path containing the blobs.
         local_disk_path (str): Local directory path to download the blobs.
     """
 
-    asyncio.run(download_remote_blob_to_disk_async(remote_blob_uri, local_disk_path, storage_sas_token))
+    asyncio.run(download_remote_blob_to_disk_async(remote_blob_uri, local_disk_path))
