@@ -1,0 +1,160 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cacheserver
+  namespace: {{ .Namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: cacheserver
+  serviceName: cacheserver
+  replicas: {{ .NumServers }}
+  template:
+    metadata:
+      labels:
+        app: cacheserver
+        kubernetes.azure.com/managedby: {{ .ManagedById }}
+{{- if .EgressBandwidthInGb }}
+      annotations:
+        kubernetes.io/egress-bandwidth: {{ .EgressBandwidthInGb }}G
+{{- end }}
+    spec:
+      terminationGracePeriodSeconds: 10
+{{- if ne .UseEphemeralStorage true }}
+      schedulerName: cacheserver-scheduler
+{{- end }}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: {{ .NodeSelectorLabelKey }}
+                operator: In
+                values: {{ .NodeSelectorValue }}
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - cacheserver
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: cacheserver
+        image: {{ .Image }}
+        imagePullPolicy: Never  #TODO: Change to Always for Prod
+        env:
+        - name: CACHESERVER_THREADPOOL_SIZE
+          value: "{{ .ServerThreads }}"
+        - name: TEST_CACHESERVER_ADDR_PORT
+          value: "{{ .Port }}"
+        - name: CACHESERVER_METRICS_PORT
+          value: "{{ .MetricsPort }}"
+        - name: CACHESERVER_EVICTION_ENABLED
+          value: "{{ .EnableAccessTimeEviction }}"
+        - name: CACHESERVER_EVICTION_LAST_ACCESS_THRESHOLD
+          value: "{{ .EvictionLastAccessThreshold }}"
+        - name: CACHESERVER_EVICTION_SIZE_THRESHOLD
+          value: "{{ .EvictionSizeThreshold }}"
+        - name: CACHESERVER_EVICTION_PASS_FREQUENCY
+          value: "{{ .EvictionPassFrequency }}"
+        - name: CACHESERVER_EVICTION_MAINTAIN_FREE_SPACE
+          value: "{{ .EvictionMaintainFreeSpace }}"
+        - name: CACHESERVER_EVICTION_SIZE_TARGET
+          value: "{{ .EvictionSizeTarget }}"
+        resources:
+          requests:
+            memory: "100Mi"
+            cpu: "0.25"
+            {{- if .InfinibandResourceLimitCount }}
+            "{{ .InfinibandResourceLimitName }}": "{{ .InfinibandResourceLimitCount }}"
+            {{- end }}
+          limits:
+            memory: "{{ .MemoryLimitMB -}}Mi"
+            cpu: "{{ .CpuLimit }}"
+            {{- if .InfinibandResourceLimitCount }}
+            "{{ .InfinibandResourceLimitName }}": "{{ .InfinibandResourceLimitCount }}"
+            {{- end }}
+        ports:
+        - containerPort: {{ .Port }}
+          name : cacheserver
+        - containerPort: {{ .MetricsPort }}
+          name : metrics
+        securityContext:
+          capabilities:
+            add: ["NET_ADMIN"]
+        command: ["/bin/sh", "-cx"]
+        args:
+        - |
+          set -ex
+          export CACHESERVER_HOSTNAME=$HOSTNAME
+          export CACHESERVER_PORT={{ .Port }}
+          export CACHESERVER_CACHE_PATH={{ .MountSsdPath }}/{{ .Name }}/cache
+          export CACHESERVER_CACHE_SIZE_BYTES={{ mulAll .ServerSizeInGB 1024 1024 1024 }}
+          mkdir -p $CACHESERVER_CACHE_PATH
+
+          {{- if and .EgressBandwidthInGb }}
+          echo "Traffic control is enabled"
+          BANDWIDTH="{{ .EgressBandwidthInGb }}gbit"
+          BURST="{{mulAll .EgressBandwidthInGb 25 }}mb"
+          for iface in $(ls -1 /sys/class/net); do
+            # Ensure it's a directory and has a valid type file
+            if [ -d "/sys/class/net/$iface" ] && [ -f "/sys/class/net/$iface/type" ]; then
+              # Only proceed if it's a physical ethernet interface
+              if [ "$(cat /sys/class/net/$iface/type)" = "1" ]; then
+                echo "Applying rate limiting to interface: $iface"
+                echo "Setting bandwidth: $BANDWIDTH, burst: ${BURST}"
+                if ! tc qdisc replace dev $iface root tbf rate $BANDWIDTH burst ${BURST} latency 1000ms; then
+                  echo "Warning: Failed to apply rate limiting to $iface, continuing..."
+                fi
+
+                echo "Rate limiting configuration for $iface:"
+                if ! tc qdisc show dev $iface; then
+                  echo "Warning: Failed to show qdisc config for $iface, continuing..."
+                fi
+              fi
+            fi
+          done
+          {{- else }}
+          echo "Traffic control is disabled"
+          {{- end }}
+
+          /root/check_space_overuse.sh $CACHESERVER_CACHE_PATH $CACHESERVER_CACHE_SIZE_BYTES
+          /root/CacheServer $CACHESERVER_PORT $CACHESERVER_CACHE_PATH $CACHESERVER_CACHE_SIZE_BYTES
+        volumeMounts:
+        - mountPath: {{ .MountSsdPath }}
+          name: cache-data-volume
+          subPath: ssd0
+{{/* TODO: Enable when discovery configmap is created by CRD operator
+        - name: cache-discovery-config
+          mountPath: /serverConfig
+          readOnly: true
+*/}}
+        livenessProbe:
+          exec:
+            command: [
+            '/bin/sh',
+            '-c',
+            '/root/LivenessProbe' ]
+          initialDelaySeconds: 300
+          periodSeconds: 120
+          failureThreshold : 10
+      volumes:
+        - name: cache-data-volume
+{{- if .UseEphemeralStorage }}
+          emptyDir:
+            sizeLimit: "{{add .ServerSizeInGB 5}}Gi"
+{{- else if .UseHostPath }}
+          hostPath:
+            path: {{ .NodeCacheFolderPath }}
+            type: Directory
+{{- else }}
+          hostPath: null
+          sizeLimit: null
+{{- end }}
+{{/* TODO: Enable when discovery configmap is created by CRD operator
+        - name: cache-discovery-config
+          configMap:
+            name: cacheserver-discovery-config
+*/}}
