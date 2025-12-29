@@ -1,0 +1,16 @@
+# Default values for the Cache Server Helm chart
+# Using host path storage with custom scheduler
+cacheServer:
+  enabled: true
+  image:
+    tag: ""  # Will be set via --set during helm install
+  serverSizeInGB: 1000
+  memoryLimitMB: 128000
+  useEphemeralStorage: false
+  useHostPath: true
+  nodeCacheFolderPath: /var/lib/ssd/cacheserver
+  enableTrafficControl: false
+  scheduler:
+    enabled: true
+    image:
+      tag: ""  # Will be set via --set during helm install

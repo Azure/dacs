@@ -1,0 +1,64 @@
+# Cache test client job for testing cache server performance
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cache-perf-client
+  namespace: cache-server
+spec:
+  manualSelector: true
+  selector:
+    matchLabels:
+      app: cache-perf-client
+  parallelism: 1
+  template:
+    metadata:
+      labels:
+        app: cache-perf-client
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: dacs.azure.com/processing-unit
+                operator: In
+                values:
+                - cpu
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - cacheserver
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: perf-client
+        image: dacs.azurecr.io/dacs/images/cache-test-client:IMAGE_TAG_PLACEHOLDER
+        command: ['/app/PerfClient']
+        args:
+        - '--server-port'
+        - '9065'
+        - '--server-hostname'
+        - 'SERVER_HOSTNAMES_PLACEHOLDER'
+        - '--num-threads'
+        - '32'
+        - '--data-size-GiB'
+        - 'DATA_SIZE_GIB_PLACEHOLDER'
+        - '--prefix'
+        - 'PREFIX_PLACEHOLDER'
+        - '--mode'
+        - 'MODE_PLACEHOLDER'
+        - '--num-iterations'
+        - '1'
+        - '--ib-enabled'
+        - 'false'
+        - '--enable-calculate-checksum'
+        - 'ENABLE_CALCULATE_CHECKSUM_PLACEHOLDER'
+        - '--enable-validate-checksum'
+        - 'ENABLE_VALIDATE_CHECKSUM_PLACEHOLDER'
+        - '--checksum-algorithm'
+        - 'CHECKSUM_ALGORITHM_PLACEHOLDER'
+      restartPolicy: Never
+  backoffLimit: 3
