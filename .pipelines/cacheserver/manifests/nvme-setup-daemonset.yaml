@@ -1,0 +1,339 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nvme-setup-script
+  namespace: default
+data:
+  setup.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    log() {
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"
+    }
+
+    settle_block() {
+      udevadm settle 2>/dev/null || true
+      sleep 1
+    }
+
+    get_root_disk_name() {
+      # Determine the underlying disk (e.g., nvme0n1, sda) that backs '/'.
+      # Works for /dev/nvme0n1pX, /dev/sdaX, and common mapper devices.
+      local root_source
+      local root_name
+      local pkname
+
+      root_source=$(findmnt -n -o SOURCE / 2>/dev/null || true)
+      if [ -z "${root_source}" ]; then
+        echo ""
+        return 0
+      fi
+
+      # Get a stable block-device name (no /dev/ prefix)
+      root_name=$(lsblk -no NAME "${root_source}" 2>/dev/null || true)
+      if [ -z "${root_name}" ]; then
+        # If findmnt gave us something lsblk can't resolve, bail out safely.
+        echo ""
+        return 0
+      fi
+
+      # PKNAME is the parent disk if root is a partition; empty if already a disk.
+      pkname=$(lsblk -no PKNAME "${root_source}" 2>/dev/null || true)
+      if [ -n "${pkname}" ]; then
+        echo "${pkname}"
+        return 0
+      fi
+
+      echo "${root_name}"
+      return 0
+    }
+
+    dump_diag() {
+      # Low-noise diagnostics for pipeline-only debugging. Call only on busy/failure.
+      log "----- DEBUG (begin) -----"
+      echo "hostname=$(hostname)"
+      echo "uname=$(uname -a 2>/dev/null || true)"
+      echo "\nlsblk (name,type,size,fstype,mountpoint,pkname):"
+      lsblk -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINT,PKNAME 2>/dev/null || true
+      echo "\nlsblk -f:"
+      lsblk -f 2>/dev/null || true
+      echo "\nmount (filtered):"
+      mount | grep -E 'nvme|/mntext|/var/lib/ssd' || true
+      echo "\n/proc/mdstat:"
+      cat /proc/mdstat 2>/dev/null || true
+      echo "\nmdadm --examine --scan:"
+      mdadm --examine --scan 2>/dev/null || true
+      echo "\nDevice holders (nvme*):"
+      for h in /sys/class/block/nvme*/holders/*; do
+        [ -e "$h" ] || continue
+        echo "$h"
+      done
+      log "----- DEBUG (end) -----"
+    }
+
+    device_in_use() {
+      local device="$1"
+      if lsblk -npo MOUNTPOINT "$device" 2>/dev/null | grep -qv '^[[:space:]]*$'; then
+        return 0
+      fi
+      if [ -d "/sys/class/block/$(basename "$device")/holders" ] && [ "$(ls -A "/sys/class/block/$(basename "$device")/holders" 2>/dev/null | wc -l | xargs)" != "0" ]; then
+        return 0
+      fi
+      return 1
+    }
+
+    log "========== NVMe setup starting on node $(hostname) =========="
+
+    host_cache_dir="/host/var/lib/ssd/cacheserver"
+    host_marker_file="/host/var/lib/ssd/.nvme-setup-done"
+    host_mount_point="/host/mntext"
+
+    mkdir -p "${host_cache_dir}"
+    chmod 0777 "${host_cache_dir}"
+
+    log "Ensured host cache dir exists: ${host_cache_dir}"
+
+    log "Installing tools (best-effort): mdadm, util-linux, gdisk"
+    if command -v apt-get >/dev/null 2>&1; then
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update -y || true
+      apt-get install -y mdadm util-linux gdisk || true
+    fi
+
+    # If a previous run already configured NVMe correctly, treat as success.
+    if nsenter -t 1 -m -- mountpoint -q /mntext && nsenter -t 1 -m -- mountpoint -q /var/lib/ssd/cacheserver; then
+      log "Detected existing NVMe setup (/mntext and /var/lib/ssd/cacheserver already mounted). Ensuring marker and permissions."
+      nsenter -t 1 -m -- mkdir -p /mntext/cacheserver
+      nsenter -t 1 -m -- chmod 0777 /mntext/cacheserver
+      # Ensure bind mount exists (if mountpoint says it is, this is a no-op anyway)
+      if ! nsenter -t 1 -m -- mount | grep -qE ' on /var/lib/ssd/cacheserver '; then
+        nsenter -t 1 -m -- mount --bind /mntext/cacheserver /var/lib/ssd/cacheserver || true
+      fi
+      echo "nvme" > "${host_marker_file}"
+      log "Wrote marker: ${host_marker_file}"
+      log "NVMe setup already present; exiting successfully."
+      exit 0
+    fi
+
+    root_disk=$(get_root_disk_name)
+    if [ -n "${root_disk}" ]; then
+      log "Detected root disk: ${root_disk} (will be excluded from NVMe candidates)"
+    else
+      log "WARN: Unable to detect root disk; will fall back to excluding nvme0n1 only"
+    fi
+
+    # Build candidate NVMe device list, excluding the detected root disk if possible.
+    # (Older behavior assumed root disk is nvme0n1, which is not always true across SKUs/images.)
+    nvme_devices=$(lsblk -nd -o NAME,TYPE | awk '$2=="disk" {print $1}' | grep '^nvme' || true)
+    if [ -n "${root_disk}" ]; then
+      nvme_devices=$(echo "${nvme_devices}" | grep -vx "${root_disk}" || true)
+    else
+      nvme_devices=$(echo "${nvme_devices}" | grep -v '^nvme0n1$' || true)
+    fi
+
+    log "Detected NVMe devices (excluding root): ${nvme_devices:-<none>}"
+
+    if [ -z "${nvme_devices}" ]; then
+      log "No extra NVMe devices found. Using host OS disk path only."
+      echo "no-nvme" > "${host_marker_file}"
+      log "Wrote marker: ${host_marker_file}"
+      exit 0
+    fi
+
+    if ! command -v mdadm >/dev/null 2>&1; then
+      log "Required tool mdadm is missing."
+      echo "no-mdadm" > "${host_marker_file}"
+      dump_diag
+      exit 0
+    fi
+
+    if ! command -v gdisk >/dev/null 2>&1; then
+      log "Required tool gdisk is missing; cannot create RAID partitions."
+      echo "no-gdisk" > "${host_marker_file}"
+      dump_diag
+      exit 0
+    fi
+
+    log "Stopping any existing RAID arrays (best-effort)"
+    mdadm --stop /dev/md0 2>/dev/null || true
+    settle_block
+
+    raid_devices=""
+    for disk in ${nvme_devices}; do
+      device="/dev/${disk}"
+      part="${device}p1"
+
+      log "Preparing ${device}"
+
+      if device_in_use "${device}"; then
+        log "WARN: ${device} appears busy. Attempting cleanup (best-effort)."
+        dump_diag
+
+        # Stop RAID (if present) and unmount the host mountpoint first.
+        nsenter -t 1 -m -- umount -fl /var/lib/ssd/cacheserver 2>/dev/null || true
+        nsenter -t 1 -m -- umount -fl /mntext 2>/dev/null || true
+        mdadm --stop /dev/md0 2>/dev/null || true
+        mdadm --remove /dev/md0 2>/dev/null || true
+        settle_block
+
+        # Legacy cleanup
+        nsenter -t 1 -m -- umount -fl "${part}" 2>/dev/null || true
+        nsenter -t 1 -m -- umount -fl "${device}" 2>/dev/null || true
+        settle_block
+
+        if device_in_use "${device}"; then
+          log "ERROR: ${device} is still busy after cleanup; cannot proceed."
+          echo "device-busy" > "${host_marker_file}"
+          dump_diag
+          exit 0
+        fi
+      fi
+
+      # Wipe any existing signatures, then create a single Linux RAID partition.
+      wipefs -af "${device}" 2>/dev/null || true
+      settle_block
+
+      log "Creating RAID partition on ${device}"
+      # Create 1 partition covering whole disk with type code fd00 (Linux RAID)
+      echo -e "n\n\n\n\nfd00\np\nw\nY" | gdisk "${device}" >/dev/null 2>&1 || true
+      settle_block
+
+      if [ ! -b "${part}" ]; then
+        log "WARN: Expected partition ${part} was not created or not visible."
+        echo "partition-create-failed" > "${host_marker_file}"
+        dump_diag
+        exit 0
+      fi
+
+      raid_devices="${raid_devices} ${part}"
+      log "Added RAID member partition: ${part}"
+    done
+
+    raid_devices=$(echo "${raid_devices}" | xargs)
+    device_count=$(echo "${raid_devices}" | wc -w | xargs)
+
+    if [ "${device_count}" -lt 1 ]; then
+      log "No RAID members available."
+      echo "no-raid-members" > "${host_marker_file}"
+      dump_diag
+      exit 0
+    fi
+
+    log "Creating RAID0 with ${device_count} devices: ${raid_devices}"
+    if ! mdadm --create /dev/md0 --level=0 --raid-devices="${device_count}" ${raid_devices} --force; then
+      log "WARN: RAID creation failed."
+      echo "raid-create-failed" > "${host_marker_file}"
+      dump_diag
+      exit 0
+    fi
+
+    sleep 5
+    settle_block
+
+    log "RAID status (/proc/mdstat):"
+    cat /proc/mdstat || true
+
+    log "Formatting /dev/md0 as ext4"
+    if ! mkfs.ext4 -F /dev/md0; then
+      log "WARN: mkfs failed."
+      echo "mkfs-failed" > "${host_marker_file}"
+      dump_diag
+      exit 0
+    fi
+
+    log "Mounting /dev/md0 on host at /mntext"
+    mkdir -p "${host_mount_point}"
+
+    if ! nsenter -t 1 -m -- mount | grep -qE ' on /mntext '; then
+      if ! nsenter -t 1 -m -- mount /dev/md0 /mntext; then
+        log "WARN: Host mount failed."
+        echo "host-mount-failed" > "${host_marker_file}"
+        dump_diag
+        exit 0
+      fi
+    else
+      log "/mntext already mounted in host namespace"
+    fi
+
+    log "Ensuring host NVMe-backed cache dir exists: /mntext/cacheserver"
+    nsenter -t 1 -m -- mkdir -p /mntext/cacheserver
+    nsenter -t 1 -m -- chmod 0777 /mntext/cacheserver
+
+    log "Bind-mounting /mntext/cacheserver -> /var/lib/ssd/cacheserver in host namespace"
+    if ! nsenter -t 1 -m -- mount | grep -qE ' on /var/lib/ssd/cacheserver '; then
+      if ! nsenter -t 1 -m -- mount --bind /mntext/cacheserver /var/lib/ssd/cacheserver; then
+        log "WARN: Bind mount failed. Leaving hostPath on OS disk."
+        echo "bind-mount-failed" > "${host_marker_file}"
+        dump_diag
+        exit 0
+      fi
+    else
+      log "/var/lib/ssd/cacheserver already mounted in host namespace"
+    fi
+
+    echo "nvme" > "${host_marker_file}"
+    log "Wrote marker: ${host_marker_file}"
+
+    log "========== Final host validation (host namespace) =========="
+    nsenter -t 1 -m -- bash -c "
+      set -e
+      echo 'Mounts (filtered):'
+      mount | grep -E ' /mntext|/var/lib/ssd/cacheserver ' || true
+      echo ''
+      echo 'df -h (filtered):'
+      df -h | grep -E 'Filesystem|/mntext|/var/lib/ssd/cacheserver' || true
+    "
+
+    log "NVMe setup completed successfully"
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvme-setup
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: nvme-setup
+  template:
+    metadata:
+      labels:
+        app: nvme-setup
+    spec:
+      hostNetwork: true
+      hostPID: true
+      hostIPC: true
+      containers:
+        - name: nvme-setup
+          image: ubuntu:22.04
+          command: ["/bin/bash", "/scripts/setup.sh"]
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: host
+              mountPath: /host
+            - name: dev
+              mountPath: /dev
+            - name: proc
+              mountPath: /hostproc
+              readOnly: true
+            - name: setup-script
+              mountPath: /scripts
+      volumes:
+        - name: host
+          hostPath:
+            path: /
+        - name: dev
+          hostPath:
+            path: /dev
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: setup-script
+          configMap:
+            name: nvme-setup-script
+            defaultMode: 0755
+      restartPolicy: Always
+  updateStrategy:
+    type: RollingUpdate
