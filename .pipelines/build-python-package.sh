@@ -49,8 +49,9 @@ cd $DIR/../src/subsystems/storage/dacs_client
 
 # Get build number from environment or use timestamp
 if [ ! -z "$BUILD_BUILDNUMBER" ]; then
-  # Azure DevOps build number format: extract the numeric part
-  BUILD_TAG=$(echo $BUILD_BUILDNUMBER | cut -d '.' -f 2)
+  # Azure DevOps build number format: use the full build number and remove dots for uniqueness
+  # Example: 20251229.9 -> 202512299
+  BUILD_TAG=$(echo "$BUILD_BUILDNUMBER" | tr -d '.')
 elif [ ! -z "$PACKAGE_REVISION" ]; then
   BUILD_TAG=$PACKAGE_REVISION
 else
