@@ -26,7 +26,8 @@ __attribute__((constructor)) void LoggingInit(void) {
 thread_local std::string ContentHandler::m_threadLocalLastError;
 //---------------------------------------------------------------------------------------------------------------------
 ContentHandler::ContentHandler()
-  : m_spCacheClient(nullptr)
+  : m_bForkHandlersSetup(false)
+  , m_spCacheClient(nullptr)
   , m_spAttributesCache(nullptr)
   , m_bCacheClientsInitialized(false)
 {

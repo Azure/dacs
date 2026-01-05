@@ -21,6 +21,13 @@ std::size_t CacheClientImpl::nDefaultConnectionPoolSize = 1024;
 //---------------------------------------------------------------------------------------------------------------------
 CacheClientImpl::CacheClientImpl()
 : m_bInitialized{false}
+, m_bEnableIB(false)
+, m_bEnableAuth(false)
+, m_bEnableCalculateChecksum(true)
+, m_bEnableValidateChecksum(false)
+, m_checksumAlgorithm(DEFAULT_CHECKSUM_ALGORITHM)
+, m_nConnectionPoolSize(0)
+, m_nMaxBufferSizeBytes(0)
 {
     LOG_INFO("CacheClientImpl constructor called");
 }

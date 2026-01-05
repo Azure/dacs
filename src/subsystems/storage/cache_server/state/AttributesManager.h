@@ -24,7 +24,7 @@ class AttributesManager
             CacheAttributes(bool isdir, int64_t filesize, uint64_t accessedtime, uint64_t modifiedtime)
                 : m_isdir(isdir), m_filesize(filesize), m_accessedtime(accessedtime), m_modifiedtime(modifiedtime) {}
             CacheAttributes() 
-                : m_filesize(-1) {}
+                : m_isdir(false), m_filesize(-1), m_accessedtime(0), m_modifiedtime(0) {}
 
             bool m_isdir;
             int64_t m_filesize;

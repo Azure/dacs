@@ -102,6 +102,7 @@ ConnectionManager::ConnectionManager(
     ,  m_strCacheAccountName(strCacheAccountName)
     ,  m_strCacheAccountKey(strCacheAccountKey)
     ,  m_nMaxConnectionsReuseSize(nMaxConnectionsReuseSize)
+    ,  m_nMaxConnsPerServer(0)
     ,  m_bReuseServerConnections(bReuseServerConnections)
     ,  m_bUseInfiniband(bUseInfiniband)
     ,  m_bEnableCacheServerDiscovery(bEnableCacheServerDiscovery)

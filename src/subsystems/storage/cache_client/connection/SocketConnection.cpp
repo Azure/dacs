@@ -24,6 +24,7 @@ uint32_t SocketConnection::socketTimeoutMillisPerMB = 2000;
 //---------------------------------------------------------------------------------------------------------------------
 SocketConnection::SocketConnection(int socketFd)
 : m_socketFd(socketFd)
+, m_sendAttempted(false)
 {
     ResetConnection();
 }
