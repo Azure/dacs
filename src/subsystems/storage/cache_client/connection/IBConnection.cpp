@@ -12,7 +12,16 @@ using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
 IBConnection::IBConnection(unique_ibv_qp qp, unique_ibv_comp_channel eventChannel, unique_ibv_cq cq, unique_ibv_mr mr,
     unique_ptr<char[]> mrBuffer)
-    : m_qp(move(qp)), m_eventChannel(move(eventChannel)), m_cq(move(cq)), m_mr(move(mr)), m_mrBuffer(move(mrBuffer))
+    : m_qp(move(qp))
+    , m_eventChannel(move(eventChannel))
+    , m_cq(move(cq))
+    , m_mr(move(mr))
+    , m_mrBuffer(move(mrBuffer))
+    , m_writeOffset(0)
+    , m_responseLength(-1)
+    , m_readOffset(0)
+    , m_qpError(false)
+    , m_sendAttempted(false)
 {
 
     // Fetch and change the blocking mode of the completion channel to non-blocking
