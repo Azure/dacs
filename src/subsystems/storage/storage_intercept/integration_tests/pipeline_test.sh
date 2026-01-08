@@ -125,6 +125,13 @@ function append_interception_config_blob_prefix() {
     fi
 }
 
+# Enables and configures cache request retries used by the remote cache client.
+function append_cache_request_retry_config() {
+  echo "cacheRetryMaxAttempts 3" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+  echo "cacheRetryBaseDelayMs 100" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+  echo "cacheRetryMaxDelayMs 1000" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+}
+
 # 2.2 Dynamic Mount Configuration Generator
 # Creates configuration for dynamic account/container mounting scenarios
 # Parameters:
@@ -229,6 +236,8 @@ function add_interception_config_blob_with_cache() {
       echo "cacheEnableRemote false" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     fi
 
+    append_cache_request_retry_config
+
     echo "Created the storage interception config file with cache enabled. Its contents are =>"
     eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
 }
@@ -278,6 +287,8 @@ function add_interception_config_blob_with_remote_cache() {
     echo "cacheEnableRemote true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "cacheServerList 127.0.0.1" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
+    append_cache_request_retry_config
+
     echo "Created the storage interception config file with remote attribute and data cache enabled. Its contents are =>"
     eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
 }
@@ -293,6 +304,8 @@ function add_interception_config_blob_with_localssdcache() {
     echo "cacheUseLocalFS true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "cacheLocalFSCachePath ${CACHE_LOCAL_SSD_PATH}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "cacheLocalFSCacheStagingPath ${CACHE_LOCAL_SSD_PATH}/_temp" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+
+    append_cache_request_retry_config
 
     echo "Created the storage interception config file with local ssd cache enabled. Its contents are =>"
     eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"

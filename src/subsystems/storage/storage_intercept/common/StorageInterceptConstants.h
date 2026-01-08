@@ -66,6 +66,9 @@ namespace StorageInterceptConstants
     const char* const ConfigNameCacheServerDiscoveryIntervalInSeconds = "cacheServerDiscoveryIntervalInSeconds";
     const char* const ConfigNameCacheServerDiscoveryEndpoint = "cacheServerDiscoveryEndpoint";
     const char* const ConfigNameCacheEnableConsistentHashing = "cacheEnableConsistentHashing";
+    const char* const ConfigNameCacheRetryMaxAttempts = "cacheRetryMaxAttempts";
+    const char* const ConfigNameCacheRetryBaseDelayMillis = "cacheRetryBaseDelayMillis";
+    const char* const ConfigNameCacheRetryMaxDelayMillis = "cacheRetryMaxDelayMillis";
 
     // Config for Attributes cache
     const char* const ConfigNameAttributesCacheEnable = "attributesCacheEnable";

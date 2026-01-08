@@ -37,6 +37,11 @@ int main(int argc, char** argv)
 
     CacheClientImpl cacheClient;
     const char* arrServers[1] = {strCacheServerHostName.c_str()};
+    const CacheClientRetryConfig retryConfig{
+        1,
+        0,
+        0,
+    };
     cacheClient.Initialize(arrServers,
                            1,       /*nServers*/
                            nCacheServerPort,
@@ -53,6 +58,8 @@ int main(int argc, char** argv)
                            false,   /*bIsCacheServerDiscoveryEnabled*/
                            300,     /*nCacheServerDiscoveryIntervalInSeconds*/
                            strCacheServerHostName.c_str(), /*nCacheServerDiscoveryEndpoint*/
+                           false,   /*bEnableConsistentHashing*/
+                           retryConfig,
                            0        /*nMaxBufferSizeBytes*/);
 
     std::string strFileName = "liveness_probe_" + cacheutils::GetCorrelationId();

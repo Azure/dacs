@@ -734,6 +734,30 @@ std::string StorageInterceptConfig::GetCacheChecksumAlgorithm()
         StorageInterceptConstants::ConfigDefaultCacheChecksumAlgorithm);
 }
 //---------------------------------------------------------------------------------------------------------------------
+uint32_t StorageInterceptConfig::GetCacheRetryMaxAttempts()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint32(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheRetryMaxAttempts,
+        1);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint64_t StorageInterceptConfig::GetCacheRetryBaseDelayMillis()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint64(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheRetryBaseDelayMillis,
+        100);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint64_t StorageInterceptConfig::GetCacheRetryMaxDelayMillis()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint64(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheRetryMaxDelayMillis,
+        5000);
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::IsRemoteDownloadOnlyWhenLockHeldEnabled()
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(

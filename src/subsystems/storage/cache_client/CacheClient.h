@@ -59,6 +59,16 @@ typedef struct
     uint64_t nKeyValuePairs;
 } LastAccessTimeDistribution;
 //---------------------------------------------------------------------------------------------------------------------
+typedef struct
+{
+    // Total number of attempts for retryable operations. Use 1 to disable retries (single attempt).
+    uint32_t nMaxAttempts;
+    // Base delay in milliseconds for exponential backoff.
+    uint64_t nBaseDelayMillis;
+    // Maximum delay in milliseconds between retries.
+    uint64_t nMaxDelayMillis;
+} CacheClientRetryConfig;
+//---------------------------------------------------------------------------------------------------------------------
 /**
  * Initialize cache client, setting up configurations parameters.
  * 
@@ -73,6 +83,8 @@ typedef struct
  *        authentication disabled. If enabled, each request to the cache-server will include account name, timestamp
  *        and signature of request header generated using the account key.
  * @param bEnableConsistentHashing Enable consistent hashing for server selection
+ * @param retryConfig Retry configuration for transient cache failures. Retries are disabled if nMaxAttempts is 1.
+ *        All values must be valid: nMaxAttempts >= 1, nBaseDelayMillis > 0, nMaxDelayMillis > 0, and nBaseDelayMillis <= nMaxDelayMillis.
  * 
  * @returns CacheClientStatus indicating the status of the upload operation
  * 1. SUCCESS -- If the cache client is initialized successfully
@@ -89,7 +101,8 @@ CacheClientStatus Initialize(
     /*[in]*/ bool bEnableValidateChecksum,
     /*[in]*/ const char* strChecksumAlgorithm,
     /*[in]*/ const AuthCredentials* pAuthCredentials,
-    /*[in]*/ bool bEnableConsistentHashing);
+    /*[in]*/ bool bEnableConsistentHashing,
+    /*[in]*/ CacheClientRetryConfig retryConfig);
 //---------------------------------------------------------------------------------------------------------------------
 /**
  * Uploads nLength bytes of data from pBuffer to the cache server and associates it with the key strCacheKey.

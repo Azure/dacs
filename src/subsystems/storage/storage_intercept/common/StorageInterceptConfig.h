@@ -69,6 +69,9 @@ class StorageInterceptConfig
         bool IsCacheCalculateChecksumEnabled();
         bool IsCacheValidateChecksumEnabled();
         std::string GetCacheChecksumAlgorithm();
+        uint32_t GetCacheRetryMaxAttempts();
+        uint64_t GetCacheRetryBaseDelayMillis();
+        uint64_t GetCacheRetryMaxDelayMillis();
 
         // Getters for attribute cache
         bool GetAttributesCacheEnable(const std::string& mountName);

@@ -5,6 +5,7 @@
 #include "CacheClient.h"
 #include "CacheClientLogger.h"
 #include "ChecksumFactory.h"
+#include "utils/CacheClientRetry.h"
 #include "CacheUtils.h"
 #include "EncryptionUtil.h"
 #include "LogUtils.h"
@@ -50,6 +51,7 @@ CacheClientStatus CacheClientImpl::Initialize(
     /*[in]*/ const uint32_t nCacheServerDiscoveryIntervalInSeconds,
     /*[in]*/ const char* nCacheServerDiscoveryEndpoint,
     /*[in]*/ const bool bEnableConsistentHashing,
+    /*[in]*/ CacheClientRetryConfig retryConfig,
     /*[inopt]*/ std::size_t nMaxBufferSizeBytes)
 {
     std::lock_guard<std::mutex> lock(m_mtxInitialization);
@@ -111,6 +113,12 @@ CacheClientStatus CacheClientImpl::Initialize(
     m_bEnableAuth = bEnableAuth;
     m_bEnableCalculateChecksum = bEnableCalculateChecksum;
     m_bEnableValidateChecksum = bEnableValidateChecksum;
+
+    if (!cacheclientretry::ValidateRetryConfig(retryConfig))
+    {
+        return CacheClientStatus::INVALID_ARGUMENT;
+    }
+    m_retryConfig = retryConfig;
     m_strAccountName = strAccountName == nullptr ? "" : std::string(strAccountName);
     m_strAccountKey = strAccountKey == nullptr ? "" : std::string(strAccountKey);
     std::string algorithmStr = (strChecksumAlgorithm == nullptr || strlen(strChecksumAlgorithm) == 0) ? 
@@ -120,7 +128,7 @@ CacheClientStatus CacheClientImpl::Initialize(
     if (m_checksumAlgorithm == ChecksumAlgorithm::INVALID)
     {
         m_checksumAlgorithm = DEFAULT_CHECKSUM_ALGORITHM;
-        LOG_INFO("Invalid checksum algorithm provided, using default {}", ChecksumFactory::GetAlgorithmName(m_checksumAlgorithm))
+        LOG_INFO("Invalid checksum algorithm provided, using default {}", ChecksumFactory::GetAlgorithmName(m_checksumAlgorithm));
     }
     
     m_spConnectionManager = std::make_unique<ConnectionManager>(nPort,
@@ -138,10 +146,13 @@ CacheClientStatus CacheClientImpl::Initialize(
                                                                 bEnableConsistentHashing);
     
     m_bInitialized = true;
-    LOG_INFO("CacheClientImpl initialized. Enable Calculate checksum = {}, Enable Validate checksum = {}, Checksum algorithm = {}",
+    LOG_INFO("CacheClientImpl initialized. Enable Calculate checksum = {}, Enable Validate checksum = {}, Checksum algorithm = {}, Retry max attempts = {}, Retry base delay ms = {}, Retry max delay ms = {}",
              m_bEnableCalculateChecksum,
              m_bEnableValidateChecksum,
-             ChecksumFactory::GetAlgorithmName(m_checksumAlgorithm));
+             ChecksumFactory::GetAlgorithmName(m_checksumAlgorithm),
+             m_retryConfig.nMaxAttempts,
+             m_retryConfig.nBaseDelayMillis,
+             m_retryConfig.nMaxDelayMillis);
     return CacheClientStatus::SUCCESS;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -209,7 +220,6 @@ CacheClientStatus CacheClientImpl::Upload(
         return CacheClientStatus::INVALID_ARGUMENT;
     }
 
-    // TODO: Implement retries on failure
     Request request;
     UploadRequest* uploadRequest = request.mutable_uploadrequest();
     uploadRequest->set_requestid(strCorrelationId);
@@ -282,84 +292,105 @@ CacheClientStatus CacheClientImpl::Upload(
         }
     }
 
-    const std::string hostname = m_spConnectionManager->GetCacheServerHostname(strCacheKey);
-    if (hostname.empty())
+    auto uploadAttempt = [&]() -> CacheClientStatus
     {
+        const std::string hostname = m_spConnectionManager->GetCacheServerHostname(strCacheKey);
+        if (hostname.empty())
+        {
         LOG_DEBUG_REQID("No cache servers available for upload, key: {}. Cache discovery may be in progress.", *uploadRequest, strCacheKey);
-        return CacheClientStatus::INTERNAL_ERROR;
-    }
-    LOG_DEBUG_REQID("Cache server hostname for file: {} is {}", *uploadRequest, strCacheKey, hostname);
-    std::unique_ptr<IConnection> serverConnection = move(m_spConnectionManager->GetConnection(hostname));
-    if(serverConnection.get() == nullptr)
-    {
-        LOG_WARN_REQID("couldn't get server connection, ignoring upload for file: {}", *uploadRequest, strCacheKey);
-        return CacheClientStatus::INTERNAL_ERROR;
-    }
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
+        LOG_DEBUG_REQID("Cache server hostname for file: {} is {}", *uploadRequest, strCacheKey, hostname);
+        std::unique_ptr<IConnection> serverConnection = move(m_spConnectionManager->GetConnection(hostname));
+        if(serverConnection.get() == nullptr)
+        {
+            LOG_WARN_REQID("couldn't get server connection, ignoring upload for file: {}", *uploadRequest, strCacheKey);
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
 
-    bool bRet = false;
-    if(nBufferLength > 0)
-    {
-        bRet = SendMessageToRemote(serverConnection.get(), request);
-    }
-    else
-    {
-        bRet = SendMessageToRemoteFinal(serverConnection.get(), request);
-    }
+        bool bRet = false;
+        if(nBufferLength > 0)
+        {
+            bRet = SendMessageToRemote(serverConnection.get(), request);
+        }
+        else
+        {
+            bRet = SendMessageToRemoteFinal(serverConnection.get(), request);
+        }
 
-    if(!bRet)
-    {
-        LOG_WARN_REQID("couldn't send request, ignoring upload for file: {}", *uploadRequest, strCacheKey);
-        m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
-        return CacheClientStatus::INTERNAL_ERROR;
-    }
+        if(!bRet)
+        {
+            LOG_WARN_REQID("couldn't send request, ignoring upload for file: {}", *uploadRequest, strCacheKey);
+            m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
 
-    if(nBufferLength > 0 && !cacheutils::WriteAllFinal(serverConnection.get(), pBuffer, nBufferLength))
-    {
-        LOG_WARN_REQID("couldn't complete write to server, file: {}", *uploadRequest, strCacheKey);
-        m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
-        return CacheClientStatus::INTERNAL_ERROR;
-    }
+        if(nBufferLength > 0 && !cacheutils::WriteAllFinal(serverConnection.get(), pBuffer, nBufferLength))
+        {
+            LOG_WARN_REQID("couldn't complete write to server, file: {}", *uploadRequest, strCacheKey);
+            m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
 
-    std::string strResponse;
-    if(!ReadMessageFromRemote(serverConnection.get(), strResponse))
-    {
-        LOG_WARN_REQID("couldn't read response from server. file: {}", *uploadRequest, strCacheKey);
-        m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
-        return CacheClientStatus::INTERNAL_ERROR;
-    }
+        std::string strResponse;
+        if(!ReadMessageFromRemote(serverConnection.get(), strResponse))
+        {
+            LOG_WARN_REQID("couldn't read response from server. file: {}", *uploadRequest, strCacheKey);
+            m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
 
-    UploadResponse response;
-    if(!response.ParseFromString(strResponse))
-    {
-        LOG_WARN_REQID("couldn't parse response from server. file: {}", *uploadRequest, strCacheKey);
-        m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
-        return CacheClientStatus::INTERNAL_ERROR;
-    }
+        UploadResponse response;
+        if(!response.ParseFromString(strResponse))
+        {
+            LOG_WARN_REQID("couldn't parse response from server. file: {}", *uploadRequest, strCacheKey);
+            m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
 
-    CacheClientStatus status;
-    if(response.result() == UploadResponse::SUCCESS)
-    {
-        LOG_DEBUG_REQID("Uploaded to server successfully. file: {}", *uploadRequest, strCacheKey);
-        status = CacheClientStatus::SUCCESS;
-    }
-    else if(response.result() == UploadResponse::FILE_EXISTS)
-    {
-        LOG_WARN_REQID("Duplicate upload attempted for file: {}", *uploadRequest, strCacheKey);
-        status = CacheClientStatus::KEY_EXISTS;
-    }
-    else if(response.result() == UploadResponse::AUTH_FAILED)
-    {
-        LOG_ERROR_REQID("Authentication failed for file: {}", *uploadRequest, strCacheKey);
-        return CacheClientStatus::AUTH_FAILED;
-    }
-    else
-    {
-        LOG_WARN_REQID("Upload to server failed. file: {}, error: {}", *uploadRequest, strCacheKey, response.result());
-        status = CacheClientStatus::INTERNAL_ERROR;
-    }
+        CacheClientStatus status;
+        if(response.result() == UploadResponse::SUCCESS)
+        {
+            LOG_DEBUG_REQID("Uploaded to server successfully. file: {}", *uploadRequest, strCacheKey);
+            status = CacheClientStatus::SUCCESS;
+        }
+        else if(response.result() == UploadResponse::FILE_EXISTS)
+        {
+            LOG_WARN_REQID("Duplicate upload attempted for file: {}", *uploadRequest, strCacheKey);
+            status = CacheClientStatus::KEY_EXISTS;
+        }
+        else if(response.result() == UploadResponse::AUTH_FAILED)
+        {
+            LOG_ERROR_REQID("Authentication failed for file: {}", *uploadRequest, strCacheKey);
+            status = CacheClientStatus::AUTH_FAILED;
+        }
+        else
+        {
+            LOG_WARN_REQID("Upload to server failed. file: {}, error: {}", *uploadRequest, strCacheKey, response.result());
+            status = CacheClientStatus::INTERNAL_ERROR;
+        }
 
-    m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), false);
-    return status;
+        m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), false);
+        return status;
+    };
+
+    return cacheclientretry::AttemptWithRetry(
+        uploadAttempt,
+        [&](const cacheclientretry::CacheClientRetryLogContext& ctx)
+        {
+            LOG_WARN_REQID(
+                "Upload attempt {}/{} for file={} returned status={}; is_retryable_error={} is_max_retry_exhausted={} will_retry={} delayMillis={}",
+                *uploadRequest,
+                ctx.failedAttempt,
+                ctx.maxAttempts,
+                strCacheKey,
+                static_cast<int>(ctx.status),
+                ctx.is_retryable_error,
+                ctx.is_max_retry_exhausted,
+                ctx.will_retry,
+                (long)ctx.delay.count());
+        },
+        m_retryConfig);
 }
 //---------------------------------------------------------------------------------------------------------------------
 CacheClientStatus CacheClientImpl::Download(

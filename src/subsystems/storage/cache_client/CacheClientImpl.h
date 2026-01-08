@@ -39,6 +39,7 @@ class CacheClientImpl
         /*[in]*/ const uint32_t nCacheServerDiscoveryIntervalInSeconds,
         /*[in]*/ const char* nCacheServerDiscoveryEndpoint,
         /*[in]*/ const bool bEnableConsistentHashing,
+        /*[in]*/ CacheClientRetryConfig retryConfig,
         /*[inopt]*/ const std::size_t nMaxBufferSizeBytes = MAX_BUFFER_SIZE_BYTES);
 
     CacheClientStatus Upload(
@@ -90,6 +91,7 @@ class CacheClientImpl
     std::string m_strAccountKey;
     ChecksumAlgorithm m_checksumAlgorithm;
     uint32_t m_nConnectionPoolSize;
+    CacheClientRetryConfig m_retryConfig;
     std::unique_ptr<ConnectionManager> m_spConnectionManager;
     static std::size_t nDefaultConnectionPoolSize;
     size_t m_nMaxBufferSizeBytes;

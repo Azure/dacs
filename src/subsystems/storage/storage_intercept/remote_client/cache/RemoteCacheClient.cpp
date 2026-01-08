@@ -38,6 +38,10 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
     bool bEnableCalculateChecksum = StorageInterceptConfig::GetInstance().IsCacheCalculateChecksumEnabled();
     bool bEnableValidateChecksum = StorageInterceptConfig::GetInstance().IsCacheValidateChecksumEnabled();
     const std::string strChecksumAlgorithm = StorageInterceptConfig::GetInstance().GetCacheChecksumAlgorithm();
+    uint32_t nRetryMaxAttempts = StorageInterceptConfig::GetInstance().GetCacheRetryMaxAttempts();
+    uint64_t nRetryBaseDelayMillis = StorageInterceptConfig::GetInstance().GetCacheRetryBaseDelayMillis();
+    uint64_t nRetryMaxDelayMillis = StorageInterceptConfig::GetInstance().GetCacheRetryMaxDelayMillis();
+    const CacheClientRetryConfig retryConfig{nRetryMaxAttempts, nRetryBaseDelayMillis, nRetryMaxDelayMillis};
     uint32_t nChunkSizeConfig = StorageInterceptConfig::GetInstance().GetStreamingChunkSize();
 
     // Chunk size is configurable in new clients, so we need to include it in the cache key to prevent collisions
@@ -117,6 +121,7 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
                                                        nDiscoveryIntervalInSeconds,
                                                        nDiscoveryEndpoint.c_str(),
                                                        bEnableConsistentHashing,
+                                                       retryConfig,
                                                        nMaxBufferSize);
     STORAGE_ASSERT(cacheStatus == CacheClientStatus::SUCCESS, "Failed to initialize CacheClientImpl");
     delete[] arrServers;
