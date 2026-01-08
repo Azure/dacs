@@ -101,7 +101,7 @@ public:
 
         static_assert(LEVEL >= LogLevel::Critical && LEVEL <= LogLevel::Trace);
 
-        if(LOG_LEVEL < static_cast<int>(LEVEL)) return;
+        if(m_nRuntimeLogLevel < static_cast<int>(LEVEL)) return;
 
         if(LEVEL >= LogLevel::Warn)
         {
@@ -130,6 +130,8 @@ private:
 
     static std::shared_ptr<ILogger> m_upLogger;
     static std::recursive_mutex m_lock;
+
+    static int m_nRuntimeLogLevel;
 
     template<size_t M, typename... _TArgs>
     static decltype(auto) FormatMsg(const char(&message)[M], _TArgs&&... Fargs)
