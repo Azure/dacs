@@ -243,7 +243,10 @@ po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
             "is-discovery-enabled", po::value<bool>()->default_value(false), "Enable discovery endpoint")(
             "enable-calculate-checksum", po::value<bool>()->default_value(false), "Enable checksum calculation on upload")(
             "enable-validate-checksum", po::value<bool>()->default_value(false), "Enable checksum validation on download")(
-            "checksum-algorithm", po::value<std::string>()->default_value("xxhash32"), "Checksum algorithm to use ('xxhash32' or 'crc32')");
+            "checksum-algorithm", po::value<std::string>()->default_value("xxhash32"), "Checksum algorithm to use ('xxhash32' or 'crc32')")(
+            "cache-retry-max-attempts", po::value<uint32_t>()->default_value(1), "Max attempts for cache-client internal retries (1 disables retries)")(
+            "cache-retry-base-delay-ms", po::value<uint64_t>()->default_value(0), "Base delay (ms) for cache-client internal retries (must be >0 if max attempts > 1)")(
+            "cache-retry-max-delay-ms", po::value<uint64_t>()->default_value(0), "Max delay (ms) for cache-client internal retries (must be >0 and >= base delay if max attempts > 1)");
 
         po::variables_map vm;
         po::store(po::command_line_parser(argc, argv).options(description).allow_unregistered().run(), vm);
@@ -382,6 +385,10 @@ int PerfClient(int argc, char *argv[])
     bool bEnableValidateChecksum = args["enable-validate-checksum"].as<bool>();
     std::string strChecksumAlgo = args["checksum-algorithm"].as<std::string>();
 
+    uint32_t nRetryMaxAttempts = args["cache-retry-max-attempts"].as<uint32_t>();
+    uint64_t nRetryBaseDelayMs = args["cache-retry-base-delay-ms"].as<uint64_t>();
+    uint64_t nRetryMaxDelayMs = args["cache-retry-max-delay-ms"].as<uint64_t>();
+
     if(strMode != "upload" && strMode != "download")
     {
         LOG_CRITICAL("Invalid mode {}. Must be 'upload' or 'download'", strMode);
@@ -395,23 +402,26 @@ int PerfClient(int argc, char *argv[])
     }
 
     CacheClientImpl client;
-    client.Initialize(vecCstrHostnames.data(),
-                      vecCstrHostnames.size(),
-                      nPort,                        /*nCacheServerPort*/
-                      bIsIBEnabled,                 /*bEnableIB*/
-                      bEnableCalculateChecksum,     /*bEnableCalculateChecksum*/
-                      bEnableValidateChecksum,      /*bEnableValidateChecksum*/
-                      strChecksumAlgo.c_str(),      /*strChecksumAlgorithm*/
-                      nNumThreads * 2,              /*nConnectionPoolSize*/
-                      false,                        /*bEnableAuth*/
-                      nullptr,                      /*strAccountName*/
-                      nullptr,                      /*strAccountKey*/
-                      false,                        /*bUseLocalServer*/
-                      true,                         /*bReuseConnections*/
-                      bIsDiscoveryEnabled,          /*bIsCacheServerDiscoveryEnabled*/
-                      5,                            /*nCacheServerDiscoveryIntervalInSeconds*/
-                      LOCALHOST,                    /*nCacheServerDiscoveryEndpoint*/
-                      CHUNK_SIZE);                  /*nMaxBufferSizeBytes*/
+    const CacheClientRetryConfig retryConfig{nRetryMaxAttempts, nRetryBaseDelayMs, nRetryMaxDelayMs};
+    CacheClientStatus initStatus = client.Initialize(vecCstrHostnames.data(),
+                                                     vecCstrHostnames.size(),
+                                                     nPort,                        /*nCacheServerPort*/
+                                                     bIsIBEnabled,                 /*bEnableIB*/
+                                                     bEnableCalculateChecksum,     /*bEnableCalculateChecksum*/
+                                                     bEnableValidateChecksum,      /*bEnableValidateChecksum*/
+                                                     strChecksumAlgo.c_str(),      /*strChecksumAlgorithm*/
+                                                     nNumThreads * 2,              /*nConnectionPoolSize*/
+                                                     false,                        /*bEnableAuth*/
+                                                     nullptr,                      /*strAccountName*/
+                                                     nullptr,                      /*strAccountKey*/
+                                                     false,                        /*bUseLocalServer*/
+                                                     true,                         /*bReuseConnections*/
+                                                     bIsDiscoveryEnabled,          /*bIsCacheServerDiscoveryEnabled*/
+                                                     5,                            /*nCacheServerDiscoveryIntervalInSeconds*/
+                                                     LOCALHOST,                    /*nCacheServerDiscoveryEndpoint*/
+                                                     false,                        /*bEnableConsistentHashing*/
+                                                     retryConfig,
+                                                     CHUNK_SIZE);                  /*nMaxBufferSizeBytes*/
 
     std::size_t nDataSizeBytes = nDataSizeGiB * 1024 * 1024 * 1024;
     bool bAllIterationsSucceeded = true;
@@ -444,6 +454,7 @@ int EvictionClient(int argc, char* argv[])
     }
 
     CacheClientImpl client;
+    const CacheClientRetryConfig retryConfig{1, 0, 0};
     client.Initialize(vecCstrHostnames.data(),
                       vecCstrHostnames.size(),
                       nPort,                       /*nCacheServerPort*/
@@ -460,7 +471,8 @@ int EvictionClient(int argc, char* argv[])
                       false,                       /*bIsCacheServerDiscoveryEnabled*/
                       300,                         /*nCacheServerDiscoveryIntervalInSeconds*/
                       LOCALHOST,                   /*nCacheServerDiscoveryEndpoint*/
-                      true);                       /*bEnableConsistentHashing*/
+                      true,                        /*bEnableConsistentHashing*/
+                      retryConfig);
 
     LOG_INFO("Requesting eviction from cache servers based on last access time time: {}",
              strLastAccessTime.c_str());
@@ -494,6 +506,7 @@ int LastAccessTimeDistributionClient(int argc, char* argv[])
     }
 
     CacheClientImpl client;
+    const CacheClientRetryConfig retryConfig{1, 0, 0};
     client.Initialize(vecCstrHostnames.data(),
                       vecCstrHostnames.size(),
                       nPort,                       /*nCacheServerPort*/
@@ -510,7 +523,8 @@ int LastAccessTimeDistributionClient(int argc, char* argv[])
                       false,                       /*bIsCacheServerDiscoveryEnabled*/
                       300,                         /*nCacheServerDiscoveryIntervalInSeconds*/
                       LOCALHOST,                   /*nCacheServerDiscoveryEndpoint*/
-                      true);                       /*bEnableConsistentHashing*/
+                      true,                        /*bEnableConsistentHashing*/
+                      retryConfig);
 
                       
     LastAccessTimeDistribution *pLastAccessTimeDistribution = new LastAccessTimeDistribution();

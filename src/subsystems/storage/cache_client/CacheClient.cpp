@@ -24,7 +24,8 @@ extern "C" CacheClientStatus Initialize(
     /*[in]*/ bool bEnableValidateChecksum,
     /*[in]*/ const char* strChecksumAlgorithm,
     /*[in]*/ const AuthCredentials* pAuthCredentials,
-    /*[in]*/ bool bEnableConsistentHashing)
+    /*[in]*/ bool bEnableConsistentHashing,
+    /*[in]*/ CacheClientRetryConfig retryConfig)
 {
     return GetImplInstance()->Initialize(arrServers,
                                          nServers,
@@ -42,7 +43,8 @@ extern "C" CacheClientStatus Initialize(
                                          false, /* bCacheServerDiscoveryEnabled */
                                          300,   /* nCacheServerDiscoveryIntervalInSeconds */
                                          "127.0.0.1", /* nCacheServerDiscoveryEndpoint */
-                                        bEnableConsistentHashing); 
+                                         bEnableConsistentHashing,
+                                         retryConfig);
 }
 //---------------------------------------------------------------------------------------------------------------------
 extern "C" CacheClientStatus Upload(

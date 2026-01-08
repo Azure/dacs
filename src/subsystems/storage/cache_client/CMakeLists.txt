@@ -15,11 +15,13 @@ message("Current CMAKE_REMOTE_PUBLISH_DIRECTORY ${CMAKE_REMOTE_PUBLISH_DIRECTORY
 add_library(CacheClientSharedLib SHARED
     CacheClient.cpp
     CacheClientImpl.cpp
+    utils/CacheClientRetry.cpp
 )
 
 add_library(CacheClientLib STATIC
     CacheClient.cpp
     CacheClientImpl.cpp
+    utils/CacheClientRetry.cpp
 )
 
 set(CommonDeps StorageCommon StorageLibcDlsymWrapper IbverbsDlsym ClientConnections CacheProto EncryptionUtils)
@@ -42,7 +44,7 @@ target_link_libraries(CacheClientSharedLib ${CommonLinks})
 target_link_libraries(CacheClientLib ${CommonLinks})
 
 enable_testing()
-add_executable(CacheClientLibTests tests/TestMain.cpp tests/CacheClientTests.cpp tests/ConsistentHashingTests.cpp)
+add_executable(CacheClientLibTests tests/TestMain.cpp tests/CacheClientTests.cpp tests/ConsistentHashingTests.cpp tests/CacheClientRetryUtilTests.cpp)
 add_dependencies(CacheClientLibTests CacheClientLib)
 target_link_libraries(CacheClientLibTests
     CacheClientLib

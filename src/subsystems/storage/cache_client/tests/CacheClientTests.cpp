@@ -64,6 +64,8 @@ void CacheClientTests::InitializeClient(
     bool enableValidateChecksum = bEnableValidateChecksum;
     bool enableAuth = authAccountKey != nullptr && authAccountName != nullptr;
 
+    const CacheClientRetryConfig retryConfig{1, 0, 0};
+
     /**
      * The `nCacheServerDiscoveryIntervalInSeconds` is set to 2 seconds because
      * the destructor of `ConnectionManager` waits for the background thread
@@ -88,7 +90,8 @@ void CacheClientTests::InitializeClient(
                       bIsDiscoveryEnabled, /** bIsCacheServerDiscoveryEnabled*/
                       2, /** nCacheServerDiscoveryIntervalInSeconds*/
                       arrServers[0], /** nCacheServerDiscoveryEndpoint*/
-                      bEnableConsistentHashing /** bEnableConsistentHashing*/
+                      bEnableConsistentHashing, /** bEnableConsistentHashing*/
+                      retryConfig
                     );
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -243,6 +246,8 @@ TEST_P(CacheClientTests, Initialization)
     const char* accountName = "my_account";
     const char* accountKey = "my_secret_key";
 
+    const CacheClientRetryConfig retryConfig{1, 0, 0};
+
     // This test checks the behavior of CacheClientImpl initialization
     // with various parameters, including discovery enabled and disabled.
     // Repeated initialization should return INTERNAL_ERROR.
@@ -266,7 +271,8 @@ TEST_P(CacheClientTests, Initialization)
                                 false /**bIsCacheServerDiscoveryEnabled*/,
                                 5 /**nCacheServerDiscoveryIntervalInSeconds*/,
                                 arrServers[0] /**nCacheServerDiscoveryEndpoint*/,
-                                false /**bEnableConsistentHashing*/));
+                                false /**bEnableConsistentHashing*/,
+                                retryConfig));
 
         // Re-initialization
         ASSERT_EQ(CacheClientStatus::INTERNAL_ERROR,
@@ -286,7 +292,8 @@ TEST_P(CacheClientTests, Initialization)
                                 false /**bIsCacheServerDiscoveryEnabled*/,
                                 5 /**nCacheServerDiscoveryIntervalInSeconds*/,
                                 arrServers[0] /**nCacheServerDiscoveryEndpoint*/,
-                                false /**bEnableConsistentHashing*/));
+                                false /**bEnableConsistentHashing*/,
+                                retryConfig));
 
         // Re-initialization with discovery enabled
         ASSERT_EQ(CacheClientStatus::INTERNAL_ERROR,
@@ -306,7 +313,8 @@ TEST_P(CacheClientTests, Initialization)
                                 true /**bIsCacheServerDiscoveryEnabled*/,
                                 2 /**nCacheServerDiscoveryIntervalInSeconds*/,
                                 arrServers[0] /**nCacheServerDiscoveryEndpoint*/,
-                                false /**bEnableConsistentHashing*/));
+                                false /**bEnableConsistentHashing*/,
+                                retryConfig));
     }
 
     // This test checks the behavior of CacheClientImpl initialization
@@ -333,7 +341,8 @@ TEST_P(CacheClientTests, Initialization)
                              true, /**bIsCacheServerDiscoveryEnabled*/
                              2, /**nCacheServerDiscoveryIntervalInSeconds*/
                              "" /**nCacheServerDiscoveryEndpoint - Empty endpoint*/,
-                             false /**bEnableConsistentHashing*/));
+                             false /**bEnableConsistentHashing*/,
+                             retryConfig));
     }
 
     // This test checks the behavior of CacheClientImpl initialization
@@ -358,7 +367,8 @@ TEST_P(CacheClientTests, Initialization)
                 false /**bIsCacheServerDiscoveryEnabled*/,
                 5 /**nCacheServerDiscoveryIntervalInSeconds*/,
                 arrServers[0] /**nCacheServerDiscoveryEndpoint*/,
-                false /**bEnableConsistentHashing*/));
+                false /**bEnableConsistentHashing*/,
+                retryConfig));
     }
 }   
 //---------------------------------------------------------------------------------------------------------------------
@@ -1009,7 +1019,8 @@ TEST_P(CacheClientTests, DiscoveryEndpointConfigurationValidation) {
         
         ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT,
             client.Initialize(nullptr, 0, nPort, false, false, false, nullptr, 0, false, "", "", 
-                             false, true, true, 2, "", false));  // Empty endpoint
+                             false, true, true, 2, "", false,
+                             CacheClientRetryConfig{1, 0, 0}));  // Empty endpoint
     }
     
     // Test valid configuration
@@ -1031,7 +1042,8 @@ TEST_P(CacheClientTests, ResilientInitializationWithNetworkFailures) {
     // Should succeed with unreachable endpoint (graceful degradation)
     ASSERT_EQ(CacheClientStatus::SUCCESS,
         client.Initialize(nullptr, 0, nPort, false, false, false, nullptr, 0, false, "", "", 
-                         false, true, true, 2, UNREACHABLE_ENDPOINT, false));
+                         false, true, true, 2, UNREACHABLE_ENDPOINT, false,
+                         CacheClientRetryConfig{1, 0, 0}));
     
     // Verify graceful degradation
     auto servers = client.m_spConnectionManager->GetAllCacheServerHostnames();

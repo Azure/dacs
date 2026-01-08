@@ -35,9 +35,26 @@ void ConsistentHashingTests::InitializeClient(CacheClientImpl& client)
         "cacheserver-1.azureml.svc.cluster.local", 
         "cacheserver-2.azureml.svc.cluster.local"
     };
-    
-    client.Initialize(arrServers, 3, nPort, false, false, false, nullptr, 0, false, "", "",
-                        false, true, false, 5, "", true);
+
+    const CacheClientRetryConfig retryConfig{1, 0, 0};
+    client.Initialize(arrServers,
+                      3,
+                      nPort,
+                      false,
+                      false,
+                      false,
+                      nullptr,
+                      0,
+                      false,
+                      "",
+                      "",
+                      false,
+                      true,
+                      false,
+                      5,
+                      "",
+                      true,
+                      retryConfig);
 }
 //---------------------------------------------------------------------------------------------------------------------
 vector<string> ConsistentHashingTests::GenerateKeys(int count, const string& prefix)

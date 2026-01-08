@@ -6,6 +6,7 @@
 #include "StorageInterceptLogger.h"
 #include "StorageInterceptUtils.h"
 #include "RemoteClientException.h"
+#include "Retry.h"
 #include <algorithm>
 #include <dirent.h>
 #include <functional>
@@ -20,17 +21,16 @@
 class exponential_backoff_retry_policy final : public azure::storage_lite::retry_policy_base
 {
   public:
-    exponential_backoff_retry_policy() : m_rng(std::random_device{}())
-    {
-    }
+        exponential_backoff_retry_policy() = default;
 
     azure::storage_lite::retry_info evaluate(const azure::storage_lite::retry_context& context) const override
     {
         if (context.numbers() <= MAX_RETRY_COUNT && can_retry(context.result()))
         {
-            auto interval_without_jitter = RETRY_INTERVAL_BASE_SECONDS << context.numbers();
-            std::uniform_int_distribution<int> dist(1, std::min(MAX_RETRY_INTERVAL_SECONDS, interval_without_jitter));
-            auto interval = std::chrono::seconds(dist(m_rng));
+            auto interval = storageretry::GetRetryIntervalExpJitter(
+                static_cast<uint32_t>(context.numbers()),
+                std::chrono::seconds(RETRY_INTERVAL_BASE_SECONDS),
+                std::chrono::seconds(MAX_RETRY_INTERVAL_SECONDS));
             LOG_INFO("Will retry attempts={} status-code={} in {} seconds",
                      context.numbers(),
                      context.result(),
@@ -66,7 +66,6 @@ class exponential_backoff_retry_policy final : public azure::storage_lite::retry
         return true;
     }
 
-    mutable std::mt19937 m_rng;
 };
 //---------------------------------------------------------------------------------------------------------------------
 BlobClient::BlobClient(const std::string& mountName)

@@ -88,6 +88,11 @@ fn test_initialize() {
     let enable_calculate_crc = false;
     let enable_validate_crc = false;
     let enable_consistent_hashing = false;
+    let retry_config = CacheClientRetryConfig {
+        nMaxAttempts: 1,
+        nBaseDelayMillis: 0,
+        nMaxDelayMillis: 0,
+    };
     let checksum_algorithm = std::ptr::null();
 
     let accountName = "admin";
@@ -112,6 +117,7 @@ fn test_initialize() {
             checksum_algorithm,
             &auth_credentials as *const AuthCredentials,
             enable_consistent_hashing,
+            retry_config,
         );
 
         assert!(status == 0, "Initialize failed")
