@@ -11,6 +11,8 @@ This library provides interfaces to perform file operations with caching mechani
 2. Set up authentication via environment variables (see Authentication section below).
 3. Use the instance to perform the following file operations.
 
+    **NOTE**: Log level of CacheClient & CacheServer can be controlled by setting `STORAGE_LOG_LEVEL` environment variable (Supported values: `INFO | DEBUG | WARN | TRACE`).
+
 ### Authentication
 The client supports two authentication modes:
 

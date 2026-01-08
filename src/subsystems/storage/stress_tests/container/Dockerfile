@@ -1,4 +1,4 @@
-ARG ARG_DACS_BASE_CONTAINER=mcr.microsoft.com/mirror/docker/library/ubuntu:20.04
+ARG ARG_DACS_BASE_CONTAINER=mcr.microsoft.com/mirror/docker/library/ubuntu:22.04
 
 FROM $ARG_DACS_BASE_CONTAINER
 
@@ -6,7 +6,7 @@ USER root
 
 RUN \
     apt-get update && \
-    apt-get install -yq python3 \
+    apt-get install -yq python3 python3-pip \
     libfuse3-dev \
     libjsoncpp-dev \
     libcurl4-openssl-dev \
@@ -25,8 +25,8 @@ RUN \
     vim
 
 RUN \
-    pip3 install --upgrade pip && \
-    pip3 install requests
+    python3 -m pip install --upgrade pip && \
+    python3 -m pip install requests
 
 # Where the storage containers will be mounted to
 RUN mkdir -p /app/mounts
@@ -40,9 +40,8 @@ COPY bin/Release/amd64/native-storage/storage/CacheStorageClient /app/CacheStora
 COPY bin/Release/amd64/native-storage/storage/DeleteClient /app/DeleteClient
 COPY bin/Release/amd64/native-storage/storage/PerfClient /app/PerfClient
 COPY src/subsystems/storage/stress_tests/storageIntercept.config /tmp/storageIntercept.config
-COPY obj/Release/native/linux-x64/publish-storage/storage/libStorageIntercept.so /app/lib/libStorageIntercept.so
-COPY obj/Release/native/linux-x64/publish-storage/storage/libStorageDirect.so /app/lib/libStorageDirect.so
+COPY bin/Release/amd64/native-storage/storage/libStorageDirect.so /app/dacs_client/py_dacs_client/libStorageDirect.so
+COPY bin/Release/amd64/native-storage/storage/libStorageIntercept.so /app/dacs_client/py_dacs_client/libStorageIntercept.so
 
-COPY /bin/Release/amd64/native-storage/storage/rslex-fuse-cli /app/rslex-fuse-cli
-COPY /bin/Release/amd64/native-storage/storage/dacsfs /app/dacsfs
+COPY bin/Release/amd64/native-storage/storage/dacsfs /app/dacsfs
 COPY src/subsystems/storage/dacs_client /app/dacs_client

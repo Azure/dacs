@@ -16,6 +16,33 @@ std::shared_ptr<ILogger> LoggingApi::m_upLogger;
 std::atomic<bool> LoggingApi::m_bIsInitialized{false};
 std::atomic<bool> LoggingApi::m_bIsInitializing{false};
 std::recursive_mutex LoggingApi::m_lock;
+int LoggingApi::m_nRuntimeLogLevel{static_cast<int>(LOG_LEVEL)};
+
+namespace {
+int ParseLogLevel(const char* s, int fallback)
+{
+    if (!s || !*s) return fallback;
+    std::string v(s);
+    for (auto& c : v) c = static_cast<char>(::tolower(c));
+    if (v == "critical" || v == "fatal") return static_cast<int>(LogLevel::Critical);
+    if (v == "error" || v == "err") return static_cast<int>(LogLevel::Error);
+    if (v == "warn" || v == "warning") return static_cast<int>(LogLevel::Warn);
+    if (v == "info") return static_cast<int>(LogLevel::Info);
+    if (v == "debug" || v == "dbg") return static_cast<int>(LogLevel::Debug);
+    if (v == "trace" || v == "trc") return static_cast<int>(LogLevel::Trace);
+    // numeric passthrough
+    try {
+        int n = std::stoi(v);
+        if (n >= static_cast<int>(LogLevel::Critical) && n <= static_cast<int>(LogLevel::Trace)) return n;
+    } catch (const std::invalid_argument&) {
+        printf("Invalid STORAGE_LOG_LEVEL value: %s defauling to %d\n", s, fallback);
+    } catch (const std::out_of_range&) {
+        printf("Out of range STORAGE_LOG_LEVEL value: %s defauling to %d\n", s, fallback);
+    }
+
+    return fallback;
+}
+}
 //-------------------------------------------------------------------------------------------------------------------------------------------
 void LoggingApi::Init(/*[in]*/ bool bIgnoreRankInFileName)
 {
@@ -50,6 +77,13 @@ void LoggingApi::Init(/*[in]*/ bool bIgnoreRankInFileName)
 
     m_upLogger->Flush();
     pthread_atfork(LoggingApi::Prepare, LoggingApi::Parent, LoggingApi::Child);
+
+    // Pick up runtime log level from env if provided
+    // Note: This only relaxes/filters at runtime within the compile-time cap (LOG_LEVEL).
+    if (const char* lvl = std::getenv("STORAGE_LOG_LEVEL"))
+    {
+        m_nRuntimeLogLevel = static_cast<int>(ParseLogLevel(lvl, m_nRuntimeLogLevel));
+    }
 
     m_bIsInitialized = true;
     m_bIsInitializing = false;
