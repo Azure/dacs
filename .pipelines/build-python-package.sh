@@ -4,7 +4,8 @@
 # Usage: ./build-python-package.sh [BUILD_ARCHITECTURE] [--publish]
 # BUILD_ARCHITECTURE: linux-x64 (default) or linux-arm64
 
-BUILD_ARCH="${BUILD_ARCHITECTURE:-linux-x64}"
+# Auto-detect architecture (linux-x64 or linux-arm64)
+BUILD_ARCH="${BUILD_ARCHITECTURE:-linux-$(uname -m | sed 's/x86_64/x64/;s/amd64/x64/;s/aarch64/arm64/')}"
 PUBLISH_FLAG=false
 
 # Parse arguments
@@ -74,10 +75,10 @@ mv ${SETUP_FILE}.tmp $SETUP_FILE
 rm -rf dist/ build/bdist* *.egg-info
 
 # Ensure pip is available
-$PYTHON_CMD -m pip --version &> /dev/null || $PYTHON_CMD -m ensurepip --default-pip
+$PYTHON_CMD -m pip --version &> /dev/null || $PYTHON_CMD -m ensurepip --default-pip 2>/dev/null || sudo apt-get install -y python3-pip
 
 # Install build dependencies
-$PYTHON_CMD -m pip install --upgrade pip setuptools wheel
+$PYTHON_CMD -m pip install --upgrade pip setuptools wheel packaging
 
 # Export architecture for setup.py to use
 export BUILD_ARCHITECTURE="$BUILD_ARCH"

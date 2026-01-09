@@ -1,5 +1,5 @@
 #!/bin/bash
-BUILD_ARCH="${BUILD_ARCH:-amd64}"
+BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
 # Ensure this script is sourced, not executed directly
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     echo "Error: This script should be sourced, not executed directly."
@@ -31,7 +31,10 @@ function __run_checksum_e2e_test__()
     local prefix_dis="${checksum_algorithm}-dis-${timestamp}"
     local prefix_en="${checksum_algorithm}-en-${timestamp}"
 
+    echo "Cleaning cache directory before tests..."
     stop_cache_server
+    rm -rf ${CACHE_SERVER_PATH}
+    mkdir -p ${CACHE_SERVER_PATH}
     start_cache_server /dev/null
     sleep 5
 
@@ -60,7 +63,13 @@ function __run_checksum_e2e_test__()
     fi
 
     # ====== VALIDATION ENABLED TEST ======
-    echo ""
+    echo "Cleaning cache directory to free up space..."
+    stop_cache_server
+    rm -rf ${CACHE_SERVER_PATH}
+    mkdir -p ${CACHE_SERVER_PATH}
+    start_cache_server /dev/null
+    sleep 5
+    
     echo "3. Upload with ${checksum_algorithm^^} calculate checksum enabled (prefix: ${prefix_en})"
     eval "${PERF_CLIENT_EXE} --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT} \
         --num-threads 16 --data-size-GiB 10 --mode upload --prefix ${prefix_en} \

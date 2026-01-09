@@ -32,6 +32,26 @@ else
   echo "Docker is already installed."
 fi
 
+# Install Docker Buildx (required for BuildKit features)
+if ! docker buildx version &>/dev/null; then
+  echo "Docker Buildx not found. Installing from GitHub releases..."
+  BUILDX_VERSION="v0.12.1"
+  BUILDX_ARCH="$KUBE_ARCH"
+  
+  echo "Installing Buildx for arch $BUILDX_ARCH..."
+  mkdir -p ~/.docker/cli-plugins
+  curl -sSL "https://github.com/docker/buildx/releases/download/${BUILDX_VERSION}/buildx-${BUILDX_VERSION}.linux-${BUILDX_ARCH}" -o ~/.docker/cli-plugins/docker-buildx
+  chmod +x ~/.docker/cli-plugins/docker-buildx
+  
+  # Also install system-wide for other users
+  sudo mkdir -p /usr/local/lib/docker/cli-plugins
+  sudo cp ~/.docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
+  
+  echo "Docker Buildx installed successfully."
+else
+  echo "Docker Buildx is already installed."
+fi
+
 # Install Minikube
 if ! check_command minikube || ! minikube version >/dev/null 2>&1; then
   echo "Installing Minikube for arch $MINIKUBE_ARCH..."

@@ -41,6 +41,13 @@ CACHE_SERVER_PID=-1
 CACHE_SERVER_PATH=/_cache
 CACHE_LOCAL_SSD_PATH=/_localcache
 
+# Clean up cache directories before starting tests
+echo "Cleaning up cache directories..."
+sudo rm -rf ${CACHE_SERVER_PATH} ${CACHE_LOCAL_SSD_PATH}
+sudo mkdir -p ${CACHE_SERVER_PATH} ${CACHE_LOCAL_SSD_PATH}
+sudo chmod 777 ${CACHE_SERVER_PATH} ${CACHE_LOCAL_SSD_PATH}
+echo "Cache directories cleaned and ready: ${CACHE_SERVER_PATH}, ${CACHE_LOCAL_SSD_PATH}"
+
 # 1.3 Cache Server Metrics Configuration
 # Set the cache server metrics port to 9096 for testing
 export CACHESERVER_METRICS_PORT="9096"
@@ -55,7 +62,7 @@ else
 fi
 
 # 1.5 Build Architecture Detection
-BUILD_ARCH="${BUILD_ARCH:-amd64}"
+BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
 
 # 1.6 Python Virtual Environment Activation
 source /venv/bin/activate
@@ -462,6 +469,10 @@ function __run_perf_benchmark__() {
   echo "Running perf tracker benchmark"
   stop_cache_server
 
+  # Clean up cache directory to prevent disk space issues
+  rm -rf ${CACHE_SERVER_PATH}
+  mkdir -p ${CACHE_SERVER_PATH}
+
   if [[ -z "${APP_INSIGHTS_KEY}" ]]; then
     echo "APP_INSIGHTS_KEY not set."
     echo "When running locally, ensure you export it (get it from Azure Portal > App Insights > dacs_perf_tracker_ai > Overview > Instrumentation Key)"
@@ -481,7 +492,7 @@ function __run_perf_benchmark__() {
   start_cache_server /dev/null
   sleep 10
 
-  perf_logs=$($TEST_CLIENT_EXE measureperf | tee /dev/tty)
+  perf_logs=$($TEST_CLIENT_EXE measureperf | tee /dev/tty 2>/dev/null || cat)
   echo "$perf_logs"
   uploader_args=$(grep "\-\-upload_throughput_mbps" <<< "$perf_logs")
   uploader_args+=" --git_branch \"$GIT_BRANCH\" --git_commit_hash \"$GIT_COMMIT\" --git_commit_message \"$GIT_COMMIT_MESSAGE\""

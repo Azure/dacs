@@ -4,7 +4,7 @@ function execute_test() {
   local target=$1
   echo "Testing for ${target} projects......"
 
-  local arch_root=${BUILD_ARCH:-amd64}
+  local arch_root=${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}
   # Run CTest from the CMake build directory where CTestTestfile.cmake is generated
   local build_root="$DIR/../build/${BUILD_CONFIGURATION}/${arch_root}"
   echo "PWD = ${build_root}"
@@ -35,8 +35,8 @@ else
   BUILD_CONFIGURATION=$1
 fi
 
-# Build architecture (env override), default amd64
-BUILD_ARCH=${BUILD_ARCH:-amd64}
+# Build architecture (env override)
+BUILD_ARCH=${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}
 
 if [ -z "$2" ]
 then

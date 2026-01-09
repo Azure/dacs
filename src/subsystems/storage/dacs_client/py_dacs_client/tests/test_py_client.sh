@@ -1,5 +1,5 @@
 #!/bin/bash
-BUILD_ARCH="${BUILD_ARCH:-amd64}"
+BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
 # This script is useful for testing the python storage client
 
 # print commands and their arguments as they are executed

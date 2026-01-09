@@ -86,16 +86,20 @@ RUN TARGETARCH=${TARGETARCH:-amd64} && \
 RUN python3 -m venv /venv && . /venv/bin/activate && \
     python -m pip install --no-cache-dir --upgrade pip setuptools opencensus-ext-azure h5py pytest pytest-timeout
 
+# Set Rust installation paths for all users
+ENV CARGO_HOME=/opt/cargo
+ENV RUSTUP_HOME=/opt/rustup
+ENV PATH="/opt/cargo/bin:${PATH}"
+
 # Architecture-specific Rust installation
 RUN TARGETARCH=${TARGETARCH:-amd64} && \
     if [ "$TARGETARCH" = "amd64" ]; then \
-        curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y && \
-        /root/.cargo/bin/rustup self update && \
-        /root/.cargo/bin/rustup component remove rust-docs || true; \
+        curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path && \
+        ${CARGO_HOME}/bin/rustup self update && \
+        ${CARGO_HOME}/bin/rustup component remove rust-docs || true; \
     elif [ "$TARGETARCH" = "arm64" ]; then \
-        curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable-aarch64-unknown-linux-gnu; \
+        curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --default-toolchain stable-aarch64-unknown-linux-gnu; \
     fi
-ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Kubebuilder installation (for controller project)
 RUN curl -L -o kubebuilder "https://go.kubebuilder.io/dl/latest/$(go env GOOS)/$(go env GOARCH)"
