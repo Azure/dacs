@@ -22,6 +22,7 @@
 import asyncio
 import logging
 import os
+import platform
 import requests
 import sys
 from ctypes import CDLL, c_char, c_size_t, c_void_p
@@ -69,7 +70,13 @@ def get_current_memory_usage() -> int:
     return 0
 
 
-libc = CDLL("/lib/x86_64-linux-gnu/libc.so.6")
+# Detect architecture and load appropriate libc
+machine = platform.machine()
+if machine == "aarch64" or machine == "arm64":
+    libc = CDLL("/lib/aarch64-linux-gnu/libc.so.6")
+else:
+    # Default to x86_64 (AMD64)
+    libc = CDLL("/lib/x86_64-linux-gnu/libc.so.6")
 
 libc.malloc.argtypes = (c_size_t,)
 libc.malloc.restype = c_void_p

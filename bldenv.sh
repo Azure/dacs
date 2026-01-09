@@ -19,13 +19,16 @@ fi
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 WORKSPACE_NAME="$(basename "$DIR")"
 
-# Use local native-build image
-nativeBuildImage="native-build:dev"
+# Detect host architecture and use architecture-specific image tag
+HOST_ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+echo "Detected host architecture: $(uname -m) -> $HOST_ARCH"
+nativeBuildImage="native-build"
+echo "Using Docker image: $nativeBuildImage"
 
-# Ensure local image exists, build if missing
 if ! docker image inspect "$nativeBuildImage" >/dev/null 2>&1; then
-    echo "Image '$nativeBuildImage' not found. Building it now..."
-    docker build -f src/images/native-build/Dockerfile -t native-build:dev src/images/native-build
+    echo "Image '$nativeBuildImage' not found. Will build it now."
+    echo "Building image for architecture: $HOST_ARCH"
+    docker build --build-arg TARGETARCH=$HOST_ARCH -f src/images/native-build/Dockerfile -t $nativeBuildImage src/images/native-build
 fi
 
 # If arguments provided, run them; otherwise start interactive shell

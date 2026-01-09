@@ -1,5 +1,5 @@
 #!/bin/bash
-BUILD_ARCH="${BUILD_ARCH:-amd64}"
+BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
 
 # This script is an integration test to intercept the I/O related system calls
 # made from a test client via LD_PRELOAD and process the request from files present

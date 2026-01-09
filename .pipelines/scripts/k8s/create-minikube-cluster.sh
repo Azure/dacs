@@ -28,8 +28,67 @@ if minikube profile list 2>/dev/null | grep -q "$CLUSTER_NAME"; then
 fi
 
 echo "Creating Minikube cluster with $NUM_NODES nodes..."
-minikube start --nodes="$NUM_NODES" --memory="$MEMORY" --cpus="$CPUS" --driver=docker --force
+echo -e "\nStep 1: Creating control-plane node..."
+minikube start \
+  --nodes=1 \
+  --memory="$MEMORY" \
+  --cpus="$CPUS" \
+  --driver=docker \
+  --force \
+  --cni=auto \
+  --kubernetes-version=v1.30.0 \
+  --container-runtime=containerd \
+  --extra-config=kubelet.cgroup-driver=systemd \
+  --extra-config=kubelet.housekeeping-interval=10s \
+  --extra-config=kubelet.node-status-update-frequency=10s \
+  --extra-config=kubelet.max-pods=110 \
+  --extra-config=kubelet.fail-swap-on=false \
+  --wait-timeout=10m \
+  --wait=all \
+  -v=5
+
+# Add worker nodes one at a time with delays to reduce resource contention
+WORKERS=$((NUM_NODES - 1))
+echo -e "\nStep 2: Adding $WORKERS worker nodes sequentially..."
+for i in $(seq 2 $NUM_NODES); do
+  NODE_NUM=$(printf "%02d" $i)
+  NODE_NAME="minikube-m${NODE_NUM}"
+  echo -e "\n--- Adding worker node $i of $NUM_NODES (${NODE_NAME}) ---"
+  
+  minikube node add --worker=true -v=5
+  
+  echo "Node $i added successfully, waiting for stabilization..."
+  sleep 30
+done
+
+echo "All nodes added, waiting for final stabilization..."
+sleep 30
+
 echo "Cluster created successfully!"
+
+# Verify CNI is working on all nodes (especially important for node 5)
+echo -e "\nVerifying CNI pods are running..."
+kubectl get pods -n kube-system -l k8s-app=kindnet -o wide || echo "Warning: Could not get CNI pod status"
+
+# Restart network components to ensure all nodes are fully ready
+echo "Checking kube-proxy health on all nodes..."
+kubectl get pods -n kube-system -l k8s-app=kube-proxy -o wide
+
+# Check if any kube-proxy pods are not running
+NOT_RUNNING=$(kubectl get pods -n kube-system -l k8s-app=kube-proxy --no-headers | grep -v "Running" | wc -l || true)
+if [ "$NOT_RUNNING" -gt 0 ]; then
+  echo "WARNING: $NOT_RUNNING kube-proxy pod(s) not running - restarting all kube-proxy pods..."
+  kubectl delete pods -n kube-system -l k8s-app=kube-proxy || echo "Warning: Could not restart kube-proxy"
+  echo "Waiting for kube-proxy to be ready..."
+  sleep 20
+  kubectl wait --for=condition=ready pod -l k8s-app=kube-proxy -n kube-system --timeout=120s || echo "Warning: kube-proxy pods may not be fully ready"
+fi
+
+echo "Restarting CNI pods to ensure all nodes networking..."
+kubectl delete pods -n kube-system -l k8s-app=kindnet || echo "Warning: Could not restart CNI"
+sleep 15
+echo "Waiting for CNI to be ready..."
+kubectl wait --for=condition=ready pod -l k8s-app=kindnet -n kube-system --timeout=120s || echo "Warning: CNI pods may not be fully ready"
 
 # Label nodes for cache server pod scheduling
 echo "Labeling nodes for cache server scheduling..."

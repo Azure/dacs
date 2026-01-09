@@ -1,5 +1,5 @@
 # This sub-script is used to test the eviction integration with the cache server.
-BUILD_ARCH="${BUILD_ARCH:-amd64}"
+BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
 # Can not run independently, should be sourced by `storage_intercept/integration_tests/pipeline_test.sh`
 # Fundamentally these tests depend on timings between client making requests and server threads running eviction passes/snapshots
 # they should be stable, but if they fail, try adjusting the sleep times in the tests
@@ -36,7 +36,7 @@ function __run_cache_client_lib_test_with_eviction__()
     __logsleep__ 10
 
     echo "Running cache client lib test with eviction enabled"
-    pushd ${REPOSITORY_ROOT}/bin/$BUILD_CONFIGURATION/native/storage/
+    pushd ${REPOSITORY_ROOT}/build/${BUILD_CONFIGURATION}/${BUILD_ARCH}
     eval "ctest -V --no-tests=error -j -1 -R CacheClientLibTests"
     if [ $? -ne 0 ]
     then

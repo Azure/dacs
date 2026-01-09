@@ -12,7 +12,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
-uint32_t SocketConnection::socketTimeoutMillisMin = 20000;
+uint32_t SocketConnection::socketTimeoutMillisMin = 30000;
 uint32_t SocketConnection::socketTimeoutMillisPerMB = 2000;
 //---------------------------------------------------------------------------------------------------------------------
 /*static*/ int SocketConnection::GetTimeoutMillis(size_t ioSizeInBytes)

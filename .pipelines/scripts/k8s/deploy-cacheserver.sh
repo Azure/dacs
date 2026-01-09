@@ -39,7 +39,7 @@ helm install "$RELEASE_NAME" . --namespace "$NAMESPACE" --values values.yaml \
   --set cacheServer.image.tag="${CACHE_SERVER_IMAGE#*:}" \
   --set cacheServer.scheduler.image.repository="${CACHE_SERVER_SCHEDULER_IMAGE%:*}" \
   --set cacheServer.scheduler.image.tag="${CACHE_SERVER_SCHEDULER_IMAGE#*:}" \
-  --wait --timeout=1m >/dev/null
+  --wait --timeout=15m >/dev/null
 
 # Wait for cacheserver pods to be ready
 echo "Waiting for cacheserver pods to be ready..."

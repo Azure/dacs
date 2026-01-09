@@ -34,7 +34,7 @@ help:
 	@echo "  BUILD_NUMBER=1.0.0 make helm-push"
 
 BUILD_TYPE ?= Debug
-BUILD_ARCH ?= amd64
+BUILD_ARCH ?= $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 MODE ?= upload
 USE_CONTAINER ?= 1
 

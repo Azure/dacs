@@ -1,5 +1,5 @@
 # This sub-script is used to test the snapshot integration with the cache server.
-BUILD_ARCH="${BUILD_ARCH:-amd64}"
+BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
 # Can not run independently, should be sourced by `storage_intercept/integration_tests/pipeline_test.sh`
 ########################################################################################################################
 TEST_CLIENT_EXE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/cacheServerTestClient"
