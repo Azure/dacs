@@ -43,7 +43,7 @@ from py_dacs_client.dacs_exceptions import (
 
 # Re-export exceptions for backwards compatibility
 __all__ = [
-    "BlobFile",
+    "DACSAdapter",
     "WriteMode",
     "DACSError",
     "DACSStorageError",
@@ -97,7 +97,7 @@ class _ClientManager:
 
 class WriteMode(Enum):
     """
-    Enumeration of write modes for BlobFile operations.
+    Enumeration of write modes for DACSAdapter operations.
 
     WRITE_DISABLED: Disable write operations, read-only mode
     WRITE_CACHE_ONLY: Write to cache only, no blob storage
@@ -113,9 +113,9 @@ class WriteMode(Enum):
     WRITE_SYNC = "write_sync"
 
 
-class BlobFile:
+class DACSAdapter:
     """
-    Blobfile-compatible wrapper that routes operations through DACS Client.
+    Blobfile-compatible adapter that routes operations through DACS Client.
 
     This wrapper provides a limited API subset compatible with blobfile, supporting only:
     - open() for reading/writing files
@@ -254,7 +254,7 @@ class BlobFile:
         Example (zero-copy with user buffer):
             buffer = alloc_buffer(1024)
             try:
-                with BlobFile(path, "rb") as f:
+                with DACSAdapter(path, "rb") as f:
                     mv = f.read(size=1024, buffer=buffer)
                     # Use memoryview here - buffer must stay alive
                     data = bytes(mv)  # Copy if needed after release
@@ -349,7 +349,7 @@ class BlobFile:
             - The user MUST keep the buffer alive until close() is called
             - The user MUST call release_buffer(buffer) AFTER close() to free memory
             - Releasing the buffer before close() causes undefined behavior
-            - BlobFile tracks the buffer but does NOT release it - user is responsible
+            - DACSAdapter tracks the buffer but does NOT release it - user is responsible
 
             When NOT using a user-provided buffer (copy path):
             - An internal buffer is allocated and data is copied into it
@@ -365,14 +365,14 @@ class BlobFile:
             buffer = alloc_buffer(1024)
             ctypes.memmove(buffer, data, len(data))
             try:
-                with BlobFile(path, "wb") as f:
+                with DACSAdapter(path, "wb") as f:
                     f.write(buffer=buffer, size=len(data))
                     # Buffer must stay alive until context manager exits (close)
             finally:
                 release_buffer(buffer)  # Safe to release AFTER close()
 
         Example (automatic memory management):
-            with BlobFile(path, "wb") as f:
+            with DACSAdapter(path, "wb") as f:
                 f.write(data="Hello, World!")  # Internal buffer managed automatically
             # Internal buffer released automatically on close()
         """
