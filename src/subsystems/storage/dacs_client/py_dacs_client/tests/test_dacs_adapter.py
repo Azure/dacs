@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ---------------------------------------------------------------
-# DACS Client - Remote Azure Blob Tests for BlobFile
+# DACS Client - Remote Azure Blob Tests for DACSAdapter
 # ---------------------------------------------------------------
 
 import errno
@@ -36,8 +36,8 @@ for sig in [signal.SIGABRT, signal.SIGSEGV, signal.SIGBUS, signal.SIGFPE]:
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import dacs_blobfile as bf
-from dacs_blobfile import (
+import dacs_adapter as bf
+from dacs_adapter import (
     DACSStorageError,
     DACSAuthenticationError,
     DACSPermissionError,
@@ -82,16 +82,16 @@ def setup_logging():
 
 
 class TestRemoteBlobRead:
-    """Test BlobFile read() for remote Azure blobs."""
+    """Test DACSAdapter read() for remote Azure blobs."""
 
     def test_read_remote_blob(self):
         """Test reading from remote Azure blob."""
         test_data = "Remote blob test data"
         blob_path = f"{AZURE_BLOB_PATH}/test_read_blob_{id(self)}.txt"
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             f.write(test_data)
 
-        with bf.BlobFile(blob_path, "r") as f:
+        with bf.DACSAdapter(blob_path, "r") as f:
             content = f.read()
         assert content == test_data
 
@@ -99,10 +99,10 @@ class TestRemoteBlobRead:
         """Test reading partial data from remote blob."""
         test_data = "Hello from remote blob"
         blob_path = f"{AZURE_BLOB_PATH}/test_read_partial_{id(self)}.txt"
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             f.write(test_data)
 
-        with bf.BlobFile(blob_path, "r") as f:
+        with bf.DACSAdapter(blob_path, "r") as f:
             content = f.read(5)
         assert content == "Hello"
 
@@ -110,7 +110,7 @@ class TestRemoteBlobRead:
         """Test reading with user-allocated buffer (caller manages lifecycle)."""
         test_data = "User buffer test data"
         blob_path = f"{AZURE_BLOB_PATH}/test_read_user_buffer_{id(self)}.txt"
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             f.write(test_data)
 
         # Allocate buffer externally - user is responsible for releasing
@@ -118,14 +118,14 @@ class TestRemoteBlobRead:
         user_buffer = alloc_buffer(buffer_size)
 
         try:
-            with bf.BlobFile(blob_path, "rb") as f:
+            with bf.DACSAdapter(blob_path, "rb") as f:
                 content = f.read(size=len(test_data), buffer=user_buffer)
 
             # Verify content is correct (user buffer returns memoryview)
             assert bytes(content) == test_data.encode("utf-8")
 
             # Buffer should still be valid and usable after read
-            # (not released by BlobFile since user provided it)
+            # (not released by DACSAdapter since user provided it)
         finally:
             # User must release the buffer
             release_buffer(user_buffer)
@@ -138,9 +138,9 @@ class TestRemoteBlobRead:
         blob_path_2 = f"{AZURE_BLOB_PATH}/test_read_reuse_2_{id(self)}.txt"
 
         # Create both files
-        with bf.BlobFile(blob_path_1, "w") as f:
+        with bf.DACSAdapter(blob_path_1, "w") as f:
             f.write(test_data_1)
-        with bf.BlobFile(blob_path_2, "w") as f:
+        with bf.DACSAdapter(blob_path_2, "w") as f:
             f.write(test_data_2)
 
         # Allocate a single buffer large enough for both
@@ -149,12 +149,12 @@ class TestRemoteBlobRead:
 
         try:
             # Read first file
-            with bf.BlobFile(blob_path_1, "rb") as f:
+            with bf.DACSAdapter(blob_path_1, "rb") as f:
                 content_1 = f.read(size=len(test_data_1), buffer=user_buffer)
             assert bytes(content_1) == test_data_1.encode("utf-8")
 
             # Reuse same buffer for second file
-            with bf.BlobFile(blob_path_2, "rb") as f:
+            with bf.DACSAdapter(blob_path_2, "rb") as f:
                 content_2 = f.read(size=len(test_data_2), buffer=user_buffer)
             assert bytes(content_2) == test_data_2.encode("utf-8")
         finally:
@@ -167,14 +167,14 @@ class TestRemoteBlobRead:
 
         test_data = "Zero copy memoryview test"
         blob_path = f"{AZURE_BLOB_PATH}/test_read_zerocopy_{id(self)}.txt"
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             f.write(test_data)
 
         buffer_size = len(test_data) + 10
         user_buffer = alloc_buffer(buffer_size)
 
         try:
-            with bf.BlobFile(blob_path, "rb") as f:
+            with bf.DACSAdapter(blob_path, "rb") as f:
                 result = f.read(size=len(test_data), buffer=user_buffer)
 
             # Should return memoryview for zero-copy path
@@ -192,10 +192,10 @@ class TestRemoteBlobRead:
         """Test that standard read (no user buffer) returns bytes, not memoryview."""
         test_data = "Standard read returns bytes"
         blob_path = f"{AZURE_BLOB_PATH}/test_read_standard_{id(self)}.txt"
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             f.write(test_data)
 
-        with bf.BlobFile(blob_path, "rb") as f:
+        with bf.DACSAdapter(blob_path, "rb") as f:
             result = f.read()
 
         # Should return bytes (copy), not memoryview
@@ -212,7 +212,7 @@ class TestRemoteBlobRead:
         blob_paths = []
         for i in range(num_files):
             path = f"{AZURE_BLOB_PATH}/test_zerocopy_reuse_{id(self)}_{i}.txt"
-            with bf.BlobFile(path, "w") as f:
+            with bf.DACSAdapter(path, "w") as f:
                 f.write(test_data)
             blob_paths.append(path)
 
@@ -222,7 +222,7 @@ class TestRemoteBlobRead:
 
         try:
             for path in blob_paths:
-                with bf.BlobFile(path, "rb") as f:
+                with bf.DACSAdapter(path, "rb") as f:
                     result = f.read(size=len(test_data), buffer=user_buffer)
 
                 # Each read should return memoryview (zero-copy)
@@ -233,13 +233,13 @@ class TestRemoteBlobRead:
 
 
 class TestRemoteBlobWrite:
-    """Test BlobFile write() for remote Azure blobs."""
+    """Test DACSAdapter write() for remote Azure blobs."""
 
     def test_write_to_remote_blob(self):
         """Test writing to remote Azure blob."""
         test_data = "Test data for remote blob"
         blob_path = f"{AZURE_BLOB_PATH}/test_write_blob_{id(self)}.txt"
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             bytes_written = f.write(test_data)
         assert bytes_written > 0
 
@@ -255,14 +255,14 @@ class TestRemoteBlobWrite:
         ctypes.memmove(user_buffer, test_data, len(test_data))
 
         try:
-            with bf.BlobFile(blob_path, "wb") as f:
+            with bf.DACSAdapter(blob_path, "wb") as f:
                 # Write using buffer directly - no internal allocation/copy
                 bytes_written = f.write(buffer=user_buffer, size=len(test_data))
 
             assert bytes_written == len(test_data), f"Should write {len(test_data)} bytes, wrote {bytes_written}"
 
             # Verify data was written correctly by reading it back
-            with bf.BlobFile(blob_path, "rb") as f:
+            with bf.DACSAdapter(blob_path, "rb") as f:
                 content = f.read()
             assert content == test_data, "Read content should match written data"
         finally:
@@ -284,13 +284,13 @@ class TestRemoteBlobWrite:
                 # Reuse same buffer - just update content
                 ctypes.memmove(user_buffer, test_data, len(test_data))
 
-                with bf.BlobFile(blob_path, "wb") as f:
+                with bf.DACSAdapter(blob_path, "wb") as f:
                     bytes_written = f.write(buffer=user_buffer, size=len(test_data))
 
                 assert bytes_written == len(test_data)
 
                 # Verify each write
-                with bf.BlobFile(blob_path, "rb") as f:
+                with bf.DACSAdapter(blob_path, "rb") as f:
                     content = f.read()
                 assert content == test_data
         finally:
@@ -301,13 +301,13 @@ class TestRemoteBlobWrite:
         test_data = "Standard string write"
         blob_path = f"{AZURE_BLOB_PATH}/test_write_standard_str_{id(self)}.txt"
 
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             bytes_written = f.write(test_data)
 
         assert bytes_written == len(test_data)
 
         # Verify
-        with bf.BlobFile(blob_path, "r") as f:
+        with bf.DACSAdapter(blob_path, "r") as f:
             content = f.read()
         assert content == test_data
 
@@ -316,13 +316,13 @@ class TestRemoteBlobWrite:
         test_data = b"Standard bytes write"
         blob_path = f"{AZURE_BLOB_PATH}/test_write_standard_bytes_{id(self)}.txt"
 
-        with bf.BlobFile(blob_path, "wb") as f:
+        with bf.DACSAdapter(blob_path, "wb") as f:
             bytes_written = f.write(test_data)
 
         assert bytes_written == len(test_data)
 
         # Verify
-        with bf.BlobFile(blob_path, "rb") as f:
+        with bf.DACSAdapter(blob_path, "rb") as f:
             content = f.read()
         assert content == test_data
 
@@ -337,7 +337,7 @@ class TestRemoteBlobWrite:
         ctypes.memmove(user_buffer, test_data, len(test_data))
 
         try:
-            with bf.BlobFile(blob_path, "wb") as f:
+            with bf.DACSAdapter(blob_path, "wb") as f:
                 # Should raise error when buffer provided without size
                 with pytest.raises(ValueError, match="size must be specified"):
                     f.write(buffer=user_buffer)
@@ -358,7 +358,7 @@ class TestRemoteBlobWrite:
         try:
             # Zero-copy write
             ctypes.memmove(user_buffer, test_data, len(test_data))
-            with bf.BlobFile(blob_path, "wb") as f:
+            with bf.DACSAdapter(blob_path, "wb") as f:
                 bytes_written = f.write(buffer=user_buffer, size=len(test_data))
             assert bytes_written == len(test_data)
 
@@ -366,7 +366,7 @@ class TestRemoteBlobWrite:
             ctypes.memset(user_buffer, 0, buffer_size)
 
             # Zero-copy read into same buffer
-            with bf.BlobFile(blob_path, "rb") as f:
+            with bf.DACSAdapter(blob_path, "rb") as f:
                 result = f.read(size=len(test_data), buffer=user_buffer)
 
             assert isinstance(result, memoryview)
@@ -385,7 +385,7 @@ class TestRemoteBlobWrite:
 
         try:
             # First write should succeed
-            with bf.BlobFile(blob_path, "w") as f:
+            with bf.DACSAdapter(blob_path, "w") as f:
                 bytes_written = f.write(data_parts[0])
 
                 # If first write fails (returns <=0 or raises), skip the rest
@@ -419,7 +419,7 @@ class TestRemoteBlobWrite:
         test_data_2 = "Second write data"
         blob_path = f"{AZURE_BLOB_PATH}/test_internal_buffer_tracking_{id(self)}.txt"
 
-        f = bf.BlobFile(blob_path, "w")
+        f = bf.DACSAdapter(blob_path, "w")
         f.__enter__()
 
         try:
@@ -452,7 +452,7 @@ class TestRemoteBlobWrite:
         assert f._closed == True, "File should be marked as closed"
 
     def test_write_user_buffer_not_released_on_close(self):
-        """Test that user-provided buffers are NOT released by BlobFile on close()."""
+        """Test that user-provided buffers are NOT released by DACSAdapter on close()."""
         import ctypes
 
         test_data = b"User buffer lifetime test"
@@ -462,14 +462,14 @@ class TestRemoteBlobWrite:
         ctypes.memmove(user_buffer, test_data, len(test_data))
 
         # Write using user buffer
-        with bf.BlobFile(blob_path, "wb") as f:
+        with bf.DACSAdapter(blob_path, "wb") as f:
             f.write(buffer=user_buffer, size=len(test_data))
 
             # Check that buffer is tracked as user-provided
             assert len(f._write_buffers) == 1, "Should track user buffer"
             assert f._write_buffers[0][1] == True, "Should be marked as user-provided buffer"
 
-        # After close, buffer should still be valid (not released by BlobFile)
+        # After close, buffer should still be valid (not released by DACSAdapter)
         # We can verify by checking we can still access the buffer data
         try:
             import ctypes
@@ -495,25 +495,25 @@ class TestRemoteBlobWrite:
 
         try:
             # Write with internal buffer
-            with bf.BlobFile(blob_path_1, "w") as f:
+            with bf.DACSAdapter(blob_path_1, "w") as f:
                 bytes_written_1 = f.write(internal_data)
                 assert len(f._write_buffers) == 1
                 assert f._write_buffers[0][1] == False  # Internal
 
             # Write with user buffer
-            with bf.BlobFile(blob_path_2, "wb") as f:
+            with bf.DACSAdapter(blob_path_2, "wb") as f:
                 bytes_written_2 = f.write(buffer=user_buffer, size=len(user_data))
                 assert len(f._write_buffers) == 1
                 assert f._write_buffers[0][1] == True  # User-provided
 
             # Only verify reads if writes succeeded
             if bytes_written_1 > 0:
-                with bf.BlobFile(blob_path_1, "r") as f:
+                with bf.DACSAdapter(blob_path_1, "r") as f:
                     content = f.read()
                     if content:  # Only check if we got data
                         assert content == internal_data
             if bytes_written_2 > 0:
-                with bf.BlobFile(blob_path_2, "rb") as f:
+                with bf.DACSAdapter(blob_path_2, "rb") as f:
                     content = f.read()
                     if content:  # Only check if we got data
                         assert content == user_data
@@ -532,7 +532,7 @@ class TestRemoteBlobWrite:
         ctypes.memmove(user_buffer, test_data, len(test_data))
 
         try:
-            with bf.BlobFile(blob_path, "wb") as f:
+            with bf.DACSAdapter(blob_path, "wb") as f:
                 bytes_written = f.write(buffer=user_buffer, size=len(test_data))
                 # Note: bytes_written may be -1 if storage backend fails
                 # The key test is that buffer tracking works correctly
@@ -541,7 +541,7 @@ class TestRemoteBlobWrite:
                 assert len(f._write_buffers) == 1, "Should track user buffer"
                 assert f._write_buffers[0][1] == True, "Should be marked as user-provided buffer"
 
-                # Buffer must stay alive here - BlobFile tracks it but doesn't copy
+                # Buffer must stay alive here - DACSAdapter tracks it but doesn't copy
                 # Accessing buffer content should still work
                 content = ctypes.string_at(user_buffer, len(test_data))
                 assert content == test_data, "Buffer content should remain intact"
@@ -556,7 +556,7 @@ class TestRemoteBlobExists:
     def test_exists_remote_blob_after_write(self):
         """Test exists() returns True for written remote blob."""
         blob_path = f"{AZURE_BLOB_PATH}/test_exists_true_{id(self)}.txt"
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             f.write("test data")
 
         result = bf.exists(blob_path)
@@ -576,7 +576,7 @@ class TestRemoteBlobStat:
         """Test stat() on remote blob."""
         test_data = "stat test data"
         blob_path = f"{AZURE_BLOB_PATH}/test_stat_blob_{id(self)}.txt"
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             bytes_written = f.write(test_data)
 
         result = bf.stat(blob_path)
@@ -590,7 +590,7 @@ class TestRemoteBlobStat:
         """Test that stat() returns all expected fields."""
         test_data = "Complete stat field test"
         blob_path = f"{AZURE_BLOB_PATH}/test_stat_fields_{id(self)}.txt"
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             bytes_written = f.write(test_data)
 
         result = bf.stat(blob_path)
@@ -621,7 +621,7 @@ class TestRemoteBlobStat:
     def test_stat_empty_blob(self):
         """Test stat() on empty blob."""
         blob_path = f"{AZURE_BLOB_PATH}/test_stat_empty_{id(self)}.txt"
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             pass  # Write nothing
 
         result = bf.stat(blob_path)
@@ -632,7 +632,7 @@ class TestRemoteBlobStat:
         """Test stat() on larger blob."""
         test_data = "X" * 10000  # 10KB of data
         blob_path = f"{AZURE_BLOB_PATH}/test_stat_large_{id(self)}.txt"
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             bytes_written = f.write(test_data)
 
         result = bf.stat(blob_path)
@@ -648,7 +648,7 @@ class TestRemoteBlobStat:
         # Create a regular file
         test_data = "file type test"
         file_path = f"{AZURE_BLOB_PATH}/test_file_type_{id(self)}.txt"
-        with bf.BlobFile(file_path, "w") as f:
+        with bf.DACSAdapter(file_path, "w") as f:
             bytes_written = f.write(test_data)
 
         # Stat the file
@@ -712,7 +712,7 @@ class TestRemoteBlobListDir:
         file_names = ["file1.txt", "file2.txt", "file3.txt"]
         for name in file_names:
             file_path = f"{dir_path}/{name}"
-            with bf.BlobFile(file_path, "w") as f:
+            with bf.DACSAdapter(file_path, "w") as f:
                 f.write(f"content of {name}")
 
         # List the directory
@@ -733,7 +733,7 @@ class TestRemoteBlobListDir:
         file_names = ["scan1.txt", "scan2.txt", "scan3.txt"]
         for name in file_names:
             file_path = f"{dir_path}/{name}"
-            with bf.BlobFile(file_path, "w") as f:
+            with bf.DACSAdapter(file_path, "w") as f:
                 f.write(f"content of {name}")
 
         # Scan the directory
@@ -754,7 +754,7 @@ class TestRemoteBlobListDir:
         file_names = ["consistent1.txt", "consistent2.txt"]
         for name in file_names:
             file_path = f"{dir_path}/{name}"
-            with bf.BlobFile(file_path, "w") as f:
+            with bf.DACSAdapter(file_path, "w") as f:
                 f.write(f"content of {name}")
 
         # Get listings from both methods
@@ -772,7 +772,7 @@ class TestRemoteBlobListDir:
         dir_path = f"{AZURE_BLOB_PATH}/test_listdir_generator_{id(self)}"
 
         # Create a file
-        with bf.BlobFile(f"{dir_path}/test.txt", "w") as f:
+        with bf.DACSAdapter(f"{dir_path}/test.txt", "w") as f:
             f.write("test")
 
         # Get the result - should be an iterator/generator
@@ -792,7 +792,7 @@ class TestRemoteBlobListDir:
         dir_path = f"{AZURE_BLOB_PATH}/test_scandir_generator_{id(self)}"
 
         # Create a file
-        with bf.BlobFile(f"{dir_path}/test.txt", "w") as f:
+        with bf.DACSAdapter(f"{dir_path}/test.txt", "w") as f:
             f.write("test")
 
         # Get the result - should be an iterator/generator
@@ -816,7 +816,7 @@ class TestWriteModes:
         blob_path = f"{AZURE_BLOB_PATH}/test_write_disabled_{id(self)}.txt"
 
         with pytest.raises(bf.OperationNotSupportedError, match="WRITE_DISABLED"):
-            with bf.BlobFile(blob_path, "w", write_mode=bf.WriteMode.WRITE_DISABLED) as f:
+            with bf.DACSAdapter(blob_path, "w", write_mode=bf.WriteMode.WRITE_DISABLED) as f:
                 pass
 
     def test_write_disabled_mode_allows_read(self):
@@ -825,12 +825,12 @@ class TestWriteModes:
         blob_path = f"{AZURE_BLOB_PATH}/test_write_disabled_read_{id(self)}.txt"
 
         # First create the file with default write mode
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             bytes_written = f.write(test_data)
 
         # Read with WRITE_DISABLED mode should work (only if write succeeded)
         if bytes_written > 0:
-            with bf.BlobFile(blob_path, "r", write_mode=bf.WriteMode.WRITE_DISABLED) as f:
+            with bf.DACSAdapter(blob_path, "r", write_mode=bf.WriteMode.WRITE_DISABLED) as f:
                 content = f.read()
             assert content == test_data
 
@@ -840,11 +840,11 @@ class TestWriteModes:
         blob_path = f"{AZURE_BLOB_PATH}/test_write_disabled_method_{id(self)}.txt"
 
         # Create file first
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             f.write(test_data)
 
         # Open in read mode with WRITE_DISABLED, then try to call write
-        with bf.BlobFile(blob_path, "r", write_mode=bf.WriteMode.WRITE_DISABLED) as f:
+        with bf.DACSAdapter(blob_path, "r", write_mode=bf.WriteMode.WRITE_DISABLED) as f:
             with pytest.raises(bf.OperationNotSupportedError, match="WRITE_DISABLED"):
                 f.write("should fail")
 
@@ -852,7 +852,7 @@ class TestWriteModes:
         """Test that default write mode is WRITE_SYNC."""
         blob_path = f"{AZURE_BLOB_PATH}/test_default_mode_{id(self)}.txt"
 
-        f = bf.BlobFile(blob_path, "w")
+        f = bf.DACSAdapter(blob_path, "w")
         assert f._write_mode == bf.WriteMode.WRITE_SYNC
 
 
@@ -864,7 +864,7 @@ class TestUnsupportedOperations:
         blob_path = f"{AZURE_BLOB_PATH}/test_append_{id(self)}.txt"
 
         with pytest.raises(bf.OperationNotSupportedError, match="Append mode"):
-            with bf.BlobFile(blob_path, "a") as f:
+            with bf.DACSAdapter(blob_path, "a") as f:
                 pass
 
     def test_readline_not_supported(self):
@@ -872,10 +872,10 @@ class TestUnsupportedOperations:
         test_data = "line1\nline2\n"
         blob_path = f"{AZURE_BLOB_PATH}/test_readline_{id(self)}.txt"
 
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             f.write(test_data)
 
-        with bf.BlobFile(blob_path, "r") as f:
+        with bf.DACSAdapter(blob_path, "r") as f:
             with pytest.raises(bf.OperationNotSupportedError, match="readline"):
                 f.readline()
 
@@ -883,10 +883,10 @@ class TestUnsupportedOperations:
         """Test that readlines() raises OperationNotSupportedError."""
         blob_path = f"{AZURE_BLOB_PATH}/test_readlines_{id(self)}.txt"
 
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             f.write("test")
 
-        with bf.BlobFile(blob_path, "r") as f:
+        with bf.DACSAdapter(blob_path, "r") as f:
             with pytest.raises(bf.OperationNotSupportedError, match="readlines"):
                 f.readlines()
 
@@ -894,7 +894,7 @@ class TestUnsupportedOperations:
         """Test that writelines() raises OperationNotSupportedError."""
         blob_path = f"{AZURE_BLOB_PATH}/test_writelines_{id(self)}.txt"
 
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             with pytest.raises(bf.OperationNotSupportedError, match="writelines"):
                 f.writelines(["line1", "line2"])
 
@@ -902,10 +902,10 @@ class TestUnsupportedOperations:
         """Test that seek() raises OperationNotSupportedError."""
         blob_path = f"{AZURE_BLOB_PATH}/test_seek_{id(self)}.txt"
 
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             f.write("test")
 
-        with bf.BlobFile(blob_path, "r") as f:
+        with bf.DACSAdapter(blob_path, "r") as f:
             with pytest.raises(bf.OperationNotSupportedError, match="seek"):
                 f.seek(0)
 
@@ -913,10 +913,10 @@ class TestUnsupportedOperations:
         """Test that tell() raises OperationNotSupportedError."""
         blob_path = f"{AZURE_BLOB_PATH}/test_tell_{id(self)}.txt"
 
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             f.write("test")
 
-        with bf.BlobFile(blob_path, "r") as f:
+        with bf.DACSAdapter(blob_path, "r") as f:
             with pytest.raises(bf.OperationNotSupportedError, match="tell"):
                 f.tell()
 
@@ -924,7 +924,7 @@ class TestUnsupportedOperations:
         """Test that flush() raises OperationNotSupportedError."""
         blob_path = f"{AZURE_BLOB_PATH}/test_flush_{id(self)}.txt"
 
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             with pytest.raises(bf.OperationNotSupportedError, match="flush"):
                 f.flush()
 
@@ -932,10 +932,10 @@ class TestUnsupportedOperations:
         """Test that iteration raises OperationNotSupportedError."""
         blob_path = f"{AZURE_BLOB_PATH}/test_iter_{id(self)}.txt"
 
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             f.write("line1\nline2\n")
 
-        with bf.BlobFile(blob_path, "r") as f:
+        with bf.DACSAdapter(blob_path, "r") as f:
             with pytest.raises(bf.OperationNotSupportedError, match="Iteration"):
                 for line in f:
                     pass
@@ -1018,7 +1018,7 @@ class TestUnsupportedOperations:
     def test_configure_unsupported_options(self):
         """Test that configure() raises OperationNotSupportedError for unsupported options."""
         # Test specific unsupported options that should raise errors
-        # These must match the unsupported_options dict in dacs_blobfile.configure()
+        # These must match the unsupported_options dict in dacs_adapter.configure()
         unsupported_options = [
             {"connection_pool_max_size": 10},
             {"max_connection_pool_count": 5},
@@ -1059,10 +1059,10 @@ class TestContextManagerAndErrorHandling:
         test_data = "test data"
         blob_path = f"{AZURE_BLOB_PATH}/test_no_ctx_read_{id(self)}.txt"
 
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             f.write(test_data)
 
-        f = bf.BlobFile(blob_path, "r")
+        f = bf.DACSAdapter(blob_path, "r")
         with pytest.raises(ValueError, match="File handle is not open"):
             f.read()
 
@@ -1070,7 +1070,7 @@ class TestContextManagerAndErrorHandling:
         """Test that write() without context manager raises ValueError."""
         blob_path = f"{AZURE_BLOB_PATH}/test_no_ctx_write_{id(self)}.txt"
 
-        f = bf.BlobFile(blob_path, "w")
+        f = bf.DACSAdapter(blob_path, "w")
         with pytest.raises(ValueError, match="File handle is not open"):
             f.write("test")
 
@@ -1078,7 +1078,7 @@ class TestContextManagerAndErrorHandling:
         """Test that calling close() multiple times is safe."""
         blob_path = f"{AZURE_BLOB_PATH}/test_close_idempotent_{id(self)}.txt"
 
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             f.write("test")
 
         # close() already called by __exit__, call again
@@ -1097,12 +1097,12 @@ class TestTextAndBinaryModes:
         test_data = "Text mode string"
         blob_path = f"{AZURE_BLOB_PATH}/test_text_mode_{id(self)}.txt"
 
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             bytes_written = f.write(test_data)
 
         # Only verify if write succeeded
         if bytes_written > 0:
-            with bf.BlobFile(blob_path, "r") as f:
+            with bf.DACSAdapter(blob_path, "r") as f:
                 content = f.read()
 
             assert isinstance(content, str), f"Text mode should return str, got {type(content)}"
@@ -1113,12 +1113,12 @@ class TestTextAndBinaryModes:
         test_data = b"Binary mode bytes"
         blob_path = f"{AZURE_BLOB_PATH}/test_binary_mode_{id(self)}.txt"
 
-        with bf.BlobFile(blob_path, "wb") as f:
+        with bf.DACSAdapter(blob_path, "wb") as f:
             bytes_written = f.write(test_data)
 
         # Only verify if write succeeded
         if bytes_written > 0:
-            with bf.BlobFile(blob_path, "rb") as f:
+            with bf.DACSAdapter(blob_path, "rb") as f:
                 content = f.read()
 
             assert isinstance(content, bytes), f"Binary mode should return bytes, got {type(content)}"
@@ -1129,12 +1129,12 @@ class TestTextAndBinaryModes:
         test_data = "Unicode: 你好世界 🌍 émoji"
         blob_path = f"{AZURE_BLOB_PATH}/test_utf8_{id(self)}.txt"
 
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             bytes_written = f.write(test_data)
 
         # Only verify if write succeeded
         if bytes_written > 0:
-            with bf.BlobFile(blob_path, "r") as f:
+            with bf.DACSAdapter(blob_path, "r") as f:
                 content = f.read()
 
             assert content == test_data
@@ -1144,7 +1144,7 @@ class TestTextAndBinaryModes:
         test_data = "String to text mode"
         blob_path = f"{AZURE_BLOB_PATH}/test_str_text_{id(self)}.txt"
 
-        with bf.BlobFile(blob_path, "w") as f:
+        with bf.DACSAdapter(blob_path, "w") as f:
             bytes_written = f.write(test_data)
 
         # Write should return positive value on success (number of bytes written)
@@ -1155,7 +1155,7 @@ class TestTextAndBinaryModes:
         test_data = b"Bytes to binary mode"
         blob_path = f"{AZURE_BLOB_PATH}/test_bytes_binary_{id(self)}.txt"
 
-        with bf.BlobFile(blob_path, "wb") as f:
+        with bf.DACSAdapter(blob_path, "wb") as f:
             bytes_written = f.write(test_data)
 
         # Write should return positive value on success (number of bytes written)
