@@ -65,6 +65,9 @@ spec:
           - --health-probe-bind-address=:8081
         image: controller:latest
         name: manager
+        env:
+        - name: CACHE_SERVER_IMAGE
+          value: "cache-server:local"
         ports: []
         securityContext:
           readOnlyRootFilesystem: true

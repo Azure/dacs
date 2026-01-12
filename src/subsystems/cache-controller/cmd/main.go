@@ -166,9 +166,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Get cache server image from environment variable
+	cacheServerImage := os.Getenv("CACHE_SERVER_IMAGE")
+	if cacheServerImage == "" {
+		cacheServerImage = "cache-server:local"
+		setupLog.Info("CACHE_SERVER_IMAGE not set, using default", "image", cacheServerImage)
+	} else {
+		setupLog.Info("Using cache server image from environment", "image", cacheServerImage)
+	}
+
 	if err := (&controller.CacheReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:           mgr.GetClient(),
+		Scheme:           mgr.GetScheme(),
+		CacheServerImage: cacheServerImage,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Cache")
 		os.Exit(1)

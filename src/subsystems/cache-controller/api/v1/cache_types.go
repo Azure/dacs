@@ -8,25 +8,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // ScalingType defines the scaling configuration for cache servers.
-// Specify either auto or fixed (mutually exclusive).
+// Specify either dynamic or static (mutually exclusive).
 type ScalingType struct {
-	// Auto configuration for dynamic scaling based on node availability
+	// Dynamic configuration for scaling based on node availability
 	// +optional
-	Auto *AutoScaleConfig `json:"auto,omitempty"`
+	Dynamic *DynamicScaleConfig `json:"dynamic,omitempty"`
 
-	// Fixed configuration for a static number of cache servers
+	// Static configuration for a fixed number of cache servers
 	// +optional
-	Fixed *FixedScaleConfig `json:"fixed,omitempty"`
+	Static *StaticScaleConfig `json:"static,omitempty"`
 }
 
-// AutoScaleConfig defines automatic scaling parameters based on cluster node availability.
+// DynamicScaleConfig defines automatic scaling parameters based on cluster node availability.
 // The controller will maintain cache servers as a percentage of available nodes,
 // constrained by minimum and maximum bounds.
-type AutoScaleConfig struct {
+type DynamicScaleConfig struct {
 	// Percentage of available nodes to use for cache servers
 	// +required
 	// +kubebuilder:validation:Minimum=1
@@ -46,9 +43,9 @@ type AutoScaleConfig struct {
 	MaxServers *int32 `json:"maxServers,omitempty"`
 }
 
-// FixedScaleConfig defines a static number of cache servers.
+// StaticScaleConfig defines a static number of cache servers.
 // The controller will maintain exactly this many replicas.
-type FixedScaleConfig struct {
+type StaticScaleConfig struct {
 	// Number of cache server replicas to maintain
 	// +required
 	// +kubebuilder:validation:Minimum=1
@@ -66,6 +63,26 @@ type EvictionConfig struct {
 	// +optional
 	// +kubebuilder:default:=true
 	EvictionMaintainFreeSpace *bool `json:"evictionMaintainFreeSpace,omitempty"`
+
+	// Last Access threshold for cache eviction, example "30d12h41m29s"
+	// +optional
+	// +kubebuilder:default:="30d"
+	LastAccessThreshold *string `json:"lastAccessThreshold,omitempty"`
+
+	// Size threshold for triggering cache eviction in percentage (0-100)
+	// +optional
+	// +kubebuilder:default:="90"
+	SizeThreshold *string `json:"sizeThreshold,omitempty"`
+
+	// Frequency of running eviction pass, example "1h30m"
+	// +optional
+	// +kubebuilder:default:="1h"
+	PassFrequency *string `json:"passFrequency,omitempty"`
+
+	// Target cache utilization percentage after eviction (0-100)
+	// +optionals
+	// +kubebuilder:default:="90"
+	SizeTarget *string `json:"sizeTarget,omitempty"`
 }
 
 // StorageConfig defines storage configuration for cache data.
@@ -88,13 +105,8 @@ type HostPathConfig struct {
 
 // CacheSpec defines the desired state of Cache
 type CacheSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	// The following markers will use OpenAPI v3 schema to validate the value
-	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
-
 	// Scaling configuration for cache servers
-	// Specify either autoScale or fixedScale (mutually exclusive)
+	// Specify either dynamic or static (mutually exclusive)
 	// +required
 	Scaling ScalingType `json:"scaling"`
 
@@ -164,12 +176,6 @@ type CacheSpec struct {
 
 // CacheStatus defines the observed state of Cache.
 type CacheStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// For Kubernetes API conventions, see:
-	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
-
 	// conditions represent the current state of the Cache resource.
 	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
 	//

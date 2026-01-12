@@ -8,7 +8,7 @@ metadata:
   namespace: azureml
 spec:
   scaling:
-    fixed:
+    static:
       numServers: 2
   serverSizeInGB: 100
   serverThreads: 16
