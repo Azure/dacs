@@ -1,0 +1,2 @@
+# This file intentionally left minimal to satisfy SSCA file-existence check
+# Actual suppression for public crates.io usage is in .gdn/.gdnsuppress
