@@ -63,6 +63,25 @@ spec:
                     description: Keep a portion of cache space always free even if
                       all data is within access time window
                     type: boolean
+                  lastAccessThreshold:
+                    default: 30d
+                    description: Last Access threshold for cache eviction, example
+                      "30d12h41m29s"
+                    type: string
+                  passFrequency:
+                    default: 1h
+                    description: Frequency of running eviction pass, example "1h30m"
+                    type: string
+                  sizeTarget:
+                    default: "90"
+                    description: Target cache utilization percentage after eviction
+                      (0-100)
+                    type: string
+                  sizeThreshold:
+                    default: "90"
+                    description: Size threshold for triggering cache eviction in percentage
+                      (0-100)
+                    type: string
                 type: object
               infinibandResourceLimitCount:
                 default: 0
@@ -101,11 +120,10 @@ spec:
               scaling:
                 description: |-
                   Scaling configuration for cache servers
-                  Specify either autoScale or fixedScale (mutually exclusive)
+                  Specify either dynamic or static (mutually exclusive)
                 properties:
-                  auto:
-                    description: Auto configuration for dynamic scaling based on node
-                      availability
+                  dynamic:
+                    description: Dynamic configuration for scaling based on node availability
                     properties:
                       maxServers:
                         description: Maximum number of cache servers to maintain
@@ -129,8 +147,8 @@ spec:
                     required:
                     - percentageOfNodesToUse
                     type: object
-                  fixed:
-                    description: Fixed configuration for a static number of cache
+                  static:
+                    description: Static configuration for a fixed number of cache
                       servers
                     properties:
                       numServers:

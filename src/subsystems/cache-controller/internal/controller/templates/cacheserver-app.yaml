@@ -126,11 +126,9 @@ spec:
         - mountPath: {{ .MountSsdPath }}
           name: cache-data-volume
           subPath: ssd0
-{{/* TODO: Enable when discovery configmap is created by CRD operator
         - name: cache-discovery-config
           mountPath: /serverConfig
           readOnly: true
-*/}}
         livenessProbe:
           exec:
             command: [
@@ -153,8 +151,6 @@ spec:
           hostPath: null
           sizeLimit: null
 {{- end }}
-{{/* TODO: Enable when discovery configmap is created by CRD operator
         - name: cache-discovery-config
           configMap:
             name: cacheserver-discovery-config
-*/}}

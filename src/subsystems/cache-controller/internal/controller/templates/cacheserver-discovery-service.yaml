@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cacheserver-discovery
+  labels:
+    app: cacheserver
+  namespace: {{ .Namespace }}
+spec:
+  ports:
+  - name: cacheserver
+    port: {{ .Port }}
+    targetPort: {{ .Port }}
+  selector:
+    app: cacheserver
