@@ -46,16 +46,17 @@ echo "Package channel: $PACKAGE_CHANNEL"
 
 # =============================================================================
 # Version calculation
-# Format: MMddhhmmss (2-digit month, day, 12-hour, minute, second)
-# Example: 1225020643 = December 25, 02:06:43 AM
-# Strip leading zeros to comply with SemVer (no leading zeros allowed)
+# Format: MddHHmmss (month, day, hour, minute, second)
+# Example: 1225140643 = December 25, 14:06:43
+# Example: 113180831 = January 13, 18:08:31
+# Leading zeros are stripped to comply with SemVer (no leading zeros allowed)
 # =============================================================================
-CURRENT_DATE_RAW=$(date +"%m%d%I%M%S")
+CURRENT_DATE_RAW=$(date +"%m%d%H%M%S")
 # Convert to integer to remove leading zeros (bash arithmetic strips them)
 CURRENT_DATE=$((10#${CURRENT_DATE_RAW}))
 BRANCH_HASH=$([[ "$GIT_BRANCH" == "main" ]] && echo "0" || printf '%s' "$GIT_BRANCH" | cksum | cut -d' ' -f1 | head -c5)
-# Main branch uses Build.BuildId, feature branches use 0
-PACKAGE_REVISION=$([[ "$GIT_BRANCH" == "main" ]] && echo "${PACKAGE_REVISION:-0}" || echo "0")
+# Main branch extracts revision from Build.BuildNumber (e.g., "20260112.6" -> "6"), feature branches use 0
+PACKAGE_REVISION=$([[ "$GIT_BRANCH" == "main" ]] && echo "$BUILD_NUMBER" | cut -d '.' -f 2 || echo "0")
 PACKAGE_VERSION="${CURRENT_DATE}.${BRANCH_HASH}.${PACKAGE_REVISION}"
 
 echo "Package version: $PACKAGE_VERSION"
