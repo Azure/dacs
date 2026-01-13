@@ -14,7 +14,6 @@ fi
 
 # Registry settings - can be overridden by environment variables
 REGISTRY="${DOCKER_REGISTRY:-dacs.azurecr.io}"
-REGISTRY_NAMESPACE="${DOCKER_REGISTRY_NAMESPACE:-dacs/images}"
 BUILD_NUMBER="${BUILD_NUMBER:-latest}"
 
 # Define images to process
@@ -27,9 +26,9 @@ echo ""
 
 # Create and push multi-platform manifests
 for image in "${IMAGES[@]}"; do
-    manifest_tag="$REGISTRY/$REGISTRY_NAMESPACE/$image:$BUILD_NUMBER"
-    amd64_image="$REGISTRY/$REGISTRY_NAMESPACE/$image:$BUILD_NUMBER-linux-amd64"
-    arm64_image="$REGISTRY/$REGISTRY_NAMESPACE/$image:$BUILD_NUMBER-linux-arm64"
+    manifest_tag="$REGISTRY/$image:$BUILD_NUMBER"
+    amd64_image="$REGISTRY/$image:$BUILD_NUMBER-linux-amd64"
+    arm64_image="$REGISTRY/$image:$BUILD_NUMBER-linux-arm64"
     
     echo "Creating manifest: $manifest_tag"
     echo "  References:"
@@ -45,6 +44,6 @@ done
 echo "✅ All multi-platform manifests created successfully:"
 echo ""
 for image in "${IMAGES[@]}"; do
-    echo "  • $REGISTRY/$REGISTRY_NAMESPACE/$image:$BUILD_NUMBER (linux/amd64, linux/arm64)"
+    echo "  • $REGISTRY/$image:$BUILD_NUMBER (linux/amd64, linux/arm64)"
 done
 echo ""
