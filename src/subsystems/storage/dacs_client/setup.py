@@ -104,6 +104,7 @@ setup(
         "py_dacs_client.utils",
         "py_dacs_client.sample",
         "py_dacs_client.tests",
+        "py_dacs_client.benchmarks",
     ],
     package_data={
         "py_dacs_client.tests": ["requirements.txt"],
