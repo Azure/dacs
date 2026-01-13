@@ -14,7 +14,6 @@ fi
 
 # Registry settings - can be overridden by environment variables
 REGISTRY="${DOCKER_REGISTRY:-dacs.azurecr.io}"
-REGISTRY_NAMESPACE="${DOCKER_REGISTRY_NAMESPACE:-dacs/images}"
 BUILD_NUMBER="${BUILD_NUMBER:-latest}"
 BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
 
@@ -46,7 +45,7 @@ declare -A TARGET_IMAGES
 
 for image in "${IMAGES[@]}"; do
     local_image="${image}:local"
-    target_image="$REGISTRY/$REGISTRY_NAMESPACE/$image:$BUILD_NUMBER-linux-$BUILD_ARCH"
+    target_image="$REGISTRY/$image:$BUILD_NUMBER-linux-$BUILD_ARCH"
     
     TARGET_IMAGES["$image"]="$target_image"
     

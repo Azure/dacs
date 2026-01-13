@@ -16,7 +16,6 @@ if [[ -f "$CONFIG_FILE" ]]; then
 fi
 
 REGISTRY="${DOCKER_REGISTRY:-dacs.azurecr.io}"
-REGISTRY_NAMESPACE="${DOCKER_REGISTRY_NAMESPACE:-dacs/images}"
 BUILD_NUMBER="${BUILD_NUMBER:-latest}"
 
 # Image tag matches what publish-images.sh creates
@@ -38,11 +37,10 @@ fi
 # Chart settings
 CHART_NAME="cache-server"
 CHART_PACKAGE="$OUTPUT_DIR/$CHART_NAME-$CHART_VERSION.tgz"
-CHART_REPO="oci://$REGISTRY/dacs/charts"
+CHART_REPO="oci://$REGISTRY/charts"
 
 echo "Building Helm chart..."
 echo "Registry: $REGISTRY"
-echo "Registry Namespace: $REGISTRY_NAMESPACE"
 echo "Base Version: $BASE_VERSION"
 echo "Chart Version: $CHART_VERSION"
 echo "App Version: $BUILD_NUMBER"
@@ -73,8 +71,8 @@ appVersion: $BUILD_NUMBER
 EOF
 
 # Update values.yaml with full image repository
-sed -i "s|^\\(    repository:\\) cache-server|\\1 $REGISTRY/$REGISTRY_NAMESPACE/cache-server|" "$CHART_DIR/values.yaml"
-sed -i "s|^\\(      repository:\\) cacheserver-scheduler|\\1 $REGISTRY/$REGISTRY_NAMESPACE/cacheserver-scheduler|" "$CHART_DIR/values.yaml"
+sed -i "s|^\\(    repository:\\) cache-server|\\1 $REGISTRY/cache-server|" "$CHART_DIR/values.yaml"
+sed -i "s|^\\(      repository:\\) cacheserver-scheduler|\\1 $REGISTRY/cacheserver-scheduler|" "$CHART_DIR/values.yaml"
 
 # Package the chart
 helm package "$CHART_DIR" -d "$OUTPUT_DIR" --version "$CHART_VERSION" --app-version "$BUILD_NUMBER"
