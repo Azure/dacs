@@ -22,12 +22,13 @@ See `values.yaml` for all configuration options.
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `cacheServer.enabled` | Enable CacheServer deployment | `false` |
-| `cacheServer.numServers` | Number of cache server replicas | `1` |
-| `cacheServer.serverSizeInGB` | Size of cache per server in GB | `1` |
+| `cacheServer.enabled` | Enable CacheServer deployment | `true` |
+| `cacheServer.numServers` | Number of cache server replicas | `3` |
+| `cacheServer.serverSizeInGB` | Size of cache per server in GB | `4` |
 | `cacheServer.scheduler.enabled` | Enable custom scheduler | `true` |
 | `cacheServer.useHostPath` | Use hostPath storage instead of PV/PVC | `true` |
 | `cacheServer.enableTrafficControl` | Enable traffic control for bandwidth limiting | `true` |
+| `cacheServer.nodeCacheFolderPath` | Host path for cache storage | `/var/lib/ssd/cacheserver` |
 
 ## Architecture
 

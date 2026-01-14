@@ -1,0 +1,140 @@
+package kusto
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/Azure/dacs/test/pkg/eventhub"
+	"github.com/Azure/dacs/test/pkg/logger"
+)
+
+// log is the default logger for the kusto package.
+var log = logger.New()
+
+var (
+	// Pipeline variables for RunID
+	buildDefinitionName = os.Getenv("BUILD_DEFINITION_NAME")
+	buildNum            = os.Getenv("BUILD_NUM")
+
+	// SkipSendMetrics controls whether metrics are sent to EventHub/Kusto.
+	// By default, metrics are NOT sent. Set SEND_METRICS=true to enable sending metrics.
+	SkipSendMetrics = os.Getenv("SEND_METRICS") != "true"
+)
+
+// EventHubConfig holds the configuration for sending metrics to EventHub.
+type EventHubConfig struct {
+	Namespace string
+	Name      string
+}
+
+// DefaultEventHubConfig returns the default EventHub configuration for DACS perf metrics.
+var DefaultEventHubConfig = EventHubConfig{
+	Namespace: os.Getenv("EVENTHUB_NAMESPACE"),
+	Name:      "dacs-perf-metrics",
+}
+
+// PerfMetric represents a performance metric to be sent to Kusto via EventHub.
+type PerfMetric struct {
+	// Top-level indexing fields
+	RunID            string `json:"RunID"`
+	SuiteID          string `json:"SuiteID"`
+	Timestamp        string `json:"Timestamp"`
+	TestName         string `json:"TestName"`
+	TestGitCommit    string `json:"TestGitCommit"`
+	TestGitBranch    string `json:"TestGitBranch"`
+	HelmChartVersion string `json:"HelmChartVersion"`
+	HelmAppVersion   string `json:"HelmAppVersion"`
+
+	// TestMetadata contains dynamic test environment info
+	TestMetadata TestMetadata `json:"TestMetadata"`
+
+	// Result contains the performance data
+	Result PerfResult `json:"Result"`
+}
+
+// TestMetadata contains test environment metadata (dynamic column in Kusto).
+type TestMetadata struct {
+	ClusterName string `json:"ClusterName"`
+	PodName     string `json:"PodName"`
+	NodeName    string `json:"NodeName"`
+	NodeSKU     string `json:"NodeSKU"`
+	IsMinikube  bool   `json:"IsMinikube"`
+}
+
+// PerfResult contains the performance test results (dynamic column in Kusto).
+type PerfResult struct {
+	Mode                    string `json:"Mode"`
+	DurationMs              int64  `json:"DurationMs"`
+	TotalBytesTransferred   int64  `json:"TotalBytesTransferred"`
+	ThroughputMbps          int64  `json:"ThroughputMbps"`
+	TotalFailures           int    `json:"TotalFailures"`
+	ExpectedChunks          int    `json:"ExpectedChunks"`
+	SuccessfulChunks        int    `json:"SuccessfulChunks"`
+	NumThreads              int    `json:"NumThreads"`
+	DataSizeGiB             int    `json:"DataSizeGiB"`
+	NumIterations           int    `json:"NumIterations"`
+	NumServers              int    `json:"NumServers"`
+	EnableCalculateChecksum bool   `json:"EnableCalculateChecksum"`
+	EnableValidateChecksum  bool   `json:"EnableValidateChecksum"`
+	ChecksumAlgorithm       string `json:"ChecksumAlgorithm"`
+}
+
+// SendPerfMetric sends a performance metric to EventHub for ingestion into Kusto.
+// Always prints the metric to stdout for visibility.
+// Only actually sends to EventHub if SEND_METRICS=true.
+//
+// The event is structured with fixed columns for indexing plus dynamic columns:
+//
+//	Kusto table schema:
+//	.create table PerfMetrics (
+//	    RunID: string,
+//	    SuiteID: string,
+//	    Timestamp: datetime,
+//	    TestName: string,
+//	    TestGitCommit: string,
+//	    TestGitBranch: string,
+//	    HelmChartVersion: string,
+//	    HelmAppVersion: string,
+//	    TestMetadata: dynamic,
+//	    Result: dynamic
+//	)
+func SendPerfMetric(ctx context.Context, config EventHubConfig, metric *PerfMetric) error {
+	// Set run metadata - RunID from pipeline environment variables
+	pipelineRunID := strings.Trim(fmt.Sprintf("%s-%s", buildDefinitionName, buildNum), "-")
+	if pipelineRunID != "" {
+		metric.RunID = pipelineRunID
+	}
+	metric.Timestamp = time.Now().Format(time.RFC3339)
+
+	// Pretty print the metric for visibility
+	prettyJSON, _ := json.MarshalIndent(metric, "", "  ")
+	log.Info("Perf metric", "metric", string(prettyJSON))
+
+	// Only send if metrics are enabled
+	if SkipSendMetrics {
+		log.Info("SEND_METRICS not set to 'true', skipping EventHub send")
+		return nil
+	}
+
+	// Convert struct to map for EventHub
+	jsonBytes, err := json.Marshal(metric)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metric: %w", err)
+	}
+	var event map[string]any
+	if err := json.Unmarshal(jsonBytes, &event); err != nil {
+		return fmt.Errorf("failed to convert metric to map: %w", err)
+	}
+
+	return eventhub.SendEvent(ctx, config.Namespace, config.Name, event)
+}
+
+// SendMetricsEnabled returns true if metrics should be sent to EventHub/Kusto.
+// Check this before calling SendPerfMetric to avoid unnecessary work.
+func SendMetricsEnabled() bool {
+	return !SkipSendMetrics
+}

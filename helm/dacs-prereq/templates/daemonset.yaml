@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "dacs-prereq.fullname" . }}
+  labels:
+    {{- include "dacs-prereq.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "dacs-prereq.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "dacs-prereq.selectorLabels" . | nindent 8 }}
+      annotations:
+        kubectl.kubernetes.io/default-container: nvme-raid-setup
+    spec:
+      hostPID: true
+      hostNetwork: true
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: nvme-raid-setup
+          image: "{{ .Values.nvmeRaidSetup.image.repository }}:{{ .Values.nvmeRaidSetup.image.tag }}"
+          imagePullPolicy: {{ .Values.nvmeRaidSetup.image.pullPolicy }}
+          securityContext:
+            privileged: true
+          env:
+            - name: MOUNT_POINT
+              value: "{{ .Values.mountPoint }}"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -ex
+              
+              # Install required packages
+              tdnf install -y util-linux
+              
+              # Execute setup script in host namespace via nsenter
+              # Pipe script via stdin since the file doesn't exist on the host
+              nsenter -t 1 -m -u -i -n -p -- /bin/bash -s <<'SETUP_SCRIPT'
+              export MOUNT_POINT="${MOUNT_POINT}"
+              {{ .Files.Get "scripts/setup-raid.sh" | nindent 14 }}
+              SETUP_SCRIPT
+          resources:
+            {{- toYaml .Values.nvmeRaidSetup.resources | nindent 12 }}
+      containers:
+        - name: pause
+          image: "{{ .Values.pauseContainer.image.repository }}:{{ .Values.pauseContainer.image.tag }}"
+          imagePullPolicy: {{ .Values.pauseContainer.image.pullPolicy }}
+          command:
+            - sleep
+            - infinity
+          resources:
+            {{- toYaml .Values.pauseContainer.resources | nindent 12 }}
+

@@ -24,13 +24,27 @@ sudo apt install -y \
   jq
 echo "    Build tools installed"
 
+# Install Go (Microsoft build)
+echo "[3/7] Installing Microsoft Go..."
+if ! command -v go &> /dev/null; then
+  # Add Microsoft package repository
+  curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc > /dev/null
+  sudo apt-add-repository -y "https://packages.microsoft.com/ubuntu/$(lsb_release -rs)/prod"
+  sudo apt update
+  # Install Microsoft Go
+  sudo apt install -y msft-golang
+  echo "    Microsoft Go installed"
+else
+  echo "    Go already installed"
+fi
+
 # Initialize Git LFS
-echo "[3/6] Initializing Git LFS..."
+echo "[4/7] Initializing Git LFS..."
 git lfs install
 echo "    Git LFS initialized"
 
 # Install Docker + Kubernetes tools (skips if already present)
-echo "[4/6] Installing Docker and Kubernetes tools (minikube, kubectl, helm)..."
+echo "[5/7] Installing Docker and Kubernetes tools (minikube, kubectl, helm)..."
 PREREQ_SCRIPT=".pipelines/scripts/k8s/prerequisites.sh"
 if [ -f "$PREREQ_SCRIPT" ]; then
   bash "$PREREQ_SCRIPT"
@@ -39,7 +53,7 @@ else
 fi
 
 # Fix Docker permissions for current user
-echo "[5/6] Configuring Docker permissions..."
+echo "[6/7] Configuring Docker permissions..."
 if command -v docker &> /dev/null; then
   sudo usermod -aG docker $USER
   sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
@@ -47,7 +61,7 @@ if command -v docker &> /dev/null; then
 fi
 
 # Install Azure CLI (for CI/CD pipelines)
-echo "[6/6] Installing Azure CLI..."
+echo "[7/7] Installing Azure CLI..."
 if ! command -v az &> /dev/null; then
   curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
   echo "    Azure CLI installed"

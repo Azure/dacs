@@ -32,6 +32,7 @@ kubectl delete job ${MODE}-client -n "$NAMESPACE" --ignore-not-found=true >/dev/
 
 # Apply the template with mode substitution AND config parameters
 sed -e "s/MODE_PLACEHOLDER/$MODE/g" \
+    -e "s/NAMESPACE_PLACEHOLDER/$NAMESPACE/g" \
     -e "s/'--num-threads', '[0-9]*'/'--num-threads', '$NUM_THREADS'/g" \
     -e "s/'--data-size-GiB', '[0-9]*'/'--data-size-GiB', '$DATA_SIZE_GIB'/g" \
     -e "s/'--num-iterations', '[0-9]*'/'--num-iterations', '$NUM_ITERATIONS'/g" \

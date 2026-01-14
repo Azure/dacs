@@ -14,8 +14,8 @@ fi
 
 # Registry settings - can be overridden by environment variables
 REGISTRY="${DOCKER_REGISTRY:-dacs.azurecr.io}"
-BUILD_NUMBER="${BUILD_NUMBER:-latest}"
 BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
+BUILD_NUMBER="${BUILD_NUMBER:-latest}"
 
 # Define images to process
 IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler")
@@ -25,6 +25,16 @@ echo "Registry: $REGISTRY"
 echo "Build Number: $BUILD_NUMBER"
 echo "Architecture: $BUILD_ARCH"
 echo ""
+
+# Login to ACR if the registry is an Azure Container Registry
+if [[ "$REGISTRY" == *".azurecr.io" ]]; then
+    ACR_NAME="${REGISTRY%.azurecr.io}"
+    echo "Logging into ACR $ACR_NAME..."
+    if ! az acr login --name "$ACR_NAME" 2>&1; then
+        echo "Error: Failed to login to ACR $ACR_NAME"
+        exit 1
+    fi
+fi
 
 # Validate that local images exist before publishing
 echo "Validating local images..."

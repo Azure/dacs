@@ -1,19 +1,22 @@
-# Cache test client job for testing cache server performance
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: cache-perf-client
-  namespace: cache-server
+  name: perf-client
+  labels:
+    app: perf-client
 spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 0
+  completions: 1
   manualSelector: true
   selector:
     matchLabels:
-      app: cache-perf-client
+      app: perf-client
   parallelism: 1
   template:
     metadata:
       labels:
-        app: cache-perf-client
+        app: perf-client
     spec:
       affinity:
         nodeAffinity:
@@ -33,32 +36,35 @@ spec:
                 values:
                 - cacheserver
             topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - perf-client
+              topologyKey: kubernetes.io/hostname
       containers:
-      - name: perf-client
-        image: dacs.azurecr.io/dacs/images/cache-test-client:IMAGE_TAG_PLACEHOLDER
+      - name: job
+        image: cache-test-client:local
         command: ['/app/PerfClient']
         args:
         - '--server-port'
         - '9065'
         - '--server-hostname'
-        - 'SERVER_HOSTNAMES_PLACEHOLDER'
+        - 'cacheserver-0.cacheserver.dacs.svc.cluster.local'
         - '--num-threads'
-        - '32'
+        - '1'
         - '--data-size-GiB'
-        - 'DATA_SIZE_GIB_PLACEHOLDER'
+        - '1'
         - '--prefix'
-        - 'PREFIX_PLACEHOLDER'
+        - 'test'
         - '--mode'
-        - 'MODE_PLACEHOLDER'
+        - 'upload'
         - '--num-iterations'
         - '1'
         - '--ib-enabled'
         - 'false'
-        - '--enable-calculate-checksum'
-        - 'ENABLE_CALCULATE_CHECKSUM_PLACEHOLDER'
-        - '--enable-validate-checksum'
-        - 'ENABLE_VALIDATE_CHECKSUM_PLACEHOLDER'
-        - '--checksum-algorithm'
-        - 'CHECKSUM_ALGORITHM_PLACEHOLDER'
       restartPolicy: Never
-  backoffLimit: 3
