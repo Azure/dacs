@@ -12,10 +12,10 @@ if [[ -f "$CONFIG_FILE" ]]; then
     echo "Loaded config from: $CONFIG_FILE"
 fi
 
-# Registry settings - can be overridden by environment variables
-REGISTRY="${DOCKER_REGISTRY:-dacs.azurecr.io}"
-BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
+# Registry settings - must be provided by environment variables
+REGISTRY="$DOCKER_REGISTRY"
 BUILD_NUMBER="${BUILD_NUMBER:-latest}"
+BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
 
 # Define images to process
 IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler")

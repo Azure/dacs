@@ -14,7 +14,8 @@ if [[ -f "$CONFIG_FILE" ]]; then
     echo "Loaded config from: $CONFIG_FILE"
 fi
 
-REGISTRY="${DOCKER_REGISTRY:-dacs.azurecr.io}"
+# Registry settings - must be provided by environment variables
+REGISTRY="$DOCKER_REGISTRY"
 BUILD_NUMBER="${BUILD_NUMBER:-latest}"
 
 # Chart repo
@@ -128,17 +129,8 @@ echo "Build Number: $BUILD_NUMBER"
 PUSH_CHARTS="false"
 if [[ "$1" == "--push" ]]; then
     PUSH_CHARTS="true"
-    
-    # Login to ACR if it's an Azure registry
-    if [[ "$REGISTRY" == *".azurecr.io" ]]; then
-        echo ""
-        echo "Logging in to Azure Container Registry..."
-        REGISTRY_NAME="${REGISTRY%.azurecr.io}"
-        TOKEN=$(az acr login --name "$REGISTRY_NAME" --expose-token --output tsv --query accessToken)
-        echo "$TOKEN" | helm registry login "$REGISTRY" -u 00000000-0000-0000-0000-000000000000 --password-stdin
-    fi
 fi
-
+    
 # Build and push prereq chart (no container images)
 build_and_push_chart "$REPOSITORY_ROOT/helm/dacs-prereq" "dacs-prereq" "false"
 
