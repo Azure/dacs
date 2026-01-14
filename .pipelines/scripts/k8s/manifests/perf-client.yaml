@@ -2,7 +2,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: MODE_PLACEHOLDER-client
-  namespace: default
+  namespace: NAMESPACE_PLACEHOLDER
 spec:
   ttlSecondsAfterFinished: 60
   manualSelector: true

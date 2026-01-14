@@ -1,0 +1,38 @@
+# Default values for dacs-prereq
+
+# Node selector for targeting NVMe-capable nodes
+nodeSelector:
+  dacs.azure.com/processing-unit: cpu
+
+# Tolerations for the DaemonSet
+tolerations: []
+
+# Mount point for the RAID array
+mountPoint: /var/lib/ssd/cacheserver
+
+# nvme-raid-setup init container settings
+nvmeRaidSetup:
+  image:
+    repository: mcr.microsoft.com/azurelinux/base/core
+    tag: "3.0"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      memory: 512Mi
+
+# Pause container settings
+pauseContainer:
+  image:
+    repository: mcr.microsoft.com/azurelinux/base/core
+    tag: "3.0"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 1m
+      memory: 16Mi
+    limits:
+      memory: 16Mi
+

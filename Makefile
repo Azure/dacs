@@ -1,37 +1,42 @@
-.PHONY: help build clean test pytest test-go test-native images deploy-minikube clean-minikube perf-client storage-intercept-client helm-build helm-push
+.PHONY: help build clean test pytest test-go test-native images storage-intercept-client helm-build helm-push deploy undeploy
+
+# Include modular makefiles
+include deploy/deploy.mk
+include test/test.mk
 
 help:
 	@echo "dacs Build"
 	@echo ""
+	@echo "Build & Test:"
 	@echo "  make build                         	- Build storage (Debug)"
 	@echo "  make build BUILD_TYPE=Release      	- Build storage (Release)"
 	@echo "  make clean                         	- Clean build artifacts"
-	@echo "  make clean BUILD_TYPE=Release      	- Clean Release build artifacts"
 	@echo "  make test                          	- Run all unit tests"
 	@echo "  make test TEST=<pattern>           	- Run specific unit tests"
 	@echo "  make pytest                        	- Run Python unit tests (pytest)"
-	@echo "  make pytest PYTEST_ARGS=<args>     	- Run pytest with additional arguments"
 	@echo "  make images                        	- Build Docker images"
-	@echo "  make deploy-minikube               	- Build, create images, deploy, and run perf tests"
-	@echo "  make deploy-minikube SKIP_BUILD=1  	- Deploy without rebuilding"
-	@echo "  make perf-client MODE=<upload|download> - Run performance client tests"
+	@echo ""
+	@echo "Cluster Provisioning:"
+	@echo "  make provision TARGET=<aks|minikube> 	- Create AKS cluster or Minikube"
+	@echo "  make unprovision                     	- Delete cluster (auto-detects from kubectl context)"
+	@echo ""
+	@echo "Helm Deployment:"
+	@echo "  make deploy                        	- Install cache-server helm charts"
+	@echo "  make undeploy                      	- Uninstall cache-server helm charts"
+	@echo ""
+	@echo "E2E Testing:"
+	@echo "  make test-e2e                      	- Run e2e tests against current kubeconfig"
+	@echo ""
+	@echo "Other:"
 	@echo "  make storage-intercept-client      	- Run storage intercept client tests"
-	@echo "  make clean-minikube                	- Delete Minikube cluster"
-	@echo "  make helm-build                    	- Build Helm chart package"
-	@echo "  make helm-push                     	- Build and push Helm chart to registry"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make test"
-	@echo "  make test TEST=StorageInterceptUnitTests"
-	@echo "  make pytest"
-	@echo "  make pytest PYTEST_ARGS=\"-v -k test_read\""
-	@echo "  make deploy-minikube"
-	@echo "  make deploy-minikube SKIP_BUILD=1"
-	@echo "  make perf-client MODE=upload"
-	@echo "  make perf-client MODE=download"
-	@echo "  make storage-intercept-client"
-	@echo "  make helm-build"
-	@echo "  BUILD_NUMBER=1.0.0 make helm-push"
+	@echo "  make provision TARGET=minikube"
+	@echo "  make provision TARGET=aks AKS_TEMPLATE=nvme AKS_LOCATION=eastus"
+	@echo "  make deploy"
+	@echo "  make test-e2e"
+	@echo "  make undeploy"
+	@echo "  make unprovision"
 
 BUILD_TYPE ?= Debug
 BUILD_ARCH ?= $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
@@ -99,34 +104,8 @@ publish-images:
 	@echo "Publishing Docker images..."
 	@./.pipelines/scripts/build/publish-images.sh
 
-deploy-minikube:
-ifndef SKIP_BUILD
-	@echo "Building storage..."
-	@$(MAKE) build
-else
-	@echo "Skipping build (SKIP_BUILD=1)"
-endif
-	@echo "Building images..."
-	@$(MAKE) images
-	@echo "Creating Minikube cluster..."
-	@./.pipelines/scripts/k8s/create-minikube-cluster.sh
-	@echo "Deploying cache server to Minikube..."
-	@./.pipelines/scripts/k8s/deploy-cacheserver.sh
-	@echo ""
-	@echo "Running default performance tests..."
-	@$(MAKE) perf-client MODE=upload
-	@echo ""
-	@$(MAKE) perf-client MODE=download
-
-perf-client:
-	@./.pipelines/scripts/k8s/run-perf-client.sh $(MODE)
-
 storage-intercept-client:
 	@./.pipelines/scripts/k8s/run-storageintercept-client.sh
-
-clean-minikube:
-	@echo "Deleting Minikube cluster..."
-	@minikube delete
 
 helm-build:
 	@./.pipelines/scripts/build/publish-helm-chart.sh

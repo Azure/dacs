@@ -10,7 +10,7 @@ if [[ -f "$SCRIPT_DIR/config/local.config" ]]; then
     echo "Loaded config from: $SCRIPT_DIR/config/local.config"
 fi
 
-NAMESPACE="${NAMESPACE:-default}"
+NAMESPACE="${NAMESPACE:-cache-server}"
 RELEASE_NAME="${RELEASE_NAME:-cache-server}"
 CACHE_SERVER_IMAGE="${CACHE_SERVER_IMAGE:-cache-server:local}"
 CACHE_CLIENT_IMAGE="${CACHE_CLIENT_IMAGE:-cache-test-client:local}"

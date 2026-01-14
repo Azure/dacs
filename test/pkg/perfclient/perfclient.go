@@ -1,0 +1,250 @@
+// Package perfclient provides configuration and job creation utilities
+// for the performance test client.
+package perfclient
+
+import (
+	"fmt"
+	"os"
+
+	batchv1 "k8s.io/api/batch/v1"
+	"sigs.k8s.io/yaml"
+
+	"github.com/Azure/dacs/test/pkg/cluster"
+	"github.com/Azure/dacs/test/pkg/perfclient/fixture"
+)
+
+// ChecksumAlgorithm represents a supported checksum algorithm.
+type ChecksumAlgorithm string
+
+const (
+	// ChecksumAlgorithmXXHash32 is the xxhash32 checksum algorithm.
+	ChecksumAlgorithmXXHash32 ChecksumAlgorithm = "xxhash32"
+	// ChecksumAlgorithmCRC32 is the crc32 checksum algorithm.
+	ChecksumAlgorithmCRC32 ChecksumAlgorithm = "crc32"
+)
+
+// Mode represents the operation mode for the perf client.
+type Mode string
+
+const (
+	// ModeUpload is the upload operation mode.
+	ModeUpload Mode = "upload"
+	// ModeDownload is the download operation mode.
+	ModeDownload Mode = "download"
+)
+
+// Config contains configuration for the perf client job.
+type Config struct {
+	// Mode is the operation mode (upload or download)
+	Mode Mode
+	// Namespace is the Kubernetes namespace
+	Namespace string
+	// Image is the full container image (registry/repo:tag)
+	Image string
+	// ServerHostname is the cache server hostname(s), separated by #
+	ServerHostname string
+	// NumThreads is the number of threads
+	NumThreads int
+	// DataSizeGiB is the data size in GiB
+	DataSizeGiB int
+	// NumIterations is the number of iterations
+	NumIterations int
+	// Prefix is the prefix for test data
+	Prefix string
+	// EnableCalculateChecksum enables checksum calculation on upload
+	EnableCalculateChecksum bool
+	// EnableValidateChecksum enables checksum validation on download
+	EnableValidateChecksum bool
+	// ChecksumAlgorithm is the checksum algorithm to use
+	ChecksumAlgorithm ChecksumAlgorithm
+}
+
+// NewConfig creates a new Config with default values.
+func NewConfig() *Config {
+	return &Config{
+		Mode:                    ModeUpload,
+		Namespace:               "cache-server",
+		Image:                   getDefaultImage(),
+		ServerHostname:          "cacheserver-0.cacheserver.cache-server.svc.cluster.local",
+		NumThreads:              1,
+		DataSizeGiB:             1,
+		NumIterations:           1,
+		Prefix:                  "test",
+		EnableCalculateChecksum: false,
+		EnableValidateChecksum:  false,
+		ChecksumAlgorithm:       ChecksumAlgorithmXXHash32,
+	}
+}
+
+// WithMode sets the operation mode (upload or download).
+func (c *Config) WithMode(mode Mode) *Config {
+	c.Mode = mode
+	return c
+}
+
+// WithNamespace sets the Kubernetes namespace.
+func (c *Config) WithNamespace(namespace string) *Config {
+	c.Namespace = namespace
+	return c
+}
+
+// WithImage sets the container image.
+func (c *Config) WithImage(image string) *Config {
+	c.Image = image
+	return c
+}
+
+// WithServerHostname sets the cache server hostname(s).
+func (c *Config) WithServerHostname(hostname string) *Config {
+	c.ServerHostname = hostname
+	return c
+}
+
+// WithNumThreads sets the number of threads.
+func (c *Config) WithNumThreads(numThreads int) *Config {
+	c.NumThreads = numThreads
+	return c
+}
+
+// WithDataSizeGiB sets the data size in GiB.
+func (c *Config) WithDataSizeGiB(dataSizeGiB int) *Config {
+	c.DataSizeGiB = dataSizeGiB
+	return c
+}
+
+// WithNumIterations sets the number of iterations.
+func (c *Config) WithNumIterations(numIterations int) *Config {
+	c.NumIterations = numIterations
+	return c
+}
+
+// WithPrefix sets the prefix for test data.
+func (c *Config) WithPrefix(prefix string) *Config {
+	c.Prefix = prefix
+	return c
+}
+
+// WithCalculateChecksum enables or disables checksum calculation on upload.
+func (c *Config) WithCalculateChecksum(enable bool) *Config {
+	c.EnableCalculateChecksum = enable
+	return c
+}
+
+// WithValidateChecksum enables or disables checksum validation on download.
+func (c *Config) WithValidateChecksum(enable bool) *Config {
+	c.EnableValidateChecksum = enable
+	return c
+}
+
+// WithChecksumAlgorithm sets the checksum algorithm.
+func (c *Config) WithChecksumAlgorithm(algorithm ChecksumAlgorithm) *Config {
+	c.ChecksumAlgorithm = algorithm
+	return c
+}
+
+// getDefaultImage returns the default perf client image based on environment variables
+// matching the helm chart configuration. On minikube, uses local image.
+func getDefaultImage() string {
+	// On minikube, use the local image that was loaded via `minikube image load`
+	if cluster.IsMinikube() {
+		return "cache-test-client:local"
+	}
+
+	registry := os.Getenv("DOCKER_REGISTRY")
+	if registry == "" {
+		registry = "docker.io"
+	}
+	buildNumber := os.Getenv("BUILD_NUMBER")
+	if buildNumber == "" {
+		buildNumber = "local"
+	}
+
+	return fmt.Sprintf("%s/cache-test-client:%s-linux-amd64", registry, buildNumber)
+}
+
+// LoadJob loads the perf client job from the embedded fixture
+// and applies the provided configuration by modifying the parsed struct.
+func (c *Config) LoadJob() (*batchv1.Job, error) {
+	data, err := fixture.ReadPerfClientJob()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read perf client fixture: %w", err)
+	}
+
+	// Unmarshal base YAML into Job struct
+	var job batchv1.Job
+	if err := yaml.Unmarshal(data, &job); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal perf client job: %w", err)
+	}
+
+	// Apply configuration to the job
+	jobName := string(c.Mode) + "-client"
+	job.Name = jobName
+	job.Namespace = c.Namespace
+
+	// Update job labels
+	if job.Labels == nil {
+		job.Labels = make(map[string]string)
+	}
+	job.Labels["app"] = jobName
+	job.Labels["dacs.azure.com/perf-mode"] = string(c.Mode)
+
+	// Update selector labels
+	job.Spec.Selector.MatchLabels["app"] = jobName
+
+	// Update pod template labels - include test-pod label for support bundle collection
+	job.Spec.Template.Labels["app"] = jobName
+	job.Spec.Template.Labels["dacs.azure.com/test-pod"] = "true"
+	job.Spec.Template.Labels["dacs.azure.com/perf-mode"] = string(c.Mode)
+
+	// Update pod anti-affinity for the client pods
+	if job.Spec.Template.Spec.Affinity != nil &&
+		job.Spec.Template.Spec.Affinity.PodAntiAffinity != nil {
+		for i := range job.Spec.Template.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution {
+			pref := &job.Spec.Template.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution[i]
+			for j := range pref.PodAffinityTerm.LabelSelector.MatchExpressions {
+				expr := &pref.PodAffinityTerm.LabelSelector.MatchExpressions[j]
+				if expr.Key == "app" {
+					expr.Values = []string{jobName}
+				}
+			}
+		}
+	}
+
+	// Update container image and args
+	if len(job.Spec.Template.Spec.Containers) > 0 {
+		container := &job.Spec.Template.Spec.Containers[0]
+		container.Image = c.Image
+
+		// Build the args array with config values
+		container.Args = []string{
+			"--server-port", "9065",
+			"--server-hostname", c.ServerHostname,
+			"--num-threads", fmt.Sprintf("%d", c.NumThreads),
+			"--data-size-GiB", fmt.Sprintf("%d", c.DataSizeGiB),
+			"--prefix", c.Prefix,
+			"--mode", string(c.Mode),
+			"--num-iterations", fmt.Sprintf("%d", c.NumIterations),
+			"--ib-enabled", "false",
+		}
+
+		// Only add checksum args if checksum is enabled
+		if c.EnableCalculateChecksum || c.EnableValidateChecksum {
+			container.Args = append(container.Args,
+				"--enable-calculate-checksum", fmt.Sprintf("%t", c.EnableCalculateChecksum),
+				"--enable-validate-checksum", fmt.Sprintf("%t", c.EnableValidateChecksum),
+				"--checksum-algorithm", string(c.ChecksumAlgorithm),
+			)
+		}
+	}
+
+	return &job, nil
+}
+
+// JobYAML returns the perf client job as YAML bytes with configuration applied.
+func (c *Config) JobYAML() ([]byte, error) {
+	job, err := c.LoadJob()
+	if err != nil {
+		return nil, err
+	}
+	return yaml.Marshal(job)
+}
