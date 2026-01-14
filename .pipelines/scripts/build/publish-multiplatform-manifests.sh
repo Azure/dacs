@@ -12,8 +12,8 @@ if [[ -f "$CONFIG_FILE" ]]; then
     echo "Loaded config from: $CONFIG_FILE"
 fi
 
-# Registry settings - can be overridden by environment variables
-REGISTRY="${DOCKER_REGISTRY:-dacs.azurecr.io}"
+# Registry settings - must be provided by environment variables
+REGISTRY="$DOCKER_REGISTRY"
 BUILD_NUMBER="${BUILD_NUMBER:-latest}"
 
 # Define images to process
