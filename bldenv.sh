@@ -22,13 +22,25 @@ WORKSPACE_NAME="$(basename "$DIR")"
 # Detect host architecture and use architecture-specific image tag
 HOST_ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 echo "Detected host architecture: $(uname -m) -> $HOST_ARCH"
-nativeBuildImage="native-build"
-echo "Using Docker image: $nativeBuildImage"
+
+# TODO: switch to dacs
+ACR_IMAGE="dacs.azurecr.io/native-build:linux-${HOST_ARCH}"
+
+# Try to use ACR image first, fallback to local build if not available
+nativeBuildImage="$ACR_IMAGE"
+echo "Attempting to use ACR image: $nativeBuildImage"
 
 if ! docker image inspect "$nativeBuildImage" >/dev/null 2>&1; then
-    echo "Image '$nativeBuildImage' not found. Will build it now."
-    echo "Building image for architecture: $HOST_ARCH"
-    docker build --build-arg TARGETARCH=$HOST_ARCH -f src/images/native-build/Dockerfile -t $nativeBuildImage src/images/native-build
+    echo "ACR image not found locally. Attempting to pull from registry..."
+    if docker pull "$nativeBuildImage" 2>/dev/null; then
+        echo "Successfully pulled ACR image: $nativeBuildImage"
+    else
+        echo "Failed to pull from ACR. Building image locally..."
+        nativeBuildImage="native-build:latest"
+        docker build -f src/images/native-build/Dockerfile -t "$nativeBuildImage" src/images/native-build
+    fi
+else
+    echo "Using cached ACR image: $nativeBuildImage"
 fi
 
 # If arguments provided, run them; otherwise start interactive shell

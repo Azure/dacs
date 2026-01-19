@@ -309,7 +309,7 @@ make build
 **3. "Permission denied" on .pb.cc files during build**
 ```bash
 # Fix ownership of generated protobuf files
-sudo chown -R vscode:vscode src/ build/
+sudo chown -R $USER:$USER src/ build/
 # Clean and rebuild
 make clean
 make build

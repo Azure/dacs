@@ -43,21 +43,21 @@ function __run_restart_snapshot_basic_test__()
     __logsleep__ 10 # Wait for cache server to start
     export TEST_CACHESERVER_ADDR_PORT="${CACHE_SERVER_PORT}"
 
-    eval "$TEST_CLIENT_EXE downloadfile file0"
-    if [ $? -eq 0 ]; then
-        echo "Expected file0 to have been deleted"
+    eval "$TEST_CLIENT_EXE downloadfile_expect_notfound file0"
+    if [ $? -ne 0 ]; then
+        echo "Expected file0 to have been deleted (NOT_FOUND)"
         exit 1
     fi
 
-    eval "$TEST_CLIENT_EXE downloadfile file1"
-    if [ $? -eq 0 ]; then
-        echo "Expected file1 to have been deleted"
+    eval "$TEST_CLIENT_EXE downloadfile_expect_notfound file1"
+    if [ $? -ne 0 ]; then
+        echo "Expected file1 to have been deleted (NOT_FOUND)"
         exit 1
     fi
 
-    eval "$TEST_CLIENT_EXE downloadfile file2"
-    if [ $? -eq 0 ]; then
-        echo "Expected file2 to have been deleted"
+    eval "$TEST_CLIENT_EXE downloadfile_expect_notfound file2"
+    if [ $? -ne 0 ]; then
+        echo "Expected file2 to have been deleted (NOT_FOUND)"
         exit 1
     fi
 
