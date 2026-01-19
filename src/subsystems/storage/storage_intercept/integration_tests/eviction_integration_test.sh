@@ -76,7 +76,7 @@ function __run_eviction_test_with_parallel_upload_download__()
     runtime="12 second"
     endtime=$(date -ud "$runtime" +%s) 
 
-    ((i = 0))
+    i=0
     while [[ $(date -u +%s) -le $endtime ]]; do
         eval "$TEST_CLIENT_EXE uploaddownloadmany 1000 30"
         if [ $? -ne 0 ]; then
@@ -91,15 +91,15 @@ function __run_eviction_test_with_parallel_upload_download__()
 
     # Now at this point the items that were first uploaded and not accessed
     # should have been evicted
-    eval "$TEST_CLIENT_EXE downloadfile file0"
-    if [ $? -eq 0 ]; then
+    eval "$TEST_CLIENT_EXE downloadfile_expect_notfound file0"
+    if [ $? -ne 0 ]; then
     echo "Expected file0 to have been deleted"
     stop_cache_server
     exit 1
     fi
 
-    eval "$TEST_CLIENT_EXE downloadfile file1"
-    if [ $? -eq 0 ]; then
+    eval "$TEST_CLIENT_EXE downloadfile_expect_notfound file1"
+    if [ $? -ne 0 ]; then
     echo "Expected file1 to have been deleted"
     stop_cache_server
     exit 1
@@ -145,15 +145,15 @@ function __run_eviction_test_with_restart_snapshot__()
     __logsleep__ 2
     export TEST_CACHESERVER_ADDR_PORT="${CACHE_SERVER_PORT}"
 
-    eval "$TEST_CLIENT_EXE downloadfile file0"
-    if [ $? -eq 0 ]; then
+    eval "$TEST_CLIENT_EXE downloadfile_expect_notfound file0"
+    if [ $? -ne 0 ]; then
         stop_cache_server
         echo "Expected file0 to have been deleted"
         exit 1
     fi
 
-    eval "$TEST_CLIENT_EXE downloadfile file1"
-    if [ $? -eq 0 ]; then
+    eval "$TEST_CLIENT_EXE downloadfile_expect_notfound file1"
+    if [ $? -ne 0 ]; then
         stop_cache_server
         echo "Expected file1 to have been deleted"
         exit 1
@@ -201,15 +201,15 @@ function __run_delete_by_last_access_time__()
 
     __logsleep__ 5
 
-    eval "$TEST_CLIENT_EXE downloadfile file0"
-    if [ $? -eq 0 ]; then
+    eval "$TEST_CLIENT_EXE downloadfile_expect_notfound file0"
+    if [ $? -ne 0 ]; then
         stop_cache_server
         echo "Expected file0 to have been deleted"
         exit 1
     fi
 
-    eval "$TEST_CLIENT_EXE downloadfile file1"
-    if [ $? -eq 0 ]; then
+    eval "$TEST_CLIENT_EXE downloadfile_expect_notfound file1"
+    if [ $? -ne 0 ]; then
         stop_cache_server
         echo "Expected file1 to have been deleted"
         exit 1

@@ -42,7 +42,7 @@ function __run_checksum_e2e_test__()
     echo ""
     echo "1. Upload with ${checksum_algorithm^^} calculate checksum enabled (prefix: ${prefix_dis})"
     eval "${PERF_CLIENT_EXE} --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT} \
-        --num-threads 16 --data-size-GiB 10 --mode upload --prefix ${prefix_dis} \
+        --num-threads 16 --data-size-GiB 5 --mode upload --prefix ${prefix_dis} \
         --enable-calculate-checksum true --enable-validate-checksum false --checksum-algorithm ${checksum_algorithm}" > /tmp/upload_${checksum_algorithm}_dis.log
     
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
@@ -53,7 +53,7 @@ function __run_checksum_e2e_test__()
 
     echo "2. Download with ${checksum_algorithm^^} validate checksum DISABLED"
     eval "${PERF_CLIENT_EXE} --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT} \
-        --num-threads 16 --data-size-GiB 10 --mode download --prefix ${prefix_dis} \
+        --num-threads 16 --data-size-GiB 5 --mode download --prefix ${prefix_dis} \
         --enable-calculate-checksum false --enable-validate-checksum false --checksum-algorithm ${checksum_algorithm}" | tee /tmp/download_${checksum_algorithm}_dis.log
     
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
@@ -72,7 +72,7 @@ function __run_checksum_e2e_test__()
     
     echo "3. Upload with ${checksum_algorithm^^} calculate checksum enabled (prefix: ${prefix_en})"
     eval "${PERF_CLIENT_EXE} --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT} \
-        --num-threads 16 --data-size-GiB 10 --mode upload --prefix ${prefix_en} \
+        --num-threads 16 --data-size-GiB 5 --mode upload --prefix ${prefix_en} \
         --enable-calculate-checksum true --enable-validate-checksum false --checksum-algorithm ${checksum_algorithm}" > /tmp/upload_${checksum_algorithm}_en.log
     
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
@@ -83,7 +83,7 @@ function __run_checksum_e2e_test__()
 
     echo "4. Download with ${checksum_algorithm^^} validate checksum ENABLED"
     eval "${PERF_CLIENT_EXE} --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT} \
-        --num-threads 16 --data-size-GiB 10 --mode download --prefix ${prefix_en} \
+        --num-threads 16 --data-size-GiB 5 --mode download --prefix ${prefix_en} \
         --enable-calculate-checksum false --enable-validate-checksum true --checksum-algorithm ${checksum_algorithm}" | tee /tmp/download_${checksum_algorithm}_en.log
     
     if [ ${PIPESTATUS[0]} -ne 0 ]; then

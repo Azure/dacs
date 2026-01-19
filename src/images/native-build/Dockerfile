@@ -20,68 +20,51 @@ RUN apt-get update && \
     rm /tmp/packages-microsoft-prod.deb && \
     apt-get update && \
     apt-get install -yq --no-install-recommends \
-    wget \
-    python3 \
+    # Core C++ development tools
+    build-essential \
+    clang \
+    lld \
+    cmake \
+    ninja-build \
+    gdb \
+    ccache \
+    pkg-config \
+    # Required libraries for the project
     libjsoncpp-dev \
     libcurl4-openssl-dev \
     libibverbs-dev \
     libssl-dev \
     libboost-program-options-dev \
-    curl \
+    libboost-system-dev \
+    libgoogle-perftools-dev \
     uuid-dev \
     ibverbs-providers \
-    sysstat \
-    tar \
-    net-tools \
-    pciutils \
-    cmake \
-    docker.io \
-    ethtool \
-    pkg-config \
-    iproute2 \
-    vim \
     fuse3 \
     libfuse3-dev \
-    apt-transport-https \
-    gnupg \
-    git \
-    git-lfs \
-    pass \
-    gnupg-agent \
-    software-properties-common \
-    lsb-release \
+    # Go Language
+    msft-golang \
+    # Python tools
+    python3 \
     python3-dev \
     python3-pip \
-    sudo \
-    libboost-all-dev \
-    libgoogle-perftools-dev \
-    ccache \
-    ninja-build \
-    lld \
-    clang \
-    build-essential \
-    gdb \
-    locales \
     python3-venv \
-    python3-setuptools \
-    msft-golang && \
+    # Essential utilities
+    wget \
+    curl \
+    ca-certificates \
+    tar \
+    git \
+    net-tools && \
     # Clean up package cache to save disk space
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Configure locale to fix setlocale warnings
-RUN locale-gen en_US.UTF-8 && \
-    update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
-ENV LANG=en_US.UTF-8 \
-    LC_ALL=en_US.UTF-8 \
-    LANGUAGE=en_US:en
-
 # Architecture-specific library path linking for Google Performance Tools
 RUN TARGETARCH=${TARGETARCH:-amd64} && \
     if [ "$TARGETARCH" = "amd64" ]; then \
-        sudo ln -s /usr/lib/x86_64-linux-gnu/libprofiler.so /usr/lib/libprofiler.so; \
+        ln -s /usr/lib/x86_64-linux-gnu/libprofiler.so /usr/lib/libprofiler.so; \
     elif [ "$TARGETARCH" = "arm64" ]; then \
-        sudo ln -s /usr/lib/aarch64-linux-gnu/libprofiler.so /usr/lib/libprofiler.so; \
+        ln -s /usr/lib/aarch64-linux-gnu/libprofiler.so /usr/lib/libprofiler.so; \
     fi
 
 RUN python3 -m venv /venv && . /venv/bin/activate && \
@@ -134,8 +117,7 @@ RUN set -ex && cd $CMAKE_DEP_INSTALL_DIR && \
     fi && \
     echo "=== Checking for build.ninja make===" && \
     test -f build.ninja || (echo "ERROR: build.ninja not generated!" && exit 1) && \
-    # Build with reduced parallelism to avoid memory/space pressure
-    ninja -j2 || exit 1 && \
+    ninja -j$(nproc) || exit 1 && \
     # Clean up build artifacts immediately after successful build
     rm -rf CMakeFiles/ _deps/*/src/*-build/ _deps/*/src/*-stamp/ && \
     # Remove git repositories and submodules that were downloaded during build

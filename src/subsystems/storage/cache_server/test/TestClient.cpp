@@ -1933,6 +1933,14 @@ bool cli(int argc, char* argv[], bool& /*[out]*/ isCli)
         return !TestDownloadAPI(fileName, 0, 10, false, DownloadResponse::SUCCESS, nullptr);
     }
 
+    if(command == "downloadfile_expect_notfound")
+    {
+        isCli = true;
+        cout << "downloadfile_expect_notfound command" << endl;
+        std::string fileName = argc > 2 ? std::string(argv[2]) : GetUniqueFilename("filename");
+        return !TestDownloadAPI(fileName, 0, 10, false, DownloadResponse::NOT_FOUND, nullptr);
+    }
+
     if(command == "uploaddownloadmany")
     {
         isCli = true;

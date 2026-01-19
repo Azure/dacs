@@ -8,21 +8,16 @@ echo "================================================"
 echo ""
 
 # Update package lists
-echo "[1/6] Updating package lists..."
+echo "[1/7] Updating package lists..."
 sudo apt update
 
-# Install build tools
-echo "[2/6] Installing build tools..."
+# Install essential tools
+echo "[2/7] Installing essential tools..."
 sudo apt install -y \
-  build-essential \
-  cmake \
-  ninja-build \
-  clang \
   make \
   git \
   git-lfs \
   jq
-echo "    Build tools installed"
 
 # Install Go (Microsoft build)
 echo "[3/7] Installing Microsoft Go..."
