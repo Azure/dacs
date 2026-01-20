@@ -31,6 +31,8 @@ help:
 	@echo "  make storage-intercept-client      	- Run storage intercept client tests"
 	@echo ""
 	@echo "Examples:"
+	@echo "  make build"
+	@echo "  make images"
 	@echo "  make provision TARGET=minikube"
 	@echo "  make provision TARGET=aks AKS_TEMPLATE=nvme AKS_LOCATION=eastus"
 	@echo "  make deploy"
