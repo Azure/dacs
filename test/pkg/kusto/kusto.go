@@ -52,8 +52,8 @@ type PerfMetric struct {
 	// TestMetadata contains dynamic test environment info
 	TestMetadata TestMetadata `json:"TestMetadata"`
 
-	// Result contains the performance data
-	Result PerfResult `json:"Result"`
+	// Result contains the performance data (PerfResult or IperfResult)
+	Result any `json:"Result"`
 }
 
 // TestMetadata contains test environment metadata (dynamic column in Kusto).
@@ -65,7 +65,7 @@ type TestMetadata struct {
 	IsMinikube  bool   `json:"IsMinikube"`
 }
 
-// PerfResult contains the performance test results (dynamic column in Kusto).
+// PerfResult contains the cache server performance test results (dynamic column in Kusto).
 type PerfResult struct {
 	Mode                    string `json:"Mode"`
 	DurationMs              int64  `json:"DurationMs"`
@@ -81,6 +81,17 @@ type PerfResult struct {
 	EnableCalculateChecksum bool   `json:"EnableCalculateChecksum"`
 	EnableValidateChecksum  bool   `json:"EnableValidateChecksum"`
 	ChecksumAlgorithm       string `json:"ChecksumAlgorithm"`
+}
+
+// IperfResult contains the iperf3 network baseline test results (dynamic column in Kusto).
+type IperfResult struct {
+	DurationSeconds       int     `json:"DurationSeconds"`
+	ParallelStreams       int     `json:"ParallelStreams"`
+	SenderBandwidthMbps   float64 `json:"SenderBandwidthMbps"`
+	SenderTransferMB      float64 `json:"SenderTransferMB"`
+	SenderRetransmits     int     `json:"SenderRetransmits"`
+	ReceiverBandwidthMbps float64 `json:"ReceiverBandwidthMbps"`
+	ReceiverTransferMB    float64 `json:"ReceiverTransferMB"`
 }
 
 // SendPerfMetric sends a performance metric to EventHub for ingestion into Kusto.
