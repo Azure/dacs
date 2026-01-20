@@ -7,12 +7,16 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"io"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus/hooks/writer"
+	"go.uber.org/zap/zapcore"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -24,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
+	"github.com/Azure/dacs/cache-controller/internal/config"
 	"github.com/Azure/dacs/cache-controller/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
@@ -38,6 +43,56 @@ func init() {
 
 	utilruntime.Must(storagev1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
+}
+
+func initLogger(logLevel string) {
+	// We use 2 logging libraries:
+	// 1. logrus for general logging.
+	// 2. controller-runtime's zap logger for k8s controller logs.
+	// Here we initialize both.
+
+	// Initialize logrus
+	if level, err := log.ParseLevel(logLevel); err != nil {
+		log.Fatalf("Invalid log level: %s", err.Error())
+	} else {
+		log.SetLevel(level)
+	}
+
+	// Initialize zap logger with the same log level
+	var zapLevel zapcore.Level
+	if err := zapLevel.UnmarshalText([]byte(logLevel)); err != nil {
+		log.Warnf("Could not parse zap log level from %s, defaulting to info", logLevel)
+		zapLevel = zapcore.InfoLevel
+	}
+	ctrl.SetLogger(zap.New(zap.Level(zapLevel)))
+
+	// Setup logrus hooks to separate stdout and stderr
+	// From https://github.com/sirupsen/logrus/tree/master/hooks/writer#usage
+	// Send all logs to nowhere by default
+	log.SetOutput(io.Discard)
+	log.SetFormatter(&log.TextFormatter{
+		TimestampFormat: "2006-01-02 15:04:05",
+		FullTimestamp:   true,
+	})
+
+	// Send logs with level higher than warning to stderr
+	log.AddHook(&writer.Hook{
+		Writer: os.Stderr,
+		LogLevels: []log.Level{
+			log.PanicLevel,
+			log.FatalLevel,
+			log.ErrorLevel,
+		},
+	})
+	// Send info and debug logs to stdout
+	log.AddHook(&writer.Hook{
+		Writer: os.Stdout,
+		LogLevels: []log.Level{
+			log.WarnLevel,
+			log.InfoLevel,
+			log.DebugLevel,
+		},
+	})
 }
 
 // nolint:gocyclo
@@ -73,7 +128,11 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
+	internalConfig := config.GetConfig()
+	setupLog.Info("Configuration loaded", "fullConfig", internalConfig)
+
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	initLogger(internalConfig.LogLevel)
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -166,19 +225,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Get cache server image from environment variable
-	cacheServerImage := os.Getenv("CACHE_SERVER_IMAGE")
-	if cacheServerImage == "" {
-		cacheServerImage = "cache-server:local"
-		setupLog.Info("CACHE_SERVER_IMAGE not set, using default", "image", cacheServerImage)
-	} else {
-		setupLog.Info("Using cache server image from environment", "image", cacheServerImage)
-	}
-
 	if err := (&controller.CacheReconciler{
-		Client:           mgr.GetClient(),
-		Scheme:           mgr.GetScheme(),
-		CacheServerImage: cacheServerImage,
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Cache")
 		os.Exit(1)

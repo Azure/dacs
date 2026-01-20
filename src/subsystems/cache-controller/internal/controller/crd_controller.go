@@ -26,13 +26,13 @@ import (
 	"sigs.k8s.io/yaml"
 
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
+	"github.com/Azure/dacs/cache-controller/internal/config"
 )
 
 // CacheReconciler reconciles a Cache object
 type CacheReconciler struct {
 	client.Client
-	Scheme           *runtime.Scheme
-	CacheServerImage string
+	Scheme *runtime.Scheme
 }
 
 // Default RBAC rules added by kubebuilder
@@ -83,8 +83,7 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	log.Info("Starting reconciliation",
 		"namespace", cache.Namespace,
 		"name", cache.Name,
-		"desiredServers", numServers,
-		"image", r.CacheServerImage)
+		"desiredServers", numServers)
 
 	// Reconcile StatefulSet
 	log.V(1).Info("Reconciling StatefulSet", "namespace", cache.Namespace)
@@ -212,9 +211,11 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		evictionSizeTarget = stringValueOrDefault(cache.Spec.Eviction.SizeTarget, "90")
 	}
 
+	cfg := config.GetConfig()
+
 	log.V(1).Info("Applying StatefulSet configuration",
 		"replicas", numServers,
-		"image", r.CacheServerImage,
+		"image", cfg.CacheServerImage,
 		"port", port,
 		"metricsPort", mport,
 		"ephemeralStorage", useEphemeral,
@@ -230,7 +231,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		UseEphemeralStorage:          useEphemeral,
 		NodeSelectorLabelKey:         nodeKey,
 		NodeSelectorValue:            []string{nodeVal},
-		Image:                        r.CacheServerImage,
+		Image:                        cfg.CacheServerImage,
 		ServerThreads:                cache.Spec.ServerThreads,
 		Port:                         int(port),
 		MetricsPort:                  int(mport),

@@ -12,3 +12,4 @@
 
 # Re-include embedded template files
 !internal/controller/templates/*.yaml
+!internal/config/cache-controller-config.yaml

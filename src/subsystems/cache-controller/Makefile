@@ -19,6 +19,10 @@ CONTAINER_TOOL ?= docker
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
+# Config file to place next to the built binary
+CONFIG_SRC ?= internal/config/cache-controller-config.yaml
+CONFIG_DEST ?= bin/cache-controller-config.yaml
+
 .PHONY: all
 all: build
 
@@ -59,7 +63,8 @@ vet: ## Run go vet against code.
 
 .PHONY: test
 test: manifests generate fmt vet setup-envtest ## Run tests.
-	GOFLAGS=-buildvcs=false KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(GOFLAGS=-buildvcs=false go list ./... | grep -v /e2e) -coverprofile cover.out
+	CACHE_CONTROLLER_CONFIG_PATH=$(abspath $(CONFIG_SRC)) GOFLAGS=-buildvcs=false KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)"  -p path)" \
+	go test $$(GOFLAGS=-buildvcs=false go list ./... | grep -v /e2e) -coverprofile cover.out
 
 # TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
@@ -83,7 +88,7 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 
 .PHONY: test-e2e
 test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
-	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v
+	CACHE_CONTROLLER_CONFIG_PATH=$(abspath $(CONFIG_SRC)) KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v
 	$(MAKE) cleanup-test-e2e
 
 .PHONY: cleanup-test-e2e
@@ -107,6 +112,12 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
+	# Ensure config yaml is placed next to the built binary
+	@if [ ! -f "$(CONFIG_SRC)" ]; then \
+		echo "Error: $(CONFIG_SRC) not found. Please add the config file."; \
+		exit 1; \
+	fi
+	mkdir -p $(dir $(CONFIG_DEST)) && cp $(CONFIG_SRC) $(CONFIG_DEST)
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
