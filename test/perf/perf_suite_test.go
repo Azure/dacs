@@ -15,7 +15,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
+	"github.com/Azure/dacs/test/pkg/cluster"
 	"github.com/Azure/dacs/test/pkg/common"
+	"github.com/Azure/dacs/test/pkg/git"
+	"github.com/Azure/dacs/test/pkg/helm"
+	"github.com/Azure/dacs/test/pkg/kusto"
 	"github.com/Azure/dacs/test/pkg/logger"
 	"github.com/Azure/dacs/test/pkg/utils"
 )
@@ -107,5 +111,31 @@ func cleanupPerfJobs(ctx context.Context, ns string) {
 	output, err := utils.Run(cmd)
 	if err != nil {
 		log.Error(err, "Failed to cleanup perf jobs", "output", output)
+	}
+}
+
+// newPerfMetricBase creates a PerfMetric with common fields populated.
+// The caller should set the Result field with the appropriate result type.
+func newPerfMetricBase(ctx context.Context, podName, nodeName, nodeSKU string) *kusto.PerfMetric {
+	clusterName, _ := cluster.GetCurrentContext()
+	gitCommit := git.GetCommit(ctx)
+	gitBranch := git.GetBranch(ctx)
+	specReport := CurrentSpecReport()
+	helmInfo := helm.GetReleaseInfo(ctx, namespace, "cache-server")
+
+	return &kusto.PerfMetric{
+		SuiteID:          suiteUUID,
+		TestName:         specReport.FullText(),
+		TestGitCommit:    gitCommit,
+		TestGitBranch:    gitBranch,
+		HelmChartVersion: helmInfo.ChartVersion,
+		HelmAppVersion:   helmInfo.AppVersion,
+		TestMetadata: kusto.TestMetadata{
+			ClusterName: clusterName,
+			PodName:     podName,
+			NodeName:    nodeName,
+			NodeSKU:     nodeSKU,
+			IsMinikube:  cluster.IsMinikube(),
+		},
 	}
 }

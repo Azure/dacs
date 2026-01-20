@@ -7,10 +7,12 @@ import (
 	"os"
 
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
 	"github.com/Azure/dacs/test/pkg/cluster"
-	"github.com/Azure/dacs/test/pkg/perfclient/fixture"
+	"github.com/Azure/dacs/test/pkg/common/fixtures"
 )
 
 // ChecksumAlgorithm represents a supported checksum algorithm.
@@ -57,6 +59,8 @@ type Config struct {
 	EnableValidateChecksum bool
 	// ChecksumAlgorithm is the checksum algorithm to use
 	ChecksumAlgorithm ChecksumAlgorithm
+	// ColocateWithServer schedules the perf client on the same node as the cache server
+	ColocateWithServer bool
 }
 
 // NewConfig creates a new Config with default values.
@@ -142,6 +146,12 @@ func (c *Config) WithChecksumAlgorithm(algorithm ChecksumAlgorithm) *Config {
 	return c
 }
 
+// WithColocate sets whether to co-locate the perf client on the same node as the cache server.
+func (c *Config) WithColocate(colocate bool) *Config {
+	c.ColocateWithServer = colocate
+	return c
+}
+
 // getDefaultImage returns the default perf client image based on environment variables
 // matching the helm chart configuration. On minikube, uses local image.
 func getDefaultImage() string {
@@ -165,7 +175,7 @@ func getDefaultImage() string {
 // LoadJob loads the perf client job from the embedded fixture
 // and applies the provided configuration by modifying the parsed struct.
 func (c *Config) LoadJob() (*batchv1.Job, error) {
-	data, err := fixture.ReadPerfClientJob()
+	data, err := fixtures.ReadPerfClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read perf client fixture: %w", err)
 	}
@@ -196,15 +206,37 @@ func (c *Config) LoadJob() (*batchv1.Job, error) {
 	job.Spec.Template.Labels["dacs.azure.com/test-pod"] = "true"
 	job.Spec.Template.Labels["dacs.azure.com/perf-mode"] = string(c.Mode)
 
-	// Update pod anti-affinity for the client pods
-	if job.Spec.Template.Spec.Affinity != nil &&
-		job.Spec.Template.Spec.Affinity.PodAntiAffinity != nil {
-		for i := range job.Spec.Template.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution {
-			pref := &job.Spec.Template.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution[i]
-			for j := range pref.PodAffinityTerm.LabelSelector.MatchExpressions {
-				expr := &pref.PodAffinityTerm.LabelSelector.MatchExpressions[j]
-				if expr.Key == "app" {
-					expr.Values = []string{jobName}
+	// Handle affinity configuration based on ColocateWithServer setting
+	if c.ColocateWithServer {
+		// Replace anti-affinity with affinity to schedule on same node as cacheserver-0
+		job.Spec.Template.Spec.Affinity.PodAntiAffinity = nil
+		job.Spec.Template.Spec.Affinity.PodAffinity = &corev1.PodAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
+				{
+					LabelSelector: &metav1.LabelSelector{
+						MatchExpressions: []metav1.LabelSelectorRequirement{
+							{
+								Key:      "statefulset.kubernetes.io/pod-name",
+								Operator: metav1.LabelSelectorOpIn,
+								Values:   []string{"cacheserver-0"},
+							},
+						},
+					},
+					TopologyKey: "kubernetes.io/hostname",
+				},
+			},
+		}
+	} else {
+		// Update pod anti-affinity for the client pods (default behavior)
+		if job.Spec.Template.Spec.Affinity != nil &&
+			job.Spec.Template.Spec.Affinity.PodAntiAffinity != nil {
+			for i := range job.Spec.Template.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution {
+				pref := &job.Spec.Template.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution[i]
+				for j := range pref.PodAffinityTerm.LabelSelector.MatchExpressions {
+					expr := &pref.PodAffinityTerm.LabelSelector.MatchExpressions[j]
+					if expr.Key == "app" {
+						expr.Values = []string{jobName}
+					}
 				}
 			}
 		}

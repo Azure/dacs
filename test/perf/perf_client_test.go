@@ -11,9 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/Azure/dacs/test/pkg/cluster"
-	"github.com/Azure/dacs/test/pkg/git"
-	"github.com/Azure/dacs/test/pkg/helm"
+	"github.com/Azure/dacs/test/pkg/kube/job"
 	"github.com/Azure/dacs/test/pkg/kusto"
 	"github.com/Azure/dacs/test/pkg/perfclient"
 	"github.com/Azure/dacs/test/pkg/perfsummary"
@@ -32,6 +30,7 @@ type checksumConfig struct {
 	name                    string
 	enableCalculateChecksum bool // for upload
 	enableValidateChecksum  bool // for download
+	colocate                bool // schedule on same node as cache server
 }
 
 // randomPrefix generates a random prefix for test data to avoid collisions.
@@ -54,6 +53,12 @@ var _ = Describe("PerfClient", Label("perf", "perfclient"), Ordered, func() {
 			enableCalculateChecksum: true,
 			enableValidateChecksum:  true,
 		},
+		{
+			name:                    "colocated single server",
+			enableCalculateChecksum: false,
+			enableValidateChecksum:  false,
+			colocate:                true,
+		},
 	}
 
 	for _, cfg := range configs {
@@ -67,9 +72,10 @@ var _ = Describe("PerfClient", Label("perf", "perfclient"), Ordered, func() {
 				uploadConfig := perfclient.NewConfig().
 					WithMode(perfclient.ModeUpload).
 					WithPrefix(prefix).
-					WithCalculateChecksum(cfg.enableCalculateChecksum)
+					WithCalculateChecksum(cfg.enableCalculateChecksum).
+					WithColocate(cfg.colocate)
 
-				uploadSummary := runPerfClientWithConfig(ctx, uploadConfig)
+				uploadSummary := runPerfClientWithConfig(ctx, uploadConfig, cfg.colocate)
 				Expect(uploadSummary).NotTo(BeNil(), "Failed to parse upload perf summary")
 				Expect(uploadSummary.Mode).To(Equal("upload"))
 				Expect(uploadSummary.TotalIndividualFailures).To(Equal(0), "Expected no upload failures")
@@ -82,9 +88,10 @@ var _ = Describe("PerfClient", Label("perf", "perfclient"), Ordered, func() {
 				downloadConfig := perfclient.NewConfig().
 					WithMode(perfclient.ModeDownload).
 					WithPrefix(prefix).
-					WithValidateChecksum(cfg.enableValidateChecksum)
+					WithValidateChecksum(cfg.enableValidateChecksum).
+					WithColocate(cfg.colocate)
 
-				downloadSummary := runPerfClientWithConfig(ctx, downloadConfig)
+				downloadSummary := runPerfClientWithConfig(ctx, downloadConfig, cfg.colocate)
 				Expect(downloadSummary).NotTo(BeNil(), "Failed to parse download perf summary")
 				Expect(downloadSummary.Mode).To(Equal("download"))
 				Expect(downloadSummary.TotalIndividualFailures).To(Equal(0), "Expected no download failures")
@@ -113,21 +120,28 @@ var _ = Describe("PerfClient", Label("perf", "perfclient"), Ordered, func() {
 })
 
 // runPerfClientWithConfig runs the perf client job with the given config and waits for completion.
+// If colocate is true, it uses a single server; otherwise it uses the cacheServerCount flag value.
 // Returns the parsed perfsummary.Summary from the job logs.
-func runPerfClientWithConfig(ctx context.Context, config *perfclient.Config) *perfsummary.Summary {
+func runPerfClientWithConfig(ctx context.Context, config *perfclient.Config, colocate bool) *perfsummary.Summary {
+	// Use single server for colocated tests, otherwise use flag value
+	serverCount := *cacheServerCount
+	if colocate {
+		serverCount = 1
+	}
+
 	config.WithNamespace(namespace).
-		WithServerHostname(buildServerHostname(namespace, *cacheServerCount)).
+		WithServerHostname(buildServerHostname(namespace, serverCount)).
 		WithDataSizeGiB(*dataSizeGiB).
 		WithNumThreads(*numThreads).
 		WithChecksumAlgorithm(perfclient.ChecksumAlgorithm(*checksumAlgorithm))
 
-	By(fmt.Sprintf("Creating %s perf client job (checksum calc=%t, validate=%t)",
-		config.Mode, config.EnableCalculateChecksum, config.EnableValidateChecksum))
-	job, err := config.LoadJob()
+	By(fmt.Sprintf("Creating %s perf client job (checksum calc=%t, validate=%t, colocate=%t, servers=%d)",
+		config.Mode, config.EnableCalculateChecksum, config.EnableValidateChecksum, config.ColocateWithServer, serverCount))
+	k8sJob, err := config.LoadJob()
 	Expect(err).NotTo(HaveOccurred(), "Failed to load perf client job")
 
 	// Delete any existing job first
-	deleteJob(ctx, job.Name, namespace)
+	_ = job.Delete(ctx, k8sJob.Name, namespace)
 
 	// Apply the job using kubectl
 	jobYAML, err := config.JobYAML()
@@ -139,50 +153,34 @@ func runPerfClientWithConfig(ctx context.Context, config *perfclient.Config) *pe
 	Expect(err).NotTo(HaveOccurred(), "Failed to apply perf client job: %s", output)
 
 	By(fmt.Sprintf("Waiting for %s job to complete", config.Mode))
-	waitForJobCompletion(ctx, job.Name, namespace, 5*time.Minute)
+	job.WaitForCompletion(ctx, k8sJob.Name, namespace, 5*time.Minute)
 
 	By(fmt.Sprintf("Parsing %s job logs", config.Mode))
-	summary, err := getJobPerfSummary(ctx, job.Name, namespace)
-	Expect(err).NotTo(HaveOccurred(), "Failed to get perf summary from job logs")
+	jobLogs, err := job.GetLogs(ctx, k8sJob.Name, namespace)
+	Expect(err).NotTo(HaveOccurred(), "Failed to get job logs")
+	summary, err := perfsummary.Parse(jobLogs)
+	Expect(err).NotTo(HaveOccurred(), "Failed to parse perf summary from job logs")
+	log.Info("Performance Summary", "job", k8sJob.Name, "summary", summary.String())
 
 	// Log and optionally send metrics to Kusto via EventHub
 	By("Logging performance metrics")
-	helmInfo := helm.GetReleaseInfo(ctx, namespace, "cache-server")
-	gitCommit := git.GetCommit(ctx)
-	gitBranch := git.GetBranch(ctx)
-	clusterName := getClusterName()
-	podName, nodeName, nodeSKU := getJobPodInfo(ctx, job.Name, namespace)
-	specReport := CurrentSpecReport()
-	metric := &kusto.PerfMetric{
-		SuiteID:          suiteUUID,
-		TestName:         specReport.FullText(),
-		TestGitCommit:    gitCommit,
-		TestGitBranch:    gitBranch,
-		HelmChartVersion: helmInfo.ChartVersion,
-		HelmAppVersion:   helmInfo.AppVersion,
-		TestMetadata: kusto.TestMetadata{
-			ClusterName: clusterName,
-			PodName:     podName,
-			NodeName:    nodeName,
-			NodeSKU:     nodeSKU,
-			IsMinikube:  cluster.IsMinikube(),
-		},
-		Result: kusto.PerfResult{
-			Mode:                    summary.Mode,
-			DurationMs:              summary.DurationMs,
-			TotalBytesTransferred:   summary.TotalBytesTransferred,
-			ThroughputMbps:          summary.ThroughputMbps,
-			TotalFailures:           summary.TotalIndividualFailures,
-			ExpectedChunks:          summary.ExpectedChunksToTransfer,
-			SuccessfulChunks:        summary.ChunksSuccessfullyTransferred,
-			NumThreads:              config.NumThreads,
-			DataSizeGiB:             config.DataSizeGiB,
-			NumIterations:           config.NumIterations,
-			NumServers:              *cacheServerCount,
-			EnableCalculateChecksum: config.EnableCalculateChecksum,
-			EnableValidateChecksum:  config.EnableValidateChecksum,
-			ChecksumAlgorithm:       string(config.ChecksumAlgorithm),
-		},
+	podName, nodeName, nodeSKU := job.GetPodInfo(ctx, k8sJob.Name, namespace)
+	metric := newPerfMetricBase(ctx, podName, nodeName, nodeSKU)
+	metric.Result = kusto.PerfResult{
+		Mode:                    summary.Mode,
+		DurationMs:              summary.DurationMs,
+		TotalBytesTransferred:   summary.TotalBytesTransferred,
+		ThroughputMbps:          summary.ThroughputMbps,
+		TotalFailures:           summary.TotalIndividualFailures,
+		ExpectedChunks:          summary.ExpectedChunksToTransfer,
+		SuccessfulChunks:        summary.ChunksSuccessfullyTransferred,
+		NumThreads:              config.NumThreads,
+		DataSizeGiB:             config.DataSizeGiB,
+		NumIterations:           config.NumIterations,
+		NumServers:              serverCount,
+		EnableCalculateChecksum: config.EnableCalculateChecksum,
+		EnableValidateChecksum:  config.EnableValidateChecksum,
+		ChecksumAlgorithm:       string(config.ChecksumAlgorithm),
 	}
 	// SendPerfMetric always prints the metric; only sends to EventHub if SEND_METRICS=true
 	err = kusto.SendPerfMetric(ctx, kusto.DefaultEventHubConfig, metric)
@@ -195,16 +193,6 @@ func runPerfClientWithConfig(ctx context.Context, config *perfclient.Config) *pe
 	// Support bundle is collected in AfterSuite before the TTL expires.
 
 	return summary
-}
-
-// getClusterName gets the current kubectl context name.
-func getClusterName() string {
-	context, err := cluster.GetCurrentContext()
-	if err != nil {
-		log.Error(err, "Failed to get kubectl context")
-		return "<unknown>"
-	}
-	return context
 }
 
 // buildServerHostname builds the cache server hostname string for the given number of servers.
@@ -220,94 +208,4 @@ func buildServerHostname(ns string, numServers int) string {
 		fmt.Fprintf(&hosts, "cacheserver-%d.cacheserver.%s.svc.cluster.local", i, ns)
 	}
 	return hosts.String()
-}
-
-// deleteJob deletes the job if it exists.
-func deleteJob(ctx context.Context, name, ns string) {
-	cmd := exec.CommandContext(ctx, "kubectl", "delete", "job", name,
-		"-n", ns, "--ignore-not-found=true")
-	_, _ = utils.Run(cmd)
-}
-
-// getJobPodInfo returns the pod name, node name, and node SKU for a job's pod.
-func getJobPodInfo(ctx context.Context, jobName, ns string) (podName, nodeName, nodeSKU string) {
-	// Get pod name from job using the app label (job name) and test-pod marker
-	podCmd := exec.CommandContext(ctx, "kubectl", "get", "pods",
-		"-n", ns,
-		"-l", fmt.Sprintf("app=%s,dacs.azure.com/test-pod=true", jobName),
-		"-o", "jsonpath={.items[0].metadata.name}")
-	podOutput, err := utils.RunOutput(podCmd)
-	if err != nil {
-		log.Error(err, "Failed to get pod name for job", "job", jobName)
-		return "<unknown>", "<unknown>", ""
-	}
-	podName = strings.TrimSpace(podOutput)
-	if podName == "" {
-		log.Info("No pod found for job", "job", jobName)
-		return "<unknown>", "<unknown>", ""
-	}
-
-	// Get node name from pod
-	nodeCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", podName,
-		"-n", ns,
-		"-o", "jsonpath={.spec.nodeName}")
-	nodeOutput, err := utils.RunOutput(nodeCmd)
-	if err != nil {
-		log.Error(err, "Failed to get node name for pod", "pod", podName)
-		return podName, "<unknown>", ""
-	}
-	nodeName = strings.TrimSpace(nodeOutput)
-
-	// Get node SKU from node labels (AKS sets node.kubernetes.io/instance-type)
-	skuCmd := exec.CommandContext(ctx, "kubectl", "get", "node", nodeName,
-		"-o", "jsonpath={.metadata.labels.node\\.kubernetes\\.io/instance-type}")
-	skuOutput, err := utils.RunOutput(skuCmd)
-	if err != nil {
-		log.Error(err, "Failed to get node SKU", "node", nodeName)
-		return podName, nodeName, ""
-	}
-	nodeSKU = strings.TrimSpace(skuOutput)
-
-	return podName, nodeName, nodeSKU
-}
-
-// waitForJobCompletion waits for the job to complete or fail.
-func waitForJobCompletion(ctx context.Context, name, ns string, timeout time.Duration) {
-	Eventually(func(g Gomega) {
-		// Check if job failed first
-		failedCmd := exec.CommandContext(ctx, "kubectl", "get", "job", name,
-			"-n", ns,
-			"-o", "jsonpath={.status.conditions[?(@.type==\"Failed\")].status}")
-		failedOutput, _ := utils.RunOutput(failedCmd)
-		g.Expect(failedOutput).NotTo(Equal("True"), "Job failed")
-
-		// Check if job completed
-		cmd := exec.CommandContext(ctx, "kubectl", "get", "job", name,
-			"-n", ns,
-			"-o", "jsonpath={.status.conditions[?(@.type==\"Complete\")].status}")
-		output, err := utils.RunOutput(cmd)
-		g.Expect(err).NotTo(HaveOccurred(), "Failed to get job status")
-		g.Expect(output).To(Equal("True"), "Job not yet complete")
-	}).WithTimeout(timeout).WithPolling(5*time.Second).Should(Succeed(),
-		fmt.Sprintf("Job %s did not complete within %v", name, timeout))
-}
-
-// getJobPerfSummary retrieves job logs and parses the performance summary.
-func getJobPerfSummary(ctx context.Context, name, ns string) (*perfsummary.Summary, error) {
-	cmd := exec.CommandContext(ctx, "kubectl", "logs",
-		fmt.Sprintf("job/%s", name),
-		"-n", ns)
-	output, err := utils.Run(cmd)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get job logs: %w", err)
-	}
-
-	summary, err := perfsummary.Parse(output)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse perf summary from logs: %w", err)
-	}
-
-	log.Info("Performance Summary", "job", name, "summary", summary.String())
-
-	return summary, nil
 }

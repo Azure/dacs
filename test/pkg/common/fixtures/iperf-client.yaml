@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: iperf-client
+  namespace: default
+  labels:
+    app: iperf-client
+    dacs.azure.com/test-pod: "true"
+spec:
+  nodeName: ""
+  containers:
+  - name: iperf
+    image: mcr.microsoft.com/azurelinux/base/core:3.0
+    command:
+    - /bin/sh
+    - -c
+    - tdnf install -y iperf3 && iperf3 -c $SERVER_IP -P $PARALLEL -t $DURATION -J
+    env:
+    - name: SERVER_IP
+      value: ""
+    - name: PARALLEL
+      value: "16"
+    - name: DURATION
+      value: "10"
+  restartPolicy: Never
