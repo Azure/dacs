@@ -187,9 +187,8 @@ var _ = Describe("Cache Controller", func() {
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &CacheReconciler{
-				Client:           k8sClient,
-				Scheme:           k8sClient.Scheme(),
-				CacheServerImage: "cache-server:local",
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -263,9 +262,8 @@ var _ = Describe("Cache Controller", func() {
 		It("should update StatefulSet when spec changes", func() {
 			By("Reconciling the initial resource")
 			controllerReconciler := &CacheReconciler{
-				Client:           k8sClient,
-				Scheme:           k8sClient.Scheme(),
-				CacheServerImage: "cache-server:local",
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -311,9 +309,8 @@ var _ = Describe("Cache Controller", func() {
 		It("should update ConfigMap when server count changes", func() {
 			By("Reconciling the initial resource")
 			controllerReconciler := &CacheReconciler{
-				Client:           k8sClient,
-				Scheme:           k8sClient.Scheme(),
-				CacheServerImage: "cache-server:local",
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -369,9 +366,8 @@ var _ = Describe("Cache Controller", func() {
 		It("should handle missing Cache resource gracefully", func() {
 			By("Reconciling a non-existent resource")
 			controllerReconciler := &CacheReconciler{
-				Client:           k8sClient,
-				Scheme:           k8sClient.Scheme(),
-				CacheServerImage: "cache-server:local",
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
 			}
 
 			nonExistent := types.NamespacedName{

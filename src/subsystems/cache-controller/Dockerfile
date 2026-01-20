@@ -30,6 +30,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 FROM mcr.microsoft.com/azurelinux/distroless/minimal:3.0
 WORKDIR /
 COPY --from=builder /workspace/manager .
+COPY --from=builder /workspace/internal/config/cache-controller-config.yaml /cache-controller-config.yaml
 USER 65532:65532
 
 ENTRYPOINT ["/manager"]
