@@ -103,16 +103,16 @@ This would help to generate the whl with version starting as "{distribution}-{ve
 
 Configure the .pypirc file
     [distutils]
-    Index-servers = Storage-Cache-Feed
+    Index-servers = DACS-Feed
 
-    [Storage-Cache-Feed]
+    [DACS-Feed]
     Repository = internal-reference-removed
     Username = <feed-username>
     Password = <PAT>
 
 cd /storage/dacs_client/
 python3 -m pip install --upgrade twine
-python3 -m twine upload --repository Storage-Cache-Feed dist/* --config ./.pypirc
+python3 -m twine upload --repository DACS-Feed dist/* --config ./.pypirc
 ```
 
 # To Test
