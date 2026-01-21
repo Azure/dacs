@@ -25,7 +25,7 @@ Usage:
         --single-process --num-blobs 2 --blob-size-gb 1
 """
 # --------------------------------------------------------------------------------------------------------------------
-# Throughput benchmark for DACS BlobFile API
+# Throughput benchmark for DACS Adapter API
 # Supports multi-process mode for NIC saturation, single-process mode for profiling
 # --------------------------------------------------------------------------------------------------------------------
 
@@ -116,7 +116,7 @@ def run_write_process(
     import uuid
     
     try:
-        from py_dacs_client.dacs_blobfile import BlobFile, WriteMode, shutdown as dacs_shutdown
+        from py_dacs_client.dacs_adapter import DACSAdapter, WriteMode, shutdown as dacs_shutdown
         from py_dacs_client.dacs_utils import alloc_buffer, release_buffer
     except ImportError as e:
         return ProcessResult(
@@ -160,7 +160,7 @@ def run_write_process(
         start = time.perf_counter()
         
         for path in paths:
-            with BlobFile(path, "wb", write_mode=wm) as f:
+            with DACSAdapter(path, "wb", write_mode=wm) as f:
                 f.write(buffer=buffer, size=blob_size)
             written_paths.append(path)
             total_bytes += blob_size
@@ -196,7 +196,7 @@ def run_read_process(
 ) -> ProcessResult:
     """Run read benchmark in a subprocess."""
     try:
-        from py_dacs_client.dacs_blobfile import BlobFile, shutdown as dacs_shutdown
+        from py_dacs_client.dacs_adapter import DACSAdapter, shutdown as dacs_shutdown
         from py_dacs_client.dacs_utils import alloc_buffer, release_buffer
     except ImportError as e:
         return ProcessResult(
@@ -214,7 +214,7 @@ def run_read_process(
         start = time.perf_counter()
         
         for path in paths:
-            with BlobFile(path, "rb") as f:
+            with DACSAdapter(path, "rb") as f:
                 f.read(size=blob_size, buffer=buffer)
             total_bytes += blob_size
         

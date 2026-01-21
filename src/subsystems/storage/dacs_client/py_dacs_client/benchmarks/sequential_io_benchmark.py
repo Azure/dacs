@@ -35,7 +35,7 @@ except ImportError:
 
 # Try to import DACS client
 try:
-    from py_dacs_client.dacs_blobfile import BlobFile, WriteMode, shutdown as dacs_shutdown
+    from py_dacs_client.dacs_adapter import DACSAdapter, WriteMode, shutdown as dacs_shutdown
     from py_dacs_client.dacs_utils import alloc_buffer, release_buffer
 
     DACS_AVAILABLE = True
@@ -137,7 +137,7 @@ def dacs_sequential_write(path: str, data: bytes, chunk_size: int, write_mode: W
     logger.info(f"[dacs] Writing {len(data) / GB:.2f} GB to {path}")
 
     start = time.perf_counter()
-    with BlobFile(path, "wb", write_mode=write_mode) as f:
+    with DACSAdapter(path, "wb", write_mode=write_mode) as f:
         f.write(data)
 
     duration = time.perf_counter() - start
@@ -159,7 +159,7 @@ def dacs_sequential_write_zero_copy(path: str, data: bytes, chunk_size: int, wri
     try:
         logger.info(f"  [dacs-zc] Starting write operation...")
         start = time.perf_counter()
-        with BlobFile(path, "wb", write_mode=write_mode) as f:
+        with DACSAdapter(path, "wb", write_mode=write_mode) as f:
             f.write(buffer=buffer, size=len(data))
         duration = time.perf_counter() - start
     finally:
@@ -175,7 +175,7 @@ def dacs_sequential_read(path: str, file_size: int, chunk_size: int) -> tuple[fl
     logger.info(f"[dacs] Reading {file_size / GB:.2f} GB from {path}")
 
     start = time.perf_counter()
-    with BlobFile(path, "rb") as f:
+    with DACSAdapter(path, "rb") as f:
         data = f.read(size=file_size)
     duration = time.perf_counter() - start
 
@@ -194,7 +194,7 @@ def dacs_sequential_read_zero_copy(path: str, file_size: int, chunk_size: int) -
     try:
         logger.info(f"  [dacs-zc] Starting read operation...")
         start = time.perf_counter()
-        with BlobFile(path, "rb") as f:
+        with DACSAdapter(path, "rb") as f:
             mv = f.read(size=file_size, buffer=buffer)
             # Copy to bytes for verification
             logger.info(f"  [dacs-zc] Copying to bytes for verification...")
