@@ -62,6 +62,17 @@ class ConnectionManager
             FAILURE
         };
 
+        enum class IBSetupStatus
+        {
+            NOT_ATTEMPTED,
+            SUCCESS,
+            FAILURE,
+            PROTOCOL_ERROR,
+            NETWORK_ERROR
+        };
+
+        static const char* ToStringIBSetupStatus(IBSetupStatus status);
+
         ConnectionManager(const ConnectionManager&);
         ConnectionManager& operator=(const ConnectionManager&);
 
@@ -69,7 +80,7 @@ class ConnectionManager
         std::unique_ptr<IConnection> InitFreshConnection(/*[in]*/ const std::string& cacheserver);
 
         bool InitInfiniband();
-        std::unique_ptr<IConnection> SetupIBConnections(const int serverFd, const std::string& cacheserver);
+        std::unique_ptr<IConnection> SetupIBConnections(std::unique_ptr<IConnection> socketConnection, const std::string& cacheserver);
         bool PerformIBHandshake(IConnection* connection, const std::string& cacheserver);
         HandshakeStatus NewIBHandshake(IConnection* connection, const std::string& cacheserver) const;
 
@@ -109,6 +120,8 @@ class ConnectionManager
         IbDev m_ibDevice;
 
         std::unordered_map<std::string, HandshakeStatus>                            m_mapIbHandshakeStatus;
+        std::unordered_map<std::string, IBSetupStatus>                              m_mapIbSetupStatus;
+        std::mutex                                                                  m_lockIbSetupStatusMap;
         // Long running thread for refreshing cacheservers
         std::thread                                                                 m_cacheServerRefresherThread;
         std::atomic<bool>                                                           m_bStopCacheServerRefresher = false;
