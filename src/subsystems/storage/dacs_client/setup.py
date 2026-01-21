@@ -3,8 +3,10 @@ import os
 from setuptools import setup
 import shutil
 
-# While updating, ensure to update in build-python-package.sh as well.
-VERSION = '0.9.0'
+# VERSION is a placeholder that gets replaced at build time by build-python-package.sh
+# The actual version (e.g., 0.9.0.202601148) is SemVer format: 0.9.0.YYYYMMDDN
+# Do not change this placeholder value - it's used by sed to find and replace
+VERSION = '0.9.0-PLACEHOLDER'
 
 setup_dir = os.path.abspath(os.path.dirname(__file__))
 print("Current working directory:", setup_dir)
@@ -35,7 +37,7 @@ class CustomPackageLogic(install):
         print('\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Start custom packaging logic')
         
         # Get architecture from environment variable
-        build_arch = os.environ.get('BUILD_ARCHITECTURE', 'linux-x64')
+        build_arch = os.environ.get('BUILD_ARCHITECTURE')
         print(f"Building for architecture: {build_arch}")
         
         entry_file_path = None
@@ -62,7 +64,7 @@ class CustomPackageLogic(install):
                 print(f"{storage_dir} directory does not exist")
 
             # Determine architecture for bin path
-            arch_dir_name = 'amd64' if 'x64' in build_arch else 'arm64'
+            arch_dir_name = build_arch
 
             # For dev machine: Check if the library is in storage/libStorageDirect.so
             libstorage_direct_dev = f'{storage_dir}/libStorageDirect.so'
@@ -92,12 +94,30 @@ class CustomPackageLogic(install):
 with open(os.path.join(setup_dir, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
-# Get architecture from environment to make package name unique
-build_arch = os.environ.get('BUILD_ARCHITECTURE', 'linux-x64')
-arch_suffix = build_arch.replace('-', '_')  # Convert linux-x64 to linux_x64 for valid package name
+# Get architecture and channel from environment (both required)
+build_arch = os.environ.get('BUILD_ARCHITECTURE')
+build_channel = os.environ.get('BUILD_CHANNEL')
+
+# Validate required environment variables
+if not build_arch or not build_channel:
+    missing = []
+    if not build_arch:
+        missing.append("BUILD_ARCHITECTURE (e.g., 'amd64' or 'arm64')")
+    if not build_channel:
+        missing.append("BUILD_CHANNEL (e.g., 'official' or 'dev')")
+    raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+
+# Map architecture to proper wheel platform tags
+platform_tag_map = {
+    'amd64': 'linux_x86_64',
+    'arm64': 'linux_aarch64'
+}
+platform_tag = platform_tag_map.get(build_arch)
+if not platform_tag:
+    raise ValueError(f"Unknown architecture: {build_arch}. Expected 'amd64' or 'arm64'.")
 
 setup(
-    name=f'dacs-client-{arch_suffix}',
+    name=f'dacs-client-{build_channel}-{build_arch}',
     version=VERSION,
     packages=[
         "py_dacs_client",
@@ -122,4 +142,9 @@ setup(
     classifiers=CLASSIFIERS,
     python_requires='>=3.8',
     cmdclass={'install': CustomPackageLogic},
+    options={
+        'bdist_wheel': {
+            'plat_name': platform_tag
+        }
+    }
 )
