@@ -11,6 +11,8 @@ DOCKER_STORAGE="$REPOSITORY_ROOT/Docker/storage"
 CACHE_TEST="$DOCKER_STORAGE/cache-test"
 BINARIES_PATH="$REPOSITORY_ROOT/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage"
 STRESS_TESTS_PATH="$REPOSITORY_ROOT/src/subsystems/storage/stress_tests"
+PY_DACS_CLIENT_PATH="$REPOSITORY_ROOT/src/subsystems/storage/dacs_client/py_dacs_client"
+PY_DACS_CLIENT="$DOCKER_STORAGE/py_dacs_client"
 
 echo "Build configuration: $BUILD_CONFIGURATION"
 echo "Build architecture: $BUILD_ARCH"
@@ -26,7 +28,7 @@ if [ ! -d "$BINARIES_PATH" ] || [ ! -f "$BINARIES_PATH/CacheServer" ]; then
 fi
 
 # Set up Docker build directories
-mkdir -p "$DOCKER_STORAGE" "$CACHE_TEST"
+mkdir -p "$DOCKER_STORAGE" "$CACHE_TEST" "$PY_DACS_CLIENT"
 
 # Ensure write permissions for current user (fixes root-owned files from containers)
 chmod -R u+w "$DOCKER_STORAGE" 2>/dev/null || true
@@ -39,11 +41,19 @@ cp "$BINARIES_PATH/CacheStorageClient" "$CACHE_TEST/CacheStorageClient"
 cp "$BINARIES_PATH/DeleteClient" "$CACHE_TEST/DeleteClient"
 cp "$BINARIES_PATH/PerfClient" "$CACHE_TEST/PerfClient"
 cp "$BINARIES_PATH/libStorageIntercept.so" "$DOCKER_STORAGE/libStorageIntercept.so"
+cp "$BINARIES_PATH/libStorageDirect.so" "$DOCKER_STORAGE/libStorageDirect.so"
 
 # Copy Python test scripts and configuration files
 cp "$STRESS_TESTS_PATH/launcher.py" "$CACHE_TEST/launcher.py"
 cp "$STRESS_TESTS_PATH/StorageClient.py" "$CACHE_TEST/StorageClient.py"
 cp "$STRESS_TESTS_PATH/storageIntercept.config" "$CACHE_TEST/storageIntercept.config"
+
+# Copy py_dacs_client library (excluding tests and __pycache__)
+echo "Copying py_dacs_client library..."
+# Copy Python files (library only, exclude tests directory and __pycache__)
+for f in "$PY_DACS_CLIENT_PATH"/*.py; do
+    [ -f "$f" ] && cp "$f" "$PY_DACS_CLIENT/"
+done
 
 # Summary
 echo ""
@@ -54,3 +64,6 @@ ls -lh "$DOCKER_STORAGE" | grep -E "CacheServer|LivenessProbe|libStorageIntercep
 echo ""
 echo "Test client binaries:"
 ls -lh "$CACHE_TEST"
+echo ""
+echo "py_dacs_client library:"
+ls -lh "$PY_DACS_CLIENT"
