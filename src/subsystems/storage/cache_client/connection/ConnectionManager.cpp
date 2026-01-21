@@ -316,7 +316,7 @@ bool ConnectionManager::InitInfiniband()
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(const int serverFd, const std::string& cacheserver)
+std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(std::unique_ptr<IConnection> socketConnection, const std::string& cacheserver)
 {
     Request request;
     IBInitRequest* ibRequest = request.mutable_ibinitrequest();
@@ -326,12 +326,10 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(const int ser
     ibRequest->set_clientmtu(m_ibDevice.mtu);
     auto clientQpns = ibRequest->mutable_clientqpn();
     clientQpns->Clear();
+    
+    SocketConnection* socketConn = static_cast<SocketConnection*>(socketConnection.get());
+    int serverFd = socketConn->GetId();
     LOG_DEBUG_REQID("SetupIBConnections: serverFd={} cacheserver={}", *ibRequest, serverFd, cacheserver);
-
-    // Create socket connection. This will be used for IB init request.
-    // In case of failures, this socket connection will be returned to the caller
-    // otherwise, IB connections will be created and returned to the caller and this socket connection will be closed.
-    unique_ptr<IConnection> socketConnection = make_unique<SocketConnection>(serverFd);
 
     vector<unique_ibv_comp_channel> vectorEventChannels;
     vector<unique_ibv_cq> vectorCqs;
@@ -342,6 +340,8 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(const int ser
         if (!compChannel)
         {
             LOG_ERROR_REQID("ibv_create_comp_channel failed error={}", *ibRequest, strerror(errno));
+            std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
+            m_mapIbSetupStatus[cacheserver] = IBSetupStatus::PROTOCOL_ERROR;
             return socketConnection;
         }
 
@@ -349,6 +349,8 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(const int ser
         if (!cq)
         {
             LOG_ERROR_REQID("ibv_create_cq failed error={}", *ibRequest, strerror(errno));
+            std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
+            m_mapIbSetupStatus[cacheserver] = IBSetupStatus::PROTOCOL_ERROR;
             return socketConnection;
         }
 
@@ -356,6 +358,8 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(const int ser
         if (rc != 0)
         {
             LOG_ERROR_REQID("ibv_req_notify_cq failed error={},{}", *ibRequest, rc, strerror(errno));
+            std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
+            m_mapIbSetupStatus[cacheserver] = IBSetupStatus::PROTOCOL_ERROR;
             return socketConnection;
         }
 
@@ -385,6 +389,8 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(const int ser
         if (!qp)
         {
             LOG_ERROR_REQID("ibv_create_qp failed error={}", *ibRequest, strerror(errno));
+            std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
+            m_mapIbSetupStatus[cacheserver] = IBSetupStatus::PROTOCOL_ERROR;
             return socketConnection;
         }
 
@@ -399,12 +405,16 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(const int ser
     if (m_bAuthEnabled && !AddAuthParams(request, m_strCacheAccountName, m_strCacheAccountKey))
     {
         LOG_WARN_REQID("failed to create auth request", *ibRequest);
+        std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
+        m_mapIbSetupStatus[cacheserver] = IBSetupStatus::FAILURE;
         return socketConnection;
     }
 
     if (!SendMessageToRemoteFinal(socketConnection.get(), request))
     {
         LOG_WARN_REQID("couldn't send message to server", *ibRequest);
+        std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
+        m_mapIbSetupStatus[cacheserver] = IBSetupStatus::NETWORK_ERROR;
         return nullptr; // not returning socket connection for network failures
     }
 
@@ -412,6 +422,8 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(const int ser
     if (!ReadMessageFromRemote(socketConnection.get(), requestMessage))
     {
         LOG_WARN_REQID("couldn't read message from server", *ibRequest);
+        std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
+        m_mapIbSetupStatus[cacheserver] = IBSetupStatus::NETWORK_ERROR;
         return nullptr; // not returning socket connection for network failures
     }
 
@@ -421,18 +433,24 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(const int ser
     if (!response.ParseFromString(requestMessage))
     {
         LOG_WARN_REQID("Failed to parse protobuf message", *ibRequest);
+        std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
+        m_mapIbSetupStatus[cacheserver] = IBSetupStatus::FAILURE;
         return socketConnection;
     }
 
     if (response.result() != IBInitResponse::SUCCESS)
     {
         LOG_WARN_REQID("unexpected response={}", *ibRequest, response.result());
+        std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
+        m_mapIbSetupStatus[cacheserver] = IBSetupStatus::FAILURE;
         return socketConnection;
     }
 
     if (response.serverqpn_size() != IB_CONNECTIONS_PER_SERVER)
     {
         LOG_WARN_REQID("serverqpn size mismatch {}!={}", *ibRequest, IB_CONNECTIONS_PER_SERVER, response.serverqpn_size());
+        std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
+        m_mapIbSetupStatus[cacheserver] = IBSetupStatus::FAILURE;
         return socketConnection;
     }
 
@@ -452,6 +470,8 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(const int ser
         if (!bRet)
         {
             LOG_WARN_REQID("Failed to setup QP id={}", *ibRequest, qp->qp_num);
+            std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
+            m_mapIbSetupStatus[cacheserver] = IBSetupStatus::PROTOCOL_ERROR;
             return socketConnection;
         }
 
@@ -462,6 +482,8 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(const int ser
         if (!mr)
         {
             LOG_WARN_REQID("ibv_reg_mr failed error={}", *ibRequest, strerror(errno));
+            std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
+            m_mapIbSetupStatus[cacheserver] = IBSetupStatus::PROTOCOL_ERROR;
             return socketConnection;
         }
 
@@ -475,6 +497,9 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(const int ser
         );
         if (!PerformIBHandshake(ibConnection.get(), cacheserver))
         {
+            std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
+            m_mapIbSetupStatus[cacheserver] = IBSetupStatus::FAILURE;
+            LOG_WARN_REQID("IB handshake failed for server={}", *ibRequest, cacheserver);
             return socketConnection;
         }
         if (qpn < IB_CONNECTIONS_PER_SERVER - 1)
@@ -484,10 +509,14 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(const int ser
         }
         else
         {
+            std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
+            m_mapIbSetupStatus[cacheserver] = IBSetupStatus::SUCCESS;
             return move(ibConnection);           
         }
     }
 
+    std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
+    m_mapIbSetupStatus[cacheserver] = IBSetupStatus::FAILURE;
     return socketConnection;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -537,17 +566,33 @@ std::unique_ptr<IConnection> ConnectionManager::CreateSocketAndConnect(const std
 //---------------------------------------------------------------------------------------------------------------------
 std::unique_ptr<IConnection> ConnectionManager::InitFreshConnection(const std::string& cacheserver)
 {
-    auto socketConnection = CreateSocketAndConnect(cacheserver, m_ServerPort);
+    std::unique_ptr<IConnection> socketConnection = CreateSocketAndConnect(cacheserver, m_ServerPort);
     if (!socketConnection)
     {
         LOG_WARN("Failed to initialize fresh connection to cacheserver={}", cacheserver);
         return nullptr;
     }
 
-    auto* socketConn = static_cast<SocketConnection*>(socketConnection.get());
+    SocketConnection* socketConn = static_cast<SocketConnection*>(socketConnection.get());
     if (m_bUseInfiniband)
     {
-        return SetupIBConnections(socketConn->GetId(), cacheserver);
+        IBSetupStatus setupStatus;
+        {
+            std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
+            auto it = m_mapIbSetupStatus.find(cacheserver);
+            setupStatus = (it != m_mapIbSetupStatus.end()) ? it->second : IBSetupStatus::NOT_ATTEMPTED;
+        }
+
+        LOG_DEBUG("IB setup status for server={} is {}", cacheserver, ToStringIBSetupStatus(setupStatus));
+        // If IB setup was previously attempted and failed, skip re-attempting
+        if (setupStatus == IBSetupStatus::FAILURE) {
+            LOG_INFO("Skipping IB setup for server={} due to previous status={} "
+                "falling back to socket connection", cacheserver, ToStringIBSetupStatus(setupStatus));
+            return std::move(socketConnection);
+        }
+
+        // If IB setup was previously attempted and succeeded or failed due to network or protocol error, re-attempt
+        return SetupIBConnections(std::move(socketConnection), cacheserver);
     }
 
     LOG_DEBUG("Created new server connection fd={} cacheserver={}", socketConn->GetId(), cacheserver);
@@ -782,5 +827,18 @@ std::vector<std::string> ConnectionManager::GetAllCacheServerHostnames() const
 {
     std::shared_lock<std::shared_mutex> readLock(m_sharedLockCacheServerData); // Shared lock for concurrent read access
     return m_vecCacheServers;
+}
+//---------------------------------------------------------------------------------------------------------------------
+const char* ConnectionManager::ToStringIBSetupStatus(IBSetupStatus status)
+{
+    switch (status)
+    {
+        case IBSetupStatus::NOT_ATTEMPTED: return "NOT_ATTEMPTED";
+        case IBSetupStatus::SUCCESS: return "SUCCESS";
+        case IBSetupStatus::FAILURE: return "FAILURE";
+        case IBSetupStatus::PROTOCOL_ERROR: return "PROTOCOL_ERROR";
+        case IBSetupStatus::NETWORK_ERROR: return "NETWORK_ERROR";
+        default: return "UNKNOWN";
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
