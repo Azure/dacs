@@ -183,15 +183,14 @@ def _initialize_dacs_client_config(intercept_path: str = None, write_mode=None) 
 
     Args:
         intercept_path: Path to the intercept mount point
-        write_mode: Write mode configuration (from WriteMode enum in dacs_blobfile)
+        write_mode: Write mode configuration (from WriteMode enum in dacs_adapter)
     """
 
     config_path = "/tmp/storageIntercept.config"
 
-    # Check if config file already exists to avoid duplicate initialization
+    # Check if config file already exists and warn before overwriting
     if os.path.exists(config_path):
-        logger.warning(f"Config file {config_path} already exists, skipping initialization")
-        return
+        logger.warning(f"Config file {config_path} already exists, overwriting!!!")
 
     with open(config_path, "w") as config_file:
         config_file.write(f"storagePath {intercept_path}\n")
