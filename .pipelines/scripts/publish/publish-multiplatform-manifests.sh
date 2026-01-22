@@ -16,26 +16,35 @@ fi
 REGISTRY="$DOCKER_REGISTRY"
 BUILD_NUMBER="${BUILD_NUMBER:-latest}"
 
+# Architectures to include in manifest
+# Default: both amd64 and arm64 (for pipeline)
+# Override with BUILD_ARCHS="amd64" for single-arch local builds
+BUILD_ARCHS="${BUILD_ARCHS:-amd64 arm64}"
+
 # Define images to process
 IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler")
 
 echo "Creating multi-platform manifests..."
 echo "Registry: $REGISTRY"
 echo "Build Number: $BUILD_NUMBER"
+echo "Architectures: $BUILD_ARCHS"
 echo ""
 
 # Create and push multi-platform manifests
 for image in "${IMAGES[@]}"; do
     manifest_tag="$REGISTRY/$image:$BUILD_NUMBER"
-    amd64_image="$REGISTRY/$image:$BUILD_NUMBER-linux-amd64"
-    arm64_image="$REGISTRY/$image:$BUILD_NUMBER-linux-arm64"
     
+    # Build list of arch-specific images
+    arch_images=()
     echo "Creating manifest: $manifest_tag"
     echo "  References:"
-    echo "    • $amd64_image"
-    echo "    • $arm64_image"
+    for arch in $BUILD_ARCHS; do
+        arch_image="$REGISTRY/$image:$BUILD_NUMBER-linux-$arch"
+        arch_images+=("$arch_image")
+        echo "    • $arch_image"
+    done
     
-    docker buildx imagetools create --tag "$manifest_tag" "$amd64_image" "$arm64_image"
+    docker buildx imagetools create --tag "$manifest_tag" "${arch_images[@]}"
     
     echo "✓ Manifest created: $manifest_tag"
     echo ""
@@ -44,6 +53,6 @@ done
 echo "✅ All multi-platform manifests created successfully:"
 echo ""
 for image in "${IMAGES[@]}"; do
-    echo "  • $REGISTRY/$image:$BUILD_NUMBER (linux/amd64, linux/arm64)"
+    echo "  • $REGISTRY/$image:$BUILD_NUMBER (linux/${BUILD_ARCHS// /, linux/})"
 done
 echo ""

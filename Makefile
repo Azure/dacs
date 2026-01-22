@@ -1,4 +1,4 @@
-.PHONY: help build clean test pytest test-go test-native images storage-intercept-client helm-build helm-push deploy undeploy
+.PHONY: help build clean test pytest test-go test-native images storage-intercept-client helm-build helm-login helm-push deploy undeploy
 
 # Include modular makefiles
 include deploy/deploy.mk
@@ -102,9 +102,13 @@ images:
 	@echo "Building Docker images..."
 	@./.pipelines/scripts/build/build-docker-images.sh
 
+# For local use: publishes images and creates single-arch manifest
+# Pipeline uses publish-images.sh directly (without manifest) then calls publish-multiplatform-manifests.sh
 publish-images:
 	@echo "Publishing Docker images..."
 	@./.pipelines/scripts/build/publish-images.sh
+	@echo "Creating manifest for local arch..."
+	@BUILD_ARCHS="$$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')" ./.pipelines/scripts/build/publish-multiplatform-manifests.sh
 
 storage-intercept-client:
 	@./.pipelines/scripts/k8s/run-storageintercept-client.sh
@@ -112,5 +116,14 @@ storage-intercept-client:
 helm-build:
 	@./.pipelines/scripts/build/publish-helm-chart.sh
 
-helm-push:
+helm-login:
+	@if [ -n "$$DOCKER_REGISTRY" ]; then \
+		ACR_NAME=$$(echo "$$DOCKER_REGISTRY" | sed 's/\.azurecr\.io.*//'); \
+		TOKEN=$$(az acr login --name "$$ACR_NAME" --expose-token --output tsv --query accessToken 2>/dev/null); \
+		if [ -n "$$TOKEN" ]; then \
+			echo "$$TOKEN" | helm registry login "$$DOCKER_REGISTRY" --username 00000000-0000-0000-0000-000000000000 --password-stdin; \
+		fi \
+	fi
+
+helm-push: helm-login
 	@./.pipelines/scripts/build/publish-helm-chart.sh --push

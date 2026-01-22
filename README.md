@@ -2,6 +2,8 @@
 
 This repository contains the storage cache layer components for DACS, including CacheServer, CacheClient, and StorageInterception libraries.
 
+For deployment and usage instructions, see the [User Guide](docs/user-guide.md).
+
 ## Prerequisites
 
 Before starting, ensure you have:

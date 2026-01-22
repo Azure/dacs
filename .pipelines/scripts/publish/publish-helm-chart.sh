@@ -25,23 +25,20 @@ CHART_REPO="oci://$REGISTRY/charts"
 mkdir -p "$OUTPUT_DIR"
 
 # Function to package and optionally push a chart
-# Args: CHART_DIR CHART_NAME HAS_IMAGES CHART_VERSION APP_VERSION IMAGE_TAG
+# Args: CHART_DIR CHART_NAME CHART_VERSION APP_VERSION
 package_chart() {
     local CHART_DIR="$1"
     local CHART_NAME="$2"
-    local HAS_IMAGES="$3"
-    local CHART_VERSION="$4"
-    local APP_VERSION="$5"
-    local IMAGE_TAG="$6"
+    local CHART_VERSION="$3"
+    local APP_VERSION="$4"
     
     local CHART_PACKAGE="$OUTPUT_DIR/$CHART_NAME-$CHART_VERSION.tgz"
     local CHART_DESCRIPTION=$(grep '^description:' "$CHART_DIR/Chart.yaml" | cut -d: -f2- | xargs)
     
-    # Backup original files
+    # Backup and update Chart.yaml
     cp "$CHART_DIR/Chart.yaml" "$CHART_DIR/Chart.yaml.bak"
     [[ -f "$CHART_DIR/values.yaml" ]] && cp "$CHART_DIR/values.yaml" "$CHART_DIR/values.yaml.bak"
     
-    # Update Chart.yaml
     cat > "$CHART_DIR/Chart.yaml" << EOF
 apiVersion: v2
 name: $CHART_NAME
@@ -51,18 +48,13 @@ version: $CHART_VERSION
 appVersion: "$APP_VERSION"
 EOF
 
-    # Update values.yaml with full image repository and tag (only for charts with images)
-    if [[ "$HAS_IMAGES" == "true" && -f "$CHART_DIR/values.yaml" ]]; then
-        # Update image repositories
+    # Update values.yaml with full image repository paths
+    if [[ -f "$CHART_DIR/values.yaml" ]]; then
         sed -i "s|^\\(    repository:\\) cache-server|\\1 $REGISTRY/cache-server|" "$CHART_DIR/values.yaml"
         sed -i "s|^\\(      repository:\\) cacheserver-scheduler|\\1 $REGISTRY/cacheserver-scheduler|" "$CHART_DIR/values.yaml"
-
-        # Update image tags (replace empty tags with the actual tag)
-        sed -i "s|^\\(    tag:\\) \"\"|\\1 \"$IMAGE_TAG\"|" "$CHART_DIR/values.yaml"
-        sed -i "s|^\\(      tag:\\) \"\"|\\1 \"$IMAGE_TAG\"|" "$CHART_DIR/values.yaml"
     fi
-    
-    # Package the chart
+
+    # Package the chart (empty tag in values.yaml defaults to appVersion)
     helm package "$CHART_DIR" -d "$OUTPUT_DIR" --version "$CHART_VERSION" --app-version "$APP_VERSION"
     
     # Restore original files
@@ -78,11 +70,10 @@ EOF
     fi
 }
 
-# Function to build and optionally push a chart (versioned + latest)
+# Function to build and optionally push a chart
 build_and_push_chart() {
     local CHART_DIR="$1"
     local CHART_NAME="$2"
-    local HAS_IMAGES="$3"
     
     echo ""
     echo "=========================================="
@@ -95,30 +86,15 @@ build_and_push_chart() {
     local BASE_VERSION=$(echo "$RAW_VERSION" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
     [[ -z "$BASE_VERSION" ]] && BASE_VERSION="0.0.0"
     
-    # Chart version: if BUILD_NUMBER is already semver, use it; otherwise append to base version
-    local CHART_VERSION
-    if [[ "$BUILD_NUMBER" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-        CHART_VERSION="$BUILD_NUMBER"
-    else
-        CHART_VERSION="$BASE_VERSION-$BUILD_NUMBER"
-    fi
-    
-    # Image tag matches what publish-images.sh creates
-    local IMAGE_TAG="$BUILD_NUMBER-linux-amd64"
+    # Chart version: always use BASE_VERSION-BUILD_NUMBER format
+    local CHART_VERSION="$BASE_VERSION-$BUILD_NUMBER"
     
     echo "Base Version: $BASE_VERSION"
     echo "Chart Version: $CHART_VERSION"
     echo "App Version: $BUILD_NUMBER"
-    echo "Image Tag: $IMAGE_TAG"
     
     # Build and push versioned chart
-    package_chart "$CHART_DIR" "$CHART_NAME" "$HAS_IMAGES" "$CHART_VERSION" "$BUILD_NUMBER" "$IMAGE_TAG"
-    
-    # Build and push latest chart (only if pushing and not already "latest")
-    if [[ "$PUSH_CHARTS" == "true" && "$BUILD_NUMBER" != "latest" ]]; then
-        local LATEST_VERSION="$BASE_VERSION-latest"
-        package_chart "$CHART_DIR" "$CHART_NAME" "$HAS_IMAGES" "$LATEST_VERSION" "latest" "latest-linux-amd64"
-    fi
+    package_chart "$CHART_DIR" "$CHART_NAME" "$CHART_VERSION" "$BUILD_NUMBER"
 }
 
 echo "Building Helm charts..."
@@ -131,24 +107,21 @@ if [[ "$1" == "--push" ]]; then
     PUSH_CHARTS="true"
 fi
     
-# Build and push prereq chart (no container images)
-build_and_push_chart "$REPOSITORY_ROOT/helm/dacs-prereq" "dacs-prereq" "false"
+# Build and push prereq chart
+build_and_push_chart "$REPOSITORY_ROOT/helm/dacs-prereq" "dacs-prereq"
 
-# Build and push main cache-server chart (has container images)
-build_and_push_chart "$REPOSITORY_ROOT/helm/cache-server" "cache-server" "true"
+# Build and push main cache-server chart
+build_and_push_chart "$REPOSITORY_ROOT/helm/cache-server" "cache-server"
 
 # Generate artifact file if pushing
 if [[ "$PUSH_CHARTS" == "true" ]]; then
-    CACHE_SERVER_BASE=$(grep '^version:' "$REPOSITORY_ROOT/helm/cache-server/Chart.yaml" | awk '{print $2}' | tr -d '"')
-    PREREQ_BASE=$(grep '^version:' "$REPOSITORY_ROOT/helm/dacs-prereq/Chart.yaml" | awk '{print $2}' | tr -d '"')
+    CACHE_SERVER_BASE=$(grep '^version:' "$REPOSITORY_ROOT/helm/cache-server/Chart.yaml" | awk '{print $2}' | tr -d '"' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
+    PREREQ_BASE=$(grep '^version:' "$REPOSITORY_ROOT/helm/dacs-prereq/Chart.yaml" | awk '{print $2}' | tr -d '"' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
+    [[ -z "$CACHE_SERVER_BASE" ]] && CACHE_SERVER_BASE="0.0.0"
+    [[ -z "$PREREQ_BASE" ]] && PREREQ_BASE="0.0.0"
     
-    if [[ "$BUILD_NUMBER" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-        CACHE_SERVER_VERSION="$BUILD_NUMBER"
-        PREREQ_VERSION="$BUILD_NUMBER"
-    else
-        CACHE_SERVER_VERSION="$CACHE_SERVER_BASE-$BUILD_NUMBER"
-        PREREQ_VERSION="$PREREQ_BASE-$BUILD_NUMBER"
-    fi
+    CACHE_SERVER_VERSION="$CACHE_SERVER_BASE-$BUILD_NUMBER"
+    PREREQ_VERSION="$PREREQ_BASE-$BUILD_NUMBER"
     
     cat > "$REPOSITORY_ROOT/helm-chart.txt" << EOF
 CACHE_SERVER_CHART_VERSION=$CACHE_SERVER_VERSION
