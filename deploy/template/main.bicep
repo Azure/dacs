@@ -19,6 +19,9 @@ param zones array = []
 @description('Is test resource.')
 param isTest bool = false
 
+@description('Enable monitoring for test clusters.')
+param enableMonitoring bool = false
+
 @description('Whether to create a storage account.')
 param createStorageAccount bool = true
 
@@ -49,6 +52,7 @@ module cluster 'cluster.bicep' = {
     agentCount: agentCount
     agentVMSize: agentVMSize
     osSKU: osSKU
+    enableMonitoring: enableMonitoring
   }
 }
 
