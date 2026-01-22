@@ -39,10 +39,11 @@ if [ "$(az group exists --name "$AKS_RESOURCE_GROUP")" = "false" ]; then
     exit 0
 fi
 
-# Check if the resource group is empty or just has expected resources (cluster + storage account)
+# Check if the resource group is empty or just has expected resources (cluster + storage account + DCR)
 # Storage account name formula matches storage.bicep: toLower(take('${replace(resourceGroup().name, '-', '')}storage', 24))
 storage_account_name=$(echo "${AKS_RESOURCE_GROUP}storage" | tr -d '-' | tr '[:upper:]' '[:lower:]' | cut -c1-24)
-resources=$(az resource list --resource-group "$AKS_RESOURCE_GROUP" --query "[?name!='${AKS_RESOURCE_GROUP}-cluster' && name!='${storage_account_name}'].name" --output tsv)
+dcr_name="${AKS_RESOURCE_GROUP}-dcr"
+resources=$(az resource list --resource-group "$AKS_RESOURCE_GROUP" --query "[?name!='${AKS_RESOURCE_GROUP}-cluster' && name!='${storage_account_name}' && name!='${dcr_name}'].name" --output tsv)
 if [[ -n "$resources" ]]; then
     echo "Resource group $AKS_RESOURCE_GROUP is not empty. Resources found: $resources."
     echo "Skipping resource group deletion as a safety measure."
