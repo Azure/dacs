@@ -169,7 +169,7 @@ func getDefaultImage() string {
 		buildNumber = "local"
 	}
 
-	return fmt.Sprintf("%s/cache-test-client:%s-linux-amd64", registry, buildNumber)
+	return fmt.Sprintf("%s/cache-test-client:%s", registry, buildNumber)
 }
 
 // LoadJob loads the perf client job from the embedded fixture
