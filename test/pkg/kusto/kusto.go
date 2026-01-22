@@ -34,7 +34,7 @@ type EventHubConfig struct {
 // DefaultEventHubConfig returns the default EventHub configuration for DACS perf metrics.
 var DefaultEventHubConfig = EventHubConfig{
 	Namespace: os.Getenv("EVENTHUB_NAMESPACE"),
-	Name:      "dacs-perf-metrics",
+	Name:      "intpipeline",
 }
 
 // PerfMetric represents a performance metric to be sent to Kusto via EventHub.
