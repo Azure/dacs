@@ -106,15 +106,15 @@ images:
 # Pipeline uses publish-images.sh directly (without manifest) then calls publish-multiplatform-manifests.sh
 publish-images:
 	@echo "Publishing Docker images..."
-	@./.pipelines/scripts/build/publish-images.sh
+	@./.pipelines/scripts/publish/publish-images.sh
 	@echo "Creating manifest for local arch..."
-	@BUILD_ARCHS="$$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')" ./.pipelines/scripts/build/publish-multiplatform-manifests.sh
+	@BUILD_ARCHS="$$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')" ./.pipelines/scripts/publish/publish-multiplatform-manifests.sh
 
 storage-intercept-client:
 	@./.pipelines/scripts/k8s/run-storageintercept-client.sh
 
 helm-build:
-	@./.pipelines/scripts/build/publish-helm-chart.sh
+	@./.pipelines/scripts/publish/publish-helm-chart.sh
 
 helm-login:
 	@if [ -n "$$DOCKER_REGISTRY" ]; then \
@@ -126,4 +126,4 @@ helm-login:
 	fi
 
 helm-push: helm-login
-	@./.pipelines/scripts/build/publish-helm-chart.sh --push
+	@./.pipelines/scripts/publish/publish-helm-chart.sh --push
