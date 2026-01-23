@@ -580,21 +580,27 @@ class TestRemoteBlobStat:
             bytes_written = f.write(test_data)
 
         result = bf.stat(blob_path)
-        assert hasattr(result, "st_size")
-        assert hasattr(result, "st_mtime")
+        assert hasattr(result, "size")
+        assert hasattr(result, "mtime")
         # Only verify size matches if write succeeded
         if bytes_written > 0:
-            assert result.st_size == len(test_data), f"Expected size {len(test_data)}, got {result.st_size}"
+            assert result.size == len(test_data), f"Expected size {len(test_data)}, got {result.size}"
 
     def test_stat_all_fields(self):
-        """Test that stat() returns all expected fields."""
+        """Test that stat() returns all expected fields (blobfile + extended)."""
         test_data = "Complete stat field test"
         blob_path = f"{AZURE_BLOB_PATH}/test_stat_fields_{id(self)}.txt"
         with bf.DACSAdapter(blob_path, "w") as f:
             bytes_written = f.write(test_data)
 
         result = bf.stat(blob_path)
-        # Check all standard stat fields
+        # Check blobfile API core fields
+        assert hasattr(result, "size")
+        assert hasattr(result, "mtime")
+        assert hasattr(result, "ctime")
+        assert hasattr(result, "md5")
+        assert hasattr(result, "version")
+        # Check extended st_ fields
         assert hasattr(result, "st_dev")
         assert hasattr(result, "st_ino")
         assert hasattr(result, "st_mode")
@@ -602,15 +608,12 @@ class TestRemoteBlobStat:
         assert hasattr(result, "st_uid")
         assert hasattr(result, "st_gid")
         assert hasattr(result, "st_rdev")
-        assert hasattr(result, "st_size")
         assert hasattr(result, "st_atime")
-        assert hasattr(result, "st_mtime")
-        assert hasattr(result, "st_ctime")
         # Verify size is correct only if write succeeded
         if bytes_written > 0:
-            assert result.st_size == len(test_data)
+            assert result.size == len(test_data)
             # Verify timestamps are reasonable (non-zero for mtime at least)
-            assert result.st_mtime >= 0  # mtime may be 0 in some storage systems
+            assert result.mtime >= 0  # mtime may be 0 in some storage systems
 
     def test_stat_nonexistent_blob(self):
         """Test stat() raises FileNotFoundError for non-existent blob."""
@@ -625,8 +628,8 @@ class TestRemoteBlobStat:
             pass  # Write nothing
 
         result = bf.stat(blob_path)
-        assert result.st_size == 0
-        assert result.st_mtime > 0
+        assert result.size == 0
+        assert result.mtime > 0
 
     def test_stat_large_blob(self):
         """Test stat() on larger blob."""
@@ -638,8 +641,8 @@ class TestRemoteBlobStat:
         result = bf.stat(blob_path)
         # Only verify size if write succeeded
         if bytes_written > 0:
-            assert result.st_size == len(test_data)
-            assert result.st_size == 10000
+            assert result.size == len(test_data)
+            assert result.size == 10000
 
     def test_stat_check_file_type(self):
         """Test using stat() to differentiate between file and directory."""
@@ -654,7 +657,7 @@ class TestRemoteBlobStat:
         # Stat the file
         file_stat = bf.stat(file_path)
 
-        # Check if it's a regular file using st_mode
+        # Check if it's a regular file using st_mode (extended field)
         # S_ISREG checks if the mode indicates a regular file
         is_regular_file = stat_module.S_ISREG(file_stat.st_mode)
         is_directory = stat_module.S_ISDIR(file_stat.st_mode)
@@ -667,7 +670,7 @@ class TestRemoteBlobStat:
 
         # The file should have non-zero size only if write succeeded
         if bytes_written > 0:
-            assert file_stat.st_size > 0, "Regular file should have non-zero size"
+            assert file_stat.size > 0, "Regular file should have non-zero size"
 
         # Test directory stat
         # Stat the directory path (container or blob prefix)
@@ -686,7 +689,7 @@ class TestRemoteBlobStat:
 
         # Directory size is typically 0 or has special meaning
         # Just verify we can read the size field
-        assert hasattr(dir_stat, "st_size")
+        assert hasattr(dir_stat, "size")
 
 
 class TestRemoteBlobListDir:
@@ -731,10 +734,13 @@ class TestRemoteBlobListDir:
 
         # Create some files in the directory
         file_names = ["scan1.txt", "scan2.txt", "scan3.txt"]
+        file_contents = {}
         for name in file_names:
             file_path = f"{dir_path}/{name}"
+            content = f"content of {name}"
+            file_contents[name] = content
             with bf.DACSAdapter(file_path, "w") as f:
-                f.write(f"content of {name}")
+                f.write(content)
 
         # Scan the directory
         items = list(bf.scandir(dir_path))
@@ -742,9 +748,30 @@ class TestRemoteBlobListDir:
         # Verify we got some items
         assert len(items) > 0, "Directory should contain files"
 
-        # Verify our created files are in the list
+        # DirEntry structure and stat fields should match blobfile API
+        for entry in items:
+            assert hasattr(entry, "path"), "DirEntry should have path attribute"
+            assert hasattr(entry, "name"), "DirEntry should have name attribute"
+            assert hasattr(entry, "is_dir"), "DirEntry should have is_dir attribute"
+            assert hasattr(entry, "is_file"), "DirEntry should have is_file attribute"
+            assert hasattr(entry, "stat"), "DirEntry should have stat attribute"
+
+            assert entry.is_file is True, "DirEntry for file should report is_file True"
+            assert entry.is_dir is False, "DirEntry for file should report is_dir False"
+            
+            # Verify stat is populated with actual data (not None)
+            assert entry.stat is not None, "DirEntry.stat should be populated with file stats"
+            assert hasattr(entry.stat, "size"), "Stat should have size attribute"
+            assert hasattr(entry.stat, "mtime"), "Stat should have mtime attribute"
+            
+            # Validate stat values match the content we wrote
+            if entry.name in file_contents:
+                expected_size = len(file_contents[entry.name])
+                assert entry.stat.size == expected_size, f"File {entry.name} stat.size should be {expected_size}, got {entry.stat.size}"
+
+        names = {entry.name for entry in items}
         for name in file_names:
-            assert name in items or any(name in item for item in items), f"File {name} should be in directory listing"
+            assert name in names, f"File {name} should be in directory listing"
 
     def test_listdir_scandir_consistency(self):
         """Test that listdir() and scandir() return consistent results."""
@@ -759,9 +786,10 @@ class TestRemoteBlobListDir:
 
         # Get listings from both methods
         listdir_items = set(bf.listdir(dir_path))
-        scandir_items = set(bf.scandir(dir_path))
+        scandir_entries = list(bf.scandir(dir_path))
+        scandir_items = {entry.name for entry in scandir_entries}
 
-        # Both should return the same set of items
+        # Both should return the same set of item names
         assert listdir_items == scandir_items, "listdir() and scandir() should return the same items"
 
         # Both should contain our files
@@ -802,10 +830,12 @@ class TestRemoteBlobListDir:
         assert hasattr(result, "__iter__"), "scandir() should return an iterable"
 
         # Should be able to iterate multiple times by calling scandir again
-        first_pass = list(bf.scandir(dir_path))
-        second_pass = list(bf.scandir(dir_path))
+        first_pass_entries = list(bf.scandir(dir_path))
+        second_pass_entries = list(bf.scandir(dir_path))
 
-        assert first_pass == second_pass, "Multiple iterations should yield same results"
+        first_names = {entry.name for entry in first_pass_entries}
+        second_names = {entry.name for entry in second_pass_entries}
+        assert first_names == second_names, "Multiple iterations should yield same results"
 
 
 class TestWriteModes:

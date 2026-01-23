@@ -198,11 +198,17 @@ def _initialize_dacs_client_config(intercept_path: str = None, write_mode=None) 
         config_file.write("azBlobDynamicAccount true\n")
 
         # Check if SAS token is provided (for dev operations), otherwise use managed identity
-        sas_token = os.environ.get("STORAGE_INTCPT_SAS_TOKEN")
+        sas_token = os.environ.get("STORAGE_INTCPT_SAS_TOKEN") if os.environ.get("USE_SAS_TOKEN", "false") == "true" else None
+        access_token = os.environ.get("SI_azBlobAccessToken")
         if sas_token:
             config_file.write(f"azBlobSASToken {sas_token}\n")
             logger.info("Using SAS token for authentication")
+        elif access_token:
+            config_file.write(f"azBlobAccessToken {access_token}\n")
+            logger.info("Using provided access token for authentication")
         else:
+            logger.info("No access token provided, falling back to managed identity (default credential)")
+
             # Use managed identity for authentication
             azure_client_id = os.environ.get("AZURE_CLIENT_ID")
             # Set defaults for MSI endpoint and secret if not provided (IMDS endpoint for testing)

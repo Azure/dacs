@@ -36,11 +36,10 @@ fi
 export DACS_DATA_LOG_LEVEL="DEBUG"
 
 # SAS can be used for tests for local development
-if [ -n "${STORAGE_INTCPT_SAS_TOKEN:-}" ]; then
-    echo "SAS token is set for authentication"
-else
-    echo "WARNING: STORAGE_INTCPT_SAS_TOKEN not set - tests requiring Azure storage will fail"
+if [ "${USE_SAS_TOKEN:-false}" = "true" ] && [ -n "${STORAGE_INTCPT_SAS_TOKEN:-}" ]; then
+    echo "SAS token is set for authentication (USE_SAS_TOKEN=true)"
 fi
+
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 REPOSITORY_ROOT=$(realpath "$SCRIPT_DIR/..")
@@ -76,6 +75,12 @@ fi
 if ! pip show azure-storage-blob &> /dev/null 2>&1; then
     echo "Installing Azure SDK for test cleanup..."
     pip install azure-storage-blob azure-identity
+fi
+
+# Install blobfile for patcher tests
+if ! pip show blobfile &> /dev/null 2>&1; then
+    echo "Installing blobfile for patcher tests..."
+    pip install blobfile
 fi
 
 # Set up environment for tests
@@ -227,159 +232,6 @@ python -X faulthandler -m pytest \
     "$@" || true
 
 PYTEST_EXIT_CODE=$?
-
-# ============================================================================
-# Intelligent Permission Failure Analysis
-# ============================================================================
-# These tests are known to fail due to Azure storage permission issues
-# in the CI pipeline (missing 'Storage Blob Data Contributor' role).
-# If ONLY these tests fail, we allow the pipeline to pass with a warning.
-# If ANY other test fails, the pipeline will fail.
-#
-# TODO: Remove this workaround once node pool permissions are fixed.
-# ============================================================================
-
-KNOWN_PERMISSION_FAILURE_TESTS=(
-    # TestRemoteBlobRead - requires read access to Azure storage (7 tests)
-    "TestRemoteBlobRead::test_read_remote_blob"
-    "TestRemoteBlobRead::test_read_partial_remote_blob"
-    "TestRemoteBlobRead::test_read_with_user_allocated_buffer"
-    "TestRemoteBlobRead::test_read_with_user_buffer_reuse"
-    "TestRemoteBlobRead::test_read_zero_copy_memoryview"
-    "TestRemoteBlobRead::test_read_standard_path_returns_bytes"
-    "TestRemoteBlobRead::test_read_zero_copy_buffer_reuse_no_extra_allocation"
-    
-    # TestRemoteBlobWrite - requires write access to Azure storage (6 tests)
-    "TestRemoteBlobWrite::test_write_with_user_buffer_zero_copy"
-    "TestRemoteBlobWrite::test_write_zero_copy_buffer_reuse"
-    "TestRemoteBlobWrite::test_write_standard_path_with_string"
-    "TestRemoteBlobWrite::test_write_standard_path_with_bytes"
-    "TestRemoteBlobWrite::test_read_write_zero_copy_roundtrip"
-    "TestRemoteBlobWrite::test_write_mixed_internal_and_user_buffers"
-    
-    # TestRemoteBlobStat - requires storage access to stat files/directories (1 test)
-    "TestRemoteBlobStat::test_stat_check_file_type"
-    
-    # TestRemoteBlobListDir - requires list access to Azure storage (2 tests)
-    "TestRemoteBlobListDir::test_listdir_with_files"
-    "TestRemoteBlobListDir::test_scandir_with_files"
-    
-    # TestWriteModes - requires storage access (2 tests)
-    "TestWriteModes::test_write_disabled_mode_allows_read"
-    "TestWriteModes::test_write_disabled_mode_blocks_write_method"
-    
-    # TestUnsupportedOperations - requires storage access to test operations (5 tests)
-    "TestUnsupportedOperations::test_readline_not_supported"
-    "TestUnsupportedOperations::test_readlines_not_supported"
-    "TestUnsupportedOperations::test_seek_not_supported"
-    "TestUnsupportedOperations::test_tell_not_supported"
-    "TestUnsupportedOperations::test_iteration_not_supported"
-    
-    # TestTextAndBinaryModes - requires storage access (3 tests)
-    "TestTextAndBinaryModes::test_text_mode_returns_string"
-    "TestTextAndBinaryModes::test_binary_mode_returns_bytes"
-    "TestTextAndBinaryModes::test_utf8_encoding_in_text_mode"
-)
-
-echo ""
-echo "=== Intelligent Failure Analysis ==="
-
-# Parse pytest results XML to extract failed tests
-RESULTS_XML="${REPOSITORY_ROOT}/pytest-results.xml"
-if [ -f "$RESULTS_XML" ]; then
-    # Use Python to reliably parse the XML and extract failed test names
-    # Export REPOSITORY_ROOT so it's available to the Python subprocess
-    export REPOSITORY_ROOT
-    FAILED_TESTS=$(python3 << 'PYEOF'
-import xml.etree.ElementTree as ET
-import sys
-import os
-
-# Get REPOSITORY_ROOT from environment (exported by shell before this script)
-repo_root = os.environ.get('REPOSITORY_ROOT', '')
-if not repo_root:
-    print("ERROR: REPOSITORY_ROOT not set", file=sys.stderr)
-    sys.exit(1)
-
-results_xml = f'{repo_root}/pytest-results.xml'
-tree = ET.parse(results_xml)
-
-root = tree.getroot()
-for testcase in root.iter('testcase'):
-    failure = testcase.find('failure')
-    error = testcase.find('error')
-    if failure is not None or error is not None:
-        classname = testcase.get('classname', '')
-        name = testcase.get('name', '')
-        # Extract class name (last part after dot)
-        class_short = classname.split('.')[-1] if classname else ''
-        if class_short and name:
-            print(f'{class_short}::{name}')
-        elif name:
-            print(name)
-PYEOF
-)
-    
-    if [ -n "$FAILED_TESTS" ]; then
-        FAILED_COUNT=$(echo "$FAILED_TESTS" | wc -l)
-        echo "Failed tests found ($FAILED_COUNT total):"
-        echo "$FAILED_TESTS" | while read -r test; do
-            echo "  - $test"
-        done
-        
-        # Check if all failures are in the known permission failure list
-        UNEXPECTED_FAILURES=""
-        UNEXPECTED_COUNT=0
-        while IFS= read -r failed_test; do
-            [ -z "$failed_test" ] && continue
-            
-            IS_KNOWN=false
-            for known_test in "${KNOWN_PERMISSION_FAILURE_TESTS[@]}"; do
-                # Check if the failed test matches the known test pattern
-                if [[ "$failed_test" == "$known_test" ]]; then
-                    IS_KNOWN=true
-                    break
-                fi
-            done
-            
-            if [ "$IS_KNOWN" = false ]; then
-                UNEXPECTED_FAILURES="${UNEXPECTED_FAILURES}  - ${failed_test}"$'\n'
-                ((UNEXPECTED_COUNT++)) || true
-            fi
-        done <<< "$FAILED_TESTS"
-        
-        if [ $UNEXPECTED_COUNT -gt 0 ]; then
-            echo ""
-            echo "ERROR: Unexpected test failures detected! ($UNEXPECTED_COUNT unexpected)"
-            echo "The following tests failed but are NOT in the known permission failure list:"
-            echo "$UNEXPECTED_FAILURES"
-            echo ""
-            echo "These failures indicate real bugs that need to be fixed."
-            echo "Pipeline will FAIL."
-            PYTEST_EXIT_CODE=1
-        else
-            echo ""
-            echo "All $FAILED_COUNT failures are known permission-related issues."
-            echo "WARNING: Allowing pipeline to pass despite test failures."
-            echo "TODO: Remove this workaround once 'Storage Blob Data Contributor' role is granted."
-            PYTEST_EXIT_CODE=0
-        fi
-    else
-        echo "No test failures detected in pytest results."
-        PYTEST_EXIT_CODE=0
-    fi
-else
-    echo "WARNING: Pytest results XML not found at $RESULTS_XML"
-    echo "Cannot perform intelligent failure analysis."
-    # If no XML but pytest passed, that's fine
-    if [ $PYTEST_EXIT_CODE -eq 0 ]; then
-        echo "Pytest exited successfully."
-    else
-        echo "Pytest failed but no results to analyze. Failing pipeline."
-    fi
-fi
-
-echo ""
 
 # Check for core dumps
 echo ""
