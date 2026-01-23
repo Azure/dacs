@@ -482,6 +482,42 @@ class DACSAdapter:
         raise OperationNotSupportedError("Iteration is not supported by DACS Client.")
 
 
+# ============================================================================
+# Blobfile API Definitions
+# Reference: https://github.com/christopher-hesse/blobfile
+# ============================================================================
+# The following namedtuples define the return types for module-level functions.
+# They match the official blobfile API exactly to ensure compatibility.
+#
+# class Stat(NamedTuple):
+#     """File statistics returned by stat() function"""
+#     size: int                   # File size in bytes
+#     mtime: float                # Time of last modification
+#     ctime: float                # Time of creation/metadata change
+#     md5: Optional[str]          # MD5 hash (None for Azure)
+#     version: Optional[str]      # Version string (None for Azure)
+#
+# class DirEntry(NamedTuple):
+#     """Directory entry returned by scandir() function"""
+#     path: str                   # Full path to the entry
+#     name: str                   # Filename component
+#     is_dir: bool                # True if entry is a directory
+#     is_file: bool               # True if entry is a file
+#     stat: Optional[Stat]        # Stat object or None if not available
+#
+# Extended Stat fields (beyond blobfile API):
+# When using DACS Client, the stat() function also includes these fields:
+#     st_atime: float             # Time of last access
+#     st_mode: int                # File mode/permissions
+#     st_ino: int                 # Inode number
+#     st_dev: int                 # Device ID
+#     st_rdev: int                # Device ID (if special file)
+#     st_nlink: int               # Number of hard links
+#     st_uid: int                 # User ID of owner
+#     st_gid: int                 # Group ID of owner
+# ============================================================================
+
+
 # Module-level functions matching blobfile API
 def copy(src: str, dst: str, overwrite: bool = False, return_md5: bool = False) -> Optional[str]:
     """
@@ -550,8 +586,23 @@ def listdir(path: str) -> Iterator[str]:
             yield item
 
 
-def scandir(path: str) -> Iterator[str]:
-    """List contents of a directory (generator). Supported API."""
+def scandir(path: str) -> Iterator[Any]:
+    """
+    List contents of a directory (generator). Supported API.
+    Returns DirEntry objects with path, name, is_dir, is_file, and stat fields.
+    """
+    # Match blobfile's DirEntry namedtuple
+    DirEntry = namedtuple(
+        "DirEntry",
+        [
+            "path",    # Full path to the entry
+            "name",    # Filename component
+            "is_dir",  # True if directory
+            "is_file", # True if file
+            "stat",    # Stat object (or None)
+        ],
+    )
+    
     if not path.startswith("az://"):
         # Local directory listing
         for entry in os.scandir(path):
@@ -568,7 +619,29 @@ def scandir(path: str) -> Iterator[str]:
             return result
 
         for item in asyncio.run(_scandir_collect()):
-            yield item
+            # Construct full path
+            if path.endswith("/"):
+                full_path = path + item
+            else:
+                full_path = path + "/" + item
+            
+            # Determine if directory based on trailing slash
+            is_dir = item.endswith("/")
+            
+            # Get stat information for the entry
+            try:
+                entry_stat = stat(full_path)
+            except Exception:
+                # If stat fails, set to None
+                entry_stat = None
+            
+            yield DirEntry(
+                path=full_path,
+                name=item,
+                is_dir=is_dir,
+                is_file=not is_dir,
+                stat=entry_stat,
+            )
 
 
 def makedirs(path: str) -> None:
@@ -598,34 +671,37 @@ def stat(path: str) -> Any:
         return os.stat(path)
 
     # Remote blob statistics using DACSCacheClient
-    # Create a stat-like object with common fields from os.stat_result
-    BlobStat = namedtuple(
-        "BlobStat",
+    Stat = namedtuple(
+        "Stat",
         [
-            "st_size",  # File size in bytes
-            "st_mtime",  # Time of last modification
+            # Blobfile API fields (first 5)
+            "size",    # File size in bytes
+            "mtime",   # Time of last modification
+            "ctime",   # Time of creation/metadata change
+            "md5",     # MD5 hash (None for Azure)
+            "version", # Version string (None for Azure)
+            # Additional stat fields from DACS client
             "st_atime",  # Time of last access
-            "st_ctime",  # Time of last metadata change (creation time on Windows)
-            "st_mode",  # File mode/permissions
-            "st_ino",  # Inode number
-            "st_dev",  # Device ID
-            "st_rdev",  # Device ID (if special file)
+            "st_mode",   # File mode/permissions
+            "st_ino",    # Inode number
+            "st_dev",    # Device ID
+            "st_rdev",   # Device ID (if special file)
             "st_nlink",  # Number of hard links
-            "st_uid",  # User ID of owner
-            "st_gid",  # Group ID of owner
+            "st_uid",    # User ID of owner
+            "st_gid",    # Group ID of owner
         ],
     )
 
     client = _ClientManager.get_instance()
-    # Use the new get_file_stat API to get complete statistics
     stat_result = asyncio.run(client.get_file_stat(path))
 
-    # Convert Stat64 to BlobStat namedtuple
-    return BlobStat(
-        st_size=stat_result.st_size,
-        st_mtime=stat_result.st_mtime,
+    return Stat(
+        size=stat_result.st_size,
+        mtime=stat_result.st_mtime,
+        ctime=stat_result.st_ctime,
+        md5=None,      # Azure doesn't provide MD5 via stat
+        version=None,  # Azure doesn't provide version via stat
         st_atime=stat_result.st_atime,
-        st_ctime=stat_result.st_ctime,
         st_mode=stat_result.st_mode,
         st_ino=stat_result.st_ino,
         st_dev=stat_result.st_dev,

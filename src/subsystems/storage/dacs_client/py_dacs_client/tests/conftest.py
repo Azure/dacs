@@ -76,8 +76,24 @@ def pytest_sessionfinish(session, exitstatus):
             logging.warning("Could not parse container from AZURE_BLOB_PATH")
             return
 
-        # Create container client with default credentials
-        credential = DefaultAzureCredential()
+        # Prefer access token if provided, else fall back to DefaultAzureCredential
+        access_token = os.environ.get("SI_azBlobAccessToken")
+        if access_token:
+            from azure.core.credentials import AccessToken, TokenCredential
+
+            class SimpleTokenCredential(TokenCredential):
+                def __init__(self, token):
+                    self._token = token
+
+                def get_token(self, *scopes, **kwargs):
+                    return AccessToken(self._token, 3600)
+
+            credential = SimpleTokenCredential(access_token)
+            print("Using provided access token for Azure cleanup.")
+        else:
+            credential = DefaultAzureCredential()
+            print("Using DefaultAzureCredential for Azure cleanup.")
+
         container_client = ContainerClient(
             account_url=account_url, container_name=container_name, credential=credential
         )
