@@ -49,6 +49,7 @@ minikube start \
   --extra-config=kubelet.node-status-update-frequency=10s \
   --extra-config=kubelet.max-pods=110 \
   --extra-config=kubelet.fail-swap-on=false \
+  --extra-config=kubelet.root-dir=/mnt/kubelet \
   --wait-timeout=10m \
   --wait=all \
   -v=5

@@ -64,6 +64,7 @@ blob*/
 init-store/
 test*/
 !test/
+!test/**/
 runs/
 logs/
 .hypothesis/
@@ -87,3 +88,4 @@ summary.md
 test/e2e/e2e.test
 **/values.yaml.bak
 **/Chart.yaml.bak
+junit.xml
