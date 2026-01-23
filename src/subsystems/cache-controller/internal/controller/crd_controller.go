@@ -40,17 +40,21 @@ type CacheReconciler struct {
 // +kubebuilder:rbac:groups=storage.azure.com,resources=caches/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=storage.azure.com,resources=caches/finalizers,verbs=update
 //
-// RBAC to manage statefulsets - split into create (no resourceNames) and other verbs (with resourceNames)
-// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=create
-// +kubebuilder:rbac:groups=apps,resources=statefulsets,resourceNames=cacheserver,verbs=get;list;watch;update;patch;delete
+// RBAC permissions are split into two rules per resource type:
+// 1. Read/Create rule (no resourceNames): Includes 'list;watch' because controller-runtime
+//    informers (created by .Owns() in SetupWithManager) need to list/watch ALL resources to
+//    build their cache and detect changes. Informers cannot work with resourceNames restrictions.
+// 2. Modify rule (with resourceNames): Restricts get/update/patch/delete to only the specific named
+//    resources this controller manages for security.
 //
-// RBAC to manage services - split into create (no resourceNames) and other verbs (with resourceNames)
-// +kubebuilder:rbac:groups="",resources=services,verbs=create
-// +kubebuilder:rbac:groups="",resources=services,resourceNames=cacheserver;cacheserver-discovery,verbs=get;list;watch;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=create;list;watch
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,resourceNames=cacheserver,verbs=get;update;patch;delete
 //
-// RBAC to manage configmaps - split into create (no resourceNames) and other verbs (with resourceNames)
-// +kubebuilder:rbac:groups="",resources=configmaps,verbs=create
-// +kubebuilder:rbac:groups="",resources=configmaps,resourceNames=cacheserver-discovery-config,verbs=get;list;watch;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=services,verbs=create;list;watch
+// +kubebuilder:rbac:groups="",resources=services,resourceNames=cacheserver;cacheserver-discovery,verbs=get;update;patch;delete
+//
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=create;list;watch
+// +kubebuilder:rbac:groups="",resources=configmaps,resourceNames=cacheserver-discovery-config,verbs=get;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -94,12 +98,7 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	// Reconcile Services
 	log.V(1).Info("Reconciling Services", "namespace", cache.Namespace)
-	var serviceList corev1.ServiceList
-	if err := r.List(ctx, &serviceList, client.InNamespace(req.Namespace)); err != nil {
-		log.Error(err, "Failed to list Services", "namespace", req.Namespace)
-		return ctrl.Result{}, err
-	}
-	if err := r.reconcileServices(ctx, serviceList, &cache); err != nil {
+	if err := r.reconcileServices(ctx, &cache); err != nil {
 		log.Error(err, "Failed to reconcile Services", "namespace", cache.Namespace, "name", cache.Name)
 		return ctrl.Result{}, err
 	}
@@ -288,7 +287,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 	return nil
 }
 
-func (r *CacheReconciler) reconcileServices(ctx context.Context, serviceList corev1.ServiceList, cache *storagev1.Cache) error {
+func (r *CacheReconciler) reconcileServices(ctx context.Context, cache *storagev1.Cache) error {
 	log := logf.FromContext(ctx)
 
 	// Get port values with defaults to avoid nil pointer dereference

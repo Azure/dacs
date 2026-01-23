@@ -3,7 +3,8 @@
 .PHONY: help-test
 help-test:
 	@echo "E2E Testing:"
-	@echo "  make test-e2e                      	- Run e2e tests against current kubeconfig cluster"
+	@echo "  make test-e2e                      	- Run e2e tests against current kubeconfig cluster (Old Controller)"
+	@echo "  make test-e2e-controller           	- Run e2e tests with new controller deployment (CRD-based)"
 	@echo "  make test-perf                     	- Run performance tests against current kubeconfig cluster"
 	@echo "  make get-support-bundle            	- Collect support bundle from cluster"
 	@echo ""
@@ -62,6 +63,10 @@ EXTRA_TEST_ARGS ?=
 .PHONY: test-e2e
 test-e2e: ginkgo kubectl ## Run e2e tests against cluster pointed to by kubeconfig.
 	$(call run_e2e_tests,$(E2E_LABEL_FILTER),./test/e2e)
+
+.PHONY: test-e2e-controller
+test-e2e-controller: ginkgo kubectl ## Run e2e tests with controller deployment (sets INSTALL_CONTROLLER=true and filters to controller tests).
+	INSTALL_CONTROLLER=true $(call run_e2e_tests,e2e && controller,./test/e2e)
 
 .PHONY: test-perf
 test-perf: ginkgo kubectl ## Run performance tests against cluster pointed to by kubeconfig.
