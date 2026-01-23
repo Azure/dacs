@@ -166,7 +166,7 @@ func getDefaultImage() string {
 	}
 	buildNumber := os.Getenv("BUILD_NUMBER")
 	if buildNumber == "" {
-		buildNumber = "local"
+		buildNumber = "latest"
 	}
 
 	return fmt.Sprintf("%s/cache-test-client:%s", registry, buildNumber)
