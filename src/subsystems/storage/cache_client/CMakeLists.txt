@@ -44,7 +44,7 @@ target_link_libraries(CacheClientSharedLib ${CommonLinks})
 target_link_libraries(CacheClientLib ${CommonLinks})
 
 enable_testing()
-add_executable(CacheClientLibTests tests/TestMain.cpp tests/CacheClientTests.cpp tests/ConsistentHashingTests.cpp tests/CacheClientRetryUtilTests.cpp)
+add_executable(CacheClientLibTests tests/TestMain.cpp tests/CacheClientTests.cpp tests/ConsistentHashingTests.cpp tests/CacheClientRetryUtilTests.cpp tests/ConnectionManagerTests.cpp)
 add_dependencies(CacheClientLibTests CacheClientLib)
 target_link_libraries(CacheClientLibTests
     CacheClientLib

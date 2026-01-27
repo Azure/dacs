@@ -9,6 +9,7 @@
 #include "cache.pb.h"
 #include "CacheUtils.h"
 #include <errno.h>
+#include <fcntl.h>
 #include <string>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -542,9 +543,88 @@ std::unique_ptr<IConnection> ConnectionManager::CreateSocketAndConnect(const std
         return nullptr;
     }
 
-    if (connect(sockfd, res->ai_addr, res->ai_addrlen) < 0)
+    // Default socket timeout can be very high (upto 2 minutes) which can cause a connection error to significantly slow download\upload.
+    // Setting it to 5 seconds by using non-blocking connect with select. TODO(adbansal): make this configurable.
+    int flags = fcntl(sockfd, F_GETFL, 0);
+    if (flags < 0)
     {
-        LOG_WARN("Failed to connect to hostname={} error={}", hostname, strerror(errno));
+        LOG_WARN("Failed to get socket flags for hostname={} error={}", hostname, strerror(errno));
+        close(sockfd);
+        freeaddrinfo(res);
+        return nullptr;
+    }
+    if (fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) < 0)
+    {
+        LOG_WARN("Failed to set socket to non-blocking for hostname={} error={}", hostname, strerror(errno));
+        close(sockfd);
+        freeaddrinfo(res);
+        return nullptr;
+    }
+
+    int connectRet;
+    uint32_t connectAttempts = 0;
+    do {
+        connectRet = connect(sockfd, res->ai_addr, res->ai_addrlen);
+        connectAttempts++;
+    } while (connectRet < 0 && errno == EINTR && connectAttempts < 3);
+
+    if (connectRet < 0)
+    {
+        if (errno != EINPROGRESS && errno != EALREADY)
+        {
+            LOG_WARN("Failed to initiate connection to hostname={} attempts={} errno={} error={}",
+                hostname, connectAttempts, errno, strerror(errno));
+            close(sockfd);
+            freeaddrinfo(res);
+            return nullptr;
+        }
+
+        fd_set writefds;
+        struct timeval tv;
+        int selRet;
+        uint32_t selectAttempts = 0;
+        do {
+            FD_ZERO(&writefds);
+            FD_SET(sockfd, &writefds);
+            tv.tv_sec = 5; // 5 seconds timeout
+            tv.tv_usec = 0;
+            selRet = select(sockfd + 1, NULL, &writefds, NULL, &tv);
+            selectAttempts++;
+        } while (selRet < 0 && errno == EINTR && selectAttempts < 3);
+
+        if (selRet <= 0)
+        {
+            LOG_WARN("Connection timed out or select error for hostname={} attempts={} errno={} error={}",
+                hostname, selectAttempts, errno, strerror(errno));
+            close(sockfd);
+            freeaddrinfo(res);
+            return nullptr;
+        }
+
+        if (!FD_ISSET(sockfd, &writefds))
+        {
+            LOG_WARN("Socket not ready after select for hostname={}", hostname);
+            close(sockfd);
+            freeaddrinfo(res);
+            return nullptr;
+        }
+
+        int so_error;
+        socklen_t len = sizeof(so_error);
+        if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &so_error, &len) < 0 || so_error != 0)
+        {
+            LOG_WARN("Connection failed after select for hostname={} errno={} error={}",
+                hostname, so_error, strerror(so_error));
+            close(sockfd);
+            freeaddrinfo(res);
+            return nullptr;
+        }
+    }
+
+    // Restore socket to blocking mode
+    if (fcntl(sockfd, F_SETFL, flags) < 0)
+    {
+        LOG_WARN("Failed to restore socket to blocking mode for hostname={} error={}", hostname, strerror(errno));
         close(sockfd);
         freeaddrinfo(res);
         return nullptr;
