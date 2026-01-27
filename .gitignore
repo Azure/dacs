@@ -62,9 +62,6 @@ dump*/
 integtest/
 blob*/
 init-store/
-test*/
-!test/
-!test/**/
 runs/
 logs/
 .hypothesis/
