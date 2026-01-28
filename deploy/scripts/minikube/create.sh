@@ -65,11 +65,11 @@ for i in $(seq 2 $NUM_NODES); do
   minikube node add --worker=true -v=5
   
   echo "Node $i added successfully, waiting for stabilization..."
-  sleep 30
+  sleep 15
 done
 
 echo "All nodes added, waiting for final stabilization..."
-sleep 30
+sleep 15
 
 echo "Cluster created successfully!"
 

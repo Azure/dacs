@@ -243,12 +243,81 @@ def run_read_process(
 
 
 def cleanup_paths(all_paths: List[str]):
-    """Clean up all blobs."""
+    """Clean up all blobs. Uses Azure SDK with SAS token if available, otherwise blobfile (for managed identity)."""
     print("\nCleaning up blobs...")
+    
+    # Get SAS token from environment
+    sas_token = os.environ.get("STORAGE_INTCPT_SAS_TOKEN", "")
+    
+    if sas_token:
+        # Use Azure SDK with SAS token
+        _cleanup_with_sas(all_paths, sas_token)
+    else:
+        # Fall back to blobfile (works with managed identity)
+        _cleanup_with_blobfile(all_paths)
+
+
+def _cleanup_with_sas(all_paths: List[str], sas_token: str):
+    """Clean up blobs using Azure SDK with SAS token."""
+    try:
+        from azure.storage.blob import ContainerClient
+        
+        cleaned = 0
+        failed: List[Tuple[str, str]] = []
+        
+        # Group paths by account/container for efficient batch deletion
+        container_blobs: Dict[str, List[str]] = {}
+        for path in all_paths:
+            if ".blob.core.windows.net" in path:
+                parts = path.replace("az://", "").split("/", 2)
+                if len(parts) >= 3:
+                    account_host = parts[0]
+                    container_name = parts[1]
+                    blob_path = parts[2]
+                    key = f"{account_host}/{container_name}"
+                    if key not in container_blobs:
+                        container_blobs[key] = []
+                    container_blobs[key].append(blob_path)
+        
+        # Delete blobs by container
+        for key, blob_paths in container_blobs.items():
+            account_host, container_name = key.split("/", 1)
+            container_url = f"https://{account_host}/{container_name}?{sas_token}"
+            
+            try:
+                container_client = ContainerClient.from_container_url(container_url)
+                for blob_path in blob_paths:
+                    try:
+                        container_client.delete_blob(blob_path)
+                        cleaned += 1
+                    except Exception as e:
+                        error_msg = str(e)
+                        if "BlobNotFound" not in error_msg:
+                            failed.append((blob_path, error_msg[:100]))
+            except Exception as e:
+                failed.append((key, f"Container error: {str(e)[:100]}"))
+        
+        print(f"Cleaned up {cleaned}/{len(all_paths)} blobs.")
+        
+        if failed:
+            print(f"  ⚠ {len(failed)} blob(s) failed to delete:")
+            for path, error in failed[:5]:
+                short_path = path if len(path) <= 60 else f"...{path[-57:]}"
+                print(f"    - {short_path}: {error}")
+            if len(failed) > 5:
+                print(f"    ... and {len(failed) - 5} more")
+                
+    except ImportError:
+        print("  ⚠ azure-storage-blob not available, trying blobfile...")
+        _cleanup_with_blobfile(all_paths)
+
+
+def _cleanup_with_blobfile(all_paths: List[str]):
+    """Clean up blobs using blobfile (works with managed identity)."""
     try:
         import blobfile as bf
         cleaned = 0
-        failed: List[Tuple[str, str]] = []  # (path, error_message)
+        failed: List[Tuple[str, str]] = []
         
         for path in all_paths:
             try:
@@ -259,27 +328,31 @@ def cleanup_paths(all_paths: List[str]):
                         container_name = parts[1]
                         blob_path = parts[2] if len(parts) > 2 else ""
                         cleanup_path = f"az://{account}/{container_name}/{blob_path}"
-                        if bf.exists(cleanup_path):
+                        try:
                             bf.remove(cleanup_path)
                             cleaned += 1
+                        except FileNotFoundError:
+                            pass  # Already deleted
                 else:
                     failed.append((path, "Invalid path format"))
             except Exception as e:
-                failed.append((path, str(e)))
+                error_msg = str(e)
+                # Ignore transient errors during cleanup
+                if "PublicAccessNotPermitted" not in error_msg and "ServerBusy" not in error_msg:
+                    failed.append((path, error_msg[:100]))
         
         print(f"Cleaned up {cleaned}/{len(all_paths)} blobs.")
         
         if failed:
             print(f"  ⚠ {len(failed)} blob(s) failed to delete:")
-            for path, error in failed[:5]:  # Show first 5 errors
-                # Truncate path for readability
+            for path, error in failed[:5]:
                 short_path = path if len(path) <= 60 else f"...{path[-57:]}"
                 print(f"    - {short_path}: {error}")
             if len(failed) > 5:
                 print(f"    ... and {len(failed) - 5} more")
                 
     except ImportError:
-        print("blobfile not available for cleanup")
+        print("  ⚠ blobfile not available for cleanup")
 
 
 def main():
@@ -299,6 +372,9 @@ def main():
     parser.add_argument("--no-cleanup", action="store_true", help="Skip cleanup")
     parser.add_argument("--single-process", action="store_true", 
                         help="Run all I/O in main process (for profiling). Ignores --num-processes.")
+    parser.add_argument("--node-id", default=None, 
+                        help="Unique node identifier to avoid path clashes in multi-node runs. "
+                             "If not provided, uses hostname.")
     
     args = parser.parse_args()
     
@@ -308,12 +384,17 @@ def main():
     
     total_data_gb = args.num_processes * args.num_blobs * args.blob_size_gb
     blob_size = int(args.blob_size_gb * GB)
-    prefix = f"dacs_tests/benchmark/{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+    
+    # Get node identifier for unique paths in multi-node runs
+    import socket
+    node_id = args.node_id if args.node_id else socket.gethostname()
+    prefix = f"dacs_tests/benchmark/{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}/{node_id}"
     
     mode_str = "SINGLE-PROCESS (PROFILING)" if args.single_process else "MULTI-PROCESS"
     print("\n" + "=" * 70)
     print(f"{mode_str} BENCHMARK")
     print("=" * 70)
+    print(f"Node ID:         {node_id}")
     if not args.single_process:
         print(f"Processes:       {args.num_processes}")
     print(f"Blobs:           {args.num_blobs}")
