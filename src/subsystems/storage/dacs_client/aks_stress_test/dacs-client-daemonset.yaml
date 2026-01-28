@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dacs-client
+  namespace: default
+  labels:
+    app: dacs-client
+spec:
+  selector:
+    matchLabels:
+      app: dacs-client
+  template:
+    metadata:
+      labels:
+        app: dacs-client
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: dacs-client
+        image: dacs.azurecr.io/dacs-client:latest
+        imagePullPolicy: Always
+        command:
+          - /bin/bash
+          - -c
+          - |
+            mkdir -p /mnt/dacs_cache
+            sleep infinity
+      # Tolerate all taints to ensure deployment on all nodes
+      tolerations:
+      - operator: "Exists"
+      imagePullSecrets:
+      - name: acr-secret
