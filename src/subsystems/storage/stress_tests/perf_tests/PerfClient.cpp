@@ -158,7 +158,7 @@ bool RunPerfTest(/*[in]*/ int nParallelism,
         nChunksPerThread = nUpperBoundTotalChunksToTransfer / nParallelism;
     }
     std::atomic_uint_fast64_t nChunksSuccessfullyTransferred(0);
-    std::vector<std::thread*> vecThreads;
+    std::vector<std::thread> vecThreads;
     bool bIsUpload = (strMode == "upload");
     auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -167,20 +167,19 @@ bool RunPerfTest(/*[in]*/ int nParallelism,
         std::size_t nStartIndex = nThreadIdx * nChunksPerThread;
         // EndIndex is set to the chunk counter. If chunk counter surpasses totalChunkCount, then totalChunkCount is used.
         std::size_t nEndIndexExclusive = std::min((nThreadIdx + 1) * nChunksPerThread, nTotalChunksToTransfer);
-        std::thread* pThread = new std::thread(Worker,
-                                               bIsUpload,
-                                               nStartIndex,
-                                               nEndIndexExclusive,
-                                               nTotalChunksToTransfer,
-                                               strPrefix,
-                                               std::ref(client),
-                                               std::ref(nChunksSuccessfullyTransferred));
-        vecThreads.push_back(pThread);
+        vecThreads.emplace_back(Worker,
+                                bIsUpload,
+                                nStartIndex,
+                                nEndIndexExclusive,
+                                nTotalChunksToTransfer,
+                                strPrefix,
+                                std::ref(client),
+                                std::ref(nChunksSuccessfullyTransferred));
     }
 
-    for(std::thread* pThread : vecThreads)
+    for(std::thread& thread : vecThreads)
     {
-        pThread->join();
+        thread.join();
     }
 
     auto endTime = std::chrono::high_resolution_clock::now();
@@ -188,11 +187,14 @@ bool RunPerfTest(/*[in]*/ int nParallelism,
     durationMs = std::max(durationMs, (std::size_t)1);
     std::size_t nBytesTransferred = nChunksSuccessfullyTransferred * CHUNK_SIZE;
     std::size_t nThroughputMbps = (nBytesTransferred * 8) / (durationMs * 1000);
+    // GiBps = (bytes / ms) * (1000 ms/s) / (1024^3 bytes/GiB)
+    //       = bytes * 1000 / (ms * 1024 * 1024 * 1024)
+    double nThroughputGiBps = static_cast<double>(nBytesTransferred) * 1000.0 / (static_cast<double>(durationMs) * 1024.0 * 1024.0 * 1024.0);
 
     LOG_INFO("=============================================================");
     LOG_INFO("Test complete. Details below.")
     LOG_INFO("Test Mode: {}", strMode);
-    LOG_INFO("Throughput: {} Mbps {} Gbps", nThroughputMbps, nThroughputMbps/1024);
+    LOG_INFO("Throughput: {} Mbps {} GiBps", nThroughputMbps, nThroughputGiBps);
     LOG_INFO("Total bytes transferred: {}", nBytesTransferred);
     LOG_INFO("Total time taken: {} ms", durationMs);
     LOG_INFO("Expected chunks to tansfer: {}", nTotalChunksToTransfer);
@@ -423,6 +425,12 @@ int PerfClient(int argc, char *argv[])
                                                      retryConfig,
                                                      CHUNK_SIZE);                  /*nMaxBufferSizeBytes*/
 
+    if (initStatus != CacheClientStatus::SUCCESS)
+    {
+        LOG_CRITICAL("Failed to initialize cache client with error {}", initStatus);
+        return static_cast<int>(initStatus);
+    }
+
     std::size_t nDataSizeBytes = nDataSizeGiB * 1024 * 1024 * 1024;
     bool bAllIterationsSucceeded = true;
 
@@ -455,7 +463,7 @@ int EvictionClient(int argc, char* argv[])
 
     CacheClientImpl client;
     const CacheClientRetryConfig retryConfig{1, 0, 0};
-    client.Initialize(vecCstrHostnames.data(),
+    CacheClientStatus initStatus = client.Initialize(vecCstrHostnames.data(),
                       vecCstrHostnames.size(),
                       nPort,                       /*nCacheServerPort*/
                       false,                       /*bEnableIB*/
@@ -473,6 +481,12 @@ int EvictionClient(int argc, char* argv[])
                       LOCALHOST,                   /*nCacheServerDiscoveryEndpoint*/
                       true,                        /*bEnableConsistentHashing*/
                       retryConfig);
+
+    if (initStatus != CacheClientStatus::SUCCESS)
+    {
+        LOG_CRITICAL("Failed to initialize cache client with error {}", initStatus);
+        return static_cast<int>(initStatus);
+    }
 
     LOG_INFO("Requesting eviction from cache servers based on last access time time: {}",
              strLastAccessTime.c_str());
@@ -507,7 +521,7 @@ int LastAccessTimeDistributionClient(int argc, char* argv[])
 
     CacheClientImpl client;
     const CacheClientRetryConfig retryConfig{1, 0, 0};
-    client.Initialize(vecCstrHostnames.data(),
+    CacheClientStatus initStatus = client.Initialize(vecCstrHostnames.data(),
                       vecCstrHostnames.size(),
                       nPort,                       /*nCacheServerPort*/
                       false,                       /*bEnableIB*/
@@ -525,6 +539,12 @@ int LastAccessTimeDistributionClient(int argc, char* argv[])
                       LOCALHOST,                   /*nCacheServerDiscoveryEndpoint*/
                       true,                        /*bEnableConsistentHashing*/
                       retryConfig);
+
+    if (initStatus != CacheClientStatus::SUCCESS)
+    {
+        LOG_CRITICAL("Failed to initialize cache client with error {}", initStatus);
+        return static_cast<int>(initStatus);
+    }
 
                       
     LastAccessTimeDistribution *pLastAccessTimeDistribution = new LastAccessTimeDistribution();
