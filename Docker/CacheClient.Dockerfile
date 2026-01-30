@@ -51,8 +51,6 @@ COPY ./storage/cache-test/StorageClient.py /app/StorageClient.py
 COPY ./storage/cache-test/CacheStorageClient /app/CacheStorageClient
 COPY ./storage/cache-test/DeleteClient /app/DeleteClient
 COPY ./storage/cache-test/PerfClient /app/PerfClient
-COPY ./storage/cache-test/storageIntercept.config /tmp/storageIntercept.config
-COPY ./storage/libStorageIntercept.so /app/lib/libStorageIntercept.so
 
 # Copy py_dacs_client library
 COPY ./storage/py_dacs_client /app/py_dacs_client

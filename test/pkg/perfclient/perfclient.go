@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/Azure/dacs/test/pkg/cluster"
+	"github.com/Azure/dacs/test/pkg/common"
 	"github.com/Azure/dacs/test/pkg/common/fixtures"
 )
 
@@ -68,7 +69,7 @@ func NewConfig() *Config {
 	return &Config{
 		Mode:                    ModeUpload,
 		Namespace:               "cache-server",
-		Image:                   getDefaultImage(),
+		Image:                   common.GetDefaultImage(),
 		ServerHostname:          "cacheserver-0.cacheserver.cache-server.svc.cluster.local",
 		NumThreads:              1,
 		DataSizeGiB:             1,

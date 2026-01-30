@@ -110,7 +110,7 @@ var _ = Describe("PerfClient", Label("perf", "perfclient"), Ordered, func() {
 		log.Info(strings.Repeat("=", 80))
 		log.Info("PERFORMANCE TEST SUMMARY")
 		log.Info(strings.Repeat("=", 80))
-		log.Info("Test Configuration", "dataSizeGiB", *dataSizeGiB, "cacheServerCount", *cacheServerCount, "numThreads", *numThreads, "checksumAlgorithm", *checksumAlgorithm)
+		log.Info("Test Configuration", "dataSizeGiB", fluxOpts.DataSizeGiB, "cacheServerCount", fluxOpts.CacheServerCount, "numThreads", fluxOpts.NumThreads, "checksumAlgorithm", fluxOpts.ChecksumAlgorithm)
 		log.Info(strings.Repeat("-", 80))
 		for _, r := range results {
 			log.Info("Result", "config", r.Config, "mode", r.Mode, "throughputMbps", r.Summary.ThroughputMbps, "durationMs", r.Summary.DurationMs, "failures", r.Summary.TotalIndividualFailures)
@@ -123,17 +123,17 @@ var _ = Describe("PerfClient", Label("perf", "perfclient"), Ordered, func() {
 // If colocate is true, it uses a single server; otherwise it uses the cacheServerCount flag value.
 // Returns the parsed perfsummary.Summary from the job logs.
 func runPerfClientWithConfig(ctx context.Context, config *perfclient.Config, colocate bool) *perfsummary.Summary {
-	// Use single server for colocated tests, otherwise use flag value
-	serverCount := *cacheServerCount
+	// Use single server for colocated tests, otherwise use the cacheServerCount flag value
+	serverCount := fluxOpts.CacheServerCount
 	if colocate {
 		serverCount = 1
 	}
 
 	config.WithNamespace(namespace).
 		WithServerHostname(buildServerHostname(namespace, serverCount)).
-		WithDataSizeGiB(*dataSizeGiB).
-		WithNumThreads(*numThreads).
-		WithChecksumAlgorithm(perfclient.ChecksumAlgorithm(*checksumAlgorithm))
+		WithDataSizeGiB(fluxOpts.DataSizeGiB).
+		WithNumThreads(fluxOpts.NumThreads).
+		WithChecksumAlgorithm(perfclient.ChecksumAlgorithm(fluxOpts.ChecksumAlgorithm))
 
 	By(fmt.Sprintf("Creating %s perf client job (checksum calc=%t, validate=%t, colocate=%t, servers=%d)",
 		config.Mode, config.EnableCalculateChecksum, config.EnableValidateChecksum, config.ColocateWithServer, serverCount))

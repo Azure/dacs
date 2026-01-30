@@ -196,6 +196,7 @@ def _initialize_dacs_client_config(intercept_path: str = None, write_mode=None) 
         config_file.write(f"storagePath {intercept_path}\n")
         config_file.write("type blob\n")
         config_file.write("azBlobDynamicAccount true\n")
+        config_file.write("azBlobDynamicContainer true\n")
 
         # Check if SAS token is provided (for dev operations), otherwise use managed identity
         sas_token = os.environ.get("STORAGE_INTCPT_SAS_TOKEN") if os.environ.get("USE_SAS_TOKEN", "false") == "true" else None

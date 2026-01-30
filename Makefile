@@ -40,6 +40,9 @@ help:
 	@echo "  make undeploy"
 	@echo "  make unprovision"
 
+## Location to install dependencies to
+LOCALBIN ?= $(shell pwd)/bin
+## Build configuration
 BUILD_TYPE ?= Debug
 BUILD_ARCH ?= $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 MODE ?= upload

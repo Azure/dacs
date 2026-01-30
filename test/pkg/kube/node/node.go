@@ -1,3 +1,10 @@
+/*
+--------------------------------------------------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Kubernetes Node helper methods
+# --------------------------------------------------------------------------------------------------------------------
+*/
+
 package node
 
 import (
@@ -7,21 +14,26 @@ import (
 
 	"github.com/Azure/dacs/test/pkg/logger"
 	"github.com/Azure/dacs/test/pkg/utils"
+	"github.com/go-logr/logr"
 )
 
-var log = logger.New()
+var log logr.Logger
+
+func init() {
+	log = logger.New()
+}
 
 // GetSKU returns the node SKU (instance type) from node labels.
 // On AKS, this comes from node.kubernetes.io/instance-type label.
 func GetSKU(ctx context.Context, nodeName string) string {
-	cmd := exec.CommandContext(ctx, "kubectl", "get", "node", nodeName,
+	skuCmd := exec.CommandContext(ctx, "kubectl", "get", "node", nodeName,
 		"-o", "jsonpath={.metadata.labels.node\\.kubernetes\\.io/instance-type}")
-	output, err := utils.RunOutput(cmd)
+	skuOutput, err := utils.RunOutput(skuCmd)
 	if err != nil {
 		log.Error(err, "Failed to get node SKU", "node", nodeName)
 		return ""
 	}
-	return strings.TrimSpace(output)
+	return strings.TrimSpace(skuOutput)
 }
 
 // GetWithLabel returns the names of all nodes with a specific label.

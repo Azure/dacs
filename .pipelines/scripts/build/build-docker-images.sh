@@ -30,7 +30,7 @@ echo "Cache Controller Image: $CACHECONTROLLER_IMAGE"
 # Build Docker images from Dockerfiles
 cd "$DOCKER_DIR"
 docker build -f CacheServer.Dockerfile -t "$CACHESERVER_IMAGE" .
-docker build -f CacheClient.Dockerfile -t "$CACHECLIENT_IMAGE" .
+docker build -f CacheClient.Dockerfile -t "$CACHECLIENT_IMAGE" . --build-context repo="$REPOSITORY_ROOT"
 docker build -f CacheServerScheduler.Dockerfile -t "$CACHESERVER_SCHEDULER_IMAGE" "$REPOSITORY_ROOT/src/subsystems/storage/cache_server_scheduler"
 
 cd "$CACHE_CONTROLLER_DIR"

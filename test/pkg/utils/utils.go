@@ -1,3 +1,9 @@
+/*
+--------------------------------------------------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Utility methods to support e2e tests
+# --------------------------------------------------------------------------------------------------------------------
+*/
 package utils
 
 import (
@@ -17,9 +23,19 @@ import (
 	"github.com/Azure/dacs/test/pkg/logger"
 )
 
-// log is the default logger for the utils package. It uses klog's textlogger
-// to output in the standard klog format, writing to GinkgoWriter.
-var log = logger.New()
+var (
+	// log is the default logger for the utils package. It uses klog's textlogger
+	// to output in the standard klog format, writing to GinkgoWriter.
+	log = logger.New()
+
+	// WriteSupportModes defines the supported write modes for cache client e2e tests
+	WriteSupportModes = map[string]bool{
+		"write_cache_only":       true,
+		"write_blob_only":        true,
+		"write_cache_blob_async": true,
+		"write_sync":             true,
+	}
+)
 
 // NewStringReader creates a new io.Reader from a string.
 func NewStringReader(s string) io.Reader {
@@ -74,6 +90,7 @@ func GetProjectDir() (string, error) {
 	if err != nil {
 		return wd, err
 	}
+	wd = strings.ReplaceAll(wd, "/test/e2e/cacheClient", "")
 	wd = strings.ReplaceAll(wd, "/test/e2e", "")
 	wd = strings.ReplaceAll(wd, "/test/perf", "")
 
@@ -241,4 +258,91 @@ func Sleep(ctx context.Context, delay time.Duration) error {
 	case <-time.After(delay):
 		return nil
 	}
+}
+
+// TODO: Move the following functions to a separate azure utils package
+// CheckRoleAssignments checks if a role assignment exists for the given clientID on the storage account
+func CheckRoleAssignments(clientID, storageAccountName, role string) (bool, error) {
+	scope, err := getSAScope(storageAccountName)
+	if err != nil {
+		return false, err
+	}
+	objectID, err := getObjectID(clientID)
+	if err != nil {
+		return false, err
+	}
+	return isRoleAssignmentAlreadyExists(objectID, scope, role)
+}
+
+// getSAScope queryes the scope for the given storage account
+func getSAScope(sa string) (string, error) {
+	cmd := exec.Command("az", "storage", "account", "show", "--name", sa, "--query", "id", "-o", "tsv")
+	output, err := Run(cmd)
+	if err != nil {
+		return "", fmt.Errorf("Failed to get storage account id for %s: %v", sa, err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+// getObjectID returns the principal ID for the given clientID
+func getObjectID(clientID string) (string, error) {
+	cmd := exec.Command("az", "ad", "sp", "show", "--id", clientID, "--query", "id", "-o", "tsv")
+	output, err := Run(cmd)
+	if err != nil {
+		return "", fmt.Errorf("Failed to get principal id for clientID %s: %v", clientID, err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+func isRoleAssignmentAlreadyExists(objectID, scope, role string) (bool, error) {
+	cmd := exec.Command("az", "role", "assignment", "list", "--assignee", objectID, "--scope", scope, "--role", role, "--query", "[].id", "-o", "tsv")
+	output, err := Run(cmd)
+	if err != nil {
+		return false, fmt.Errorf("Failed to check role assignments for objectID %s: %v", objectID, err)
+	}
+	if strings.TrimSpace(string(output)) != "" {
+		return true, nil
+	}
+	return false, nil
+}
+
+// CreateContainerIfNotExists checks and create the container if not exists
+func CreateContainerIfNotExists(storageAccountName, containerName string) error {
+	// Check container existence
+	cmd := exec.Command("az", "storage", "container", "exists", "--name", containerName, "--account-name", storageAccountName, "--query", "exists", "-o", "tsv")
+	output, err := Run(cmd)
+	if err != nil {
+		return fmt.Errorf("Failed to check container existence: %v", err)
+	}
+	if strings.TrimSpace(string(output)) == "true" {
+		return nil
+	}
+
+	// Create container
+	cmd = exec.Command("az", "storage", "container", "create", "--name", containerName, "--account-name", storageAccountName)
+	_, err = Run(cmd)
+	if err != nil {
+		return fmt.Errorf("Failed to create container: %v", err)
+	}
+	return nil
+}
+
+// DeleteContainer marks the specified container for deletion
+func DeleteContainer(storageAccountName, containerName string) error {
+	cmd := exec.Command("az", "storage", "container", "delete", "--name", containerName, "--account-name", storageAccountName)
+	_, err := Run(cmd)
+	if err != nil {
+		return fmt.Errorf("Failed to delete container: %v", err)
+	}
+	return nil
+}
+
+// GetResourceGroupOfCluster returns the resource group of the given AKS cluster name
+func GetResourceGroupOfCluster(clusterName string) (string, error) {
+	cmd := exec.Command("az", "aks", "list", "--query", fmt.Sprintf("[?name=='%s'].resourceGroup", clusterName), "-o", "tsv")
+	output, err := RunOutput(cmd)
+	if err != nil {
+		return "", fmt.Errorf("Failed to get resource group of cluster %s: %v", clusterName, err)
+	}
+	return strings.TrimSpace(string(output)), nil
 }

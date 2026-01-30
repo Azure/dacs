@@ -17,6 +17,7 @@ import (
 
 	"github.com/Azure/dacs/test/pkg/cluster"
 	"github.com/Azure/dacs/test/pkg/common"
+	fluxperf "github.com/Azure/dacs/test/pkg/flux/perf"
 	"github.com/Azure/dacs/test/pkg/git"
 	"github.com/Azure/dacs/test/pkg/helm"
 	"github.com/Azure/dacs/test/pkg/kusto"
@@ -37,23 +38,17 @@ var (
 
 	// defaultKubeConfigPath is the default path to the kubeconfig file.
 	defaultKubeConfigPath = filepath.Join(os.Getenv("HOME"), ".kube", "config")
-	// junitReport is the report file generated for consumption by Junit.
-	junitReport = flag.String("junit-report", "junit.xml", "Path to the junit report")
 
-	// supportBundleDir is the directory where support bundles are written.
-	supportBundleDir = flag.String("support-bundle-dir", "support-bundles", "Path to write support-bundles")
-
-	// summaryReport is the path to the summary report.
-	summaryReport = flag.String("summary-report", "summary.md", "Path to write summary report")
-
-	// Perf test configuration flags
-	dataSizeGiB       = flag.Int("data-size-gib", 1, "Data size in GiB for perf tests")
-	cacheServerCount  = flag.Int("cache-server-count", 1, "Number of cache servers to use")
-	numThreads        = flag.Int("num-threads", 1, "Number of threads for perf client")
-	checksumAlgorithm = flag.String("checksum-algorithm", "xxhash32", "Checksum algorithm (xxhash32 or crc32)")
+	// Flux options for tests that need them.
+	fluxOpts fluxperf.Options
 )
 
 func TestMain(m *testing.M) {
+	if err := fluxperf.AddFlags(flag.CommandLine, &fluxOpts); err != nil {
+		log.Error(err, "failed to add flux flags")
+		os.Exit(1)
+	}
+
 	if os.Getenv(clientcmd.RecommendedConfigPathEnvVar) == "" {
 		err := os.Setenv(clientcmd.RecommendedConfigPathEnvVar, defaultKubeConfigPath)
 		if err != nil {
@@ -92,12 +87,12 @@ var _ = BeforeSuite(func(ctx context.Context) {
 
 var _ = AfterSuite(func(ctx context.Context) {
 	cleanupPerfJobs(ctx, namespace)
-	common.Teardown(ctx, k8sClient, namespace, *supportBundleDir)
+	common.Teardown(ctx, k8sClient, namespace, fluxOpts.SupportBundleDir)
 })
 
 var _ = ReportAfterSuite("perf reporter", func(ctx SpecContext, r Report) {
-	common.CollectSuiteSupportBundle(ctx, *supportBundleDir)
-	common.PostReport(ctx, r, *junitReport, *summaryReport)
+	common.CollectSuiteSupportBundle(ctx, fluxOpts.SupportBundleDir)
+	common.PostReport(ctx, r, fluxOpts.JunitReport, fluxOpts.SummaryReport)
 	// Clean up perf test jobs after support bundle collection
 })
 

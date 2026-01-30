@@ -8,6 +8,7 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 
 	"github.com/Azure/dacs/test/pkg/logger"
 	"github.com/Azure/dacs/test/pkg/utils"
@@ -109,4 +110,22 @@ func Apply(ctx context.Context, yaml string) error {
 		log.Error(err, "Failed to apply YAML", "output", output)
 	}
 	return err
+}
+
+func IsPodExitedSuccessfully(ctx context.Context, pod *corev1.Pod) bool {
+	var reason, message string
+	var exitCode int32
+	for _, cs := range pod.Status.ContainerStatuses {
+		if cs.State.Terminated != nil {
+			reason = cs.State.Terminated.Reason
+			message = cs.State.Terminated.Message
+			exitCode = cs.State.Terminated.ExitCode
+			if cs.State.Terminated.ExitCode == 0 {
+				return true
+			}
+			log.Error(fmt.Errorf("pod %s container %s exited with reason: %s, message: %s, exitCode: %d",
+				pod.Name, cs.Name, reason, message, exitCode), "Container exited with non-zero exit code")
+		}
+	}
+	return false
 }

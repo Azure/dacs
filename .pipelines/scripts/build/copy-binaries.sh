@@ -47,6 +47,8 @@ cp "$BINARIES_PATH/libStorageDirect.so" "$DOCKER_STORAGE/libStorageDirect.so"
 cp "$STRESS_TESTS_PATH/launcher.py" "$CACHE_TEST/launcher.py"
 cp "$STRESS_TESTS_PATH/StorageClient.py" "$CACHE_TEST/StorageClient.py"
 cp "$STRESS_TESTS_PATH/storageIntercept.config" "$CACHE_TEST/storageIntercept.config"
+cp "$BINARIES_PATH/libStorageDirect.so" "$CACHE_TEST/libStorageDirect.so"
+cp "$BINARIES_PATH/dacsfs" "$CACHE_TEST/dacsfs"
 
 # Copy py_dacs_client library (excluding tests and __pycache__)
 echo "Copying py_dacs_client library..."
@@ -54,6 +56,12 @@ echo "Copying py_dacs_client library..."
 for f in "$PY_DACS_CLIENT_PATH"/*.py; do
     [ -f "$f" ] && cp "$f" "$PY_DACS_CLIENT/"
 done
+
+# Copy sample directory
+if [ -d "$PY_DACS_CLIENT_PATH/sample" ]; then
+    echo "Copying sample directory..."
+    cp -r "$PY_DACS_CLIENT_PATH/sample" "$PY_DACS_CLIENT/sample/"
+fi
 
 # Summary
 echo ""

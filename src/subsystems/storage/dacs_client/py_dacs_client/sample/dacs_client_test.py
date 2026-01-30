@@ -86,7 +86,7 @@ def perf_test_read(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobSi
     asyncio.run(dacs_client_instance.shutdown())
 
 
-def perf_test_write(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobSize: int):
+def perf_test_write(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobSize: int, write_mode: None):
     """
     Perform a performance test by writing blobs to a given directory.
     Returns tuple: (total_bytes_written, elapsed_seconds, uploadSpeedMBps)
@@ -104,7 +104,7 @@ def perf_test_write(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobS
         raise Exception("azBlobDirPath is not a valid path. Please set it to run the test.")
 
     # Initialize the DACSCacheClient
-    dacs_client_instance = DACSCacheClient()
+    dacs_client_instance = DACSCacheClient(write_mode=write_mode)
 
     # Generate write buffers for each blob
     start_time = time.time()
@@ -206,6 +206,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--blobSizeToBeRead", type=int, default=0, help="Size of the blob to be read")
     parser.add_argument("--readOnly", action="store_true", help="Skip write test and only perform read test")
+    parser.add_argument("--writeMode", type=str, default="write_sync", help="Write mode for the DACS Client (e.g., 'write_disabled', 'write_cache_only', 'write_blob_only', 'write_cache_blob_async', 'write_sync')")
+
     args = parser.parse_args()
 
     logger.info(
@@ -213,7 +215,7 @@ if __name__ == "__main__":
     )
 
     if not args.readOnly:
-        perf_test_write(args.nBlobs, args.azBlobDirPath, args.blobNamePattern, args.blobSizeToBeRead)
+        perf_test_write(args.nBlobs, args.azBlobDirPath, args.blobNamePattern, args.blobSizeToBeRead, args.writeMode)
 
         # sleep for a while to allow async uploads to complete if any
         async_upload_wait_time = os.environ.get("ASYNC_UPLOAD_WAIT_TIME_SECONDS", "20")
