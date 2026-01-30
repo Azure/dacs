@@ -87,4 +87,106 @@ func Parse(logs string) (*Summary, error) {
 		ExpectedChunksToTransfer:      expectedChunks,
 		ChunksSuccessfullyTransferred: successChunks,
 	}, nil
+
+}
+
+// DACS Client will log below summary:
+//      DACS_Cache_Client_Test:Wrote 10 blobs with total 10737418240 bytes (10.0 GBs) in 11.24 seconds at 7.120259300233558 Gbps
+//      DACS_Cache_Client_Test:Read 10737418240 bytes (10.0 GBs) in 7.85 seconds at 10.197416264362593 Gbps
+
+type DACSClientPerfSummary struct {
+	TotalBlobsWritten uint64 `json:"totalBlobsWritten"`
+
+	// Write related metrics
+	TotalBytesWritten     uint64  `json:"totalBytesWritten"`
+	TotalWriteTimeSeconds float64 `json:"totalWriteTimeSeconds"`
+	WriteThroughputGbps   float64 `json:"writeThroughputGbps"`
+
+	// Read related metrics
+	TotalBytesRead       uint64  `json:"totalBytesRead"`
+	TotalReadTimeSeconds float64 `json:"totalReadTimeSeconds"`
+	ReadThroughputGbps   float64 `json:"readThroughputGbps"`
+}
+
+// String returns a formatted string representation of the Summary.
+func (p DACSClientPerfSummary) String() string {
+	return fmt.Sprintf(
+		"TotalBlobsWritten: %d, TotalBytesWritten: %d, TotalWriteTimeSeconds: %.2f, WriteThroughputGbps: %.2f, TotalBytesRead: %d, TotalReadTimeSeconds: %.2f, ReadThroughputGbps: %.2f",
+		p.TotalBlobsWritten, p.TotalBytesWritten,
+		p.TotalWriteTimeSeconds, p.WriteThroughputGbps,
+		p.TotalBytesRead, p.TotalReadTimeSeconds, p.ReadThroughputGbps,
+	)
+}
+
+// Regex pattern to extract the performance summary
+var (
+	writePerfRegx = regexp.MustCompile(`DACS_Cache_Client_Test:Wrote (\d+) blobs with total (\d+) bytes .* in ([\d.]+) seconds at ([\d.]+) Gbps`)
+	readPerfRegx  = regexp.MustCompile(`DACS_Cache_Client_Test:Read (\d+) bytes .* in ([\d.]+) seconds at ([\d.]+) Gbps`)
+)
+
+func ParseDACSClientPerfSummary(logs string) (*DACSClientPerfSummary, error) {
+	// Implementation to parse logs and extract performance metrics
+	matchesWrite := writePerfRegx.FindStringSubmatch(logs)
+	if matchesWrite == nil {
+		return nil, fmt.Errorf("failed to parse write performance metrics from logs")
+	}
+
+	// Extract write metrics from regex matches (If log order changes this needs to be updated)
+	// Index Type
+	// 1     blobs
+	// 2     bytes
+	// 3     seconds
+	// 4     Gbps
+	totalBlobs, err := strconv.ParseUint(matchesWrite[1], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("Invalid blobs written value: %v", err)
+	}
+	totalBytesWritten, err := strconv.ParseUint(matchesWrite[2], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("Invalid total bytes written value: %v", err)
+	}
+	writeSeconds, err := strconv.ParseFloat(matchesWrite[3], 64)
+	if err != nil {
+		return nil, fmt.Errorf("Invalid write time seconds value: %v", err)
+	}
+	writeGbps, err := strconv.ParseFloat(matchesWrite[4], 64)
+	if err != nil {
+		return nil, fmt.Errorf("Invalid write throughput Gbps value: %v", err)
+	}
+
+	matchesRead := readPerfRegx.FindStringSubmatch(logs)
+	if matchesRead == nil {
+		return nil, fmt.Errorf("Failed to parse read performance metrics from logs: %v", err)
+	}
+
+	// Extract read metrics from regex matches (If log order changes this needs to be updated)
+	// Index Type
+	// 1     bytes
+	// 2     seconds
+	// 3     Gbps
+	totalBytesRead, err := strconv.ParseUint(matchesRead[1], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("Invalid total bytes read value: %v", err)
+	}
+	readSeconds, err := strconv.ParseFloat(matchesRead[2], 64)
+	if err != nil {
+		return nil, fmt.Errorf("Invalid read time seconds value: %v", err)
+	}
+	readGbps, err := strconv.ParseFloat(matchesRead[3], 64)
+	if err != nil {
+		return nil, fmt.Errorf("Invalid read throughput Gbps value: %v", err)
+	}
+
+	summary := &DACSClientPerfSummary{
+		TotalBlobsWritten:     totalBlobs,
+		TotalBytesWritten:     totalBytesWritten,
+		TotalWriteTimeSeconds: writeSeconds,
+		WriteThroughputGbps:   writeGbps,
+
+		TotalBytesRead:       totalBytesRead,
+		TotalReadTimeSeconds: readSeconds,
+		ReadThroughputGbps:   readGbps,
+	}
+
+	return summary, nil
 }

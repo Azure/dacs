@@ -14,7 +14,7 @@ To build and push the PerfClient.cpp container, run:
 ```
 # cd <DACS root>
 current_date=$(date +%s)
-docker build . -f src/subsystems/storage/stress_tests/container/Dockerfile  -t dacs.azurecr.io/storage-perf-client:${current_date}
+docker build . -f src/subsystems/storage/dacs_client/Dockerfile  -t dacs.azurecr.io/storage-perf-client:${current_date}
 docker push dacs.azurecr.io/storage-perf-client:${current_date}
 ```
 Make sure to update the reference to the image in the K8s YAML files.

@@ -20,6 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/Azure/dacs/test/pkg/cluster"
 	"github.com/Azure/dacs/test/pkg/logger"
 	"github.com/Azure/dacs/test/pkg/utils"
 )
@@ -57,6 +58,26 @@ var (
 	startTime     = time.Now()
 	filePathRegex = regexp.MustCompile(`[ /]`)
 )
+
+// GetDefaultImage returns the default perf client image based on environment variables
+// matching the helm chart configuration. On minikube, uses local image.
+func GetDefaultImage() string {
+	// On minikube, use the local image that was loaded via `minikube image load`
+	if cluster.IsMinikube() {
+		return "cache-test-client:local"
+	}
+
+	registry := os.Getenv("DOCKER_REGISTRY")
+	if registry == "" {
+		registry = "docker.io"
+	}
+	buildNumber := os.Getenv("BUILD_NUMBER")
+	if buildNumber == "" {
+		buildNumber = "latest"
+	}
+
+	return fmt.Sprintf("%s/cache-test-client:%s-linux-amd64", registry, buildNumber)
+}
 
 // Setup sets up the test environment for DACS E2E tests.
 func Setup(ctx context.Context, k8sClient client.Client, namespace string) {

@@ -17,6 +17,7 @@ import (
 
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
 	"github.com/Azure/dacs/test/pkg/common"
+	e2eflags "github.com/Azure/dacs/test/pkg/flux/e2e"
 	"github.com/Azure/dacs/test/pkg/logger"
 )
 
@@ -30,17 +31,16 @@ var (
 
 	// defaultKubeConfigPath is the default path to the kubeconfig file.
 	defaultKubeConfigPath = filepath.Join(os.Getenv("HOME"), ".kube", "config")
-	// junitReport is the report file generated for consumption by Junit.
-	junitReport = flag.String("junit-report", "junit.xml", "Path to the junit report")
-
-	// supportBundleDir is the directory where support bundles are written.
-	supportBundleDir = flag.String("support-bundle-dir", "support-bundles", "Path to write support-bundles")
-
-	// summaryReport is the path to the summary report.
-	summaryReport = flag.String("summary-report", "summary.md", "Path to write summary report")
+	// fluxOpts holds the e2e test options
+	fluxOpts e2eflags.Options
 )
 
 func TestMain(m *testing.M) {
+	if err := e2eflags.AddFlags(flag.CommandLine, &fluxOpts); err != nil {
+		log.Error(err, "failed to add flux flags")
+		os.Exit(1)
+	}
+
 	if os.Getenv(clientcmd.RecommendedConfigPathEnvVar) == "" {
 		err := os.Setenv(clientcmd.RecommendedConfigPathEnvVar, defaultKubeConfigPath)
 		if err != nil {
@@ -84,10 +84,10 @@ var _ = BeforeSuite(func(ctx context.Context) {
 })
 
 var _ = AfterSuite(func(ctx context.Context) {
-	common.Teardown(ctx, k8sClient, namespace, *supportBundleDir)
+	common.Teardown(ctx, k8sClient, namespace, fluxOpts.SupportBundleDir)
 })
 
 var _ = ReportAfterSuite("e2e reporter", func(ctx SpecContext, r Report) {
-	common.CollectSuiteSupportBundle(ctx, *supportBundleDir)
-	common.PostReport(ctx, r, *junitReport, *summaryReport)
+	common.CollectSuiteSupportBundle(ctx, fluxOpts.SupportBundleDir)
+	common.PostReport(ctx, r, fluxOpts.JunitReport, fluxOpts.SummaryReport)
 })

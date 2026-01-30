@@ -50,9 +50,9 @@ type PerfMetric struct {
 	HelmAppVersion   string `json:"HelmAppVersion"`
 
 	// TestMetadata contains dynamic test environment info
-	TestMetadata TestMetadata `json:"TestMetadata"`
+	TestMetadata any `json:"TestMetadata"`
 
-	// Result contains the performance data (PerfResult or IperfResult)
+	// Result contains the performance data (PerfResult / IperfResult / DACSClientPerfResult)
 	Result any `json:"Result"`
 }
 
@@ -92,6 +92,42 @@ type IperfResult struct {
 	SenderRetransmits     int     `json:"SenderRetransmits"`
 	ReceiverBandwidthMbps float64 `json:"ReceiverBandwidthMbps"`
 	ReceiverTransferMB    float64 `json:"ReceiverTransferMB"`
+}
+
+// DACSClientMetadata contains test environment metadata specific to DACS client tests
+type DACSClientMetadata struct {
+	StorageAccount string        `json:"StorageAccount"`
+	ContainerName  string        `json:"ContainerName"`
+	ClusterName    string        `json:"ClusterName"`
+	JobName        string        `json:"JobName"`
+	IsMinikube     bool          `json:"IsMinikube"`
+	WriteMode      string        `json:"WriteMode"`
+	Clients        int           `json:"Clients"`
+	PodsMetadata   []PodMetadata `json:",inline"`
+}
+
+// PodMetadata contains pod-specific metadata for DACS client tests
+type PodMetadata struct {
+	PodName     string                  `json:"PodName"`
+	NodeName    string                  `json:"NodeName"`
+	NodeSKU     string                  `json:"NodeSKU"`
+	PerfSummary DACSClientPerfResult `json:"PerfSummary"`
+}
+
+// DACSClientPerfResult contains accumulated performance results of specific DACS client tests
+type DACSClientPerfResult struct {
+	BlobSize          int64  `json:"BlobSize"`
+	TotalBlobsWritten uint64 `json:"TotalBlobsWritten"`
+
+	// Write related metrics
+	TotalBytesWritten     uint64  `json:"TotalBytesWritten"`
+	TotalWriteTimeSeconds float64 `json:"TotalWriteTimeSeconds"`
+	WriteThroughputGbps   float64 `json:"WriteThroughputGbps"`
+
+	// Read related metrics
+	TotalBytesRead       uint64  `json:"TotalBytesRead"`
+	TotalReadTimeSeconds float64 `json:"TotalReadTimeSeconds"`
+	ReadThroughputGbps   float64 `json:"ReadThroughputGbps"`
 }
 
 // SendPerfMetric sends a performance metric to EventHub for ingestion into Kusto.

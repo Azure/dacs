@@ -5,7 +5,7 @@ A stress testing framework for cacheserver/client interactions on kubernetes bas
 1. _Container/_ - contains the dockerfile used to build the stress testing client container image that is used by the stress testing framework. To build the container:
     ```
     cd <DACS root>
-    docker build . -f src/subsystems/storage/stress_tests/container/Dockerfile  -t dacs.azurecr.io/storage-test-client:stress
+    docker build . -f src/subsystems/storage/tachon_client/Dockerfile  -t dacs.azurecr.io/storage-test-client:stress
     ```
 2. _k8s_ - contains the automation scripts, test scenario configurations and kubernetes yaml templates used to launch the stress tests. More details on this later.
 3. _launcher.py_ - Entrypoint for the stress testing client container image. The launcher is responsible for starting up one or many client programs    that read from a specified dataset. That is, each container image launched executes the launcher script, which spawns one or more client programs of the same kind, each processing the same dataset. The launcher accepts four arguments:

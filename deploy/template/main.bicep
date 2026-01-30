@@ -59,6 +59,10 @@ module cluster 'cluster.bicep' = {
 module storage 'storage.bicep' = if (createStorageAccount) {
   name: 'storageModule'
   scope: resourceGroup
+  params: {
+    aksResourceGroup: resourceGroup.name
+    aksName: cluster.outputs.name
+  }
 }
 
 output managedClusterName string = cluster.outputs.name
