@@ -47,6 +47,31 @@ else
     PODS=$(echo "$ALL_PODS" | head -n "$NUM_NODES")
 fi
 
+# Configure retry settings based on number of nodes
+# More nodes = more concurrent requests = higher throttling probability
+# Scale up retries and delays accordingly
+if [ "$NUM_NODES" -le 5 ]; then
+    # Low load: minimal retries
+    BLOB_RETRY_MAX_ATTEMPTS=10
+    BLOB_RETRY_BASE_DELAY_SECONDS=1
+    BLOB_RETRY_MAX_DELAY_SECONDS=64
+elif [ "$NUM_NODES" -le 10 ]; then
+    # Medium load: moderate retries
+    BLOB_RETRY_MAX_ATTEMPTS=15
+    BLOB_RETRY_BASE_DELAY_SECONDS=2
+    BLOB_RETRY_MAX_DELAY_SECONDS=128
+elif [ "$NUM_NODES" -le 20 ]; then
+    # High load: aggressive retries
+    BLOB_RETRY_MAX_ATTEMPTS=20
+    BLOB_RETRY_BASE_DELAY_SECONDS=3
+    BLOB_RETRY_MAX_DELAY_SECONDS=256
+else
+    # Very high load (20+ nodes): maximum retries
+    BLOB_RETRY_MAX_ATTEMPTS=25
+    BLOB_RETRY_BASE_DELAY_SECONDS=4
+    BLOB_RETRY_MAX_DELAY_SECONDS=300
+fi
+
 # Clear previous results
 rm -rf /tmp/benchmark_results
 mkdir -p /tmp/benchmark_results
@@ -61,6 +86,11 @@ echo "Blobs per process: $NUM_BLOBS"
 echo "Blob size: ${BLOB_SIZE_GB} GB"
 echo "Expected data per node: ${EXPECTED_DATA_PER_NODE_GB} GB"
 echo "Write mode: $WRITE_MODE"
+echo ""
+echo "Retry Configuration (based on $NUM_NODES nodes):"
+echo "  Max Attempts:    $BLOB_RETRY_MAX_ATTEMPTS"
+echo "  Base Delay:      ${BLOB_RETRY_BASE_DELAY_SECONDS}s"
+echo "  Max Delay:       ${BLOB_RETRY_MAX_DELAY_SECONDS}s"
 echo "======================================================================" 
 echo ""
 
@@ -70,7 +100,17 @@ PIDS=""
 i=1
 for pod in $PODS; do
     echo "  Starting benchmark on $pod (node $i)..."
-    kubectl exec "$pod" -- bash -c "export STORAGE_INTCPT_SAS_TOKEN='${SAS_TOKEN}' && cd /app && python3 -m py_dacs_client.benchmarks.throughput_benchmark --storage-account $STORAGE_ACCOUNT --num-processes $NUM_PROCESSES --num-blobs $NUM_BLOBS --blob-size-gb $BLOB_SIZE_GB --write-mode $WRITE_MODE --node-id node${i}" > /tmp/benchmark_results/node${i}.txt 2>&1 &
+    kubectl exec "$pod" -- bash -c "export STORAGE_INTCPT_SAS_TOKEN='${SAS_TOKEN}' && \
+        export SI_blobRetryMaxAttempts=${BLOB_RETRY_MAX_ATTEMPTS} && \
+        export SI_blobRetryBaseDelaySeconds=${BLOB_RETRY_BASE_DELAY_SECONDS} && \
+        export SI_blobRetryMaxDelaySeconds=${BLOB_RETRY_MAX_DELAY_SECONDS} && \
+        cd /app && python3 -m py_dacs_client.benchmarks.throughput_benchmark \
+        --storage-account $STORAGE_ACCOUNT \
+        --num-processes $NUM_PROCESSES \
+        --num-blobs $NUM_BLOBS \
+        --blob-size-gb $BLOB_SIZE_GB \
+        --write-mode $WRITE_MODE \
+        --node-id node${i}" > /tmp/benchmark_results/node${i}.txt 2>&1 &
     PIDS="$PIDS $!"
     i=$((i+1))
 done

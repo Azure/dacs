@@ -93,6 +93,14 @@ namespace StorageInterceptConstants
     const char* const ConfigNameMaxConnsPerBlobClient = "maxConnsPerBlobClient";
     const char* const ConfigNameAzIgnoreAccountNameInCacheKey = "azIgnoreAccountNameInCacheKey";
 
+    // Config constants for blob client retry policy
+    const char* const ConfigNameBlobRetryMaxAttempts = "blobRetryMaxAttempts";
+    const char* const ConfigNameBlobRetryBaseDelaySeconds = "blobRetryBaseDelaySeconds";
+    const char* const ConfigNameBlobRetryMaxDelaySeconds = "blobRetryMaxDelaySeconds";
+    constexpr uint32_t ConfigDefaultBlobRetryMaxAttempts = 10;
+    constexpr uint32_t ConfigDefaultBlobRetryBaseDelaySeconds = 1;
+    constexpr uint32_t ConfigDefaultBlobRetryMaxDelaySeconds = 128;
+
     // Config constants for chunk download parallelism
     const char* const ConfigNameChunkOperationParallelismEnabled = "chunkOperationParallelismEnabled";
     const char* const ConfigNameChunkOperationMaxConcurrency = "chunkOperationMaxConcurrency";
