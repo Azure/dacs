@@ -186,7 +186,11 @@ def _initialize_dacs_client_config(intercept_path: str = None, write_mode=None) 
         write_mode: Write mode configuration (from WriteMode enum in dacs_adapter)
     """
 
-    config_path = "/tmp/storageIntercept.config"
+    # Use process-specific config path to avoid race conditions in multi-process scenarios
+    # The native library reads STORAGE_INTERCEPT_CONFIG_FILEPATH env var to find the config file
+    pid = os.getpid()
+    config_path = f"/tmp/storageIntercept.{pid}.config"
+    os.environ["STORAGE_INTERCEPT_CONFIG_FILEPATH"] = config_path
 
     # Check if config file already exists and warn before overwriting
     if os.path.exists(config_path):

@@ -108,6 +108,11 @@ class StorageInterceptConfig
         bool IsIgnoreAccountNameInCacheKey(const std::string& mountName);
         uint64_t GetMaxBlobConnectionsPerClient(const std::string& mountName);
 
+        // Getters for blob client retry policy configuration
+        uint32_t GetBlobRetryMaxAttempts();
+        uint32_t GetBlobRetryBaseDelaySeconds();
+        uint32_t GetBlobRetryMaxDelaySeconds();
+
         // Getters for chunk download\upload parallelism
         bool GetChunkOperationParallelismEnabled(const std::string& mountName);
         uint64_t GetChunkOperationMaxConcurrency(const std::string& mountName);

@@ -888,6 +888,30 @@ uint64_t StorageInterceptConfig::GetMaxBlobConnectionsPerClient(const std::strin
         10);
 }
 //---------------------------------------------------------------------------------------------------------------------
+uint32_t StorageInterceptConfig::GetBlobRetryMaxAttempts()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint32(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameBlobRetryMaxAttempts,
+        StorageInterceptConstants::ConfigDefaultBlobRetryMaxAttempts);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint32_t StorageInterceptConfig::GetBlobRetryBaseDelaySeconds()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint32(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameBlobRetryBaseDelaySeconds,
+        StorageInterceptConstants::ConfigDefaultBlobRetryBaseDelaySeconds);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint32_t StorageInterceptConfig::GetBlobRetryMaxDelaySeconds()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint32(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameBlobRetryMaxDelaySeconds,
+        StorageInterceptConstants::ConfigDefaultBlobRetryMaxDelaySeconds);
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetChunkOperationParallelismEnabled(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(

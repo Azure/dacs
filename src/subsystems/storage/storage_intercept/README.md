@@ -146,6 +146,9 @@ cacheServerDiscoveryEnabled [true or false - Whether to enable discovery endpoin
 cacheServerDiscoveryIntervalInSeconds [Time in seonds - Frequency of refreshing cacheserver set via discovery endpoint ]
 cacheServerDiscoveryEndpoint [Endpoint as string - Cacheserver discovery endpoint]
 cacheEnableConsistentHashing [true or false - Enable Consistent Hashing for Server Selection]
+blobRetryMaxAttempts [Total number of attempts for retryable blob operations. Set to 1 to disable retries (single attempt). default - 10]
+blobRetryBaseDelaySeconds [Base delay in seconds for exponential backoff between blob retries. default - 1]
+blobRetryMaxDelaySeconds [Maximum delay in seconds between blob retries. default - 128]
 ```
 ### Config for running interception on multiple mounts
 For running interception with multiple mounts, use this sample `/tmp/storageIntercept.config`

@@ -15,55 +15,66 @@
 #include <random>
 #include <sstream>
 #include <mstream.h>
+#include <atomic>
+
+// Global counter for tracking retries
+static std::atomic<uint64_t> g_totalRetryCount{0};
+
 //---------------------------------------------------------------------------------------------------------------------
 // Refer: https://github.com/Azure/azure-storage-cpplite/blob/33a807a3984681a604c41659a4a2030ea81194e7/include/retry.h
 //---------------------------------------------------------------------------------------------------------------------
 class exponential_backoff_retry_policy final : public azure::storage_lite::retry_policy_base
 {
   public:
-        exponential_backoff_retry_policy() = default;
+    exponential_backoff_retry_policy()
+        : m_maxRetryCount(StorageInterceptConfig::GetInstance().GetBlobRetryMaxAttempts())
+        , m_retryIntervalBaseSeconds(StorageInterceptConfig::GetInstance().GetBlobRetryBaseDelaySeconds())
+        , m_maxRetryIntervalSeconds(StorageInterceptConfig::GetInstance().GetBlobRetryMaxDelaySeconds())
+    {
+    }
 
     azure::storage_lite::retry_info evaluate(const azure::storage_lite::retry_context& context) const override
     {
-        if (context.numbers() <= MAX_RETRY_COUNT && can_retry(context.result()))
+        if (context.numbers() <= m_maxRetryCount && can_retry(context.result()))
         {
             auto interval = storageretry::GetRetryIntervalExpJitter(
                 static_cast<uint32_t>(context.numbers()),
-                std::chrono::seconds(RETRY_INTERVAL_BASE_SECONDS),
-                std::chrono::seconds(MAX_RETRY_INTERVAL_SECONDS));
-            LOG_INFO("Will retry attempts={} status-code={} in {} seconds",
+                std::chrono::seconds(m_retryIntervalBaseSeconds),
+                std::chrono::seconds(m_maxRetryIntervalSeconds));
+            
+            LOG_INFO("Will retry attempts={} status-code={} in {} seconds (total_retry_done={})",
                      context.numbers(),
                      context.result(),
-                     interval.count());
+                     interval.count(),
+                     ++g_totalRetryCount);
 
             return azure::storage_lite::retry_info(true, interval);
         }
 
-        LOG_INFO("Will not retry attempts={} status-code={}", context.numbers(), context.result());
+        LOG_INFO("Will not retry attempts={} status-code={} (total_retry_done={})",
+                 context.numbers(),
+                 context.result(),
+                 g_totalRetryCount.load());
         return azure::storage_lite::retry_info(false, std::chrono::seconds(0));
     }
 
   private:
-    static constexpr uint32_t RETRY_INTERVAL_BASE_SECONDS = 1;
-    static constexpr uint32_t MAX_RETRY_COUNT = 10;
-    static constexpr uint32_t MAX_RETRY_INTERVAL_SECONDS = 128;
+    const uint32_t m_maxRetryCount;
+    const uint32_t m_retryIntervalBaseSeconds;
+    const uint32_t m_maxRetryIntervalSeconds;
 
     bool can_retry(azure::storage_lite::http_base::http_code statusCode) const
     {
-        // Copied from https://github.com/Azure/azure-storage-cpplite/blob/33a807a3984681a604c41659a4a2030ea81194e7/src/utility.cpp#L172
-        if (statusCode == 408 /*Request Timeout*/)
+        // 408 Request Timeout, 429 Too Many Requests, 500+ Server errors (except 501, 505)
+        if (statusCode == 408 || statusCode == 429)
         {
             return true;
         }
-        if (statusCode >= 300 && statusCode < 500)
+        if (statusCode >= 500 && statusCode != 501 && statusCode != 505)
         {
-            return false;
+            return true;
         }
-        if (statusCode == 501 /*Not Implemented*/ || statusCode == 505 /*HTTP Version Not Supported*/)
-        {
-            return false;
-        }
-        return true;
+        return false;
     }
 
 };
@@ -519,14 +530,8 @@ int BlobClient::StageBlocksForUpload(
         blockIdBase64,
         (const char*)buf,
         length).get();
-    LOG_DEBUG("Staged block for upload at path={}, container={}, blobPath={}, block-id={}, nblock={}",
-        remotePath,
-        containerName,
-        blobPath,
-        blockId,
-        nTotalBlocks);
 
-    if(!blobOutcome.success())
+    if (!blobOutcome.success())
     {
         LOG_ERROR(
             "Error occurred while staging block for upload at path={}, container={}, blobPath={},"
@@ -541,6 +546,12 @@ int BlobClient::StageBlocksForUpload(
         throw RemoteClientException("BlobClientError: " + blobOutcome.error().code_name + ", " + blobOutcome.error().message);
     }
 
+    LOG_DEBUG("Staged block for upload at path={}, container={}, blobPath={}, block-id={}, nblock={}",
+        remotePath,
+        containerName,
+        blobPath,
+        blockId,
+        nTotalBlocks);
     return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -553,7 +564,7 @@ int BlobClient::CommitBlocksForUpload(
 
     std::vector<std::pair<std::string, std::string>> metadata;
     std::vector<azBlockItem_t> blockList;
-
+    
     {
         std::unique_lock<std::mutex> lock(m_lockBlockList);
 
