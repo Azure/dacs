@@ -569,9 +569,11 @@ int BlobClient::CommitBlocksForUpload(
         std::unique_lock<std::mutex> lock(m_lockBlockList);
 
         // If the block list is not found, we are uploading an empty blob
-        if(m_mapBlockList.find(remotePath) != m_mapBlockList.end())
+        auto it = m_mapBlockList.find(remotePath);
+        if(it != m_mapBlockList.end())
         {
-            blockList = std::move(m_mapBlockList[remotePath]);
+            blockList = std::move(it->second);
+            m_mapBlockList.erase(it);
         }
     }
 
@@ -593,15 +595,6 @@ int BlobClient::CommitBlocksForUpload(
             blobOutcome.error().code_name,
             blobOutcome.error().message);
         throw RemoteClientException("BlobClientError: " + blobOutcome.error().code_name + ", " + blobOutcome.error().message);
-    }
-
-    // Clear the block list
-    {
-        std::unique_lock<std::mutex> lock(m_lockBlockList);
-        if(m_mapBlockList.find(remotePath) != m_mapBlockList.end())
-        {
-            m_mapBlockList.erase(remotePath);
-        }
     }
 
     LOG_INFO("Committed blocks for upload at path={}, container={}, blobPath={}, nBlocks={}",
