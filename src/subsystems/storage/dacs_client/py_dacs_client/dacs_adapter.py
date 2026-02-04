@@ -579,7 +579,11 @@ def listdir(path: str) -> Iterator[str]:
             async for entry in client.list_dir(path):
                 # entry is a Dict[str, object] with 'd_name' field containing the filename
                 if "d_name" in entry:
-                    result.append(entry["d_name"])
+                    name = entry["d_name"]
+                    # Filter out '.' and '..' entries - these don't exist in blob storage
+                    # They are artifacts from the storage intercept POSIX emulation layer
+                    if name not in (".", ".."):
+                        result.append(name)
             return result
 
         for item in asyncio.run(_listdir_async()):
@@ -615,7 +619,11 @@ def scandir(path: str) -> Iterator[Any]:
             async for entry in client.list_dir(path):
                 # entry is a Dict[str, object] with 'd_name' field containing the filename
                 if "d_name" in entry:
-                    result.append(entry["d_name"])
+                    name = entry["d_name"]
+                    # Filter out '.' and '..' entries - these don't exist in blob storage
+                    # They are artifacts from the storage intercept POSIX emulation layer
+                    if name not in (".", ".."):
+                        result.append(name)
             return result
 
         for item in asyncio.run(_scandir_collect()):
