@@ -839,7 +839,8 @@ TEST_P(CacheClientTests, TestGetLastAccessTimeDistribution)
     distributionBucketSizeInHours = 1;
     status = m_cacheClientImpl.GetLastAccessTimeDistribution(distributionBucketSizeInHours, pLastAccessTimeDistribution, nullptr);
     ASSERT_EQ(CacheClientStatus::SUCCESS, status);
-    ASSERT_EQ(pLastAccessTimeDistribution->nKeyValuePairs, 1);
+    // There can be > 1 buckets if the test uploads occured across UTC hour change
+    ASSERT_TRUE(pLastAccessTimeDistribution->nKeyValuePairs >= 1);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_P(CacheClientTests, TestDeleteByLastAccessTime)
