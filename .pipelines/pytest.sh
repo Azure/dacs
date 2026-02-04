@@ -202,25 +202,7 @@ echo "=== Running pytest command ==="
 echo "python -X faulthandler -m pytest --timeout=300 -vv -x -s --tb=long --junitxml=${REPOSITORY_ROOT}/pytest-results.xml $IGNORE_OPTS ${EXISTING_TEST_DIRS[@]} $@"
 echo ""
 
-# TODO: The Azure DevOps node pools currently lack proper managed identity permissions
-# to access storage accounts (storageinterceptionpr1, storageinterceptionpr2).
-# Once the node pool identity is granted "Storage Blob Data Contributor" role,
-# remove the `|| true` below and allow pytest failures to fail the pipeline.
-# 
-# Action Items:
-# 1. Grant 'Storage Blob Data Contributor' role to azdacspool-mi identity
-# 2. Remove `|| true` from pytest command
-# 3. Remove PYTEST_EXIT_CODE=0 override below
-#
-# Reference: internal-reference-removed
-# 
-# Known errors when permissions are missing:
-# - AuthorizationPermissionMismatch
-# - DACSAuthenticationError (EPERM)
-# - DACSPermissionError (EACCES)
-
 # Run pytest with faulthandler enabled via -X flag
-# NOTE: Using `|| true` to capture exit code for intelligent failure analysis
 python -X faulthandler -m pytest \
     --timeout=300 \
     -vv \
@@ -229,7 +211,7 @@ python -X faulthandler -m pytest \
     --junitxml="${REPOSITORY_ROOT}/pytest-results.xml" \
     $IGNORE_OPTS \
     "${EXISTING_TEST_DIRS[@]}" \
-    "$@" || true
+    "$@"
 
 PYTEST_EXIT_CODE=$?
 
@@ -261,14 +243,8 @@ echo ""
 echo "========================================"
 if [ $PYTEST_EXIT_CODE -eq 0 ]; then
     echo "All Python tests passed!"
-    echo "(Note: Some tests may have been skipped due to permission issues)"
 else
-    echo "Some Python tests failed (exit code: $PYTEST_EXIT_CODE)"
-    echo ""
-    echo "TODO: If failures are due to storage permissions:"
-    echo "  1. Verify node pool managed identity has 'Storage Blob Data Contributor' role"
-    echo "  2. Check AZURE_CLIENT_ID is correctly set"
-    echo "  3. Verify SAS token (STORAGE_INTCPT_SAS_TOKEN) is valid"
+    echo "Python tests failed (exit code: $PYTEST_EXIT_CODE)"
 fi
 echo "========================================"
 
