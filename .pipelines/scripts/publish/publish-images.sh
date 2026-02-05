@@ -80,6 +80,7 @@ if base_dockerfile_changed; then
         if docker image inspect "$src" >/dev/null 2>&1; then
             echo "  Tagging $src → $dst"
             docker tag "$src" "$dst"
+            echo "  Pushing $dst"
             docker push "$dst"
         fi
     done
