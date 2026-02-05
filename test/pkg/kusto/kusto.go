@@ -74,6 +74,9 @@ type PerfResult struct {
 	TotalFailures           int    `json:"TotalFailures"`
 	ExpectedChunks          int    `json:"ExpectedChunks"`
 	SuccessfulChunks        int    `json:"SuccessfulChunks"`
+	PerChunkP50Ms           int64  `json:"PerChunkP50Ms"`
+	PerChunkP90Ms           int64  `json:"PerChunkP90Ms"`
+	PerChunkP99Ms           int64  `json:"PerChunkP99Ms"`
 	NumThreads              int    `json:"NumThreads"`
 	DataSizeGiB             int    `json:"DataSizeGiB"`
 	NumIterations           int    `json:"NumIterations"`

@@ -19,21 +19,25 @@ type Summary struct {
 	TotalIndividualFailures       int    `json:"totalIndividualFailures"`
 	ExpectedChunksToTransfer      int    `json:"expectedChunksToTransfer"`
 	ChunksSuccessfullyTransferred int    `json:"chunksSuccessfullyTransferred"`
+	PerChunkP50Ms                 int64  `json:"perchunkP50Ms"`
+	PerChunkP90Ms                 int64  `json:"perchunkP90Ms"`
+	PerChunkP99Ms                 int64  `json:"perchunkP99Ms"`
 }
 
 // String returns a formatted string representation of the Summary.
 func (p Summary) String() string {
 	return fmt.Sprintf(
-		"Mode: %s, Duration: %dms, Bytes: %d, Throughput: %d Mbps, Failures: %d, Chunks: %d/%d",
+		"Mode: %s, Duration: %dms, Bytes: %d, Throughput: %d Mbps, Failures: %d, Chunks: %d/%d, PerChunk p50/p90/p99: %d/%d/%d ms",
 		p.Mode, p.DurationMs, p.TotalBytesTransferred, p.ThroughputMbps,
 		p.TotalIndividualFailures, p.ChunksSuccessfullyTransferred, p.ExpectedChunksToTransfer,
+		p.PerChunkP50Ms, p.PerChunkP90Ms, p.PerChunkP99Ms,
 	)
 }
 
 // summaryRegex is the compiled regex for parsing perf client summary logs.
 // Example log line:
 // DACS_CTR:INFO|StorageCommon|...|PerfClient.cpp:RunPerfTest(214): Summary: mode upload,start_timestamp 1766178905344,...
-var summaryRegex = regexp.MustCompile(`Summary: mode (\w+),start_timestamp (\d+),end_timestamp (\d+),duration_ms (\d+),total_bytes_transferred (\d+),throughput_Mbps (\d+),total_individual_failures (\d+),expected_chunks_to_transfer (\d+),chunks_successfully_transferred (\d+)`)
+var summaryRegex = regexp.MustCompile(`Summary: mode (\w+),start_timestamp (\d+),end_timestamp (\d+),duration_ms (\d+),total_bytes_transferred (\d+),throughput_Mbps (\d+),total_individual_failures (\d+),expected_chunks_to_transfer (\d+),chunks_successfully_transferred (\d+),perchunk_p50_ms (\d+),perchunk_p90_ms (\d+),perchunk_p99_ms (\d+)`)
 
 // Parse parses the performance summary from the perf client log output.
 func Parse(logs string) (*Summary, error) {
@@ -75,6 +79,18 @@ func Parse(logs string) (*Summary, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse chunks_successfully_transferred: %w", err)
 	}
+	perChunkP50, err := strconv.ParseInt(matches[10], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse perchunk_p50_ms: %w", err)
+	}
+	perChunkP90, err := strconv.ParseInt(matches[11], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse perchunk_p90_ms: %w", err)
+	}
+	perChunkP99, err := strconv.ParseInt(matches[12], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse perchunk_p99_ms: %w", err)
+	}
 
 	return &Summary{
 		Mode:                          matches[1],
@@ -86,6 +102,9 @@ func Parse(logs string) (*Summary, error) {
 		TotalIndividualFailures:       failures,
 		ExpectedChunksToTransfer:      expectedChunks,
 		ChunksSuccessfullyTransferred: successChunks,
+		PerChunkP50Ms:                 perChunkP50,
+		PerChunkP90Ms:                 perChunkP90,
+		PerChunkP99Ms:                 perChunkP99,
 	}, nil
 
 }

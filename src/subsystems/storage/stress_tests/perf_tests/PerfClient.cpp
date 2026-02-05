@@ -7,10 +7,12 @@
 // EvictionClient: requests the cache server to delete files based on last access time time.
 // LastAccessTimeDistributionClient: requests the cache server to provide the distribution of last access times of cache.
 //---------------------------------------------------------------------------------------------------------------------
+#include <algorithm>
 #include <atomic>
 #include <boost/algorithm/string.hpp>
 #include <boost/program_options.hpp>
 #include <chrono>
+#include <future>
 #include <iostream>
 #include <random>
 #include <stdint.h>
@@ -113,7 +115,7 @@ bool DownloadWithRetries(
     return false;
 }
 //---------------------------------------------------------------------------------------------------------------------
-void Worker(/*[in]*/ bool bIsUpload,
+std::vector<int64_t> Worker(/*[in]*/ bool bIsUpload,
             /*[in]*/ std::size_t nStartIndex,
             /*[in]*/ std::size_t nEndIndexExclusive,
             /*[in]*/ std::size_t nTotalChunksToTransfer,
@@ -122,14 +124,21 @@ void Worker(/*[in]*/ bool bIsUpload,
             /*[out]*/ std::atomic_uint_fast64_t& nChunksSuccessfullyTransferred)
 {
     LOG_INFO("Worker thread started. StartIndex: {}, EndIndexExclusive: {}", nStartIndex, nEndIndexExclusive);
-    std::size_t totalChunksSucceeded = 0;
+    std::vector<int64_t> perChunkMs;
+    perChunkMs.reserve(nEndIndexExclusive - nStartIndex);
+    
     for(std::size_t idx = nStartIndex; idx < nEndIndexExclusive; idx++)
     {
         std::string strFileName = strFilePrefix + std::to_string(idx);
+        auto transferStart = std::chrono::high_resolution_clock::now();
         bool success = bIsUpload ? UploadWithRetries(strFileName, client) : DownloadWithRetries(strFileName, client);
+        auto transferEnd = std::chrono::high_resolution_clock::now();
+        
         if(success)
         {
             nChunksSuccessfullyTransferred++;
+            auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(transferEnd - transferStart).count();
+            perChunkMs.push_back(durationMs);
         }
 
         if(idx % 100 == 0)
@@ -140,6 +149,20 @@ void Worker(/*[in]*/ bool bIsUpload,
                      (nChunksSuccessfullyTransferred * 100) / nTotalChunksToTransfer);
         }
     }
+    
+    return perChunkMs;
+}
+
+int64_t GetPercentile(const std::vector<int64_t>& sortedData, double percentile)
+{
+    if (sortedData.empty())
+    {
+        return 0;
+    }
+    auto clamped = std::max(0.0, std::min(100.0, percentile));
+    auto index = static_cast<std::size_t>((clamped / 100.0) * (sortedData.size() - 1));
+    index = std::min(index, sortedData.size() - 1);
+    return sortedData[index];
 }
 //---------------------------------------------------------------------------------------------------------------------
 // Returns true if all chunks were transferred successfully else false
@@ -158,31 +181,42 @@ bool RunPerfTest(/*[in]*/ int nParallelism,
         nChunksPerThread = nUpperBoundTotalChunksToTransfer / nParallelism;
     }
     std::atomic_uint_fast64_t nChunksSuccessfullyTransferred(0);
-    std::vector<std::thread> vecThreads;
+    std::vector<std::future<std::vector<int64_t>>> vecFutures;
     bool bIsUpload = (strMode == "upload");
     auto startTime = std::chrono::high_resolution_clock::now();
 
-    for(std::size_t nThreadIdx = 0; nThreadIdx < nParallelism; nThreadIdx++)
+    for (std::size_t nThreadIdx = 0; nThreadIdx < nParallelism; nThreadIdx++)
     {
         std::size_t nStartIndex = nThreadIdx * nChunksPerThread;
         // EndIndex is set to the chunk counter. If chunk counter surpasses totalChunkCount, then totalChunkCount is used.
         std::size_t nEndIndexExclusive = std::min((nThreadIdx + 1) * nChunksPerThread, nTotalChunksToTransfer);
-        vecThreads.emplace_back(Worker,
+        vecFutures.emplace_back(std::async(std::launch::async,
+                                Worker,
                                 bIsUpload,
                                 nStartIndex,
                                 nEndIndexExclusive,
                                 nTotalChunksToTransfer,
                                 strPrefix,
                                 std::ref(client),
-                                std::ref(nChunksSuccessfullyTransferred));
+                                std::ref(nChunksSuccessfullyTransferred)));
     }
 
-    for(std::thread& thread : vecThreads)
+    // Wait for all futures to complete (without extracting results yet)
+    for (auto& future : vecFutures)
     {
-        thread.join();
+        future.wait();
     }
 
     auto endTime = std::chrono::high_resolution_clock::now();
+
+    // Collect per-chunk times from all futures
+    std::vector<int64_t> allPerChunkMs;
+    for (auto& future : vecFutures)
+    {
+        auto workerPerChunkMs = future.get();
+        allPerChunkMs.insert(allPerChunkMs.end(), workerPerChunkMs.begin(), workerPerChunkMs.end());
+    }
+
     std::size_t durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
     durationMs = std::max(durationMs, (std::size_t)1);
     std::size_t nBytesTransferred = nChunksSuccessfullyTransferred * CHUNK_SIZE;
@@ -191,10 +225,16 @@ bool RunPerfTest(/*[in]*/ int nParallelism,
     //       = bytes * 1000 / (ms * 1024 * 1024 * 1024)
     double nThroughputGiBps = static_cast<double>(nBytesTransferred) * 1000.0 / (static_cast<double>(durationMs) * 1024.0 * 1024.0 * 1024.0);
 
+    std::sort(allPerChunkMs.begin(), allPerChunkMs.end());
+    auto perChunkP50Ms = GetPercentile(allPerChunkMs, 50.0);
+    auto perChunkP90Ms = GetPercentile(allPerChunkMs, 90.0);
+    auto perChunkP99Ms = GetPercentile(allPerChunkMs, 99.0);
+
     LOG_INFO("=============================================================");
     LOG_INFO("Test complete. Details below.")
     LOG_INFO("Test Mode: {}", strMode);
     LOG_INFO("Throughput: {} Mbps {} GiBps", nThroughputMbps, nThroughputGiBps);
+    LOG_INFO("Per-chunk p50: {} ms, p90: {} ms, p99: {} ms", perChunkP50Ms, perChunkP90Ms, perChunkP99Ms);
     LOG_INFO("Total bytes transferred: {}", nBytesTransferred);
     LOG_INFO("Total time taken: {} ms", durationMs);
     LOG_INFO("Expected chunks to tansfer: {}", nTotalChunksToTransfer);
@@ -204,7 +244,8 @@ bool RunPerfTest(/*[in]*/ int nParallelism,
 
     // Single line summary for easy parsing
     LOG_INFO("Summary: mode {},start_timestamp {},end_timestamp {},duration_ms {},total_bytes_transferred {},"
-             "throughput_Mbps {},total_individual_failures {},expected_chunks_to_transfer {},chunks_successfully_transferred {}",
+             "throughput_Mbps {},total_individual_failures {},expected_chunks_to_transfer {},chunks_successfully_transferred {},"
+             "perchunk_p50_ms {},perchunk_p90_ms {},perchunk_p99_ms {}",
              strMode,
              std::chrono::duration_cast<std::chrono::milliseconds>(startTime.time_since_epoch()).count(),
              std::chrono::duration_cast<std::chrono::milliseconds>(endTime.time_since_epoch()).count(),
@@ -213,7 +254,10 @@ bool RunPerfTest(/*[in]*/ int nParallelism,
              nThroughputMbps,
              nGlobalFailureCounter.load(),
              nTotalChunksToTransfer,
-             nChunksSuccessfullyTransferred);
+             nChunksSuccessfullyTransferred,
+             perChunkP50Ms,
+             perChunkP90Ms,
+             perChunkP99Ms);
 
     uint64_t nTotalFailedChunks = nTotalChunksToTransfer - nChunksSuccessfullyTransferred;
 
