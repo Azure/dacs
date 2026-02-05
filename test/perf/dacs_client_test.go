@@ -37,6 +37,7 @@ import (
 var (
 	cacheClientNs       = "dacs-clients"
 	containerNamePrefix = "dacs-perf-"
+	defaultWaitTime     = 2 * time.Minute
 )
 
 // CacheClient holds information required to deploy cacheclient
@@ -114,19 +115,25 @@ func (config *CacheClientConfig) dacsClientTest(ctx context.Context, testName st
 		jobConfig.WithEnvFromSecret(0, secret.Secret)
 
 	} else {
+		cmd, err := getRoleAssignmentCommand(config.storageAccountName)
+		Expect(err).ShouldNot(HaveOccurred(), "Failed to get role assignment command")
+		roleErrorMsg := fmt.Sprintf(
+			"Ensure to grant 'Storage Blob Data Contributor' role to the managed identity %s. By running: %s",
+			accessEnvValue,
+			cmd,
+		)
+
 		// Using Kubelet Identity for storageaccount access
-		isRoleAlreadyExist, err := utils.CheckRoleAssignments(accessEnvValue, config.storageAccountName, "Storage Blob Data Contributor")
-		Expect(err).ShouldNot(HaveOccurred(), "Failed to check role assignment for managed identity")
-		if !isRoleAlreadyExist {
-			By(fmt.Sprintf(
-				"Managed Identity with clientId %s does not have required role assignment on storage account %s. Create role assignment and try again",
-				accessEnvValue,
-				config.storageAccountName,
-			))
-			cmd, err := getRoleAssignmentCommand(config.storageAccountName)
-			Expect(err).ShouldNot(HaveOccurred(), "Failed to get role assignment command")
-			Expect(isRoleAlreadyExist).To(BeTrue(), "Please Run: %s", cmd)
-		}
+		// Note: If access is granted recently then role assignment propagation might take some time
+		Eventually(func() bool {
+			By(fmt.Sprintf("Checking if managed identity with clientId %s has required role assignment on storage account %s", accessEnvValue, config.storageAccountName))
+			isRoleAlreadyExist, err := utils.CheckRoleAssignments(accessEnvValue, config.storageAccountName, "Storage Blob Data Contributor")
+			if err != nil {
+				log.Error(err, "Error while checking role assignment")
+				return false
+			}
+			return isRoleAlreadyExist
+		}).WithContext(ctx).WithTimeout(defaultWaitTime).Should(BeTrue(), roleErrorMsg)
 		jobConfig.WithEnv(0, common.CACHECLIENT_CLIENT_ID_KEY, accessEnvValue)
 	}
 

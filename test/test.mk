@@ -91,8 +91,9 @@ kubectl: $(KUBECTL) ## Download kubectl locally if necessary.
 $(KUBECTL): $(LOCALBIN)
 	@command -v kubectl >/dev/null 2>&1 && { echo "Using system kubectl"; exit 0; } || true
 	@[ -f "$(KUBECTL)" ] || { \
-	echo "Downloading latest stable kubectl for $(TEST_ARCH) ($(TEST_ARCH_SUFFIX))..."; \
-	curl --fail --retry 5 --retry-delay 10 --retry-connrefused -Lo kubectl "https://dl.k8s.io/release/$$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/$(TEST_ARCH_SUFFIX)/kubectl"; \
+	K8S_VERSION=$$(curl -L -s https://dl.k8s.io/release/stable.txt); \
+	echo "Downloading latest stable kubectl for $${K8S_VERSION} $(TEST_ARCH) ($(TEST_ARCH_SUFFIX))..."; \
+	curl --fail --retry 5 --retry-delay 10 --retry-connrefused -Lo kubectl "https://dl.k8s.io/release/$${K8S_VERSION}/bin/linux/$(TEST_ARCH_SUFFIX)/kubectl"; \
 	chmod +x kubectl; \
 	mkdir -p $(LOCALBIN); \
 	mv kubectl $(KUBECTL); \
