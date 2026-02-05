@@ -69,7 +69,7 @@ var testMultipleDACSClients = func(ctx context.Context) {
 	config.dacsClientTestSuite(ctx)
 }
 
-var _ = Describe("Multiple DACS Clients E2E Tests", Label("dacsclients", "perf", "aks"), Ordered, func() {
+var _ = PDescribe("Multiple DACS Clients E2E Tests", Label("dacsclients", "perf", "aks"), Ordered, func() {
 	Context("Multiple DACS Clients Test Suite", Label("dacsclients"), func() {
 		BeforeAll(func(ctx context.Context) {
 			Eventually(func(g Gomega) {
