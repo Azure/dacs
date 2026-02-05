@@ -53,9 +53,15 @@ create_manifest() {
     echo ""
 }
 
-# Base images: combine <build>-<arch> into :latest
+# Base images: combine <build>-<arch> into :latest (only if they were pushed in this build)
 for image in "${BASE_IMAGES[@]}"; do
-    create_manifest "$image" "latest" "${BUILD_NUMBER}-{arch}"
+    # Check if amd64 tag exists to determine if base images were pushed in this build
+    if docker buildx imagetools inspect "$REGISTRY/$image:${BUILD_NUMBER}-amd64" >/dev/null 2>&1; then
+        echo "Base image $image was pushed in this build, creating manifest..."
+        create_manifest "$image" "latest" "${BUILD_NUMBER}-{arch}"
+    else
+        echo "Skipping base image manifest for $image (not pushed in this build)"
+    fi
 done
 
 # App images: combine <build>-linux-<arch> into :<build>

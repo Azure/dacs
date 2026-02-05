@@ -28,8 +28,9 @@ echo "Cache Server Scheduler Image: $CACHESERVER_SCHEDULER_IMAGE"
 echo "Cache Controller Image: $CACHECONTROLLER_IMAGE"
 
 # Registry for base images
-DOCKER_REGISTRY="${DOCKER_REGISTRY:-dacs}"
-REGISTRY="${DOCKER_REGISTRY}.azurecr.io"
+# Note: DOCKER_REGISTRY already includes .azurecr.io suffix from pipeline
+REGISTRY="${DOCKER_REGISTRY}"
+echo "image registry: $REGISTRY"
 
 # Check if base Dockerfiles changed
 base_dockerfile_changed() {
@@ -60,11 +61,14 @@ prepare_base_image() {
     if base_dockerfile_changed; then
         echo "Building $name (Dockerfile changed)..."
         docker build -f "$REPOSITORY_ROOT/$dockerfile" -t "$image" "$REPOSITORY_ROOT/Docker/base/"
-    elif docker pull "$image" 2>/dev/null; then
-        echo "Pulled $name from ACR"
     else
-        echo "Building $name (not in ACR)..."
-        docker build -f "$REPOSITORY_ROOT/$dockerfile" -t "$image" "$REPOSITORY_ROOT/Docker/base/"
+        echo "Attempting to pull base image: $image"
+        if docker pull "$image"; then
+            echo "Pulled $name from ACR"
+        else
+            echo "Pull failed for $image, building locally..."
+            docker build -f "$REPOSITORY_ROOT/$dockerfile" -t "$image" "$REPOSITORY_ROOT/Docker/base/"
+        fi
     fi
 }
 
