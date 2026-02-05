@@ -27,10 +27,54 @@ echo "Cache Client Image: $CACHECLIENT_IMAGE"
 echo "Cache Server Scheduler Image: $CACHESERVER_SCHEDULER_IMAGE"
 echo "Cache Controller Image: $CACHECONTROLLER_IMAGE"
 
+# Registry for base images
+DOCKER_REGISTRY="${DOCKER_REGISTRY:-dacs}"
+REGISTRY="${DOCKER_REGISTRY}.azurecr.io"
+
+# Check if base Dockerfiles changed
+base_dockerfile_changed() {
+    # Try to fetch origin/main for comparison
+    git fetch origin main --depth=1 2>/dev/null || true
+    
+    # Compare against origin/main (for PR builds)
+    if git diff --name-only origin/main...HEAD 2>/dev/null | grep -q "Docker/base/"; then
+        echo "[DEBUG] Docker/base/ changed (vs origin/main)" >&2
+        return 0
+    fi
+    
+    # Compare against previous commit (for official builds on main)
+    if git diff --name-only HEAD~1 2>/dev/null | grep -q "Docker/base/"; then
+        echo "[DEBUG] Docker/base/ changed (vs HEAD~1)" >&2
+        return 0
+    fi
+    
+    echo "[DEBUG] No Docker/base/ changes detected" >&2
+    return 1
+}
+
+prepare_base_image() {
+    local name="$1"
+    local dockerfile="$2"
+    local image="${REGISTRY}/${name}:latest"
+    
+    if base_dockerfile_changed; then
+        echo "Building $name (Dockerfile changed)..."
+        docker build -f "$REPOSITORY_ROOT/$dockerfile" -t "$image" "$REPOSITORY_ROOT/Docker/base/"
+    elif docker pull "$image" 2>/dev/null; then
+        echo "Pulled $name from ACR"
+    else
+        echo "Building $name (not in ACR)..."
+        docker build -f "$REPOSITORY_ROOT/$dockerfile" -t "$image" "$REPOSITORY_ROOT/Docker/base/"
+    fi
+}
+
+prepare_base_image "cache-server-base" "Docker/base/CacheServer.base.Dockerfile"
+prepare_base_image "cache-client-base" "Docker/base/CacheClient.base.Dockerfile"
+
 # Build Docker images from Dockerfiles
 cd "$DOCKER_DIR"
-docker build -f CacheServer.Dockerfile -t "$CACHESERVER_IMAGE" .
-docker build -f CacheClient.Dockerfile -t "$CACHECLIENT_IMAGE" . --build-context repo="$REPOSITORY_ROOT"
+docker build --build-arg DOCKER_REGISTRY="$REGISTRY" -f CacheServer.Dockerfile -t "$CACHESERVER_IMAGE" .
+docker build --build-arg DOCKER_REGISTRY="$REGISTRY" -f CacheClient.Dockerfile -t "$CACHECLIENT_IMAGE" . --build-context repo="$REPOSITORY_ROOT"
 docker build -f CacheServerScheduler.Dockerfile -t "$CACHESERVER_SCHEDULER_IMAGE" "$REPOSITORY_ROOT/src/subsystems/storage/cache_server_scheduler"
 
 cd "$CACHE_CONTROLLER_DIR"

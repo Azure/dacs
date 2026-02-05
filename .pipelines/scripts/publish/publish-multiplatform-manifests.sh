@@ -23,6 +23,7 @@ BUILD_ARCHS="${BUILD_ARCHS:-amd64 arm64}"
 
 # Define images to process
 IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler")
+BASE_IMAGES=("cache-server-base" "cache-client-base")
 
 echo "Creating multi-platform manifests..."
 echo "Registry: $REGISTRY"
@@ -30,24 +31,36 @@ echo "Build Number: $BUILD_NUMBER"
 echo "Architectures: $BUILD_ARCHS"
 echo ""
 
-# Create and push multi-platform manifests
-for image in "${IMAGES[@]}"; do
-    manifest_tag="$REGISTRY/$image:$BUILD_NUMBER"
+# Create multi-platform manifest from arch-specific images
+create_manifest() {
+    local image="$1"
+    local tag="$2"
+    local arch_pattern="$3"  # Use {arch} as placeholder
     
-    # Build list of arch-specific images
-    arch_images=()
+    local manifest_tag="$REGISTRY/$image:$tag"
+    local arch_images=()
+    
     echo "Creating manifest: $manifest_tag"
     echo "  References:"
     for arch in $BUILD_ARCHS; do
-        arch_image="$REGISTRY/$image:$BUILD_NUMBER-linux-$arch"
+        local arch_image="$REGISTRY/$image:${arch_pattern//\{arch\}/$arch}"
         arch_images+=("$arch_image")
         echo "    • $arch_image"
     done
     
     docker buildx imagetools create --tag "$manifest_tag" "${arch_images[@]}"
-    
-    echo "✓ Manifest created: $manifest_tag"
+    echo "Manifest created: $manifest_tag"
     echo ""
+}
+
+# Base images: combine <build>-<arch> into :latest
+for image in "${BASE_IMAGES[@]}"; do
+    create_manifest "$image" "latest" "${BUILD_NUMBER}-{arch}"
+done
+
+# App images: combine <build>-linux-<arch> into :<build>
+for image in "${IMAGES[@]}"; do
+    create_manifest "$image" "$BUILD_NUMBER" "${BUILD_NUMBER}-linux-{arch}"
 done
 
 echo "✅ All multi-platform manifests created successfully:"
