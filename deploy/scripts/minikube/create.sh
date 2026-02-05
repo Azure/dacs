@@ -52,7 +52,7 @@ minikube start \
   --extra-config=kubelet.root-dir=/mnt/kubelet \
   --wait-timeout=10m \
   --wait=all \
-  -v=5
+  -v=1
 
 # Add worker nodes one at a time with delays to reduce resource contention
 WORKERS=$((NUM_NODES - 1))
@@ -62,7 +62,7 @@ for i in $(seq 2 $NUM_NODES); do
   NODE_NAME="minikube-m${NODE_NUM}"
   echo -e "\n--- Adding worker node $i of $NUM_NODES (${NODE_NAME}) ---"
   
-  minikube node add --worker=true -v=5
+  minikube node add --worker=true -v=1
   
   echo "Node $i added successfully, waiting for stabilization..."
   sleep 15

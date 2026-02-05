@@ -78,7 +78,7 @@ rm -rf dist/ build/ *.egg-info
 # Ensure pip is available
 if ! $PYTHON_CMD -m pip --version &> /dev/null; then
   echo "Installing pip..."
-  $PYTHON_CMD -m ensurepip --default-pip 2>/dev/null || sudo apt-get install -y python3-pip
+  $PYTHON_CMD -m ensurepip --default-pip 2>/dev/null || { sudo apt-get update && sudo apt-get install -y python3-pip; }
 fi
 
 # Install build dependencies
