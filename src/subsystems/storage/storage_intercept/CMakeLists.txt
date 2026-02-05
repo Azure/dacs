@@ -42,19 +42,25 @@ SET_TARGET_PROPERTIES(static-azurestorage PROPERTIES
 
 set(CommonDeps CacheClientLib StorageCommon CacheProto ClientConnections EncryptionUtils diagnostics curl static-azurestorage jsoncpp dl uuid crypto staticprotobuf)
 
+# Linker flags to hide static symbols
+set(HIDE_STATIC_SYMBOLS_FLAGS "-Wl,--exclude-libs,ALL")
+
 # storage intercept library meant to be LD_PRELOADed, so needs to link to the dlsym wrapper
 add_library(StorageIntercept SHARED ${STORAGE_INTERCEPT_SOURCES_INTERCEPTOR})
 add_dependencies(StorageIntercept StorageLibcDlsymWrapper StorageCommon CacheProto ClientConnections EncryptionUtils)
 target_link_libraries(StorageIntercept StorageLibcDlsymWrapper ${CommonDeps} ibverbs)
+target_link_options(StorageIntercept PRIVATE ${HIDE_STATIC_SYMBOLS_FLAGS})
 
 # cache storage client library called directly without LD_PRELOAD (from python package for example)
 # No dlsym wrapper needed here.
 add_library(StorageDirect SHARED ${STORAGE_INTERCEPT_SOURCES_INTERCEPTOR})
 add_dependencies(StorageDirect StorageLibcDirectWrapper StorageCommon CacheProto ClientConnections EncryptionUtils)
 target_link_libraries(StorageDirect StorageLibcDirectWrapper ${CommonDeps} ibverbs)
+target_link_options(StorageDirect PRIVATE ${HIDE_STATIC_SYMBOLS_FLAGS})
 
 add_dependencies(CacheClient StorageLibcDirectWrapper StorageCommon CacheProto ClientConnections EncryptionUtils)
 target_link_libraries(CacheClient StorageLibcDirectWrapper ${CommonDeps})
+target_link_options(CacheClient PRIVATE ${HIDE_STATIC_SYMBOLS_FLAGS})
 
 add_custom_command(
     TARGET CacheClient POST_BUILD
