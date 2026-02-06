@@ -1,0 +1,60 @@
+  {{- if .Values.cache.enabled }}
+apiVersion: storage.azure.com/v1
+kind: Cache
+metadata:
+  name: {{ .Values.cache.name }}
+  namespace: {{ .Values.cache.namespace | default .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: dacs
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  scaling:
+    {{- if .Values.cache.scaling.static }}
+    static:
+      numServers: {{ .Values.cache.scaling.static.numServers }}
+    {{- else if .Values.cache.scaling.dynamic }}
+    dynamic:
+      {{- with .Values.cache.scaling.dynamic }}
+      {{- if .minServers }}
+      minServers: {{ .minServers }}
+      {{- end }}
+      {{- if .maxServers }}
+      maxServers: {{ .maxServers }}
+      {{- end }}
+      {{- if .percentageOfNodesToUse }}
+      percentageOfNodesToUse: {{ .percentageOfNodesToUse }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+  serverSizeInGB: {{ .Values.cache.serverSizeInGB }}
+  serverThreads: {{ .Values.cache.serverThreads }}
+  {{- with .Values.cache.port }}
+  port: {{ . }}
+  {{- end }}
+  {{- with .Values.cache.metricsPort }}
+  metricsPort: {{ . }}
+  {{- end }}
+  {{- with .Values.cache.nodeSelectorKey }}
+  nodeSelectorKey: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.cache.nodeSelectorValue }}
+  nodeSelectorValue: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.cache.cpuLimit }}
+  cpuLimit: {{ . }}
+  {{- end }}
+  {{- with .Values.cache.memoryLimitMB }}
+  memoryLimitMB: {{ . }}
+  {{- end }}
+  {{- with .Values.cache.egressBandwidthLimitGbps }}
+  egressBandwidthLimitGbps: {{ . }}
+  {{- end }}
+  storage:
+    {{- if .Values.cache.storage.ephemeral }}
+    ephemeral: true
+    {{- else }}
+    hostPath:
+      nodeCacheFolderPath: {{ .Values.cache.storage.hostPath.nodeCacheFolderPath | quote }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,42 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+CONTROLLER STATUS:
+  Check if the controller is running:
+    kubectl get deployment -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "chart.name" . }}
+
+  View controller logs:
+    kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "chart.name" . }} -f
+
+{{- if .Values.cache.enabled }}
+
+CACHE CR DEPLOYED:
+  Name: {{ .Values.cache.name }}
+  Namespace: {{ .Values.cache.namespace | default .Release.Namespace }}
+
+  Check Cache status:
+    kubectl get cache {{ .Values.cache.name }} -n {{ .Values.cache.namespace | default .Release.Namespace }}
+
+  Check cache servers:
+    kubectl get statefulset,pods -n {{ .Values.cache.namespace | default .Release.Namespace }} -l app=cacheserver
+
+  View cache server logs:
+    kubectl logs -n {{ .Values.cache.namespace | default .Release.Namespace }} cacheserver-0 -f
+
+{{- else }}
+
+CACHE CR NOT DEPLOYED:
+  To deploy a cache, upgrade with cache.enabled=true:
+    helm upgrade {{ .Release.Name }} ./charts/dacs -n {{ .Release.Namespace }} --set cache.enabled=true
+
+{{- end }}
+
+{{- if .Values.cache.enabled }}
+{{- if and (eq .Values.cache.nodeSelectorKey "") (eq .Values.cache.nodeSelectorValue "") }}
+
+  WARNING: No node selector configured for Cache CR.
+           Cache pods may fail to schedule. Set cache.nodeSelectorKey and cache.nodeSelectorValue.
+
+{{- end }}
+{{- end }}

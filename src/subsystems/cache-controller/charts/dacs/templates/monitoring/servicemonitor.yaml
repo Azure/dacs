@@ -1,0 +1,40 @@
+{{- if and ( .Capabilities.APIVersions.Has "monitoring.coreos.com/v1" ) ( .Values.prometheus.enable ) }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    control-plane: controller-manager
+  name: dacs-manager-metrics-monitor
+  namespace: {{ .Release.Namespace }}
+spec:
+  endpoints:
+    - path: /metrics
+      port: https
+      scheme: https
+      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      # TODO: Update TLS config when PR #1937491 lands (adds TLS without cert-manager)
+      tlsConfig:
+        {{- if .Values.certManager.enable }}
+        serverName: dacs-manager-metrics-service.{{ .Release.Namespace }}.svc
+        # Apply secure TLS configuration with cert-manager
+        insecureSkipVerify: false
+        ca:
+          secret:
+            name: metrics-server-cert
+            key: ca.crt
+        cert:
+          secret:
+            name: metrics-server-cert
+            key: tls.crt
+        keySecret:
+          name: metrics-server-cert
+          key: tls.key
+        {{- else }}
+        # Development/Test mode (insecure configuration)
+        insecureSkipVerify: true
+        {{- end }}
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+{{- end }}
