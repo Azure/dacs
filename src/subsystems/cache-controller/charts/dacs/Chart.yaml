@@ -1,0 +1,19 @@
+apiVersion: v2
+name: dacs
+description: dacs Helm Chart
+type: application
+version: 0.1.0
+
+# Application version - should match the controller image tag
+appVersion: "latest"
+
+keywords:
+  - cache
+  - storage
+  - distributed-cache
+  
+maintainers:
+  - name: DACS Team
+    
+sources:
+  - https://github.com/Azure/dacs

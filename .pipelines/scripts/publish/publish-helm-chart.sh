@@ -52,6 +52,8 @@ EOF
     if [[ -f "$CHART_DIR/values.yaml" ]]; then
         sed -i "s|^\\(    repository:\\) cache-server|\\1 $REGISTRY/cache-server|" "$CHART_DIR/values.yaml"
         sed -i "s|^\\(      repository:\\) cacheserver-scheduler|\\1 $REGISTRY/cacheserver-scheduler|" "$CHART_DIR/values.yaml"
+        sed -i "s|^\\(    repository:\\) cache-controller|\\1 $REGISTRY/cache-controller|" "$CHART_DIR/values.yaml"
+        sed -i "s|cache-server:latest|$REGISTRY/cache-server:$APP_VERSION|" "$CHART_DIR/values.yaml"
     fi
 
     # Package the chart (empty tag in values.yaml defaults to appVersion)
@@ -113,19 +115,26 @@ build_and_push_chart "$REPOSITORY_ROOT/helm/dacs-prereq" "dacs-prereq"
 # Build and push main cache-server chart
 build_and_push_chart "$REPOSITORY_ROOT/helm/cache-server" "cache-server"
 
+# Build and push dacs chart
+build_and_push_chart "$REPOSITORY_ROOT/src/subsystems/cache-controller/charts/dacs" "dacs"
+
 # Generate artifact file if pushing
 if [[ "$PUSH_CHARTS" == "true" ]]; then
     CACHE_SERVER_BASE=$(grep '^version:' "$REPOSITORY_ROOT/helm/cache-server/Chart.yaml" | awk '{print $2}' | tr -d '"' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
     PREREQ_BASE=$(grep '^version:' "$REPOSITORY_ROOT/helm/dacs-prereq/Chart.yaml" | awk '{print $2}' | tr -d '"' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
+    CONTROLLER_BASE=$(grep '^version:' "$REPOSITORY_ROOT/src/subsystems/cache-controller/charts/dacs/Chart.yaml" | awk '{print $2}' | tr -d '"' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
     [[ -z "$CACHE_SERVER_BASE" ]] && CACHE_SERVER_BASE="0.0.0"
     [[ -z "$PREREQ_BASE" ]] && PREREQ_BASE="0.0.0"
+    [[ -z "$CONTROLLER_BASE" ]] && CONTROLLER_BASE="0.0.0"
     
     CACHE_SERVER_VERSION="$CACHE_SERVER_BASE-$BUILD_NUMBER"
     PREREQ_VERSION="$PREREQ_BASE-$BUILD_NUMBER"
+    CONTROLLER_VERSION="$CONTROLLER_BASE-$BUILD_NUMBER"
     
     cat > "$REPOSITORY_ROOT/helm-chart.txt" << EOF
 CACHE_SERVER_CHART_VERSION=$CACHE_SERVER_VERSION
 CACHE_SERVER_PREREQ_CHART_VERSION=$PREREQ_VERSION
+CACHE_CONTROLLER_CHART_VERSION=$CONTROLLER_VERSION
 CHART_REPO=$CHART_REPO
 EOF
     

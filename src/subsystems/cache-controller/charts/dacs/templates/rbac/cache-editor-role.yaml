@@ -1,0 +1,28 @@
+{{- if .Values.rbacHelpers.enable }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+    labels:
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        app.kubernetes.io/name: dacs
+    name: dacs-editor-role
+rules:
+    - apiGroups:
+        - storage.azure.com
+      resources:
+        - caches
+      verbs:
+        - create
+        - delete
+        - get
+        - list
+        - patch
+        - update
+        - watch
+    - apiGroups:
+        - storage.azure.com
+      resources:
+        - caches/status
+      verbs:
+        - get
+{{- end }}

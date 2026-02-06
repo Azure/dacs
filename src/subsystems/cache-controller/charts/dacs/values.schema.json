@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["manager"],
+  "properties": {
+    "manager": {
+      "type": "object",
+      "required": ["image"],
+      "properties": {
+        "replicas": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of controller replicas"
+        },
+        "namespace": {
+          "type": "string",
+          "description": "Namespace for controller (empty = Release.Namespace)"
+        },
+        "image": {
+          "type": "object",
+          "required": ["repository", "tag"],
+          "properties": {
+            "repository": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tag": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": ["Always", "IfNotPresent", "Never"]
+            }
+          }
+        }
+      }
+    },
+    "cache": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Deploy a Cache CR with the controller"
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+          "description": "Name of the Cache CR (must be DNS-1123 compliant)"
+        },
+        "namespace": {
+          "type": "string",
+          "description": "Namespace for Cache CR (empty = Release.Namespace)"
+        },
+        "serverSizeInGB": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "serverThreads": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "metricsPort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "cpuLimit": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "memoryLimitMB": {
+          "type": "integer",
+          "minimum": 512
+        },
+        "scaling": {
+          "type": "object",
+          "properties": {
+            "static": {
+              "type": "object",
+              "properties": {
+                "numServers": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "dynamic": {
+              "type": "object",
+              "properties": {
+                "minServers": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "maxServers": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "percentageOfNodesToUse": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "rbacHelpers": {
+      "type": "object",
+      "properties": {
+        "enable": {
+          "type": "boolean",
+          "description": "Install convenience admin/editor/viewer roles for CRDs"
+        }
+      }
+    },
+    "crd": {
+      "type": "object",
+      "properties": {
+        "keep": {
+          "type": "boolean",
+          "description": "Keep CRDs when uninstalling chart"
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "enable": {
+          "type": "boolean"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
+      }
+    }
+  }
+}
