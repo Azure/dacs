@@ -5,7 +5,7 @@ include deploy/deploy.mk
 include test/test.mk
 
 help:
-	@echo "dacs Build"
+	@echo "DACS Storage Build"
 	@echo ""
 	@echo "Build & Test:"
 	@echo "  make build                         	- Build storage (Debug)"

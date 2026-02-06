@@ -222,6 +222,6 @@ The E2E and performance tests are integrated into the Azure DevOps pull request 
 
 Performance tests are run on Minikube in the PR pipeline to catch regressions before merge. For full-scale performance testing, use the AKS workflow described above.
 
-See [.pipelines/dacs-linux-pull-request-base.yml](../.pipelines/dacs-linux-pull-request-base.yml) for PR pipeline configuration and [.pipelines/Create-Cacheserver-AKS-Test.yml](../.pipelines/Create-Cacheserver-AKS-Test.yml) for AKS performance test pipeline.
+See [.pipelines/dacs-pull-request-base.yml](../.pipelines/dacs-pull-request-base.yml) for PR pipeline configuration and [.pipelines/Create-Cacheserver-AKS-Test.yml](../.pipelines/Create-Cacheserver-AKS-Test.yml) for AKS performance test pipeline.
 
 [ginkgo]: https://onsi.github.io/ginkgo/

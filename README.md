@@ -1,4 +1,4 @@
-# dacs — Developer Guide
+# DACS Storage — Developer Guide
 
 This repository contains the storage cache layer components for DACS, including CacheServer, CacheClient, and StorageInterception libraries.
 
@@ -19,7 +19,7 @@ Before starting, ensure you have:
 
 ```bash
 cd ~
-git clone internal-reference-removed dacs
+git clone https://github.com/Azure/dacs dacs
 cd dacs
 ```
 

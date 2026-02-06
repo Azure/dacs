@@ -3,7 +3,7 @@
 set -e
 
 echo "================================================"
-echo "dacs - Development Environment Setup"
+echo "DACS Storage - Development Environment Setup"
 echo "================================================"
 echo ""
 
