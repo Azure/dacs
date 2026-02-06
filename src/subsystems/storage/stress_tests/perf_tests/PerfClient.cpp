@@ -125,7 +125,10 @@ std::vector<int64_t> Worker(/*[in]*/ bool bIsUpload,
 {
     LOG_INFO("Worker thread started. StartIndex: {}, EndIndexExclusive: {}", nStartIndex, nEndIndexExclusive);
     std::vector<int64_t> perChunkMs;
-    perChunkMs.reserve(nEndIndexExclusive - nStartIndex);
+    if (nEndIndexExclusive > nStartIndex)
+    {
+        perChunkMs.reserve(nEndIndexExclusive - nStartIndex);
+    }
     
     for(std::size_t idx = nStartIndex; idx < nEndIndexExclusive; idx++)
     {
