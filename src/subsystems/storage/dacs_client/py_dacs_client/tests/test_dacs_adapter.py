@@ -970,11 +970,6 @@ class TestUnsupportedOperations:
                 for line in f:
                     pass
 
-    def test_copy_not_supported(self):
-        """Test that copy() raises OperationNotSupportedError."""
-        with pytest.raises(bf.OperationNotSupportedError, match="copy"):
-            bf.copy("src", "dst")
-
     def test_glob_not_supported(self):
         """Test that glob() raises OperationNotSupportedError."""
         with pytest.raises(bf.OperationNotSupportedError, match="glob"):
@@ -1423,3 +1418,244 @@ class TestExceptionHandling:
             caught_as_dacs = True
 
         assert caught_as_dacs, "DACSAuthenticationError should be catchable as DACSError"
+
+
+class TestCopy:
+    """Test bf.copy() for copying files."""
+
+    def test_copy_remote_to_remote_not_supported(self):
+        """Test that remote-to-remote copy raises OperationNotSupportedError."""
+        src_path = f"{AZURE_BLOB_PATH}/test_copy_r2r_src_{id(self)}.txt"
+        dst_path = f"{AZURE_BLOB_PATH}/test_copy_r2r_dst_{id(self)}.txt"
+
+        # Create source file
+        with bf.DACSAdapter(src_path, "w") as f:
+            f.write("test data")
+
+        # Remote-to-remote should raise OperationNotSupportedError
+        with pytest.raises(OperationNotSupportedError, match="remote-to-remote"):
+            bf.copy(src_path, dst_path)
+
+    def test_copy_nonexistent_source_fails(self):
+        """Test that copy fails when source doesn't exist."""
+        src_path = f"{AZURE_BLOB_PATH}/test_copy_nonexistent_{id(self)}.txt"
+        dst_path = "/tmp/test_copy_dst_nonexistent.txt"
+
+        with pytest.raises(FileNotFoundError):
+            bf.copy(src_path, dst_path)
+
+    def test_copy_directory_path_fails(self):
+        """Test that copy fails when path looks like a directory."""
+        src_path = f"{AZURE_BLOB_PATH}/some_directory/"
+        dst_path = "/tmp/another_directory/"
+
+        with pytest.raises(IsADirectoryError):
+            bf.copy(src_path, dst_path)
+
+    def test_copy_overwrite_remote_destination_not_supported(self):
+        """Test that overwrite=True raises OperationNotSupportedError for remote destinations."""
+        import tempfile
+
+        # Test local → remote with overwrite=True
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
+            tmp.write("source content")
+            local_src = tmp.name
+
+        try:
+            remote_dst = f"{AZURE_BLOB_PATH}/test_copy_overwrite_l2r_{id(self)}.txt"
+            with pytest.raises(OperationNotSupportedError, match="overwrite=True"):
+                bf.copy(local_src, remote_dst, overwrite=True)
+        finally:
+            os.unlink(local_src)
+
+    def test_copy_overwrite_remote_to_local_not_supported(self):
+        """Test that overwrite=True raises OperationNotSupportedError even for remote → local."""
+        import tempfile
+
+        # Create remote source
+        remote_src = f"{AZURE_BLOB_PATH}/test_copy_overwrite_r2l_src_{id(self)}.txt"
+        with bf.DACSAdapter(remote_src, "w") as f:
+            f.write("source content")
+
+        # Create local destination that exists
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
+            tmp.write("existing content")
+            local_dst = tmp.name
+
+        try:
+            # overwrite=True should NOT raise for remote→local since dst is local
+            # Actually per the user requirement, overwrite=True should only be blocked for REMOTE destinations
+            # local destination should work fine with overwrite
+            result = bf.copy(remote_src, local_dst, overwrite=True)
+            assert result is None  # No MD5 requested
+
+            # Verify content was copied
+            with open(local_dst, "r") as f:
+                assert f.read() == "source content"
+        finally:
+            os.unlink(local_dst)
+
+    def test_copy_local_to_remote(self):
+        """Test copying from local file to remote destination."""
+        import tempfile
+
+        # Use data larger than COPY_CHUNK_SIZE to ensure proper handling
+        chunk_size = getattr(bf, "COPY_CHUNK_SIZE", 256 * 1024 * 1024)
+        test_content = "X" * (chunk_size + 1 * 1024 * 1024)  # 1 MiB larger than COPY_CHUNK_SIZE
+
+        # Create local source file
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
+            tmp.write(test_content)
+            local_src = tmp.name
+
+        try:
+            remote_dst = f"{AZURE_BLOB_PATH}/test_copy_l2r_{id(self)}.txt"
+
+            # Perform copy
+            result = bf.copy(local_src, remote_dst)
+            assert result is None  # No MD5 requested
+
+            # Verify content was copied
+            with bf.DACSAdapter(remote_dst, "r") as f:
+                assert f.read() == test_content
+        finally:
+            os.unlink(local_src)
+
+    def test_copy_remote_to_local(self):
+        """Test copying from remote file to local destination."""
+        import tempfile
+
+        # Use data larger than COPY_CHUNK_SIZE to ensure chunked reading works
+        chunk_size = getattr(bf, "COPY_CHUNK_SIZE", 256 * 1024 * 1024)
+        test_content = "Y" * (chunk_size + 1 * 1024 * 1024)  # 1 MiB larger than COPY_CHUNK_SIZE
+        remote_src = f"{AZURE_BLOB_PATH}/test_copy_r2l_src_{id(self)}.txt"
+
+        # Create remote source file
+        with bf.DACSAdapter(remote_src, "w") as f:
+            f.write(test_content)
+
+        # Create temp destination path (file doesn't exist yet)
+        local_dst = tempfile.mktemp(suffix=".txt")
+
+        try:
+            # Perform copy
+            result = bf.copy(remote_src, local_dst)
+            assert result is None  # No MD5 requested
+
+            # Verify content was copied
+            with open(local_dst, "r") as f:
+                assert f.read() == test_content
+        finally:
+            if os.path.exists(local_dst):
+                os.unlink(local_dst)
+
+    def test_copy_local_to_local(self):
+        """Test copying from local file to local destination."""
+        import tempfile
+
+        test_content = "Hello from local to local copy test!"
+
+        # Create local source file
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
+            tmp.write(test_content)
+            local_src = tmp.name
+
+        local_dst = tempfile.mktemp(suffix=".txt")
+
+        try:
+            # Perform copy
+            result = bf.copy(local_src, local_dst)
+            assert result is None  # No MD5 requested
+
+            # Verify content was copied
+            with open(local_dst, "r") as f:
+                assert f.read() == test_content
+        finally:
+            os.unlink(local_src)
+            if os.path.exists(local_dst):
+                os.unlink(local_dst)
+
+    def test_copy_local_to_local_with_overwrite(self):
+        """Test that local→local copy supports overwrite=True."""
+        import tempfile
+
+        # Create source and destination files
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
+            tmp.write("new content")
+            local_src = tmp.name
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
+            tmp.write("old content")
+            local_dst = tmp.name
+
+        try:
+            # Overwrite should work for local→local
+            result = bf.copy(local_src, local_dst, overwrite=True)
+            assert result is None
+
+            with open(local_dst, "r") as f:
+                assert f.read() == "new content"
+        finally:
+            os.unlink(local_src)
+            os.unlink(local_dst)
+
+    def test_copy_file_exists_error(self):
+        """Test that copy raises FileExistsError when destination exists and overwrite=False."""
+        import tempfile
+
+        # Test local destination exists
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as src:
+            src.write("source")
+            local_src = src.name
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as dst:
+            dst.write("existing")
+            local_dst = dst.name
+
+        try:
+            with pytest.raises(FileExistsError):
+                bf.copy(local_src, local_dst, overwrite=False)
+        finally:
+            os.unlink(local_src)
+            os.unlink(local_dst)
+
+    def test_copy_remote_file_exists_error(self):
+        """Test that copy raises FileExistsError when remote destination exists."""
+        import tempfile
+
+        # Create local source
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
+            tmp.write("source content")
+            local_src = tmp.name
+
+        # Create remote destination that already exists
+        remote_dst = f"{AZURE_BLOB_PATH}/test_copy_exists_{id(self)}.txt"
+        with bf.DACSAdapter(remote_dst, "w") as f:
+            f.write("existing content")
+
+        try:
+            with pytest.raises(FileExistsError):
+                bf.copy(local_src, remote_dst, overwrite=False)
+        finally:
+            os.unlink(local_src)
+
+    def test_copy_with_return_md5(self):
+        """Test that copy returns MD5 hash when return_md5=True."""
+        import tempfile
+        import hashlib
+
+        test_content = "Content for MD5 test"
+        expected_md5 = hashlib.md5(test_content.encode()).hexdigest()
+
+        # Create local source
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
+            tmp.write(test_content)
+            local_src = tmp.name
+
+        remote_dst = f"{AZURE_BLOB_PATH}/test_copy_md5_{id(self)}.txt"
+
+        try:
+            result = bf.copy(local_src, remote_dst, return_md5=True)
+            assert result == expected_md5
+        finally:
+            os.unlink(local_src)

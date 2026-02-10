@@ -23,6 +23,8 @@
 # --------------------------------------------------------------------------------------------------------------------
 
 import os
+import re
+import warnings
 import blobfile as bf
 from typing import Optional
 
@@ -32,7 +34,7 @@ _BLOBFILE_ORIGINAL_MODULE_CLASS = None
 
 # Supported APIs - only these get patched with routing logic
 # Everything else raises OperationNotSupportedError
-DACS_SUPPORTED_APIS = {'BlobFile', 'exists', 'listdir', 'scandir', 'stat'}
+DACS_SUPPORTED_APIS = {'BlobFile', 'copy', 'exists', 'listdir', 'scandir', 'stat'}
 
 
 def enable_dacs_backend():
@@ -65,6 +67,7 @@ def enable_dacs_backend():
 
     from py_dacs_client.dacs_adapter import (
         DACSAdapter,
+        copy as dacs_copy,
         exists as dacs_exists,
         listdir as dacs_listdir,
         scandir as dacs_scandir,
@@ -75,6 +78,7 @@ def enable_dacs_backend():
     # Save original functions
     _BLOBFILE_ORIGINAL_FUNCTIONS = {
         'BlobFile': bf.BlobFile,
+        'copy': bf.copy,
         'exists': bf.exists,
         'listdir': bf.listdir,
         'scandir': bf.scandir,
@@ -106,6 +110,45 @@ def enable_dacs_backend():
             return dacs_exists(path)
         return _BLOBFILE_ORIGINAL_FUNCTIONS['exists'](path)
 
+    _URI_SCHEME_RE = re.compile(r'^[a-zA-Z][a-zA-Z0-9+\-.]+://')
+
+    def _is_local_path(path):
+        """Check if path is a local filesystem path (not a URI scheme like az://, gs://).
+        
+        Requires 2+ letter scheme prefix
+        """
+        return isinstance(path, str) and _URI_SCHEME_RE.match(path) is None
+
+    def patched_copy(src, dst, overwrite=False, parallel=False, parallel_executor=None,
+                     return_md5=False, dst_version=None):
+        src_supported = _is_azure_path(src) or _is_local_path(src)
+        dst_supported = _is_azure_path(dst) or _is_local_path(dst)
+
+        # Route to dacs_copy only when both paths are supported (azure or local)
+        if src_supported and dst_supported:
+            unsupported = []
+            if parallel:
+                unsupported.append("parallel")
+            if parallel_executor is not None:
+                unsupported.append("parallel_executor")
+            if dst_version is not None:
+                unsupported.append("dst_version")
+            if unsupported:
+                warnings.warn(
+                    f"DACS copy does not support the following arguments, they will be ignored: "
+                    f"{', '.join(unsupported)}",
+                    UserWarning,
+                    stacklevel=2
+                )
+            return dacs_copy(src, dst, overwrite=overwrite, return_md5=return_md5)
+
+        # Fallback to native blobfile for non-azure/non-local paths (e.g. gs://)
+        return _BLOBFILE_ORIGINAL_FUNCTIONS['copy'](
+            src, dst, overwrite=overwrite, parallel=parallel,
+            parallel_executor=parallel_executor, return_md5=return_md5,
+            dst_version=dst_version
+        )
+
     def patched_listdir(path, shard_prefix_length=0):
         if _is_azure_path(path):
             if shard_prefix_length != 0:
@@ -135,6 +178,7 @@ def enable_dacs_backend():
 
     # Apply patches to supported APIs
     bf.BlobFile = patched_BlobFile
+    bf.copy = patched_copy
     bf.exists = patched_exists
     bf.listdir = patched_listdir
     bf.scandir = patched_scandir
@@ -195,6 +239,7 @@ def disable_dacs_backend():
 
     # Restore original functions
     bf.BlobFile = _BLOBFILE_ORIGINAL_FUNCTIONS['BlobFile']
+    bf.copy = _BLOBFILE_ORIGINAL_FUNCTIONS['copy']
     bf.exists = _BLOBFILE_ORIGINAL_FUNCTIONS['exists']
     bf.listdir = _BLOBFILE_ORIGINAL_FUNCTIONS['listdir']
     bf.scandir = _BLOBFILE_ORIGINAL_FUNCTIONS['scandir']
