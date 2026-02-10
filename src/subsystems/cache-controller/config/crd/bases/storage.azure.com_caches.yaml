@@ -43,77 +43,62 @@ spec:
                 description: CPU limit per cache server pod (recommended when running
                   cache on non-dedicated nodes)
                 format: int32
-                minimum: 1
                 type: integer
               egressBandwidthLimitGbps:
                 description: Egress Bandwidth limit in Gbps (recommended when running
                   cache on non-dedicated nodes)
                 format: int32
-                minimum: 1
                 type: integer
               eviction:
                 description: Eviction settings
                 properties:
                   enableAccessTimeEviction:
-                    default: true
                     description: Enable accessTime based eviction
                     type: boolean
                   evictionMaintainFreeSpace:
-                    default: true
                     description: Keep a portion of cache space always free even if
                       all data is within access time window
                     type: boolean
                   lastAccessThreshold:
-                    default: 30d
                     description: Last Access threshold for cache eviction, example
                       "30d12h41m29s"
                     type: string
                   passFrequency:
-                    default: 1h
                     description: Frequency of running eviction pass, example "1h30m"
                     type: string
                   sizeTarget:
-                    default: "90"
                     description: Target cache utilization percentage after eviction
                       (0-100)
                     type: string
                   sizeThreshold:
-                    default: "90"
                     description: Size threshold for triggering cache eviction in percentage
                       (0-100)
                     type: string
                 type: object
               infinibandResourceLimitCount:
-                default: 0
                 description: Infiniband resource limit count (set to 0 to disable
                   infiniband)
                 format: int32
                 type: integer
               infinibandResourceLimitName:
-                default: rdma/hca_rdma_infiniband
                 description: Infiniband resource limit name
                 type: string
               memoryLimitMB:
                 description: Memory limit in MB per cache server pod (recommended
                   when running cache on non-dedicated nodes)
                 format: int32
-                minimum: 1024
                 type: integer
               metricsPort:
-                default: 9096
                 description: Metrics port for cache server pods
                 format: int32
                 type: integer
               nodeSelectorKey:
-                default: dacs.azure.com/processing-unit
                 description: Node selector label key for cache server pods
                 type: string
               nodeSelectorValue:
-                default: gpu
                 description: Node selector label value for cache server pods
                 type: string
               port:
-                default: 9065
                 description: Port for cache server pods
                 format: int32
                 type: integer
@@ -128,21 +113,15 @@ spec:
                       maxServers:
                         description: Maximum number of cache servers to maintain
                         format: int32
-                        maximum: 99
-                        minimum: 1
                         type: integer
                       minServers:
                         description: Minimum number of cache servers to maintain
                         format: int32
-                        maximum: 99
-                        minimum: 1
                         type: integer
                       percentageOfNodesToUse:
                         description: Percentage of available nodes to use for cache
                           servers
                         format: int32
-                        maximum: 100
-                        minimum: 1
                         type: integer
                     required:
                     - percentageOfNodesToUse
@@ -154,7 +133,6 @@ spec:
                       numServers:
                         description: Number of cache server replicas to maintain
                         format: int32
-                        minimum: 1
                         type: integer
                     required:
                     - numServers
@@ -163,12 +141,10 @@ spec:
               serverSizeInGB:
                 description: Max allowed cache size in GB per cache server
                 format: int32
-                minimum: 1
                 type: integer
               serverThreads:
                 description: Number of threads per cache server
                 format: int32
-                minimum: 4
                 type: integer
               storage:
                 description: Storage configuration for cache data. Default is hostPath

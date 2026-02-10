@@ -9,6 +9,19 @@ CONTROLLER STATUS:
   View controller logs:
     kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "chart.name" . }} -f
 
+{{- if .Values.webhook.enable }}
+
+WEBHOOKS:
+  Admission webhooks are enabled for Cache CR defaulting and validation.
+  
+  Check webhook configurations:
+    kubectl get mutatingwebhookconfigurations dacs-mutating-webhook-configuration
+    kubectl get validatingwebhookconfigurations dacs-validating-webhook-configuration
+
+  Check webhook certificate secret:
+    kubectl get secret dacs-webhook-server-cert -n {{ .Release.Namespace }}
+{{- end }}
+
 {{- if .Values.cache.enabled }}
 
 CACHE CR DEPLOYED:

@@ -80,6 +80,11 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	log.V(1).Info("Reconciling Cache resource", "Cache.Namespace", cache.Namespace, "Cache.Name", cache.Name)
 
+	// Validate required fields are set
+	if err := validateCacheSpec(&cache); err != nil {
+		return ctrl.Result{}, fmt.Errorf("cache spec validation failed: %w", err)
+	}
+
 	numServers := int32(0)
 	if cache.Spec.Scaling.Static != nil {
 		numServers = cache.Spec.Scaling.Static.NumServers
@@ -155,59 +160,24 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		UseHostPath                  bool
 	}
 
-	// Safely derive values from CRD (with defaults)
+	// Extract values from CRD spec
+	// Defaults are applied by the mutating webhook at admission time.
+	// Validation is done by validateCacheSpec called in Reconcile.
 	numServers := int32(0)
 	if cache.Spec.Scaling.Static != nil {
 		numServers = cache.Spec.Scaling.Static.NumServers
 	}
-	port := int32(9065)
-	if cache.Spec.Port != nil {
-		port = *cache.Spec.Port
-	}
-	mport := int32(9096)
-	if cache.Spec.MetricsPort != nil {
-		mport = *cache.Spec.MetricsPort
-	}
+
+	// Storage configuration
 	useEphemeral := false
-	if cache.Spec.Storage != nil && cache.Spec.Storage.Ephemeral != nil {
+	if cache.Spec.Storage.Ephemeral != nil {
 		useEphemeral = *cache.Spec.Storage.Ephemeral
 	}
-	nodeKey := ""
-	if cache.Spec.NodeSelectorKey != nil {
-		nodeKey = *cache.Spec.NodeSelectorKey
-	}
-	nodeVal := ""
-	if cache.Spec.NodeSelectorValue != nil {
-		nodeVal = *cache.Spec.NodeSelectorValue
-	}
-	enableEvict := true
-	if cache.Spec.Eviction != nil {
-		enableEvict = boolValueOrDefault(cache.Spec.Eviction.EnableAccessTimeEviction, true)
-	}
-	enableEvictMaintainFreeSpace := true
-	if cache.Spec.Eviction != nil && cache.Spec.Eviction.EvictionMaintainFreeSpace != nil {
-		enableEvictMaintainFreeSpace = *cache.Spec.Eviction.EvictionMaintainFreeSpace
-	}
 	useHostPath := !useEphemeral
-	nodeCachePath := "/var/lib/ssd/cacheserver"
-	if cache.Spec.Storage != nil && cache.Spec.Storage.HostPath != nil && cache.Spec.Storage.HostPath.NodeCacheFolderPath != "" {
+	// MountSsdPath needs to be set to a valid path even if using ephemeral storage
+	nodeCachePath := storagev1.DefaultNodeCacheFolderPath
+	if cache.Spec.Storage.HostPath != nil && cache.Spec.Storage.HostPath.NodeCacheFolderPath != "" {
 		nodeCachePath = cache.Spec.Storage.HostPath.NodeCacheFolderPath
-	}
-	var egressGb *int32
-	if cache.Spec.EgressBandwidthLimitGbps != nil {
-		egressGb = cache.Spec.EgressBandwidthLimitGbps
-	}
-
-	// Get eviction config values
-	evictionLastAccess := "30d"
-	evictionSizeThreshold := "90"
-	evictionPassFreq := "1h"
-	evictionSizeTarget := "90"
-	if cache.Spec.Eviction != nil {
-		evictionLastAccess = stringValueOrDefault(cache.Spec.Eviction.LastAccessThreshold, "30d")
-		evictionSizeThreshold = stringValueOrDefault(cache.Spec.Eviction.SizeThreshold, "90")
-		evictionPassFreq = stringValueOrDefault(cache.Spec.Eviction.PassFrequency, "1h")
-		evictionSizeTarget = stringValueOrDefault(cache.Spec.Eviction.SizeTarget, "90")
 	}
 
 	cfg := config.GetConfig()
@@ -215,31 +185,31 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 	log.V(1).Info("Applying StatefulSet configuration",
 		"replicas", numServers,
 		"image", cfg.CacheServerImage,
-		"port", port,
-		"metricsPort", mport,
+		"port", *cache.Spec.Port,
+		"metricsPort", *cache.Spec.MetricsPort,
 		"ephemeralStorage", useEphemeral,
-		"evictionEnabled", enableEvict,
-		"evictionLastAccessThreshold", evictionLastAccess,
-		"evictionSizeThreshold", evictionSizeThreshold)
+		"evictionEnabled", *cache.Spec.Eviction.EnableAccessTimeEviction,
+		"evictionLastAccessThreshold", *cache.Spec.Eviction.LastAccessThreshold,
+		"evictionSizeThreshold", *cache.Spec.Eviction.SizeThreshold)
 
 	values := appValues{
 		Namespace:                    cache.Namespace,
 		NumServers:                   numServers,
 		ManagedById:                "",
-		EgressBandwidthInGb:          egressGb,
+		EgressBandwidthInGb:          cache.Spec.EgressBandwidthLimitGbps,
 		UseEphemeralStorage:          useEphemeral,
-		NodeSelectorLabelKey:         nodeKey,
-		NodeSelectorValue:            []string{nodeVal},
+		NodeSelectorLabelKey:         *cache.Spec.NodeSelectorKey,
+		NodeSelectorValue:            []string{*cache.Spec.NodeSelectorValue},
 		Image:                        cfg.CacheServerImage,
 		ServerThreads:                cache.Spec.ServerThreads,
-		Port:                         int(port),
-		MetricsPort:                  int(mport),
-		EnableAccessTimeEviction:     enableEvict,
-		EvictionLastAccessThreshold:  evictionLastAccess,
-		EvictionSizeThreshold:        evictionSizeThreshold,
-		EvictionPassFrequency:        evictionPassFreq,
-		EvictionMaintainFreeSpace:    enableEvictMaintainFreeSpace,
-		EvictionSizeTarget:           evictionSizeTarget,
+		Port:                         int(*cache.Spec.Port),
+		MetricsPort:                  int(*cache.Spec.MetricsPort),
+		EnableAccessTimeEviction:     *cache.Spec.Eviction.EnableAccessTimeEviction,
+		EvictionLastAccessThreshold:  *cache.Spec.Eviction.LastAccessThreshold,
+		EvictionSizeThreshold:        *cache.Spec.Eviction.SizeThreshold,
+		EvictionPassFrequency:        *cache.Spec.Eviction.PassFrequency,
+		EvictionMaintainFreeSpace:    *cache.Spec.Eviction.EvictionMaintainFreeSpace,
+		EvictionSizeTarget:           *cache.Spec.Eviction.SizeTarget,
 		InfinibandResourceLimitCount: cache.Spec.InfinibandResourceLimitCount,
 		InfinibandResourceLimitName:  cache.Spec.InfinibandResourceLimitName,
 		MemoryLimitMB:                cache.Spec.MemoryLimitMB,
@@ -289,11 +259,6 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 
 func (r *CacheReconciler) reconcileServices(ctx context.Context, cache *storagev1.Cache) error {
 	log := logf.FromContext(ctx)
-
-	// Get port values with defaults to avoid nil pointer dereference
-	port := getPortWithDefault(cache.Spec.Port, 9065)
-	metricsPort := getPortWithDefault(cache.Spec.MetricsPort, 9096)
-
 	services := []struct {
 		name         string
 		templatePath string
@@ -306,7 +271,7 @@ func (r *CacheReconciler) reconcileServices(ctx context.Context, cache *storagev
 				Namespace   string
 				Port        int
 				MetricsPort int
-			}{Namespace: cache.Namespace, Port: int(port), MetricsPort: int(metricsPort)},
+			}{Namespace: cache.Namespace, Port: int(*cache.Spec.Port), MetricsPort: int(*cache.Spec.MetricsPort)},
 		},
 		{
 			name:         "cacheserver-discovery",
@@ -314,7 +279,7 @@ func (r *CacheReconciler) reconcileServices(ctx context.Context, cache *storagev
 			values: struct {
 				Namespace string
 				Port      int
-			}{Namespace: cache.Namespace, Port: int(port)},
+			}{Namespace: cache.Namespace, Port: int(*cache.Spec.Port)},
 		},
 	}
 
@@ -354,7 +319,7 @@ func (r *CacheReconciler) reconcileServices(ctx context.Context, cache *storagev
 			return err
 		}
 
-		logResourceOperation(log, result, "Service", service.Namespace, service.Name, "port", port)
+		logResourceOperation(log, result, "Service", service.Namespace, service.Name, "port", *cache.Spec.Port)
 	}
 
 	return nil
@@ -447,22 +412,6 @@ func renderTemplateInto(path string, values interface{}, out interface{}) error 
 		return err
 	}
 	return nil
-}
-
-// boolValueOrDefault returns the dereferenced value if non-nil, otherwise the provided default.
-func boolValueOrDefault(v *bool, def bool) bool {
-	if v == nil {
-		return def
-	}
-	return *v
-}
-
-// stringValueOrDefault returns the dereferenced value if non-nil, otherwise the provided default.
-func stringValueOrDefault(v *string, def string) string {
-	if v == nil {
-		return def
-	}
-	return *v
 }
 
 // logResourceOperation logs the result of a CreateOrUpdate operation in a consistent way
@@ -595,12 +544,49 @@ func setStatusCondition(status *storagev1.CacheStatus, condition metav1.Conditio
 	status.Conditions = append(status.Conditions, condition)
 }
 
-// getPortWithDefault returns the port value or default if nil.
-func getPortWithDefault(port *int32, defaultPort int32) int32 {
-	if port == nil {
-		return defaultPort
+// validateCacheSpec validates that all required fields in the Cache spec are set.
+// Defaults are applied by the mutating webhook at admission time.
+func validateCacheSpec(cache *storagev1.Cache) error {
+	if cache == nil {
+		return fmt.Errorf("cache is nil")
 	}
-	return *port
+	if cache.Spec.Port == nil {
+		return fmt.Errorf("spec.port is nil")
+	}
+	if cache.Spec.MetricsPort == nil {
+		return fmt.Errorf("spec.metricsPort is nil")
+	}
+	if cache.Spec.Storage == nil {
+		return fmt.Errorf("spec.storage is nil")
+	}
+	if cache.Spec.NodeSelectorKey == nil {
+		return fmt.Errorf("spec.nodeSelectorKey is nil")
+	}
+	if cache.Spec.NodeSelectorValue == nil {
+		return fmt.Errorf("spec.nodeSelectorValue is nil")
+	}
+	if cache.Spec.Eviction == nil {
+		return fmt.Errorf("spec.eviction is nil")
+	}
+	if cache.Spec.Eviction.EnableAccessTimeEviction == nil {
+		return fmt.Errorf("spec.eviction.enableAccessTimeEviction is nil")
+	}
+	if cache.Spec.Eviction.EvictionMaintainFreeSpace == nil {
+		return fmt.Errorf("spec.eviction.evictionMaintainFreeSpace is nil")
+	}
+	if cache.Spec.Eviction.LastAccessThreshold == nil {
+		return fmt.Errorf("spec.eviction.lastAccessThreshold is nil")
+	}
+	if cache.Spec.Eviction.SizeThreshold == nil {
+		return fmt.Errorf("spec.eviction.sizeThreshold is nil")
+	}
+	if cache.Spec.Eviction.PassFrequency == nil {
+		return fmt.Errorf("spec.eviction.passFrequency is nil")
+	}
+	if cache.Spec.Eviction.SizeTarget == nil {
+		return fmt.Errorf("spec.eviction.sizeTarget is nil")
+	}
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

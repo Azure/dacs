@@ -144,6 +144,20 @@
           "maximum": 65535
         }
       }
+    },
+    "webhook": {
+      "type": "object",
+      "properties": {
+        "enable": {
+          "type": "boolean",
+          "description": "Enable admission webhooks for Cache CR defaulting and validation"
+        },
+        "failurePolicy": {
+          "type": "string",
+          "enum": ["Fail", "Ignore"],
+          "description": "Failure policy for webhook calls"
+        }
+      }
     }
   }
 }

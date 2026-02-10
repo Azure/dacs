@@ -63,6 +63,15 @@ metrics:
   enable: true
   port: 8443  # Metrics server port
 
+# Admission webhooks for defaulting and validation of Cache CRs.
+# When enabled, deploys mutating/validating webhook configurations,
+# webhook service, TLS cert secret, and required RBAC.
+# The controller's built-in cert-controller manages TLS certificate rotation.
+webhook:
+  enable: true
+  # Failure policy for webhook calls (Fail or Ignore)
+  failurePolicy: Fail
+
 # Cert-manager integration for TLS certificates.
 # Required for webhook certificates and metrics endpoint certificates.
 certManager:

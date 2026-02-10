@@ -1,0 +1,46 @@
+# Role and RoleBinding for certificate rotation
+# Allows the controller to read and update the webhook certificate secret
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: certificate-role
+  namespace: system
+  labels:
+    app.kubernetes.io/name: cache-controller
+    app.kubernetes.io/managed-by: kustomize
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  resourceNames:
+  - cache-controller-webhook-server-cert
+  verbs:
+  - get
+  - patch
+  - update
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: certificate-rolebinding
+  namespace: system
+  labels:
+    app.kubernetes.io/name: cache-controller
+    app.kubernetes.io/managed-by: kustomize
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: certificate-role
+subjects:
+- kind: ServiceAccount
+  name: controller-manager
+  namespace: system
