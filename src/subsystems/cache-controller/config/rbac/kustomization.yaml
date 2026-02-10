@@ -10,6 +10,10 @@ resources:
 - leader_election_role.yaml
 - scheduler_role_binding.yaml
 - leader_election_role_binding.yaml
+# Certificate role for webhook cert rotation
+- certificate_role.yaml
+# ClusterRole for webhook CA bundle injection
+- webhook_role.yaml
 # The following RBAC configurations are used to protect
 # the metrics endpoint with authn/authz. These configurations
 # ensure that only authorized users and service accounts

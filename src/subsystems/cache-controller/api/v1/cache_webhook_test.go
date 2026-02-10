@@ -1,0 +1,262 @@
+/*
+Copyright (c) Microsoft Corporation. All rights reserved.
+*/
+
+package v1
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"k8s.io/utils/ptr"
+)
+
+func TestCacheWebhook_Default(t *testing.T) {
+	t.Parallel()
+
+	cache := &Cache{Spec: CacheSpec{ServerSizeInGB: 100, ServerThreads: 8}}
+	err := cache.Default(context.Background(), cache)
+	if err != nil {
+		t.Fatalf("Default() error: %v", err)
+	}
+
+	if *cache.Spec.Port != DefaultPort {
+		t.Errorf("Port: got %v, want %v", *cache.Spec.Port, DefaultPort)
+	}
+	if *cache.Spec.MetricsPort != DefaultMetricsPort {
+		t.Errorf("MetricsPort: got %v, want %v", *cache.Spec.MetricsPort, DefaultMetricsPort)
+	}
+	if *cache.Spec.NodeSelectorKey != DefaultNodeSelectorKey {
+		t.Errorf("NodeSelectorKey: got %v, want %v", *cache.Spec.NodeSelectorKey, DefaultNodeSelectorKey)
+	}
+	if *cache.Spec.NodeSelectorValue != DefaultNodeSelectorValue {
+		t.Errorf("NodeSelectorValue: got %v, want %v", *cache.Spec.NodeSelectorValue, DefaultNodeSelectorValue)
+	}
+	if *cache.Spec.InfinibandResourceLimitName != DefaultInfinibandResourceLimitName {
+		t.Errorf("InfinibandResourceLimitName: got %v, want %v", *cache.Spec.InfinibandResourceLimitName, DefaultInfinibandResourceLimitName)
+	}
+	if *cache.Spec.InfinibandResourceLimitCount != DefaultInfinibandResourceLimitCount {
+		t.Errorf("InfinibandResourceLimitCount: got %v, want %v", *cache.Spec.InfinibandResourceLimitCount, DefaultInfinibandResourceLimitCount)
+	}
+
+	if cache.Spec.Eviction == nil {
+		t.Fatal("Eviction should not be nil")
+	}
+	if *cache.Spec.Eviction.EnableAccessTimeEviction != DefaultEnableAccessTimeEviction {
+		t.Errorf("EnableAccessTimeEviction: got %v, want %v", *cache.Spec.Eviction.EnableAccessTimeEviction, DefaultEnableAccessTimeEviction)
+	}
+	if *cache.Spec.Eviction.EvictionMaintainFreeSpace != DefaultEvictionMaintainFreeSpace {
+		t.Errorf("EvictionMaintainFreeSpace: got %v, want %v", *cache.Spec.Eviction.EvictionMaintainFreeSpace, DefaultEvictionMaintainFreeSpace)
+	}
+	if *cache.Spec.Eviction.LastAccessThreshold != DefaultLastAccessThreshold {
+		t.Errorf("LastAccessThreshold: got %v, want %v", *cache.Spec.Eviction.LastAccessThreshold, DefaultLastAccessThreshold)
+	}
+	if *cache.Spec.Eviction.SizeThreshold != DefaultSizeThreshold {
+		t.Errorf("SizeThreshold: got %v, want %v", *cache.Spec.Eviction.SizeThreshold, DefaultSizeThreshold)
+	}
+	if *cache.Spec.Eviction.PassFrequency != DefaultPassFrequency {
+		t.Errorf("PassFrequency: got %v, want %v", *cache.Spec.Eviction.PassFrequency, DefaultPassFrequency)
+	}
+	if *cache.Spec.Eviction.SizeTarget != DefaultSizeTarget {
+		t.Errorf("SizeTarget: got %v, want %v", *cache.Spec.Eviction.SizeTarget, DefaultSizeTarget)
+	}
+
+	if cache.Spec.Storage == nil || cache.Spec.Storage.HostPath == nil {
+		t.Fatal("Storage.HostPath should not be nil")
+	}
+	if cache.Spec.Storage.HostPath.NodeCacheFolderPath != DefaultNodeCacheFolderPath {
+		t.Errorf("NodeCacheFolderPath: got %v, want %v", cache.Spec.Storage.HostPath.NodeCacheFolderPath, DefaultNodeCacheFolderPath)
+	}
+
+	if cache.Spec.Scaling.Static == nil {
+		t.Fatal("Scaling.Static should not be nil")
+	}
+	if cache.Spec.Scaling.Static.NumServers != DefaultNumServers {
+		t.Errorf("NumServers: got %v, want %v", cache.Spec.Scaling.Static.NumServers, DefaultNumServers)
+	}
+}
+
+func TestCacheWebhook_Default_DoesNotOverride(t *testing.T) {
+	t.Parallel()
+
+	cache := &Cache{
+		Spec: CacheSpec{
+			ServerSizeInGB:               100,
+			ServerThreads:                8,
+			Port:                         ptr.To(int32(8080)),
+			MetricsPort:                  ptr.To(int32(8081)),
+			NodeSelectorKey:              ptr.To("custom-key"),
+			NodeSelectorValue:            ptr.To("custom-value"),
+			InfinibandResourceLimitName:  ptr.To("custom/infiniband"),
+			InfinibandResourceLimitCount: ptr.To(int32(2)),
+			Eviction: &EvictionConfig{
+				EnableAccessTimeEviction:  ptr.To(false),
+				EvictionMaintainFreeSpace: ptr.To(false),
+				LastAccessThreshold:       ptr.To("7d"),
+				SizeThreshold:             ptr.To("80"),
+				PassFrequency:             ptr.To("2h"),
+				SizeTarget:                ptr.To("70"),
+			},
+			Storage: &StorageConfig{
+				HostPath: &HostPathConfig{NodeCacheFolderPath: "/custom/path"},
+			},
+		},
+	}
+
+	err := cache.Default(context.Background(), cache)
+	if err != nil {
+		t.Fatalf("Default() error: %v", err)
+	}
+
+	if *cache.Spec.Port != 8080 {
+		t.Errorf("Port was overwritten: got %v, want 8080", *cache.Spec.Port)
+	}
+	if *cache.Spec.MetricsPort != 8081 {
+		t.Errorf("MetricsPort was overwritten: got %v, want 8081", *cache.Spec.MetricsPort)
+	}
+	if *cache.Spec.NodeSelectorKey != "custom-key" {
+		t.Errorf("NodeSelectorKey was overwritten: got %v, want custom-key", *cache.Spec.NodeSelectorKey)
+	}
+	if *cache.Spec.NodeSelectorValue != "custom-value" {
+		t.Errorf("NodeSelectorValue was overwritten: got %v, want custom-value", *cache.Spec.NodeSelectorValue)
+	}
+	if *cache.Spec.InfinibandResourceLimitName != "custom/infiniband" {
+		t.Errorf("InfinibandResourceLimitName was overwritten: got %v, want custom/infiniband", *cache.Spec.InfinibandResourceLimitName)
+	}
+	if *cache.Spec.InfinibandResourceLimitCount != 2 {
+		t.Errorf("InfinibandResourceLimitCount was overwritten: got %v, want 2", *cache.Spec.InfinibandResourceLimitCount)
+	}
+	if *cache.Spec.Eviction.EnableAccessTimeEviction != false {
+		t.Errorf("EnableAccessTimeEviction was overwritten: got %v, want false", *cache.Spec.Eviction.EnableAccessTimeEviction)
+	}
+	if *cache.Spec.Eviction.EvictionMaintainFreeSpace != false {
+		t.Errorf("EvictionMaintainFreeSpace was overwritten: got %v, want false", *cache.Spec.Eviction.EvictionMaintainFreeSpace)
+	}
+	if *cache.Spec.Eviction.LastAccessThreshold != "7d" {
+		t.Errorf("LastAccessThreshold was overwritten: got %v, want 7d", *cache.Spec.Eviction.LastAccessThreshold)
+	}
+	if *cache.Spec.Eviction.SizeThreshold != "80" {
+		t.Errorf("SizeThreshold was overwritten: got %v, want 80", *cache.Spec.Eviction.SizeThreshold)
+	}
+	if *cache.Spec.Eviction.PassFrequency != "2h" {
+		t.Errorf("PassFrequency was overwritten: got %v, want 2h", *cache.Spec.Eviction.PassFrequency)
+	}
+	if *cache.Spec.Eviction.SizeTarget != "70" {
+		t.Errorf("SizeTarget was overwritten: got %v, want 70", *cache.Spec.Eviction.SizeTarget)
+	}
+	if cache.Spec.Storage.HostPath.NodeCacheFolderPath != "/custom/path" {
+		t.Errorf("NodeCacheFolderPath was overwritten: got %v, want /custom/path", cache.Spec.Storage.HostPath.NodeCacheFolderPath)
+	}
+}
+
+func TestCacheWebhook_ValidateCreate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		mutate      func(*Cache)
+		expectedErr string
+	}{
+		{
+			name: "valid default",
+		},
+		{
+			name: "valid with dynamic scaling",
+			mutate: func(c *Cache) {
+				c.Spec.Scaling.Dynamic = &DynamicScaleConfig{
+					PercentageOfNodesToUse: 50,
+					MinServers:             ptr.To(int32(2)),
+					MaxServers:             ptr.To(int32(10)),
+				}
+			},
+		},
+		{
+			name: "rejects minServers > maxServers",
+			mutate: func(c *Cache) {
+				c.Spec.Scaling.Dynamic = &DynamicScaleConfig{
+					PercentageOfNodesToUse: 50,
+					MinServers:             ptr.To(int32(10)),
+					MaxServers:             ptr.To(int32(5)),
+				}
+			},
+			expectedErr: "cannot exceed maxServers",
+		},
+		{
+			name: "rejects ephemeral and hostPath together",
+			mutate: func(c *Cache) {
+				c.Spec.Storage = &StorageConfig{Ephemeral: ptr.To(true), HostPath: &HostPathConfig{NodeCacheFolderPath: "/data"}}
+			},
+			expectedErr: "cannot specify both ephemeral and hostPath",
+		},
+		{
+			name: "rejects invalid duration format",
+			mutate: func(c *Cache) {
+				c.Spec.Eviction = &EvictionConfig{LastAccessThreshold: ptr.To("invalid")}
+			},
+			expectedErr: "invalid duration format",
+		},
+		{
+			name: "rejects invalid percentage",
+			mutate: func(c *Cache) {
+				c.Spec.Eviction = &EvictionConfig{SizeThreshold: ptr.To("150")}
+			},
+			expectedErr: "must be between 0 and 100",
+		},
+		{
+			name: "rejects same port and metricsPort",
+			mutate: func(c *Cache) {
+				c.Spec.Port = ptr.To(int32(9065))
+				c.Spec.MetricsPort = ptr.To(int32(9065))
+			},
+			expectedErr: "must be different from port",
+		},
+		{
+			name: "rejects sizeTarget >= sizeThreshold",
+			mutate: func(c *Cache) {
+				c.Spec.Eviction = &EvictionConfig{
+					SizeThreshold: ptr.To("80"),
+					SizeTarget:    ptr.To("90"),
+				}
+			},
+			expectedErr: "sizeTarget (90%) must be less than sizeThreshold (80%)",
+		},
+		{
+			name: "rejects infinibandResourceLimitCount > 0 without name",
+			mutate: func(c *Cache) {
+				c.Spec.InfinibandResourceLimitName = ptr.To("")
+				c.Spec.InfinibandResourceLimitCount = ptr.To(int32(1))
+			},
+			expectedErr: "required when infinibandResourceLimitCount > 0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cache := &Cache{Spec: CacheSpec{ServerSizeInGB: 100, ServerThreads: 8}}
+			if tt.mutate != nil {
+				tt.mutate(cache)
+			}
+
+			if err := cache.Default(context.Background(), cache); err != nil {
+				t.Fatalf("Default() error: %v", err)
+			}
+
+			_, err := cache.ValidateCreate(context.Background(), cache)
+
+			if tt.expectedErr == "" {
+				if err != nil {
+					t.Errorf("expected no error, got: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Errorf("expected error containing %q, got nil", tt.expectedErr)
+				} else if !strings.Contains(err.Error(), tt.expectedErr) {
+					t.Errorf("expected error containing %q, got: %v", tt.expectedErr, err)
+				}
+			}
+		})
+	}
+}

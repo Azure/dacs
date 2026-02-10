@@ -67,13 +67,17 @@ spec:
           requests:
             memory: "100Mi"
             cpu: "0.25"
-            {{- if .InfinibandResourceLimitCount }}
+            {{- if and .InfinibandResourceLimitCount .InfinibandResourceLimitName }}
             "{{ .InfinibandResourceLimitName }}": "{{ .InfinibandResourceLimitCount }}"
             {{- end }}
           limits:
+            {{- if .MemoryLimitMB }}
             memory: "{{ .MemoryLimitMB -}}Mi"
+            {{- end }}
+            {{- if .CpuLimit }}
             cpu: "{{ .CpuLimit }}"
-            {{- if .InfinibandResourceLimitCount }}
+            {{- end }}
+            {{- if and .InfinibandResourceLimitCount .InfinibandResourceLimitName }}
             "{{ .InfinibandResourceLimitName }}": "{{ .InfinibandResourceLimitCount }}"
             {{- end }}
         ports:

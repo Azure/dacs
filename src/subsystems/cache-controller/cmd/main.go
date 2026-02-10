@@ -7,17 +7,21 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"io"
+	"net/http"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	"github.com/open-policy-agent/cert-controller/pkg/rotator"
 	log "github.com/sirupsen/logrus"
 	"github.com/sirupsen/logrus/hooks/writer"
 	"go.uber.org/zap/zapcore"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -104,6 +108,13 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var enableWebhooks bool
+	var webhookPort int
+	var namespace string
+	var webhookServiceName string
+	var certSecretName string
+	var mutatingWebhookConfigName string
+	var validatingWebhookConfigName string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -113,7 +124,7 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.BoolVar(&secureMetrics, "metrics-secure", true,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
-	flag.StringVar(&webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")
+	flag.StringVar(&webhookCertPath, "webhook-cert-path", "/tmp/k8s-webhook-server/serving-certs", "The directory that contains the webhook certificate.")
 	flag.StringVar(&webhookCertName, "webhook-cert-name", "tls.crt", "The name of the webhook certificate file.")
 	flag.StringVar(&webhookCertKey, "webhook-cert-key", "tls.key", "The name of the webhook key file.")
 	flag.StringVar(&metricsCertPath, "metrics-cert-path", "",
@@ -122,6 +133,14 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.BoolVar(&enableWebhooks, "enable-webhooks", false, "Enable admission webhooks for defaulting and validation.")
+	flag.IntVar(&webhookPort, "webhook-port", 9443, "The port the webhook server listens on.")
+	flag.StringVar(&namespace, "namespace", "cache-controller-system", "The namespace where the controller is deployed.")
+	flag.StringVar(&webhookServiceName, "webhook-service-name", "cache-controller-webhook-service", "The name of the webhook service.")
+	flag.StringVar(&certSecretName, "cert-secret-name", "webhook-server-cert", "The name of the secret containing the webhook certificates.")
+	flag.StringVar(&mutatingWebhookConfigName, "mutating-webhook-config-name", "cache-controller-mutating-webhook-configuration", "The name of the MutatingWebhookConfiguration.")
+	flag.StringVar(&validatingWebhookConfigName, "validating-webhook-config-name", "cache-controller-validating-webhook-configuration", "The name of the ValidatingWebhookConfiguration.")
+
 	opts := zap.Options{
 		Development: true,
 	}
@@ -153,9 +172,10 @@ func main() {
 	webhookTLSOpts := tlsOpts
 	webhookServerOptions := webhook.Options{
 		TLSOpts: webhookTLSOpts,
+		Port:    webhookPort,
 	}
 
-	if len(webhookCertPath) > 0 {
+	if enableWebhooks && len(webhookCertPath) > 0 {
 		setupLog.Info("Initializing webhook certificate watcher using provided certificates",
 			"webhook-cert-path", webhookCertPath, "webhook-cert-name", webhookCertName, "webhook-cert-key", webhookCertKey)
 
@@ -225,6 +245,48 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Setup certificate rotation for webhooks using cert-controller
+	// This automatically generates and rotates certificates for webhook server
+	certSetupFinished := make(chan struct{})
+	if enableWebhooks {
+		setupLog.Info("Setting up certificate rotation for webhooks")
+
+		webhooks := []rotator.WebhookInfo{
+			{
+				Name: mutatingWebhookConfigName,
+				Type: rotator.Mutating,
+			},
+			{
+				Name: validatingWebhookConfigName,
+				Type: rotator.Validating,
+			},
+		}
+
+		if err := rotator.AddRotator(mgr, &rotator.CertRotator{
+			SecretKey: types.NamespacedName{
+				Namespace: namespace,
+				Name:      certSecretName,
+			},
+			CertDir:        webhookCertPath,
+			CAName:         "cache-controller-ca",
+			CAOrganization: "Cache Controller",
+			DNSName:        fmt.Sprintf("%s.%s.svc", webhookServiceName, namespace),
+			ExtraDNSNames: []string{
+				fmt.Sprintf("%s.%s.svc.cluster.local", webhookServiceName, namespace),
+				fmt.Sprintf("%s.%s", webhookServiceName, namespace),
+			},
+			Webhooks:             webhooks,
+			IsReady:              certSetupFinished,
+			EnableReadinessCheck: true,
+		}); err != nil {
+			setupLog.Error(err, "unable to setup cert rotation")
+			os.Exit(1)
+		}
+	} else {
+		setupLog.Info("Webhooks disabled, skipping cert rotation setup")
+		close(certSetupFinished)
+	}
+
 	if err := (&controller.CacheReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -232,13 +294,41 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Cache")
 		os.Exit(1)
 	}
+
+	// Setup webhooks after cert rotation is ready
+	if enableWebhooks {
+		go func() {
+			<-certSetupFinished
+			setupLog.Info("Certificates ready, registering webhooks")
+
+			if err := (&storagev1.Cache{}).SetupWebhookWithManager(mgr); err != nil {
+				setupLog.Error(err, "unable to create webhook", "webhook", "Cache")
+				os.Exit(1)
+			}
+			setupLog.Info("Webhooks registered successfully")
+		}()
+	}
+
 	// +kubebuilder:scaffold:builder
 
-	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+	// Setup health checks with cert readiness awareness
+	checker := healthz.Ping
+	if enableWebhooks {
+		checker = func(req *http.Request) error {
+			select {
+			case <-certSetupFinished:
+				return mgr.GetWebhookServer().StartedChecker()(req)
+			default:
+				return fmt.Errorf("certs are not ready yet")
+			}
+		}
+	}
+
+	if err := mgr.AddHealthzCheck("healthz", checker); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)
 	}
-	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+	if err := mgr.AddReadyzCheck("readyz", checker); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}

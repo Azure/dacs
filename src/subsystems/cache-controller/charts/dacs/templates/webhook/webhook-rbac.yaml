@@ -1,0 +1,85 @@
+{{- if .Values.webhook.enable }}
+# ClusterRole for updating webhook configurations with CA bundles
+# The cert-controller needs to inject CA bundles into webhook configurations
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+  name: dacs-webhook-role
+rules:
+  - apiGroups:
+      - admissionregistration.k8s.io
+    resources:
+      - mutatingwebhookconfigurations
+      - validatingwebhookconfigurations
+    verbs:
+      - get
+      - list
+      - patch
+      - update
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+  name: dacs-webhook-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dacs-webhook-role
+subjects:
+  - kind: ServiceAccount
+    name: dacs-manager
+    namespace: {{ .Release.Namespace }}
+---
+# Role for certificate rotation - allows reading/updating the webhook cert secret
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+  name: dacs-certificate-role
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    resourceNames:
+      - dacs-webhook-server-cert
+    verbs:
+      - get
+      - patch
+      - update
+      - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+  name: dacs-certificate-rolebinding
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dacs-certificate-role
+subjects:
+  - kind: ServiceAccount
+    name: dacs-manager
+    namespace: {{ .Release.Namespace }}
+{{- end }}

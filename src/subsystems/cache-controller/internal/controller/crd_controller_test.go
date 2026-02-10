@@ -16,14 +16,10 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
-// test helper pointer constructors
-func int32Ptr(v int32) *int32 { return &v }
-func toBoolPtr(v bool) *bool  { return &v }
-func strPtr(s string) *string { return &s }
-
-// createTestCache creates a Cache CR with the given name and number of replicas
+// createTestCache creates a Cache CR with the given name and number of replicas.
 func createTestCache(name, namespace string, numServers int32) *storagev1.Cache {
 	return &storagev1.Cache{
 		ObjectMeta: metav1.ObjectMeta{
@@ -38,10 +34,10 @@ func createTestCache(name, namespace string, numServers int32) *storagev1.Cache 
 			},
 			ServerSizeInGB: 100,
 			ServerThreads:  16,
-			CpuLimit:       int32Ptr(1),
-			MemoryLimitMB:  int32Ptr(20480),
+			CpuLimit:       ptr.To(int32(1)),
+			MemoryLimitMB:  ptr.To(int32(20480)),
 			Storage: &storagev1.StorageConfig{
-				Ephemeral: toBoolPtr(true),
+				Ephemeral: ptr.To(true),
 			},
 		},
 	}
@@ -49,32 +45,6 @@ func createTestCache(name, namespace string, numServers int32) *storagev1.Cache 
 
 var _ = Describe("Cache Controller", func() {
 	Describe("Helper Functions", func() {
-		Describe("getPortWithDefault", func() {
-			It("should return default when port is nil", func() {
-				result := getPortWithDefault(nil, 8080)
-				Expect(result).To(Equal(int32(8080)))
-			})
-
-			It("should return provided value when port is not nil", func() {
-				port := int32(9000)
-				result := getPortWithDefault(&port, 8080)
-				Expect(result).To(Equal(int32(9000)))
-			})
-		})
-
-		Describe("boolValueOrDefault", func() {
-			It("should return default when value is nil", func() {
-				result := boolValueOrDefault(nil, true)
-				Expect(result).To(BeTrue())
-			})
-
-			It("should return provided value when not nil", func() {
-				value := false
-				result := boolValueOrDefault(&value, true)
-				Expect(result).To(BeFalse())
-			})
-		})
-
 		Describe("setStatusCondition", func() {
 			var status *storagev1.CacheStatus
 
@@ -230,6 +200,19 @@ var _ = Describe("Cache Controller", func() {
 
 			By("verifying the CacheServer Discovery ConfigMap is created with correct server count")
 			Eventually(getConfigMapServerCount, timeout, pollInterval).Should(Equal("2"))
+
+			By("verifying webhook defaults were applied to the Cache CR")
+			updatedCache := &storagev1.Cache{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cacheName, Namespace: resourceNamespace}, updatedCache)).To(Succeed(), "should get Cache CR")
+			Expect(updatedCache.Spec.Port).NotTo(BeNil(), "webhook should set default Port")
+			Expect(*updatedCache.Spec.Port).To(Equal(storagev1.DefaultPort), "Port should equal DefaultPort")
+			Expect(updatedCache.Spec.MetricsPort).NotTo(BeNil(), "webhook should set default MetricsPort")
+			Expect(*updatedCache.Spec.MetricsPort).To(Equal(storagev1.DefaultMetricsPort), "MetricsPort should equal DefaultMetricsPort")
+			Expect(updatedCache.Spec.NodeSelectorKey).NotTo(BeNil(), "webhook should set default NodeSelectorKey")
+			Expect(*updatedCache.Spec.NodeSelectorKey).To(Equal(storagev1.DefaultNodeSelectorKey), "NodeSelectorKey should equal DefaultNodeSelectorKey")
+			Expect(updatedCache.Spec.Storage).NotTo(BeNil(), "webhook should set default Storage")
+			Expect(updatedCache.Spec.Storage.Ephemeral).NotTo(BeNil(), "webhook should set default Ephemeral")
+			Expect(*updatedCache.Spec.Storage.Ephemeral).To(BeTrue(), "Ephemeral should be true as set in test")
 
 			By("verifying the Cache status has Ready condition")
 			Eventually(func() bool {

@@ -6,9 +6,13 @@ package controller
 
 import (
 	"context"
+	"crypto/tls"
+	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -21,6 +25,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
 	// +kubebuilder:scaffold:imports
@@ -58,6 +63,9 @@ var _ = BeforeSuite(func() {
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
+		WebhookInstallOptions: envtest.WebhookInstallOptions{
+			Paths: []string{filepath.Join("..", "..", "config", "webhook")},
+		},
 	}
 
 	// Retrieve the first found binary directory to allow running tests from IDEs
@@ -74,14 +82,23 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
-	// Set up controller manager
-	By("setting up controller manager")
+	// Set up webhook server
+	webhookInstallOptions := &testEnv.WebhookInstallOptions
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: "0", // Disable metrics server for tests
 		},
+		WebhookServer: webhook.NewServer(webhook.Options{
+			Host:    webhookInstallOptions.LocalServingHost,
+			Port:    webhookInstallOptions.LocalServingPort,
+			CertDir: webhookInstallOptions.LocalServingCertDir,
+		}),
 	})
+	Expect(err).NotTo(HaveOccurred())
+
+	// Register webhooks with the manager
+	err = (&storagev1.Cache{}).SetupWebhookWithManager(mgr)
 	Expect(err).NotTo(HaveOccurred())
 
 	// Register the CacheReconciler with the manager
@@ -97,6 +114,17 @@ var _ = BeforeSuite(func() {
 		err := mgr.Start(ctx)
 		Expect(err).NotTo(HaveOccurred())
 	}()
+
+	// Wait for the webhook server to be ready
+	dialer := &net.Dialer{Timeout: time.Second}
+	addrPort := fmt.Sprintf("%s:%d", webhookInstallOptions.LocalServingHost, webhookInstallOptions.LocalServingPort)
+	Eventually(func() error {
+		conn, err := tls.DialWithDialer(dialer, "tcp", addrPort, &tls.Config{InsecureSkipVerify: true})
+		if err != nil {
+			return err
+		}
+		return conn.Close()
+	}).Should(Succeed())
 })
 
 var _ = AfterSuite(func() {
