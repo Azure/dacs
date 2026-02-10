@@ -127,6 +127,16 @@ Performance tests measure throughput and latency of the cache-server using confi
 | `--num-threads` | `1` | Number of threads for perf client |
 | `--checksum-algorithm` | `xxhash32` | Checksum algorithm (`xxhash32` or `crc32`) |
 
+### Performance Metrics
+
+Performance tests capture detailed latency metrics including:
+- **Throughput**: Overall data transfer rate (Gbps/Mbps)
+- **Per-chunk latency percentiles**: p50, p90, p99 (milliseconds)
+- **Success/failure counts**: Individual chunk transfer statistics
+- **Duration**: Total test execution time
+
+These metrics are automatically collected from the PerfClient logs and can be sent to EventHub for Kusto ingestion when `SEND_METRICS=true`.
+
 ### Environment Variables
 
 | Variable | Default | Description |
