@@ -54,6 +54,8 @@ type Config struct {
 	NumIterations int
 	// Prefix is the prefix for test data
 	Prefix string
+	// ChunkSizeBytes is the chunk size in bytes (default 33554432 = 32 MiB)
+	ChunkSizeBytes int
 	// EnableCalculateChecksum enables checksum calculation on upload
 	EnableCalculateChecksum bool
 	// EnableValidateChecksum enables checksum validation on download
@@ -75,6 +77,7 @@ func NewConfig() *Config {
 		DataSizeGiB:             1,
 		NumIterations:           1,
 		Prefix:                  "test",
+		ChunkSizeBytes:          33554432, // 32 MiB default
 		EnableCalculateChecksum: false,
 		EnableValidateChecksum:  false,
 		ChecksumAlgorithm:       ChecksumAlgorithmXXHash32,
@@ -126,6 +129,12 @@ func (c *Config) WithNumIterations(numIterations int) *Config {
 // WithPrefix sets the prefix for test data.
 func (c *Config) WithPrefix(prefix string) *Config {
 	c.Prefix = prefix
+	return c
+}
+
+// WithChunkSizeBytes sets the chunk size in bytes.
+func (c *Config) WithChunkSizeBytes(chunkSizeBytes int) *Config {
+	c.ChunkSizeBytes = chunkSizeBytes
 	return c
 }
 
@@ -258,6 +267,7 @@ func (c *Config) LoadJob() (*batchv1.Job, error) {
 			"--mode", string(c.Mode),
 			"--num-iterations", fmt.Sprintf("%d", c.NumIterations),
 			"--ib-enabled", "false",
+			"--chunk-size-bytes", fmt.Sprintf("%d", c.ChunkSizeBytes),
 		}
 
 		// Only add checksum args if checksum is enabled

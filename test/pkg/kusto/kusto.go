@@ -68,6 +68,7 @@ type TestMetadata struct {
 // PerfResult contains the cache server performance test results (dynamic column in Kusto).
 type PerfResult struct {
 	Mode                    string `json:"Mode"`
+	ChunkSizeBytes          int64  `json:"ChunkSizeBytes"`
 	DurationMs              int64  `json:"DurationMs"`
 	TotalBytesTransferred   int64  `json:"TotalBytesTransferred"`
 	ThroughputMbps          int64  `json:"ThroughputMbps"`
