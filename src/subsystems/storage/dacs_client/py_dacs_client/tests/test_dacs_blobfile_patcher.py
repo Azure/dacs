@@ -105,7 +105,7 @@ class TestEnvironmentVariable:
     def test_supported_apis_constant_matches_patched_functions(self):
         """Test that DACS_SUPPORTED_APIS matches actual patched functions."""
         # Verify the constant contains expected APIs
-        expected = {'BlobFile', 'exists', 'listdir', 'scandir', 'stat'}
+        expected = {'BlobFile', 'copy', 'exists', 'listdir', 'scandir', 'stat'}
         assert DACS_SUPPORTED_APIS == expected
 
     def test_auto_enable_via_env_var(self):
@@ -188,6 +188,15 @@ class TestPatcherRouting:
             assert hasattr(entry, "is_file"), "DirEntry should have is_file attribute"
             assert hasattr(entry, "stat"), "DirEntry should have stat attribute"
 
+        # Test copy - remote (az://) to local
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp_dir:
+            local_copy_path = os.path.join(temp_dir, "copied_file.txt")
+            bf.copy(test_path, local_copy_path)
+            assert os.path.exists(local_copy_path), "copy() should create local file"
+            with open(local_copy_path, "r") as f:
+                assert f.read() == test_data, "copy() should preserve content"
+
     def test_all_supported_apis_with_non_azure_path(self):
         """Test all supported APIs route to original blobfile for non-Azure paths."""
         import tempfile
@@ -238,6 +247,13 @@ class TestPatcherRouting:
                 assert hasattr(entry, "is_file"), "DirEntry should have is_file attribute"
                 assert hasattr(entry, "stat"), "DirEntry should have stat attribute"
 
+            # Test copy - local to local (should use original blobfile)
+            local_copy_path = os.path.join(temp_dir, "copied_file.txt")
+            bf.copy(test_path, local_copy_path)
+            assert os.path.exists(local_copy_path), "copy() should create local file"
+            with open(local_copy_path, "r") as f:
+                assert f.read() == test_data, "copy() should preserve content"
+
 
 # =============================================================================
 # CATEGORY 3: BLOCKING TESTS
@@ -247,12 +263,6 @@ class TestPatcherRouting:
 
 class TestUnsupportedAPIsBlocked:
     """Test that unsupported APIs raise OperationNotSupportedError."""
-
-    def test_copy_blocked_when_patched(self):
-        """Test that copy() raises OperationNotSupportedError when patched."""
-        enable_dacs_backend()
-        with pytest.raises(OperationNotSupportedError, match="copy"):
-            bf.copy("src", "dst")
 
     def test_remove_blocked_when_patched(self):
         """Test that remove() raises OperationNotSupportedError when patched."""
@@ -282,7 +292,7 @@ class TestUnsupportedAPIsBlocked:
         """Test that error message includes list of supported APIs."""
         enable_dacs_backend()
         try:
-            bf.copy("src", "dst")
+            bf.remove("path")
             assert False, "Should have raised OperationNotSupportedError"
         except OperationNotSupportedError as e:
             error_msg = str(e)
@@ -297,7 +307,6 @@ class TestUnsupportedAPIsBlocked:
         # These should NOT raise OperationNotSupportedError when unpatched
         # They may fail for other reasons, but not with our custom error
         unsupported_apis = [
-            (bf.copy, ["src", "dst"]),
             (bf.remove, ["path"]),
             (bf.glob, ["*.txt"]),
             (bf.makedirs, ["/some/path"]),

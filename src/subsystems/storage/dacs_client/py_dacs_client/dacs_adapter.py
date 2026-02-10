@@ -7,8 +7,12 @@
 import asyncio
 import ctypes
 import errno
+import hashlib
 import logging
 import os
+import shutil
+import stat as stat_module
+import tempfile
 import threading
 import time
 from collections import namedtuple
@@ -519,12 +523,220 @@ class DACSAdapter:
 
 
 # Module-level functions matching blobfile API
+
+# Default chunk size for copy operations (256MB)
+# Note: storageIntercept lib handles internal chunking at 32MB, so we use larger
+# chunks here to reduce Python-level overhead while keeping memory usage bounded.
+COPY_CHUNK_SIZE = 256 * 1024 * 1024
+
 def copy(src: str, dst: str, overwrite: bool = False, return_md5: bool = False) -> Optional[str]:
     """
     Copy a file from one path to another.
-    Not supported by DACS Client.
+
+    Supports the following scenarios:
+    - Local → Local: Uses shutil.copyfile (supports overwrite)
+    - Local → Remote (az://): Streams through cache layer (overwrite NOT supported)
+    - Remote (az://) → Local: Streams from cache layer (supports overwrite)
+    - Remote (az://) → Remote (az://): NOT supported
+
+    Args:
+        src: Source file path (local path or az:// URL)
+        dst: Destination file path (local path or az:// URL)
+        overwrite: If False (default), raises FileExistsError if dst exists.
+                  If True, overwrites existing destination file (only for local→local and remote→local).
+                  NOTE: overwrite=True is NOT supported when destination is remote (az://).
+        return_md5: If True, computes and returns MD5 hash of copied data.
+
+    Returns:
+        MD5 hash string if return_md5=True, otherwise None.
+
+    Raises:
+        FileNotFoundError: If source file does not exist.
+        FileExistsError: If destination exists and overwrite=False.
+        IsADirectoryError: If source or destination is a directory.
+        OperationNotSupportedError: If overwrite=True with remote destination.
+        DACSError: For storage-related errors.
     """
-    raise OperationNotSupportedError("copy() is not supported by DACS Client.")
+    ## Filter requests
+    
+    # Validate paths are not directories (simple heuristic: trailing slash)
+    if src.endswith("/") or dst.endswith("/"):
+        raise IsADirectoryError("copy() does not support directories. Use single file paths.")
+
+    src_is_remote = src.startswith("az://")
+    dst_is_remote = dst.startswith("az://")
+
+    # Prefilter remote to remote copies to prevent unnecessary stat calls
+    if src_is_remote and dst_is_remote:
+        raise OperationNotSupportedError(
+            "copy() for remote-to-remote paths is not supported by DACS Client. "
+        )
+
+    # Source check: must exist and be a file (stat raises FileNotFoundError if not found)
+    src_stat = stat(src)
+    if stat_module.S_ISDIR(src_stat.st_mode):
+        raise IsADirectoryError(f"Source is a directory: '{src}'")
+
+    if src == dst:
+        # Source and destination are the same - no-op (guaranteed to be local to local in this case)
+        return _compute_file_md5(src) if return_md5 else None
+    
+    # Destination check
+    if overwrite:
+        # overwrite=True: dst cannot be remote, dst cannot be a directory
+        if dst_is_remote:
+            raise OperationNotSupportedError(
+                "copy() with overwrite=True is not supported for remote destinations. "
+            )
+        try:
+            dst_stat = stat(dst)
+            if stat_module.S_ISDIR(dst_stat.st_mode):
+                raise IsADirectoryError(f"Destination is a directory: '{dst}'")
+        except FileNotFoundError:
+            pass  # dst doesn't exist, which is fine for overwrite
+    else:
+        # overwrite=False: dst cannot exist
+        if exists(dst):
+            raise FileExistsError(f"Destination already exists: '{dst}'")
+
+    # Route to appropriate copy implementation
+    if not src_is_remote and not dst_is_remote:
+        # Local → Local
+        return _copy_local_to_local(src, dst, return_md5, overwrite=overwrite)
+    elif not src_is_remote and dst_is_remote:
+        # Local → Remote (benefits from cache: populates cache for future reads)
+        return _copy_local_to_remote(src, dst, return_md5)
+    elif src_is_remote and not dst_is_remote:
+        # Remote → Local (benefits from cache: reads from cache if cached)
+        return _copy_remote_to_local(src, dst, return_md5, overwrite=overwrite)
+    else:
+        # Should not reach here due to prefilter
+        raise OperationNotSupportedError(
+            "copy() for remote-to-remote paths is not supported by DACS Client. "
+        )
+
+
+def _atomic_write_to_local(dst: str, overwrite: bool, write_fn):
+    """Write to a local file atomically using a temp file.
+    
+    Writes to a temporary file first, then atomically moves it to the
+    final destination. Cleans up the temp file on any failure.
+    
+    Args:
+        dst: Final destination path.
+        overwrite: If True, overwrites existing dst. If False, fails if dst exists.
+        write_fn: Callable that receives the temp file path and writes content to it.
+    """
+    # Ensure destination directory exists
+    dst_dir = os.path.dirname(dst) or "."
+    os.makedirs(dst_dir, exist_ok=True)
+
+    # Use mkstemp to create a unique temp file in the same directory to avoid collisions
+    fd, tmp_dst = tempfile.mkstemp(dir=dst_dir, prefix=".tmp_", suffix="_" + os.path.basename(dst))
+    os.close(fd)
+    try:
+        write_fn(tmp_dst)
+
+        # Atomic move to final destination
+        if overwrite:
+            os.replace(tmp_dst, dst)
+        else:
+            # Use os.link + os.unlink for atomic exclusive creation
+            try:
+                os.link(tmp_dst, dst)
+            except FileExistsError:
+                raise FileExistsError(f"Destination already exists: '{dst}'")
+            finally:
+                os.unlink(tmp_dst)
+    except BaseException:
+        # Clean up temp file on any failure
+        if os.path.exists(tmp_dst):
+            os.unlink(tmp_dst)
+        raise
+
+
+def _copy_local_to_local(src: str, dst: str, return_md5: bool, overwrite: bool = False) -> Optional[str]:
+    """Copy local file to local destination."""
+    def write_fn(tmp_dst):
+        shutil.copyfile(src, tmp_dst)
+
+    _atomic_write_to_local(dst, overwrite, write_fn)
+
+    if return_md5:
+        return _compute_file_md5(dst)
+    return None
+
+
+def _copy_local_to_remote(src: str, dst: str, return_md5: bool) -> Optional[str]:
+    """Copy local file to remote destination through cache layer.
+    
+    Note: DACSAdapter only supports single-shot writes (no streaming/append),
+    so the entire file must be read into memory and written at once.
+    """
+    # Read entire file into memory (DACS doesn't support streaming writes)
+    file_size = os.path.getsize(src)
+    try:
+        with open(src, "rb") as src_file:
+            data = src_file.read()
+    except MemoryError:
+        raise MemoryError(
+            f"Not enough memory to read '{src}' ({file_size} bytes). "
+            f"Local-to-remote copy requires loading the entire file into memory."
+        )
+
+    md5_hash = None
+    if return_md5:
+        md5_hash = hashlib.md5(data).hexdigest()
+
+    with DACSAdapter(dst, "wb") as dst_adapter:
+        dst_adapter.write(data=data)
+
+    return md5_hash
+
+
+def _copy_remote_to_local(src: str, dst: str, return_md5: bool, overwrite: bool = False) -> Optional[str]:
+    """Copy remote file to local destination from cache layer."""
+    md5_hash = hashlib.md5() if return_md5 else None
+
+    # Get source file size for chunked reading
+    client = _ClientManager.get_instance()
+    src_size = asyncio.run(client.get_file_size(src))
+
+    def write_fn(tmp_dst):
+        with DACSAdapter(src, "rb") as src_adapter:
+            with open(tmp_dst, "wb") as dst_file:
+                offset = 0
+                while offset < src_size:
+                    chunk_size = min(COPY_CHUNK_SIZE, src_size - offset)
+                    # Allocate buffer for this chunk
+                    buffer = alloc_buffer(chunk_size)
+                    try:
+                        # Read chunk - need to use the file handle directly for offset reads
+                        bytes_read = asyncio.run(src_adapter._file_handle.read(buffer, chunk_size, offset))
+                        check_native_result(bytes_read, operation="read", path=src)
+                        if bytes_read == 0:
+                            break
+                        # Create zero-copy memoryview over the C buffer
+                        chunk_data = memoryview(buffer)[:bytes_read]
+                        if md5_hash:
+                            md5_hash.update(chunk_data)
+                        dst_file.write(chunk_data)
+                        offset += bytes_read
+                    finally:
+                        release_buffer(buffer)
+
+    _atomic_write_to_local(dst, overwrite, write_fn)
+
+    return md5_hash.hexdigest() if md5_hash else None
+
+
+def _compute_file_md5(path: str) -> str:
+    """Compute MD5 hash of a local file."""
+    md5_hash = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(COPY_CHUNK_SIZE), b""):
+            md5_hash.update(chunk)
+    return md5_hash.hexdigest()
 
 
 def exists(path: str) -> bool:
