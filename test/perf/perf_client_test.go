@@ -168,6 +168,7 @@ func runPerfClientWithConfig(ctx context.Context, config *perfclient.Config, col
 	metric := newPerfMetricBase(ctx, podName, nodeName, nodeSKU)
 	metric.Result = kusto.PerfResult{
 		Mode:                    summary.Mode,
+		ChunkSizeBytes:          summary.ChunkSizeBytes,
 		DurationMs:              summary.DurationMs,
 		TotalBytesTransferred:   summary.TotalBytesTransferred,
 		ThroughputMbps:          summary.ThroughputMbps,

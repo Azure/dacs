@@ -31,39 +31,40 @@
 //---------------------------------------------------------------------------------------------------------------------
 namespace po = boost::program_options;
 //---------------------------------------------------------------------------------------------------------------------
-constexpr const std::size_t CHUNK_SIZE = (32 * 1024 * 1024);
+constexpr const std::size_t DEFAULT_CHUNK_SIZE_BYTES = 32 * 1024 * 1024; // 32 MiB default
 constexpr const std::size_t RETRY_COUNT_PER_CHUNK = 5;
 constexpr const std::size_t UPLOAD_EXPIRY_DURATION_SECONDS = 3600; // 1 hour
 constexpr const char* LOCALHOST = "127.0.0.1";
 //---------------------------------------------------------------------------------------------------------------------
 std::atomic_uint_fast64_t nGlobalFailureCounter(0);
 //---------------------------------------------------------------------------------------------------------------------
-inline const void* GetRandomBuffer()
+inline const void* GetRandomBuffer(std::size_t nChunkSizeBytes)
 {
-    static thread_local char* pBuffer = (char*)malloc(CHUNK_SIZE);
-    for(uint64_t i = 0; i < std::min((uint64_t)50, CHUNK_SIZE); i++)
+    static thread_local char* pBuffer = (char*)malloc(nChunkSizeBytes);
+    for(uint64_t i = 0; i < std::min((uint64_t)50, nChunkSizeBytes); i++)
     {
         pBuffer[i] = rand() % 256;
     }
     return (const void*)pBuffer;
 }
 //---------------------------------------------------------------------------------------------------------------------
-inline void* GetEmptyBuffer()
+inline void* GetEmptyBuffer(std::size_t nChunkSizeBytes)
 {
-    static thread_local void* pBuffer = malloc(CHUNK_SIZE);
+    static thread_local void* pBuffer = malloc(nChunkSizeBytes);
     return pBuffer;
 }
 //---------------------------------------------------------------------------------------------------------------------
 // Returns true if upload succeeded else false
 bool UploadWithRetries(
     /*[in]*/ std::string& strFileName,
-    /*[in]*/ CacheClientImpl& client)
+    /*[in]*/ CacheClientImpl& client,
+    /*[in]*/ std::size_t nChunkSizeBytes)
 {
     for(std::size_t attempt = 0; attempt < RETRY_COUNT_PER_CHUNK; attempt++)
     {
-        const void* buffer = GetRandomBuffer();
+        const void* buffer = GetRandomBuffer(nChunkSizeBytes);
         CacheClientStatus eStatus =
-            client.Upload(strFileName.c_str(), buffer, CHUNK_SIZE,
+            client.Upload(strFileName.c_str(), buffer, nChunkSizeBytes,
                           UPLOAD_EXPIRY_DURATION_SECONDS, nullptr, nullptr,
                           nullptr, true, nullptr);
 
@@ -85,12 +86,13 @@ bool UploadWithRetries(
 // Returns true if download succeeded else false
 bool DownloadWithRetries(
     /*[in]*/ std::string& strFileName,
-    /*[in]*/ CacheClientImpl& client)
+    /*[in]*/ CacheClientImpl& client,
+    /*[in]*/ std::size_t nChunkSizeBytes)
 {
     for(std::size_t attempt = 0; attempt < RETRY_COUNT_PER_CHUNK; attempt++)
     {
-        void* buffer = GetEmptyBuffer();
-        std::size_t nLength = CHUNK_SIZE;
+        void* buffer = GetEmptyBuffer(nChunkSizeBytes);
+        std::size_t nLength = nChunkSizeBytes;
         CacheClientStatus eStatus =
             client.Download(strFileName.c_str(), buffer, &nLength, nullptr, nullptr, 0, false, nullptr);
 
@@ -101,9 +103,9 @@ bool DownloadWithRetries(
         }
         else
         {
-            if(nLength != CHUNK_SIZE)
+            if(nLength != nChunkSizeBytes)
             {
-                LOG_WARN("Expected file {} read length to be {} but got {}", strFileName, CHUNK_SIZE, nLength);
+                LOG_WARN("Expected file {} read length to be {} but got {}", strFileName, nChunkSizeBytes, nLength);
                 return false;
             }
 
@@ -121,6 +123,7 @@ std::vector<int64_t> Worker(/*[in]*/ bool bIsUpload,
             /*[in]*/ std::size_t nTotalChunksToTransfer,
             /*[in]*/ std::string strFilePrefix,
             /*[in]*/ CacheClientImpl& client,
+            /*[in]*/ std::size_t nChunkSizeBytes,
             /*[out]*/ std::atomic_uint_fast64_t& nChunksSuccessfullyTransferred)
 {
     LOG_INFO("Worker thread started. StartIndex: {}, EndIndexExclusive: {}", nStartIndex, nEndIndexExclusive);
@@ -134,7 +137,7 @@ std::vector<int64_t> Worker(/*[in]*/ bool bIsUpload,
     {
         std::string strFileName = strFilePrefix + std::to_string(idx);
         auto transferStart = std::chrono::high_resolution_clock::now();
-        bool success = bIsUpload ? UploadWithRetries(strFileName, client) : DownloadWithRetries(strFileName, client);
+        bool success = bIsUpload ? UploadWithRetries(strFileName, client, nChunkSizeBytes) : DownloadWithRetries(strFileName, client, nChunkSizeBytes);
         auto transferEnd = std::chrono::high_resolution_clock::now();
         
         if(success)
@@ -173,11 +176,19 @@ bool RunPerfTest(/*[in]*/ int nParallelism,
                  /*[in]*/ uint64_t nDataSizeBytes,
                  /*[in]*/ CacheClientImpl& client,
                  /*[in]*/ std::string& strPrefix,
-                 /*[in]*/ std::string& strMode)
+                 /*[in]*/ std::string& strMode,
+                 /*[in]*/ std::size_t nChunkSizeBytes)
 {
     LOG_INFO("Current Test Mode is {}", strMode);
 
-    std::size_t nTotalChunksToTransfer = nDataSizeBytes / CHUNK_SIZE;
+    if (nChunkSizeBytes > nDataSizeBytes) {
+        LOG_WARN("Chunk size {} bytes is greater than total data size {} bytes. Clamping chunk size to data size.",
+                 nChunkSizeBytes, nDataSizeBytes);
+        nChunkSizeBytes = nDataSizeBytes;
+    }
+
+    std::size_t nTotalChunksToTransfer = nDataSizeBytes / nChunkSizeBytes;
+
     std::size_t nChunksPerThread = nTotalChunksToTransfer / nParallelism;
     if (nTotalChunksToTransfer % nParallelism != 0) {
         std::size_t nUpperBoundTotalChunksToTransfer = nTotalChunksToTransfer + nParallelism - (nTotalChunksToTransfer % nParallelism);
@@ -201,6 +212,7 @@ bool RunPerfTest(/*[in]*/ int nParallelism,
                                 nTotalChunksToTransfer,
                                 strPrefix,
                                 std::ref(client),
+                                nChunkSizeBytes,
                                 std::ref(nChunksSuccessfullyTransferred)));
     }
 
@@ -222,7 +234,7 @@ bool RunPerfTest(/*[in]*/ int nParallelism,
 
     std::size_t durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
     durationMs = std::max(durationMs, (std::size_t)1);
-    std::size_t nBytesTransferred = nChunksSuccessfullyTransferred * CHUNK_SIZE;
+    std::size_t nBytesTransferred = nChunksSuccessfullyTransferred * nChunkSizeBytes;
     std::size_t nThroughputMbps = (nBytesTransferred * 8) / (durationMs * 1000);
     // GiBps = (bytes / ms) * (1000 ms/s) / (1024^3 bytes/GiB)
     //       = bytes * 1000 / (ms * 1024 * 1024 * 1024)
@@ -237,6 +249,7 @@ bool RunPerfTest(/*[in]*/ int nParallelism,
     LOG_INFO("Test complete. Details below.")
     LOG_INFO("Test Mode: {}", strMode);
     LOG_INFO("Throughput: {} Mbps {} GiBps", nThroughputMbps, nThroughputGiBps);
+    LOG_INFO("Chunk size: {} bytes", nChunkSizeBytes);
     LOG_INFO("Per-chunk p50: {} ms, p90: {} ms, p99: {} ms", perChunkP50Ms, perChunkP90Ms, perChunkP99Ms);
     LOG_INFO("Total bytes transferred: {}", nBytesTransferred);
     LOG_INFO("Total time taken: {} ms", durationMs);
@@ -246,10 +259,11 @@ bool RunPerfTest(/*[in]*/ int nParallelism,
     LOG_INFO("=============================================================");
 
     // Single line summary for easy parsing
-    LOG_INFO("Summary: mode {},start_timestamp {},end_timestamp {},duration_ms {},total_bytes_transferred {},"
+    LOG_INFO("Summary: mode {},chunksize_bytes {},start_timestamp {},end_timestamp {},duration_ms {},total_bytes_transferred {},"
              "throughput_Mbps {},total_individual_failures {},expected_chunks_to_transfer {},chunks_successfully_transferred {},"
              "perchunk_p50_ms {},perchunk_p90_ms {},perchunk_p99_ms {}",
              strMode,
+             nChunkSizeBytes,
              std::chrono::duration_cast<std::chrono::milliseconds>(startTime.time_since_epoch()).count(),
              std::chrono::duration_cast<std::chrono::milliseconds>(endTime.time_since_epoch()).count(),
              durationMs,
@@ -295,7 +309,8 @@ po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
             "checksum-algorithm", po::value<std::string>()->default_value("xxhash32"), "Checksum algorithm to use ('xxhash32' or 'crc32')")(
             "cache-retry-max-attempts", po::value<uint32_t>()->default_value(1), "Max attempts for cache-client internal retries (1 disables retries)")(
             "cache-retry-base-delay-ms", po::value<uint64_t>()->default_value(0), "Base delay (ms) for cache-client internal retries (must be >0 if max attempts > 1)")(
-            "cache-retry-max-delay-ms", po::value<uint64_t>()->default_value(0), "Max delay (ms) for cache-client internal retries (must be >0 and >= base delay if max attempts > 1)");
+            "cache-retry-max-delay-ms", po::value<uint64_t>()->default_value(0), "Max delay (ms) for cache-client internal retries (must be >0 and >= base delay if max attempts > 1)")(
+            "chunk-size-bytes", po::value<std::size_t>()->default_value(DEFAULT_CHUNK_SIZE_BYTES), "Size of each chunk in bytes (default: 33554432 = 32 MiB)");
 
         po::variables_map vm;
         po::store(po::command_line_parser(argc, argv).options(description).allow_unregistered().run(), vm);
@@ -437,6 +452,8 @@ int PerfClient(int argc, char *argv[])
     uint32_t nRetryMaxAttempts = args["cache-retry-max-attempts"].as<uint32_t>();
     uint64_t nRetryBaseDelayMs = args["cache-retry-base-delay-ms"].as<uint64_t>();
     uint64_t nRetryMaxDelayMs = args["cache-retry-max-delay-ms"].as<uint64_t>();
+    std::size_t nChunkSizeBytes = args["chunk-size-bytes"].as<std::size_t>();
+    LOG_INFO("Chunk size set to {} bytes", nChunkSizeBytes);
 
     if(strMode != "upload" && strMode != "download")
     {
@@ -470,7 +487,7 @@ int PerfClient(int argc, char *argv[])
                                                      LOCALHOST,                    /*nCacheServerDiscoveryEndpoint*/
                                                      false,                        /*bEnableConsistentHashing*/
                                                      retryConfig,
-                                                     CHUNK_SIZE);                  /*nMaxBufferSizeBytes*/
+                                                     nChunkSizeBytes);              /*nMaxBufferSizeBytes*/
 
     if (initStatus != CacheClientStatus::SUCCESS)
     {
@@ -483,7 +500,7 @@ int PerfClient(int argc, char *argv[])
 
     for (std::size_t i = 0; i < nNumIterations; i++)
     {
-        if (!RunPerfTest(nNumThreads, nDataSizeBytes, client, strPrefix, strMode))
+        if (!RunPerfTest(nNumThreads, nDataSizeBytes, client, strPrefix, strMode, nChunkSizeBytes))
         {
             bAllIterationsSucceeded = false;
         }
