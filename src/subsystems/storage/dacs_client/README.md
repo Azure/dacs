@@ -81,6 +81,17 @@ The library provides wrapper functions to simplify complex operations, such as d
 
 # For Dev Operations
 
+## Throughput Benchmarking
+
+For AKS throughput benchmarking, use the benchmark scripts in `aks_stress_test/`:
+
+```bash
+cd aks_stress_test
+./run_benchmark.sh
+```
+
+The benchmark deploys dacs clients as a DaemonSet across your AKS cluster and measures read/write throughput under various conditions. Results include per-chunk latency percentiles (p50, p90, p99) and overall throughput metrics.
+
 # To Build
 ```
 docker run -it --entrypoint /bin/bash -v /mnt/c/CodeBase/DACS/src/subsystems/storage:/storage mcr.microsoft.com/vscode/devcontainers/python:3.11

@@ -2,7 +2,7 @@
 
 This repository contains the storage cache layer components for DACS, including CacheServer, CacheClient, and StorageInterception libraries.
 
-For deployment and usage instructions, see the [User Guide](docs/user-guide.md).
+For deployment and usage instructions, see the [User Guide](user-guide.md).
 
 ## Prerequisites
 
@@ -257,7 +257,7 @@ make perf-client MODE=download        # Test download performance
 make storage-intercept-client         # Test storage intercept functionality
 ```
 
-**Storage Intercept Configuration:** Edit `scripts/k8s/config/storageIntercept.config` with your Azure Storage credentials:
+**Storage Intercept Configuration:** Edit `.pipelines/scripts/k8s/config/storageIntercept.config` with your Azure Storage credentials:
 ```bash
 # Example configuration
 STORAGE_ACCOUNT=mystorageaccount
@@ -269,8 +269,8 @@ Generate a SAS token from [Azure Portal](https://portal.azure.com) → Storage A
 
 ### Configuration Files
 
-- **Minikube cluster settings**: `scripts/k8s/config/local.config`
-- **Storage intercept settings**: `scripts/k8s/config/storageIntercept.config`
+- **Minikube cluster settings**: `.pipelines/scripts/k8s/config/local.config`
+- **Storage intercept settings**: `.pipelines/scripts/k8s/config/storageIntercept.config`
 - **Helm values**: `helm/cache-server/values.yaml`
 
 ### Clean Up

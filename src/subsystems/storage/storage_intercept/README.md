@@ -2,28 +2,17 @@
 Library to intercept remote storage filesystem calls and provide better throughput.
 
 ### Build
-In a bash shell
-```
-cd <path to repository root>
-./bldenv.sh
-```
-Above command would automatically boot up a docker container with the latest image, and open a shell attached to it. Some packages being used with recent changes are required to be installed (as they're not part of the latest image yet). \
-Run (only needed to run E2E pytorch job):
-```
-pip3 install setuptools
-apt-get install libjpeg-dev
-pip3 install torch torchvision torchsummary
-```
-To do a build:
-```
-.pipelines/restore.sh
-BUILD_STORAGE_ONLY=true .pipelines/build.sh
+From the repository root:
+```bash
+make build
 ```
 
+This builds all storage components including the StorageIntercept library. The build uses a Docker container with all dependencies pre-installed.
+
 ### Run Unit test
-In a bash shell
-```
-.pipelines/nativeunittest.sh Debug StorageIntercept
+In a bash shell from the repository root:
+```bash
+make test TEST=StorageIntercept
 ```
 If tests are passing, you should see something like this in the output. Ignore the test not found errors for cuda unit tests.
 ```
@@ -193,8 +182,8 @@ cacheReuseServerConnections true
 cacheMaxConnectionsReuseSize 1024
 ```
 4. Execute the tests from bash shell
-```
-.pipelines/nativeunittest.sh Debug StorageIntercept
+```bash
+make test TEST=StorageIntercept
 ```
 
 ### Run Unit test with attribute cache enabled
@@ -207,8 +196,8 @@ attributesCacheEnable true
 attributesCacheUseLocalServer true
 ```
 4. Execute the tests from bash shell
-```
-.pipelines/nativeunittest.sh Debug StorageIntercept
+```bash
+make test TEST=StorageIntercept
 ```
 
 ### Run integration test
