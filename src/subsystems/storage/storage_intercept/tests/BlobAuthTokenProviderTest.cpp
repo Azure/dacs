@@ -184,7 +184,10 @@ TEST_F(BlobAuthTokenProviderTest, TestMultiThreadedTokenNearingExpiry)
     std::string token1 = mockProvider.GetAccessToken(mountPath);
     ASSERT_FALSE(token1.empty()) << "Failed to fetch access token from MSI endpoint";
 
-    std::this_thread::sleep_for(std::chrono::seconds(6));
+    // Mock token lifetime is 605s, refresh buffer is 600s.
+    // Token becomes "nearing expiry" when remaining ≤ 600s, i.e. after 5s elapsed.
+    // Use 8s to give comfortable margin on slow CI machines (arm64).
+    std::this_thread::sleep_for(std::chrono::seconds(8));
 
     for (int i = 0; i < numThreads; ++i) {
         threads.emplace_back([&tokens, &tokensMutex, &mockProvider, mountPath]() {
