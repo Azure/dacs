@@ -476,7 +476,7 @@ int PerfClient(int argc, char *argv[])
                                                      bEnableCalculateChecksum,     /*bEnableCalculateChecksum*/
                                                      bEnableValidateChecksum,      /*bEnableValidateChecksum*/
                                                      strChecksumAlgo.c_str(),      /*strChecksumAlgorithm*/
-                                                     nNumThreads * 2,              /*nConnectionPoolSize*/
+                                                     nNumThreads * vecCstrHostnames.size(),  /*nConnectionPoolSize*/
                                                      false,                        /*bEnableAuth*/
                                                      nullptr,                      /*strAccountName*/
                                                      nullptr,                      /*strAccountKey*/
