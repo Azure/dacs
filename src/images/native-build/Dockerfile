@@ -37,6 +37,7 @@ RUN apt-get update && \
     libboost-program-options-dev \
     libboost-system-dev \
     libgoogle-perftools-dev \
+    libxml2-dev \
     uuid-dev \
     ibverbs-providers \
     fuse3 \

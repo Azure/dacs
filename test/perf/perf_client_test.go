@@ -25,12 +25,50 @@ type PerfResult struct {
 	Summary *perfsummary.Summary
 }
 
-// checksumConfig defines a test configuration for checksum testing.
-type checksumConfig struct {
+// perfTestConfig defines a test configuration for perf client testing.
+type perfTestConfig struct {
 	name                    string
-	enableCalculateChecksum bool // for upload
-	enableValidateChecksum  bool // for download
-	colocate                bool // schedule on same node as cache server
+	label                   Labels                // ginkgo label for filtering tests
+	enableCalculateChecksum bool                  // for upload
+	enableValidateChecksum  bool                  // for download
+	colocate                bool                  // schedule on same node as cache server
+	clientType              perfclient.ClientType // cache or direct-blob
+}
+
+// newPerfConfig creates a fully configured perfclient.Config from this test configuration.
+func (c *perfTestConfig) newPerfConfig(mode perfclient.Mode, prefix string) *perfclient.Config {
+	// Use single server for colocated tests, otherwise use flag value
+	serverCount := opts.CacheServerCount
+	if c.colocate {
+		serverCount = 1
+	}
+
+	config := perfclient.NewConfig().
+		WithClientType(c.clientType).
+		WithMode(mode).
+		WithPrefix(prefix).
+		WithColocate(c.colocate).
+		WithNamespace(namespace).
+		WithDataSizeGiB(opts.DataSizeGiB).
+		WithNumThreads(opts.NumThreads)
+
+	if mode == perfclient.ModeUpload {
+		config.WithCalculateChecksum(c.enableCalculateChecksum)
+	} else {
+		config.WithValidateChecksum(c.enableValidateChecksum)
+	}
+
+	if c.clientType == perfclient.ClientTypeDirectBlob {
+		config.WithStorageAccount(opts.StorageAccount).
+			WithStorageContainer(opts.StorageContainer).
+			WithWorkloadIdentity(opts.WorkloadIdentityClientID, opts.WorkloadIdentitySA)
+	} else {
+		config.WithServerHostname(buildServerHostname(namespace, serverCount)).
+			WithNumServers(serverCount).
+			WithChecksumAlgorithm(perfclient.ChecksumAlgorithm(opts.ChecksumAlgorithm))
+	}
+
+	return config
 }
 
 // randomPrefix generates a random prefix for test data to avoid collisions.
@@ -42,39 +80,46 @@ var _ = Describe("PerfClient", Label("perf", "perfclient"), Ordered, func() {
 	// Collect all results for the comparison report
 	var results []PerfResult
 
-	configs := []checksumConfig{
+	configs := []perfTestConfig{
 		{
 			name:                    "checksum disabled",
+			label:                   Label("cache"),
 			enableCalculateChecksum: false,
 			enableValidateChecksum:  false,
+			clientType:              perfclient.ClientTypeCache,
 		},
 		{
 			name:                    "checksum enabled",
+			label:                   Label("cache"),
 			enableCalculateChecksum: true,
 			enableValidateChecksum:  true,
+			clientType:              perfclient.ClientTypeCache,
 		},
 		{
 			name:                    "colocated single server",
+			label:                   Label("cache"),
 			enableCalculateChecksum: false,
 			enableValidateChecksum:  false,
 			colocate:                true,
+			clientType:              perfclient.ClientTypeCache,
+		},
+		{
+			name:       "direct blob storage",
+			label:      Label("directblob", "aks"),
+			clientType: perfclient.ClientTypeDirectBlob,
 		},
 	}
 
 	for _, cfg := range configs {
-		Context(fmt.Sprintf("With %s", cfg.name), func() {
+		Context(fmt.Sprintf("With %s", cfg.name), cfg.label, func() {
+
 			It("should upload and download successfully", func(ctx context.Context) {
 				// Generate a unique prefix for this test run
 				prefix := randomPrefix("perf-test")
 
 				// Upload phase
 				By(fmt.Sprintf("Running upload with %s (prefix: %s)", cfg.name, prefix))
-				uploadConfig := perfclient.NewConfig().
-					WithMode(perfclient.ModeUpload).
-					WithPrefix(prefix).
-					WithCalculateChecksum(cfg.enableCalculateChecksum).
-					WithColocate(cfg.colocate)
-
+				uploadConfig := cfg.newPerfConfig(perfclient.ModeUpload, prefix)
 				uploadSummary := runPerfClientWithConfig(ctx, uploadConfig, cfg.colocate)
 				Expect(uploadSummary).NotTo(BeNil(), "Failed to parse upload perf summary")
 				Expect(uploadSummary.Mode).To(Equal("upload"))
@@ -85,12 +130,7 @@ var _ = Describe("PerfClient", Label("perf", "perfclient"), Ordered, func() {
 
 				// Download phase - uses same prefix to download what was uploaded
 				By(fmt.Sprintf("Running download with %s (prefix: %s)", cfg.name, prefix))
-				downloadConfig := perfclient.NewConfig().
-					WithMode(perfclient.ModeDownload).
-					WithPrefix(prefix).
-					WithValidateChecksum(cfg.enableValidateChecksum).
-					WithColocate(cfg.colocate)
-
+				downloadConfig := cfg.newPerfConfig(perfclient.ModeDownload, prefix)
 				downloadSummary := runPerfClientWithConfig(ctx, downloadConfig, cfg.colocate)
 				Expect(downloadSummary).NotTo(BeNil(), "Failed to parse download perf summary")
 				Expect(downloadSummary.Mode).To(Equal("download"))
@@ -110,7 +150,7 @@ var _ = Describe("PerfClient", Label("perf", "perfclient"), Ordered, func() {
 		log.Info(strings.Repeat("=", 80))
 		log.Info("PERFORMANCE TEST SUMMARY")
 		log.Info(strings.Repeat("=", 80))
-		log.Info("Test Configuration", "dataSizeGiB", fluxOpts.DataSizeGiB, "cacheServerCount", fluxOpts.CacheServerCount, "numThreads", fluxOpts.NumThreads, "checksumAlgorithm", fluxOpts.ChecksumAlgorithm)
+		log.Info("Test Configuration", "dataSizeGiB", opts.DataSizeGiB, "cacheServerCount", opts.CacheServerCount, "numThreads", opts.NumThreads, "checksumAlgorithm", opts.ChecksumAlgorithm)
 		log.Info(strings.Repeat("-", 80))
 		for _, r := range results {
 			log.Info("Result", "config", r.Config, "mode", r.Mode, "throughputMbps", r.Summary.ThroughputMbps, "durationMs", r.Summary.DurationMs, "failures", r.Summary.TotalIndividualFailures)
@@ -120,23 +160,20 @@ var _ = Describe("PerfClient", Label("perf", "perfclient"), Ordered, func() {
 })
 
 // runPerfClientWithConfig runs the perf client job with the given config and waits for completion.
-// If colocate is true, it uses a single server; otherwise it uses the cacheServerCount flag value.
 // Returns the parsed perfsummary.Summary from the job logs.
 func runPerfClientWithConfig(ctx context.Context, config *perfclient.Config, colocate bool) *perfsummary.Summary {
-	// Use single server for colocated tests, otherwise use the cacheServerCount flag value
-	serverCount := fluxOpts.CacheServerCount
-	if colocate {
-		serverCount = 1
+	By(fmt.Sprintf("Creating %s perf client job (checksum calc=%t, validate=%t, colocate=%t, servers=%d)",
+		config.Mode, config.EnableCalculateChecksum, config.EnableValidateChecksum, config.ColocateWithServer, config.NumServers))
+
+	// If workload identity is configured, ensure the ServiceAccount exists
+	if saYAML, err := config.ServiceAccountYAML(); err == nil && saYAML != nil {
+		By("Ensuring workload identity ServiceAccount exists")
+		cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", "-")
+		cmd.Stdin = utils.NewStringReader(string(saYAML))
+		output, err := utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "Failed to apply ServiceAccount: %s", output)
 	}
 
-	config.WithNamespace(namespace).
-		WithServerHostname(buildServerHostname(namespace, serverCount)).
-		WithDataSizeGiB(fluxOpts.DataSizeGiB).
-		WithNumThreads(fluxOpts.NumThreads).
-		WithChecksumAlgorithm(perfclient.ChecksumAlgorithm(fluxOpts.ChecksumAlgorithm))
-
-	By(fmt.Sprintf("Creating %s perf client job (checksum calc=%t, validate=%t, colocate=%t, servers=%d)",
-		config.Mode, config.EnableCalculateChecksum, config.EnableValidateChecksum, config.ColocateWithServer, serverCount))
 	k8sJob, err := config.LoadJob()
 	Expect(err).NotTo(HaveOccurred(), "Failed to load perf client job")
 
@@ -169,6 +206,7 @@ func runPerfClientWithConfig(ctx context.Context, config *perfclient.Config, col
 	metric.Result = kusto.PerfResult{
 		Mode:                    summary.Mode,
 		ChunkSizeBytes:          summary.ChunkSizeBytes,
+		ClientType:              string(config.ClientType),
 		DurationMs:              summary.DurationMs,
 		TotalBytesTransferred:   summary.TotalBytesTransferred,
 		ThroughputMbps:          summary.ThroughputMbps,
@@ -181,10 +219,12 @@ func runPerfClientWithConfig(ctx context.Context, config *perfclient.Config, col
 		NumThreads:              config.NumThreads,
 		DataSizeGiB:             config.DataSizeGiB,
 		NumIterations:           config.NumIterations,
-		NumServers:              serverCount,
+		NumServers:              config.NumServers,
 		EnableCalculateChecksum: config.EnableCalculateChecksum,
 		EnableValidateChecksum:  config.EnableValidateChecksum,
 		ChecksumAlgorithm:       string(config.ChecksumAlgorithm),
+		StorageAccount:          config.StorageAccount,
+		StorageContainer:        config.StorageContainer,
 	}
 	// SendPerfMetric always prints the metric; only sends to EventHub if SEND_METRICS=true
 	err = kusto.SendPerfMetric(ctx, kusto.DefaultEventHubConfig, metric)

@@ -11,6 +11,9 @@ param aksName string
 @description('AKS Resource Group')
 param aksResourceGroup string = resourceGroup().name
 
+@description('The ID of the AKS subnet to allow access from.')
+param aksSubnetId string
+
 var blobDataContributorRoleDefinitionId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   '00000000-0000-0000-0000-000000000000' // Storage Blob Data Contributor role Id
@@ -31,6 +34,16 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
     minimumTlsVersion: 'TLS1_2'
     supportsHttpsTrafficOnly: true
     allowBlobPublicAccess: false
+    networkAcls: {
+      defaultAction: 'Deny'
+      bypass: 'AzureServices'
+      virtualNetworkRules: [
+        {
+          id: aksSubnetId
+          action: 'Allow'
+        }
+      ]
+    }
   }
 }
 

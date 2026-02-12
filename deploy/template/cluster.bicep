@@ -14,6 +14,12 @@ param zones array = []
 @description('Enable monitoring for test clusters.')
 param enableMonitoring bool = false
 
+@description('The address prefix for the virtual network.')
+param vnetAddressPrefix string = '10.224.0.0/16'
+
+@description('The address prefix for the AKS subnet.')
+param aksSubnetAddressPrefix string = '10.224.0.0/20'
+
 @description('The streams to collect and send to Log Analytics.')
 param streams array = [
   'Microsoft-ContainerInsights-Group-Default'
@@ -37,9 +43,36 @@ var nvmePool = {
   maxPods: 125
   availabilityZones: zones
   count: agentCount
+  vnetSubnetID: vnet.properties.subnets[0].id
   nodeLabels: {
     'dacs.azure.com/processing-unit': 'cpu'
     'dacs.azure.com/processing-unit': 'system'
+  }
+}
+
+// Virtual network for AKS with storage service endpoint
+resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = {
+  name: '${resourceGroup().name}-vnet'
+  location: resourceGroup().location
+  properties: {
+    addressSpace: {
+      addressPrefixes: [
+        vnetAddressPrefix
+      ]
+    }
+    subnets: [
+      {
+        name: 'aks-subnet'
+        properties: {
+          addressPrefix: aksSubnetAddressPrefix
+          serviceEndpoints: [
+            {
+              service: 'Microsoft.Storage'
+            }
+          ]
+        }
+      }
+    ]
   }
 }
 
@@ -98,7 +131,7 @@ resource dataCollectionRuleAssociation 'Microsoft.Insights/dataCollectionRuleAss
   }
 }
 
-resource aks 'Microsoft.ContainerService/managedClusters@2023-08-01' = {
+resource aks 'Microsoft.ContainerService/managedClusters@2024-01-01' = {
   name: '${resourceGroup().name}-cluster'
   location: resourceGroup().location
   sku: {
@@ -111,6 +144,16 @@ resource aks 'Microsoft.ContainerService/managedClusters@2023-08-01' = {
   properties: {
     nodeResourceGroup: '${resourceGroup().name}-node-rg'
     dnsPrefix: '${resourceGroup().name}-dns'
+    // Enable OIDC issuer for workload identity
+    oidcIssuerProfile: {
+      enabled: true
+    }
+    // Enable workload identity
+    securityProfile: {
+      workloadIdentity: {
+        enabled: true
+      }
+    }
     addonProfiles: enableMonitoring ? {
       omsagent: {
         enabled: true
@@ -143,3 +186,5 @@ resource aks 'Microsoft.ContainerService/managedClusters@2023-08-01' = {
 
 output name string = aks.name
 output kubeletIdentity string = aks.properties.identityProfile.kubeletidentity.objectId
+output oidcIssuerUrl string = aks.properties.oidcIssuerProfile.issuerURL
+output aksSubnetId string = vnet.properties.subnets[0].id

@@ -9,7 +9,7 @@
             "value": 6
         },
         "createStorageAccount": {
-            "value": false
+            "value": true
         },
         "enableMonitoring": {
             "value": true
