@@ -9,6 +9,10 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include <algorithm>
 #include <atomic>
+#include <azure/storage/blobs.hpp>
+#include <azure/identity/default_azure_credential.hpp>
+#include <azure/identity/managed_identity_credential.hpp>
+#include <azure/core/diagnostics/logger.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/program_options.hpp>
 #include <chrono>
@@ -121,12 +125,12 @@ std::vector<int64_t> Worker(/*[in]*/ bool bIsUpload,
             /*[in]*/ std::size_t nStartIndex,
             /*[in]*/ std::size_t nEndIndexExclusive,
             /*[in]*/ std::size_t nTotalChunksToTransfer,
-            /*[in]*/ std::string strFilePrefix,
+            /*[in]*/ const std::string& strFilePrefix,
             /*[in]*/ CacheClientImpl& client,
             /*[in]*/ std::size_t nChunkSizeBytes,
             /*[out]*/ std::atomic_uint_fast64_t& nChunksSuccessfullyTransferred)
 {
-    LOG_INFO("Worker thread started. StartIndex: {}, EndIndexExclusive: {}", nStartIndex, nEndIndexExclusive);
+    LOG_INFO("Cache worker thread started. StartIndex: {}, EndIndexExclusive: {}", nStartIndex, nEndIndexExclusive);
     std::vector<int64_t> perChunkMs;
     if (nEndIndexExclusive > nStartIndex)
     {
@@ -171,15 +175,22 @@ int64_t GetPercentile(const std::vector<int64_t>& sortedData, double percentile)
     return sortedData[index];
 }
 //---------------------------------------------------------------------------------------------------------------------
-// Returns true if all chunks were transferred successfully else false
-bool RunPerfTest(/*[in]*/ int nParallelism,
-                 /*[in]*/ uint64_t nDataSizeBytes,
-                 /*[in]*/ CacheClientImpl& client,
-                 /*[in]*/ std::string& strPrefix,
-                 /*[in]*/ std::string& strMode,
-                 /*[in]*/ std::size_t nChunkSizeBytes)
+// Template function to run perf tests with any client type and worker function.
+// WorkerFunc signature: std::vector<int64_t>(bool bIsUpload, std::size_t nStartIndex, std::size_t nEndIndexExclusive,
+//                                            std::size_t nTotalChunksToTransfer, const std::string& strPrefix,
+//                                            TClient& client, std::size_t nChunkSizeBytes,
+//                                            std::atomic_uint_fast64_t& nChunksSuccessfullyTransferred)
+template <typename TClient, typename WorkerFunc>
+bool RunPerfTestImpl(/*[in]*/ int nParallelism,
+                     /*[in]*/ uint64_t nDataSizeBytes,
+                     /*[in]*/ TClient& client,
+                     /*[in]*/ const std::string& strPrefix,
+                     /*[in]*/ const std::string& strMode,
+                     /*[in]*/ const std::string& strTestName,
+                     /*[in]*/ std::size_t nChunkSizeBytes,
+                     /*[in]*/ WorkerFunc workerFunc)
 {
-    LOG_INFO("Current Test Mode is {}", strMode);
+    LOG_INFO("Current Test Mode is {}{}", strMode, strTestName.empty() ? "" : " (" + strTestName + ")");
 
     if (nChunkSizeBytes > nDataSizeBytes) {
         LOG_WARN("Chunk size {} bytes is greater than total data size {} bytes. Clamping chunk size to data size.",
@@ -190,7 +201,8 @@ bool RunPerfTest(/*[in]*/ int nParallelism,
     std::size_t nTotalChunksToTransfer = nDataSizeBytes / nChunkSizeBytes;
 
     std::size_t nChunksPerThread = nTotalChunksToTransfer / nParallelism;
-    if (nTotalChunksToTransfer % nParallelism != 0) {
+    if (nTotalChunksToTransfer % nParallelism != 0)
+    {
         std::size_t nUpperBoundTotalChunksToTransfer = nTotalChunksToTransfer + nParallelism - (nTotalChunksToTransfer % nParallelism);
         nChunksPerThread = nUpperBoundTotalChunksToTransfer / nParallelism;
     }
@@ -202,15 +214,14 @@ bool RunPerfTest(/*[in]*/ int nParallelism,
     for (std::size_t nThreadIdx = 0; nThreadIdx < nParallelism; nThreadIdx++)
     {
         std::size_t nStartIndex = nThreadIdx * nChunksPerThread;
-        // EndIndex is set to the chunk counter. If chunk counter surpasses totalChunkCount, then totalChunkCount is used.
         std::size_t nEndIndexExclusive = std::min((nThreadIdx + 1) * nChunksPerThread, nTotalChunksToTransfer);
         vecFutures.emplace_back(std::async(std::launch::async,
-                                Worker,
+                                workerFunc,
                                 bIsUpload,
                                 nStartIndex,
                                 nEndIndexExclusive,
                                 nTotalChunksToTransfer,
-                                strPrefix,
+                                std::cref(strPrefix),
                                 std::ref(client),
                                 nChunkSizeBytes,
                                 std::ref(nChunksSuccessfullyTransferred)));
@@ -245,15 +256,16 @@ bool RunPerfTest(/*[in]*/ int nParallelism,
     auto perChunkP90Ms = GetPercentile(allPerChunkMs, 90.0);
     auto perChunkP99Ms = GetPercentile(allPerChunkMs, 99.0);
 
+    std::string strLogTestName = strTestName.empty() ? "Test" : strTestName + " Test";
     LOG_INFO("=============================================================");
-    LOG_INFO("Test complete. Details below.")
+    LOG_INFO("{} complete. Details below.", strLogTestName);
     LOG_INFO("Test Mode: {}", strMode);
     LOG_INFO("Throughput: {} Mbps {} GiBps", nThroughputMbps, nThroughputGiBps);
     LOG_INFO("Chunk size: {} bytes", nChunkSizeBytes);
     LOG_INFO("Per-chunk p50: {} ms, p90: {} ms, p99: {} ms", perChunkP50Ms, perChunkP90Ms, perChunkP99Ms);
     LOG_INFO("Total bytes transferred: {}", nBytesTransferred);
     LOG_INFO("Total time taken: {} ms", durationMs);
-    LOG_INFO("Expected chunks to tansfer: {}", nTotalChunksToTransfer);
+    LOG_INFO("Expected chunks to transfer: {}", nTotalChunksToTransfer);
     LOG_INFO("Actual chunks transferred succeeded: {}", nChunksSuccessfullyTransferred);
     LOG_INFO("Total individual failures: {}", nGlobalFailureCounter.load());
     LOG_INFO("=============================================================");
@@ -289,28 +301,189 @@ bool RunPerfTest(/*[in]*/ int nParallelism,
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
+// Returns true if all chunks were transferred successfully else false
+bool RunPerfTest(/*[in]*/ int nParallelism,
+                 /*[in]*/ uint64_t nDataSizeBytes,
+                 /*[in]*/ CacheClientImpl& client,
+                 /*[in]*/ const std::string& strPrefix,
+                 /*[in]*/ const std::string& strMode,
+                 /*[in]*/ std::size_t nChunkSizeBytes)
+{
+    return RunPerfTestImpl(nParallelism, nDataSizeBytes, client, strPrefix, strMode, "", nChunkSizeBytes, Worker);
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+// Returns true if blob upload succeeded else false
+bool BlobUploadWithRetries(
+    /*[in]*/ const std::string& strBlobName,
+    /*[in]*/ Azure::Storage::Blobs::BlobContainerClient& containerClient,
+    /*[in]*/ std::size_t nChunkSizeBytes)
+{
+    for (std::size_t attempt = 0; attempt < RETRY_COUNT_PER_CHUNK; attempt++)
+    {
+        try
+        {
+            const void* buffer = GetRandomBuffer(nChunkSizeBytes);
+            auto blobClient = containerClient.GetBlockBlobClient(strBlobName);
+            blobClient.UploadFrom(reinterpret_cast<const uint8_t*>(buffer), nChunkSizeBytes);
+            return true;
+        }
+        catch (const Azure::Core::RequestFailedException& e)
+        {
+            LOG_WARN("Blob upload {} failed with error {} ({})", strBlobName, e.ErrorCode, e.what());
+            nGlobalFailureCounter++;
+        }
+        catch (const std::exception& e)
+        {
+            LOG_WARN("Blob upload {} failed with error {}", strBlobName, e.what());
+            nGlobalFailureCounter++;
+        }
+    }
+
+    LOG_CRITICAL("Blob upload {} failed after {} attempts", strBlobName, RETRY_COUNT_PER_CHUNK);
+    return false;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Returns true if blob download succeeded else false
+bool BlobDownloadWithRetries(
+    /*[in]*/ const std::string& strBlobName,
+    /*[in]*/ Azure::Storage::Blobs::BlobContainerClient& containerClient,
+    /*[in]*/ std::size_t nChunkSizeBytes)
+{
+    for (std::size_t attempt = 0; attempt < RETRY_COUNT_PER_CHUNK; attempt++)
+    {
+        try
+        {
+            void* buffer = GetEmptyBuffer(nChunkSizeBytes);
+            auto blobClient = containerClient.GetBlockBlobClient(strBlobName);
+            auto downloadResult = blobClient.DownloadTo(reinterpret_cast<uint8_t*>(buffer), nChunkSizeBytes);
+            
+            if (!downloadResult.Value.ContentRange.Length.HasValue())
+            {
+                LOG_WARN("Blob {} download response missing ContentRange.Length", strBlobName);
+                return false;
+            }
+
+            if (downloadResult.Value.ContentRange.Length.Value() != nChunkSizeBytes)
+            {
+                LOG_WARN("Expected blob {} read length to be {} but got {}", 
+                         strBlobName, nChunkSizeBytes, downloadResult.Value.ContentRange.Length.Value());
+                return false;
+            }
+            return true;
+        }
+        catch (const Azure::Core::RequestFailedException& e)
+        {
+            LOG_WARN("Blob download {} failed with error {} ({})", strBlobName, e.ErrorCode, e.what());
+            nGlobalFailureCounter++;
+        }
+        catch (const std::exception& e)
+        {
+            LOG_WARN("Blob download {} failed with error {}", strBlobName, e.what());
+            nGlobalFailureCounter++;
+        }
+    }
+
+    LOG_CRITICAL("Blob download {} failed after {} attempts", strBlobName, RETRY_COUNT_PER_CHUNK);
+    return false;
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::vector<int64_t> BlobWorker(/*[in]*/ bool bIsUpload,
+                /*[in]*/ std::size_t nStartIndex,
+                /*[in]*/ std::size_t nEndIndexExclusive,
+                /*[in]*/ std::size_t nTotalChunksToTransfer,
+                /*[in]*/ const std::string& strBlobPrefix,
+                /*[in]*/ Azure::Storage::Blobs::BlobContainerClient& containerClient,
+                /*[in]*/ std::size_t nChunkSizeBytes,
+                /*[out]*/ std::atomic_uint_fast64_t& nChunksSuccessfullyTransferred)
+{
+    LOG_INFO("Blob worker thread started. StartIndex: {}, EndIndexExclusive: {}", nStartIndex, nEndIndexExclusive);
+    std::vector<int64_t> perChunkMs;
+    perChunkMs.reserve(nEndIndexExclusive - nStartIndex);
+
+    for (std::size_t idx = nStartIndex; idx < nEndIndexExclusive; idx++)
+    {
+        std::string strBlobName = strBlobPrefix + std::to_string(idx);
+        auto transferStart = std::chrono::high_resolution_clock::now();
+        bool success = bIsUpload ? BlobUploadWithRetries(strBlobName, containerClient, nChunkSizeBytes)
+                                 : BlobDownloadWithRetries(strBlobName, containerClient, nChunkSizeBytes);
+        auto transferEnd = std::chrono::high_resolution_clock::now();
+
+        if (success)
+        {
+            nChunksSuccessfullyTransferred++;
+            auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(transferEnd - transferStart).count();
+            perChunkMs.push_back(durationMs);
+        }
+
+        if (idx % 100 == 0)
+        {
+            LOG_INFO("In progress. Total chunks successfully transferred: {}/{} ({} %)",
+                     nChunksSuccessfullyTransferred,
+                     nTotalChunksToTransfer,
+                     (nChunksSuccessfullyTransferred * 100) / nTotalChunksToTransfer);
+        }
+    }
+
+    return perChunkMs;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Returns true if all chunks were transferred successfully else false
+bool RunPerfBlobDirectTest(int nParallelism,
+    uint64_t nDataSizeBytes,
+    Azure::Storage::Blobs::BlobContainerClient& containerClient,
+    const std::string& strPrefix,
+    const std::string& strMode,
+    std::size_t nChunkSizeBytes)
+{
+    return RunPerfTestImpl(nParallelism, nDataSizeBytes, containerClient, strPrefix, strMode, "Direct Blob", nChunkSizeBytes, BlobWorker);
+}
+
+
+//---------------------------------------------------------------------------------------------------------------------
+// Common options shared between perf test clients
+void add_common_perf_options(po::options_description& description)
+{
+    description.add_options()
+        ("help", "produce help message")
+        ("num-threads", po::value<int>(), "Number of threads to use for the perf test")
+        ("data-size-GiB", po::value<int>(), "Total size of data to upload/download in GiB")
+        ("mode", po::value<std::string>(), "Mode ( 'upload' or 'download' )")
+        ("prefix", po::value<std::string>(), "Prefix for file uploads. Must be same for upload and download")
+        ("num-iterations", po::value<int>()->default_value(1), "Number of times to run the perf test")
+        ("cache-retry-max-attempts", po::value<uint32_t>()->default_value(1), "Max attempts for cache-client internal retries (1 disables retries)")
+        ("cache-retry-base-delay-ms", po::value<uint64_t>()->default_value(0), "Base delay (ms) for cache-client internal retries")
+        ("cache-retry-max-delay-ms", po::value<uint64_t>()->default_value(0), "Max delay (ms) for cache-client internal retries")
+        ("chunk-size-bytes", po::value<std::size_t>()->default_value(DEFAULT_CHUNK_SIZE_BYTES), "Size of each chunk in bytes (default: 33554432 = 32 MiB)");
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Validates common required perf test options are present
+bool has_common_perf_options(const po::variables_map& vm)
+{
+    return vm.count("num-threads") > 0 && vm.count("data-size-GiB") > 0 &&
+           vm.count("mode") > 0 && vm.count("prefix") > 0;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Validates mode is either 'upload' or 'download'
+bool is_valid_mode(const std::string& strMode)
+{
+    return strMode == "upload" || strMode == "download";
+}
+//---------------------------------------------------------------------------------------------------------------------
 po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
 {
     try
     {
         po::options_description description("Perf test client options");
-        description.add_options()("help", "produce help message")(
-            "server-port", po::value<int>(), "Port to connect to the cache servers")(
-            "server-hostname", po::value<std::string>(), "Hostname(s) of cache server, '#' separated")(
-            "num-threads", po::value<int>(), "Number of threads to use for the perf test")(
-            "data-size-GiB", po::value<int>(), "Total size of data to upload/download in GiB")(
-            "prefix", po::value<std::string>(), "Prefix for file uploads. Must be same for upload and download")(
-            "mode", po::value<std::string>(), "Mode ( 'upload' or 'download' )")(
-            "num-iterations", po::value<int>()->default_value(1), "Number of times to run the perf test")(
-            "ib-enabled", po::value<bool>()->default_value(false), "Enable Infiniband")(
-            "is-discovery-enabled", po::value<bool>()->default_value(false), "Enable discovery endpoint")(
-            "enable-calculate-checksum", po::value<bool>()->default_value(false), "Enable checksum calculation on upload")(
-            "enable-validate-checksum", po::value<bool>()->default_value(false), "Enable checksum validation on download")(
-            "checksum-algorithm", po::value<std::string>()->default_value("xxhash32"), "Checksum algorithm to use ('xxhash32' or 'crc32')")(
-            "cache-retry-max-attempts", po::value<uint32_t>()->default_value(1), "Max attempts for cache-client internal retries (1 disables retries)")(
-            "cache-retry-base-delay-ms", po::value<uint64_t>()->default_value(0), "Base delay (ms) for cache-client internal retries (must be >0 if max attempts > 1)")(
-            "cache-retry-max-delay-ms", po::value<uint64_t>()->default_value(0), "Max delay (ms) for cache-client internal retries (must be >0 and >= base delay if max attempts > 1)")(
-            "chunk-size-bytes", po::value<std::size_t>()->default_value(DEFAULT_CHUNK_SIZE_BYTES), "Size of each chunk in bytes (default: 33554432 = 32 MiB)");
+        add_common_perf_options(description);
+        description.add_options()
+            ("server-port", po::value<int>(), "Port to connect to the cache servers")
+            ("server-hostname", po::value<std::string>(), "Hostname(s) of cache server, '#' separated")
+            ("ib-enabled", po::value<bool>()->default_value(false), "Enable Infiniband")
+            ("is-discovery-enabled", po::value<bool>()->default_value(false), "Enable discovery endpoint")
+            ("enable-calculate-checksum", po::value<bool>()->default_value(false), "Enable checksum calculation on upload")
+            ("enable-validate-checksum", po::value<bool>()->default_value(false), "Enable checksum validation on download")
+            ("checksum-algorithm", po::value<std::string>()->default_value("xxhash32"), "Checksum algorithm to use ('xxhash32' or 'crc32')");
 
         po::variables_map vm;
         po::store(po::command_line_parser(argc, argv).options(description).allow_unregistered().run(), vm);
@@ -322,9 +495,8 @@ po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
             exit(0);
         }
 
-        if(!(vm.count("server-port") > 0 && vm.count("server-hostname") > 0 && vm.count("num-threads") > 0 &&
-             vm.count("data-size-GiB") > 0 && vm.count("mode") > 0 && vm.count("prefix") > 0 &&
-             vm.count("num-iterations") > 0 && vm.count("ib-enabled") > 0))
+        if(!(has_common_perf_options(vm) && vm.count("server-port") > 0 &&
+             vm.count("server-hostname") > 0 && vm.count("ib-enabled") > 0))
         {
             std::cout << description << std::endl;
             exit(1);
@@ -338,6 +510,47 @@ po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
         exit(2);
     }
     catch(...)
+    {
+        LOG_CRITICAL("Exception of unknown type!");
+        exit(3);
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Direct blob client args for testing directly against Azure Blob Storage
+po::variables_map parse_direct_blob_client_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
+{
+    try
+    {
+        po::options_description description("Direct blob client options");
+        add_common_perf_options(description);
+        description.add_options()
+            ("storage-account", po::value<std::string>(), "Azure storage account name")
+            ("container", po::value<std::string>(), "Azure storage container name");
+
+        po::variables_map vm;
+        po::store(po::command_line_parser(argc, argv).options(description).allow_unregistered().run(), vm);
+        po::notify(vm);
+
+        if (vm.count("help") > 0)
+        {
+            std::cout << description << std::endl;
+            exit(0);
+        }
+
+        if (!(has_common_perf_options(vm) && vm.count("storage-account") > 0 && vm.count("container") > 0))
+        {
+            std::cout << description << std::endl;
+            exit(1);
+        }
+
+        return vm;
+    }
+    catch (const std::exception& e)
+    {
+        LOG_CRITICAL("Error: {}", e.what());
+        exit(2);
+    }
+    catch (...)
     {
         LOG_CRITICAL("Exception of unknown type!");
         exit(3);
@@ -455,10 +668,10 @@ int PerfClient(int argc, char *argv[])
     std::size_t nChunkSizeBytes = args["chunk-size-bytes"].as<std::size_t>();
     LOG_INFO("Chunk size set to {} bytes", nChunkSizeBytes);
 
-    if(strMode != "upload" && strMode != "download")
+    if (!is_valid_mode(strMode))
     {
         LOG_CRITICAL("Invalid mode {}. Must be 'upload' or 'download'", strMode);
-        exit(4);
+        return 4;
     }
 
     std::vector<const char*> vecCstrHostnames;
@@ -510,6 +723,129 @@ int PerfClient(int argc, char *argv[])
 
     return bAllIterationsSucceeded ? 0 : 5;
 }
+
+int PerfDirectBlobClient(int argc, char *argv[])
+{
+    auto args = parse_direct_blob_client_args(argc, argv);
+    std::size_t nNumThreads = args["num-threads"].as<int>();
+    std::size_t nDataSizeGiB = args["data-size-GiB"].as<int>();
+    std::string strMode = args["mode"].as<std::string>();
+    std::string strPrefix = args["prefix"].as<std::string>();
+    std::size_t nNumIterations = args["num-iterations"].as<int>();
+    auto storageAccountName = args["storage-account"].as<std::string>();
+    auto storageContainer = args["container"].as<std::string>();
+
+    if (!is_valid_mode(strMode))
+    {
+        LOG_CRITICAL("Invalid mode {}. Must be 'upload' or 'download'", strMode);
+        return 4;
+    }
+
+    // Enable Azure SDK diagnostic logging
+    Azure::Core::Diagnostics::Logger::SetLevel(Azure::Core::Diagnostics::Logger::Level::Warning);
+    Azure::Core::Diagnostics::Logger::SetListener([](Azure::Core::Diagnostics::Logger::Level level, const std::string& message) {
+        switch (level) {
+            case Azure::Core::Diagnostics::Logger::Level::Error:
+                LOG_ERROR("[AzureSDK] {}", message);
+                break;
+            case Azure::Core::Diagnostics::Logger::Level::Warning:
+                LOG_WARN("[AzureSDK] {}", message);
+                break;
+            default:
+                LOG_INFO("[AzureSDK] {}", message);
+                break;
+        }
+    });
+
+    // Log workload identity environment variables for debugging
+    const char* azureClientId = std::getenv("AZURE_CLIENT_ID");
+    const char* azureTenantId = std::getenv("AZURE_TENANT_ID");
+    const char* azureFederatedTokenFile = std::getenv("AZURE_FEDERATED_TOKEN_FILE");
+    const char* azureAuthorityHost = std::getenv("AZURE_AUTHORITY_HOST");
+    
+    LOG_INFO("Workload Identity environment variables:");
+    LOG_INFO("  AZURE_CLIENT_ID: {}", azureClientId ? azureClientId : "(not set)");
+    LOG_INFO("  AZURE_TENANT_ID: {}", azureTenantId ? azureTenantId : "(not set)");
+    LOG_INFO("  AZURE_FEDERATED_TOKEN_FILE: {}", azureFederatedTokenFile ? azureFederatedTokenFile : "(not set)");
+    LOG_INFO("  AZURE_AUTHORITY_HOST: {}", azureAuthorityHost ? azureAuthorityHost : "(not set)");
+
+    auto defaultAzureCredential = std::make_shared<Azure::Identity::DefaultAzureCredential>();
+    auto accountURL = "https://" + storageAccountName + ".blob.core.windows.net";
+    Azure::Storage::Blobs::BlobServiceClient blobServiceClient{accountURL, defaultAzureCredential};
+
+    auto containerClient = blobServiceClient.GetBlobContainerClient(storageContainer);
+
+    // Preflight check: verify container exists and is accessible
+    // This provides a clear error message instead of cryptic failures during upload/download
+    // Retry with backoff since role assignments may take time to propagate
+    LOG_INFO("Verifying container exists and is accessible...");
+    constexpr int maxRetries = 5;
+    constexpr int initialBackoffSeconds = 5;
+    bool containerAccessVerified = false;
+    
+    for (int attempt = 1; attempt <= maxRetries && !containerAccessVerified; ++attempt)
+    {
+        try
+        {
+            containerClient.CreateIfNotExists();
+            LOG_INFO("Container verification successful");
+            containerAccessVerified = true;
+        }
+        catch (const Azure::Core::RequestFailedException& e)
+        {
+            if (attempt < maxRetries)
+            {
+                int backoffSeconds = initialBackoffSeconds * attempt;
+                LOG_WARN("Container access check failed (attempt {}/{}): {} ({}). "
+                         "Retrying in {} seconds (role assignment may still be propagating)...",
+                         attempt, maxRetries, e.ErrorCode, e.what(), backoffSeconds);
+                std::this_thread::sleep_for(std::chrono::seconds(backoffSeconds));
+            }
+            else
+            {
+                LOG_CRITICAL("Failed to access container '{}' in storage account '{}' after {} attempts: {} ({})",
+                             storageContainer, storageAccountName, maxRetries, e.ErrorCode, e.what());
+                LOG_CRITICAL("Please verify: 1) Storage account name is correct, 2) Container exists, "
+                             "3) Identity has 'Storage Blob Data Contributor' role on the container");
+                return 6;
+            }
+        }
+        catch (const std::exception& e)
+        {
+            if (attempt < maxRetries)
+            {
+                int backoffSeconds = initialBackoffSeconds * attempt;
+                LOG_WARN("Container access check failed (attempt {}/{}): {}. Retrying in {} seconds...",
+                         attempt, maxRetries, e.what(), backoffSeconds);
+                std::this_thread::sleep_for(std::chrono::seconds(backoffSeconds));
+            }
+            else
+            {
+                LOG_CRITICAL("Failed to verify container access after {} attempts: {}", maxRetries, e.what());
+                return 6;
+            }
+        }
+    }
+
+    std::size_t nChunkSizeBytes = args["chunk-size-bytes"].as<std::size_t>();
+    LOG_INFO("Chunk size set to {} bytes", nChunkSizeBytes);
+
+    std::size_t nDataSizeBytes = nDataSizeGiB * 1024 * 1024 * 1024;
+    bool bAllIterationsSucceeded = true;
+
+    for (std::size_t i = 0; i < nNumIterations; i++)
+    {
+        if (!RunPerfBlobDirectTest(nNumThreads, nDataSizeBytes, containerClient, strPrefix, strMode, nChunkSizeBytes))
+        {
+            bAllIterationsSucceeded = false;
+        }
+    }
+
+    LOG_INFO("All iterations succeeded: {}", bAllIterationsSucceeded);
+
+    return bAllIterationsSucceeded ? 0 : 5;
+}
+
 //---------------------------------------------------------------------------------------------------------------------
 int EvictionClient(int argc, char* argv[])
 {
@@ -663,6 +999,10 @@ int main(int argc, char* argv[])
     else if (std::string(argv[1]) == std::string("--last-access-time-distribution-client"))
     {
         return LastAccessTimeDistributionClient(argc, argv);
+    }
+    else if (std::string(argv[1]) == std::string("--direct-blob-client"))
+    {
+        return PerfDirectBlobClient(argc, argv);
     }
     else
     {

@@ -66,6 +66,9 @@ include(${CMAKE_EXTERNAL_PROJECT}/prometheus_cpp_include.cmake)
 # Azure storage lite lib - to communicate with blob services
 include(${CMAKE_EXTERNAL_PROJECT}/storagelite_include.cmake)
 
+# Azure SDK for C++ - for direct blob access with Entra ID auth (provides azure-identity and azure-storage-blobs)
+include(${CMAKE_SOURCE_DIR}/src/images/native-build/cmake/external/azure-sdk-cpp.cmake)
+
 # Google protobuf static lib
 include(${CMAKE_EXTERNAL_PROJECT}/protobufstatic_include.cmake)
 

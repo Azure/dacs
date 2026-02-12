@@ -36,8 +36,20 @@ const (
 	ModeDownload Mode = "download"
 )
 
+// ClientType represents the type of client to use for the perf test.
+type ClientType string
+
+const (
+	// ClientTypeCache is the cache server client (default).
+	ClientTypeCache ClientType = "cache"
+	// ClientTypeDirectBlob is the direct blob storage client.
+	ClientTypeDirectBlob ClientType = "direct-blob"
+)
+
 // Config contains configuration for the perf client job.
 type Config struct {
+	// ClientType is the type of client (cache or direct-blob)
+	ClientType ClientType
 	// Mode is the operation mode (upload or download)
 	Mode Mode
 	// Namespace is the Kubernetes namespace
@@ -46,6 +58,8 @@ type Config struct {
 	Image string
 	// ServerHostname is the cache server hostname(s), separated by #
 	ServerHostname string
+	// NumServers is the number of cache servers (for metrics reporting)
+	NumServers int
 	// NumThreads is the number of threads
 	NumThreads int
 	// DataSizeGiB is the data size in GiB
@@ -64,11 +78,22 @@ type Config struct {
 	ChecksumAlgorithm ChecksumAlgorithm
 	// ColocateWithServer schedules the perf client on the same node as the cache server
 	ColocateWithServer bool
+
+	// Direct blob client options (used when ClientType is ClientTypeDirectBlob)
+	// StorageAccount is the Azure storage account name
+	StorageAccount string
+	// StorageContainer is the Azure storage container name
+	StorageContainer string
+	// WorkloadIdentityClientID is the client ID for WorkloadIdentityCredential authentication
+	WorkloadIdentityClientID string
+	// ServiceAccountName is the Kubernetes service account to use for workload identity
+	ServiceAccountName string
 }
 
 // NewConfig creates a new Config with default values.
 func NewConfig() *Config {
 	return &Config{
+		ClientType:              ClientTypeCache,
 		Mode:                    ModeUpload,
 		Namespace:               "cache-server",
 		Image:                   common.GetDefaultImage(),
@@ -82,6 +107,12 @@ func NewConfig() *Config {
 		EnableValidateChecksum:  false,
 		ChecksumAlgorithm:       ChecksumAlgorithmXXHash32,
 	}
+}
+
+// WithClientType sets the client type (cache or direct-blob).
+func (c *Config) WithClientType(clientType ClientType) *Config {
+	c.ClientType = clientType
+	return c
 }
 
 // WithMode sets the operation mode (upload or download).
@@ -105,6 +136,12 @@ func (c *Config) WithImage(image string) *Config {
 // WithServerHostname sets the cache server hostname(s).
 func (c *Config) WithServerHostname(hostname string) *Config {
 	c.ServerHostname = hostname
+	return c
+}
+
+// WithNumServers sets the number of cache servers (for metrics reporting).
+func (c *Config) WithNumServers(numServers int) *Config {
+	c.NumServers = numServers
 	return c
 }
 
@@ -162,6 +199,37 @@ func (c *Config) WithColocate(colocate bool) *Config {
 	return c
 }
 
+// WithStorageAccount sets the Azure storage account name for direct blob client.
+func (c *Config) WithStorageAccount(account string) *Config {
+	c.StorageAccount = account
+	return c
+}
+
+// WithStorageContainer sets the Azure storage container name for direct blob client.
+func (c *Config) WithStorageContainer(container string) *Config {
+	c.StorageContainer = container
+	return c
+}
+
+// WithWorkloadIdentity configures the job to use Azure Workload Identity for authentication.
+// The clientID is the Azure managed identity client ID, and serviceAccountName is the
+// Kubernetes ServiceAccount annotated with azure.workload.identity/client-id.
+func (c *Config) WithWorkloadIdentity(clientID string, serviceAccountName string) *Config {
+	c.WorkloadIdentityClientID = clientID
+	c.ServiceAccountName = serviceAccountName
+	return c
+}
+
+// Description returns a human-readable description of the job configuration.
+func (c *Config) Description() string {
+	if c.ClientType == ClientTypeDirectBlob {
+		return fmt.Sprintf("Creating direct blob %s client job (storage=%s, container=%s, auth=EntraID)",
+			c.Mode, c.StorageAccount, c.StorageContainer)
+	}
+	return fmt.Sprintf("Creating %s perf client job (checksum calc=%t, validate=%t, colocate=%t)",
+		c.Mode, c.EnableCalculateChecksum, c.EnableValidateChecksum, c.ColocateWithServer)
+}
+
 // getDefaultImage returns the default perf client image based on environment variables
 // matching the helm chart configuration. On minikube, uses local image.
 func getDefaultImage() string {
@@ -185,6 +253,22 @@ func getDefaultImage() string {
 // LoadJob loads the perf client job from the embedded fixture
 // and applies the provided configuration by modifying the parsed struct.
 func (c *Config) LoadJob() (*batchv1.Job, error) {
+	// Validate direct-blob specific requirements
+	if c.ClientType == ClientTypeDirectBlob {
+		if c.StorageAccount == "" {
+			return nil, fmt.Errorf("StorageAccount must be set for direct-blob client (use --storage-account flag)")
+		}
+		if c.StorageContainer == "" {
+			return nil, fmt.Errorf("StorageContainer must be set for direct-blob client (use --storage-container flag)")
+		}
+		if c.WorkloadIdentityClientID == "" {
+			return nil, fmt.Errorf("WorkloadIdentityClientID must be set for direct-blob client (use --workload-identity-client-id flag)")
+		}
+		if c.ServiceAccountName == "" {
+			return nil, fmt.Errorf("ServiceAccountName must be set for direct-blob client (use --workload-identity-sa flag)")
+		}
+	}
+
 	data, err := fixtures.ReadPerfClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read perf client fixture: %w", err)
@@ -198,6 +282,9 @@ func (c *Config) LoadJob() (*batchv1.Job, error) {
 
 	// Apply configuration to the job
 	jobName := string(c.Mode) + "-client"
+	if c.ClientType == ClientTypeDirectBlob {
+		jobName = "direct-blob-" + string(c.Mode) + "-client"
+	}
 	job.Name = jobName
 	job.Namespace = c.Namespace
 
@@ -207,6 +294,7 @@ func (c *Config) LoadJob() (*batchv1.Job, error) {
 	}
 	job.Labels["app"] = jobName
 	job.Labels["dacs.azure.com/perf-mode"] = string(c.Mode)
+	job.Labels["dacs.azure.com/client-type"] = string(c.ClientType)
 
 	// Update selector labels
 	job.Spec.Selector.MatchLabels["app"] = jobName
@@ -215,6 +303,14 @@ func (c *Config) LoadJob() (*batchv1.Job, error) {
 	job.Spec.Template.Labels["app"] = jobName
 	job.Spec.Template.Labels["dacs.azure.com/test-pod"] = "true"
 	job.Spec.Template.Labels["dacs.azure.com/perf-mode"] = string(c.Mode)
+
+	// Configure workload identity if specified
+	if c.WorkloadIdentityClientID != "" && c.ServiceAccountName != "" {
+		// Add the workload identity label to enable the mutating webhook
+		job.Spec.Template.Labels["azure.workload.identity/use"] = "true"
+		// Set the service account
+		job.Spec.Template.Spec.ServiceAccountName = c.ServiceAccountName
+	}
 
 	// Handle affinity configuration based on ColocateWithServer setting
 	if c.ColocateWithServer {
@@ -270,13 +366,46 @@ func (c *Config) LoadJob() (*batchv1.Job, error) {
 			"--chunk-size-bytes", fmt.Sprintf("%d", c.ChunkSizeBytes),
 		}
 
-		// Only add checksum args if checksum is enabled
-		if c.EnableCalculateChecksum || c.EnableValidateChecksum {
-			container.Args = append(container.Args,
-				"--enable-calculate-checksum", fmt.Sprintf("%t", c.EnableCalculateChecksum),
-				"--enable-validate-checksum", fmt.Sprintf("%t", c.EnableValidateChecksum),
-				"--checksum-algorithm", string(c.ChecksumAlgorithm),
-			)
+		// Set image pull policy: Always for AKS easier for when perfclient image
+		// is changed frequently, but use IfNotPresent for minikube to work with locally loaded images
+		if !cluster.IsMinikube() {
+			container.ImagePullPolicy = corev1.PullAlways
+		}
+
+		// Build the args array based on client type
+		if c.ClientType == ClientTypeDirectBlob {
+			// Direct blob client args - uses Entra ID / Workload Identity for auth
+			container.Args = []string{
+				"--direct-blob-client",
+				"--storage-account", c.StorageAccount,
+				"--container", c.StorageContainer,
+				"--num-threads", fmt.Sprintf("%d", c.NumThreads),
+				"--data-size-GiB", fmt.Sprintf("%d", c.DataSizeGiB),
+				"--prefix", c.Prefix,
+				"--mode", string(c.Mode),
+				"--num-iterations", fmt.Sprintf("%d", c.NumIterations),
+			}
+		} else {
+			// Cache client args (default)
+			container.Args = []string{
+				"--server-port", "9065",
+				"--server-hostname", c.ServerHostname,
+				"--num-threads", fmt.Sprintf("%d", c.NumThreads),
+				"--data-size-GiB", fmt.Sprintf("%d", c.DataSizeGiB),
+				"--prefix", c.Prefix,
+				"--mode", string(c.Mode),
+				"--num-iterations", fmt.Sprintf("%d", c.NumIterations),
+				"--ib-enabled", "false",
+			}
+
+			// Only add checksum args if checksum is enabled
+			if c.EnableCalculateChecksum || c.EnableValidateChecksum {
+				container.Args = append(container.Args,
+					"--enable-calculate-checksum", fmt.Sprintf("%t", c.EnableCalculateChecksum),
+					"--enable-validate-checksum", fmt.Sprintf("%t", c.EnableValidateChecksum),
+					"--checksum-algorithm", string(c.ChecksumAlgorithm),
+				)
+			}
 		}
 	}
 
@@ -290,4 +419,45 @@ func (c *Config) JobYAML() ([]byte, error) {
 		return nil, err
 	}
 	return yaml.Marshal(job)
+}
+
+// LoadServiceAccount loads the perf client service account from the embedded fixture
+// and applies the workload identity client ID annotation.
+// Returns nil if workload identity is not configured.
+func (c *Config) LoadServiceAccount() (*corev1.ServiceAccount, error) {
+	if c.WorkloadIdentityClientID == "" || c.ServiceAccountName == "" {
+		return nil, fmt.Errorf("both WorkloadIdentityClientID and ServiceAccountName must be set to load service account")
+	}
+
+	data, err := fixtures.ReadPerfClientServiceAccount()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read service account fixture: %w", err)
+	}
+
+	var sa corev1.ServiceAccount
+	if err := yaml.Unmarshal(data, &sa); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal service account: %w", err)
+	}
+
+	// Apply configuration
+	sa.Name = c.ServiceAccountName
+	sa.Namespace = c.Namespace
+
+	// Set the workload identity client ID annotation
+	if sa.Annotations == nil {
+		sa.Annotations = make(map[string]string)
+	}
+	sa.Annotations["azure.workload.identity/client-id"] = c.WorkloadIdentityClientID
+
+	return &sa, nil
+}
+
+// ServiceAccountYAML returns the service account as YAML bytes with configuration applied.
+// Returns nil if workload identity is not configured.
+func (c *Config) ServiceAccountYAML() ([]byte, error) {
+	sa, err := c.LoadServiceAccount()
+	if err != nil {
+		return nil, err
+	}
+	return yaml.Marshal(sa)
 }

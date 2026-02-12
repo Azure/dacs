@@ -28,10 +28,10 @@ var testMultipleDACSClients = func(ctx context.Context) {
 	var count int
 	var storageAccount string
 	flag.Parse()
-	err := validateWriteMode(fluxOpts.WriteMode)
+	err := validateWriteMode(opts.WriteMode)
 	Expect(err).ShouldNot(HaveOccurred(), "Invalid write mode provided")
 
-	storageAccount = fluxOpts.StorageAccount
+	storageAccount = opts.StorageAccount
 	if storageAccount == "" {
 		// Fallback to read from environment variable
 		storageAccount = os.Getenv("STORAGE_ACCOUNT")
@@ -46,9 +46,9 @@ var testMultipleDACSClients = func(ctx context.Context) {
 	now = strings.ReplaceAll(strings.ToLower(now), ":", "-")
 
 	// Get no.of clients to be deployed based on k8s nodes
-	if fluxOpts.ClientCount > 0 {
-		log.Info("Using user provided cache client count: %d", fluxOpts.ClientCount)
-		count = int(fluxOpts.ClientCount)
+	if opts.ClientCount > 0 {
+		log.Info("Using user provided cache client count: %d", opts.ClientCount)
+		count = int(opts.ClientCount)
 	} else {
 		nodeList, err := getNodeList(k8sClient)
 		Expect(err).ShouldNot(HaveOccurred(), "Failed to get node list from cluster")
@@ -61,9 +61,9 @@ var testMultipleDACSClients = func(ctx context.Context) {
 		cacheClientImage:     getDefaultImage(),
 		storageAccountName:   storageAccount,
 		containerName:        containerNamePrefix + now,
-		blobCount:            fluxOpts.BlobCount,
-		blobSize:             fluxOpts.BlobSize,
-		writeMode:            fluxOpts.WriteMode,
+		blobCount:            opts.BlobCount,
+		blobSize:             opts.BlobSize,
+		writeMode:            opts.WriteMode,
 	}
 
 	config.dacsClientTestSuite(ctx)
@@ -97,8 +97,8 @@ var _ = PDescribe("Multiple DACS Clients E2E Tests", Label("dacsclients", "perf"
 
 // getDefaultImage returns the default dacs client image based on environment variables
 func getDefaultImage() string {
-	if fluxOpts.ClientImage != "" {
-		return fluxOpts.ClientImage
+	if opts.ClientImage != "" {
+		return opts.ClientImage
 	}
 	return common.GetDefaultImage()
 }

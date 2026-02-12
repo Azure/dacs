@@ -31,7 +31,7 @@ BUILD_NUMBER ?= latest
 BASE_REPO ?= $(DOCKER_REGISTRY)
 CACHE_SERVER_IMG ?= $(BASE_REPO)/cache-server
 SCHEDULER_IMG ?= $(BASE_REPO)/cacheserver-scheduler
-IMAGE_TAG ?= $(BUILD_NUMBER)-linux-amd64
+IMAGE_TAG ?= $(BUILD_NUMBER)
 
 # Tool versions
 BICEP_VERSION ?= v0.37.4

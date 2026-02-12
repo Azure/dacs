@@ -25,6 +25,15 @@ param enableMonitoring bool = false
 @description('Whether to create a storage account.')
 param createStorageAccount bool = true
 
+@description('Whether to set up workload identity for pods.')
+param enableWorkloadIdentity bool = true
+
+@description('The Kubernetes namespace for workload identity.')
+param workloadIdentityNamespace string = 'cache-server'
+
+@description('The Kubernetes service account name for workload identity.')
+param workloadIdentityServiceAccount string = 'perf-client-sa'
+
 @description('The tags for the resource group.')
 param tags object = {}
 
@@ -45,7 +54,6 @@ resource resourceGroup 'Microsoft.Resources/resourceGroups@2024-03-01' = {
 }
 
 module cluster 'cluster.bicep' = {
-  name: 'clusterModule'
   scope: resourceGroup
   params: {
     zones: zones
@@ -57,12 +65,24 @@ module cluster 'cluster.bicep' = {
 }
 
 module storage 'storage.bicep' = if (createStorageAccount) {
-  name: 'storageModule'
   scope: resourceGroup
   params: {
     aksResourceGroup: resourceGroup.name
     aksName: cluster.outputs.name
+    aksSubnetId: cluster.outputs.aksSubnetId
+  }
+}
+
+module workloadIdentity 'workload-identity.bicep' = if (enableWorkloadIdentity && createStorageAccount) {
+  scope: resourceGroup
+  params: {
+    aksClusterName: cluster.outputs.name
+    storageAccountName: storage!.outputs.storageAccountName
+    kubernetesNamespace: workloadIdentityNamespace
+    serviceAccountName: workloadIdentityServiceAccount
   }
 }
 
 output managedClusterName string = cluster.outputs.name
+output oidcIssuerUrl string = cluster.outputs.oidcIssuerUrl
+output workloadIdentityClientId string = enableWorkloadIdentity && createStorageAccount ? workloadIdentity!.outputs.managedIdentityClientId : ''

@@ -91,6 +91,8 @@ target_link_libraries(PerfClient PRIVATE
     stdc++fs
     Boost::program_options
     Boost::system
+    Azure::azure-storage-blobs
+    Azure::azure-identity
 )
 
 target_include_directories(PerfClient PRIVATE

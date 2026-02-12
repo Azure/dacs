@@ -39,11 +39,19 @@ if [ "$(az group exists --name "$AKS_RESOURCE_GROUP")" = "false" ]; then
     exit 0
 fi
 
-# Check if the resource group is empty or just has expected resources (cluster + storage account + DCR)
-# Storage account name formula matches storage.bicep: toLower(take('${replace(resourceGroup().name, '-', '')}storage', 24))
+# Check if the resource group is empty or just has expected resources
+# Expected resources created by bicep templates:
+#   - AKS cluster: {resource-group}-cluster (cluster.bicep)
+#   - VNet: {resource-group}-vnet (cluster.bicep)
+#   - Storage account: {resource-group}storage (storage.bicep)
+#   - Data collection rule: {resource-group}-dcr (cluster.bicep, when monitoring enabled)
+#   - Managed identity: perf-client-identity (workload-identity.bicep)
+#   - NRMS-* resources: auto-created by Azure for network management
 storage_account_name=$(echo "${AKS_RESOURCE_GROUP}storage" | tr -d '-' | tr '[:upper:]' '[:lower:]' | cut -c1-24)
+vnet_name="${AKS_RESOURCE_GROUP}-vnet"
 dcr_name="${AKS_RESOURCE_GROUP}-dcr"
-resources=$(az resource list --resource-group "$AKS_RESOURCE_GROUP" --query "[?name!='${AKS_RESOURCE_GROUP}-cluster' && name!='${storage_account_name}' && name!='${dcr_name}'].name" --output tsv)
+workload_identity_name="perf-client-identity"
+resources=$(az resource list --resource-group "$AKS_RESOURCE_GROUP" --query "[?name!='${AKS_RESOURCE_GROUP}-cluster' && name!='${vnet_name}' && name!='${storage_account_name}' && name!='${dcr_name}' && name!='${workload_identity_name}' && !starts_with(name, 'NRMS-')].name" --output tsv)
 if [[ -n "$resources" ]]; then
     echo "Resource group $AKS_RESOURCE_GROUP is not empty. Resources found: $resources."
     echo "Skipping resource group deletion as a safety measure."

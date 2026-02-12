@@ -17,7 +17,7 @@ import (
 
 	"github.com/Azure/dacs/test/pkg/cluster"
 	"github.com/Azure/dacs/test/pkg/common"
-	fluxperf "github.com/Azure/dacs/test/pkg/flux/perf"
+	"github.com/Azure/dacs/test/pkg/flux/perf"
 	"github.com/Azure/dacs/test/pkg/git"
 	"github.com/Azure/dacs/test/pkg/helm"
 	"github.com/Azure/dacs/test/pkg/kusto"
@@ -39,12 +39,13 @@ var (
 	// defaultKubeConfigPath is the default path to the kubeconfig file.
 	defaultKubeConfigPath = filepath.Join(os.Getenv("HOME"), ".kube", "config")
 
-	// Flux options for tests that need them.
-	fluxOpts fluxperf.Options
+	// Perf options for tests (includes data-size-gib, cache-server-count, num-threads, checksum-algorithm,
+	// storage-account, storage-container, workload-identity-client-id, workload-identity-sa).
+	opts perf.Options
 )
 
 func TestMain(m *testing.M) {
-	if err := fluxperf.AddFlags(flag.CommandLine, &fluxOpts); err != nil {
+	if err := perf.AddFlags(flag.CommandLine, &opts); err != nil {
 		log.Error(err, "failed to add flux flags")
 		os.Exit(1)
 	}
@@ -57,6 +58,9 @@ func TestMain(m *testing.M) {
 		}
 	}
 	flag.Parse()
+
+	// Infer defaults for flags not explicitly provided (e.g. storage account, workload identity)
+	opts.ResolveDefaults(context.Background())
 
 	// Set up controller-runtime client
 	cfg, err := config.GetConfig()
@@ -87,12 +91,12 @@ var _ = BeforeSuite(func(ctx context.Context) {
 
 var _ = AfterSuite(func(ctx context.Context) {
 	cleanupPerfJobs(ctx, namespace)
-	common.Teardown(ctx, k8sClient, namespace, fluxOpts.SupportBundleDir)
+	common.Teardown(ctx, k8sClient, namespace, opts.SupportBundleDir)
 })
 
 var _ = ReportAfterSuite("perf reporter", func(ctx SpecContext, r Report) {
-	common.CollectSuiteSupportBundle(ctx, fluxOpts.SupportBundleDir)
-	common.PostReport(ctx, r, fluxOpts.JunitReport, fluxOpts.SummaryReport)
+	common.CollectSuiteSupportBundle(ctx, opts.SupportBundleDir)
+	common.PostReport(ctx, r, opts.JunitReport, opts.SummaryReport)
 	// Clean up perf test jobs after support bundle collection
 })
 

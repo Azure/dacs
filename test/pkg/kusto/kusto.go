@@ -68,6 +68,7 @@ type TestMetadata struct {
 // PerfResult contains the cache server performance test results (dynamic column in Kusto).
 type PerfResult struct {
 	Mode                    string `json:"Mode"`
+	ClientType              string `json:"ClientType"`
 	ChunkSizeBytes          int64  `json:"ChunkSizeBytes"`
 	DurationMs              int64  `json:"DurationMs"`
 	TotalBytesTransferred   int64  `json:"TotalBytesTransferred"`
@@ -85,6 +86,8 @@ type PerfResult struct {
 	EnableCalculateChecksum bool   `json:"EnableCalculateChecksum"`
 	EnableValidateChecksum  bool   `json:"EnableValidateChecksum"`
 	ChecksumAlgorithm       string `json:"ChecksumAlgorithm"`
+	StorageAccount          string `json:"StorageAccount,omitempty"`
+	StorageContainer        string `json:"StorageContainer,omitempty"`
 }
 
 // IperfResult contains the iperf3 network baseline test results (dynamic column in Kusto).
