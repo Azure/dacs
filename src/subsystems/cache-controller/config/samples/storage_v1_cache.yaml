@@ -14,7 +14,5 @@ spec:
   cpuLimit: 1
   memoryLimitMB: 20480
   egressBandwidthLimitGbps: 10
-  storage:
-    ephemeral: true
   nodeSelectorKey: dacs.azure.com/processing-unit
   nodeSelectorValue: cpu

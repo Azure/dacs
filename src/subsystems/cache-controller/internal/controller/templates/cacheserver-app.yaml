@@ -21,7 +21,7 @@ spec:
     spec:
       terminationGracePeriodSeconds: 10
 {{- if ne .UseEphemeralStorage true }}
-      schedulerName: cacheserver-scheduler
+      schedulerName: cache-controller
 {{- end }}
       affinity:
         nodeAffinity:

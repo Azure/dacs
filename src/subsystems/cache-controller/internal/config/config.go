@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -23,8 +24,9 @@ const (
 )
 
 type Config struct {
-	LogLevel         string `yaml:"logLevel" mapstructure:"logLevel"`
-	CacheServerImage string `yaml:"cacheServerImage" mapstructure:"cacheServerImage"`
+	LogLevel                  string        `yaml:"logLevel" mapstructure:"logLevel"`
+	CacheServerImage          string        `yaml:"cacheServerImage" mapstructure:"cacheServerImage"`
+	PodStuckThresholdDuration time.Duration `yaml:"podStuckThresholdDuration" mapstructure:"podStuckThresholdDuration"`
 }
 
 var (

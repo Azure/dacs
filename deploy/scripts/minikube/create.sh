@@ -124,3 +124,15 @@ kubectl get nodes --show-labels | grep -E "(dacs\.azure\.com/processing-unit|dac
 
 echo ""
 echo "Cluster setup complete!"
+
+# Remind user to set MINIKUBE_HOME if it was customized
+if [ -n "$MINIKUBE_HOME" ] && [ "$MINIKUBE_HOME" != "$HOME/.minikube" ]; then
+    echo ""
+    echo "╔════════════════════════════════════════════════════════════════════╗"
+    echo "║  IMPORTANT: Run this command in your terminal to use minikube:     ║"
+    echo "║                                                                    ║"
+    echo "║    export MINIKUBE_HOME=$MINIKUBE_HOME"
+    echo "║                                                                    ║"
+    echo "║  Or add it to your ~/.bashrc for persistence.                      ║"
+    echo "╚════════════════════════════════════════════════════════════════════╝"
+fi

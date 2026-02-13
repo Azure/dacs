@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -34,6 +35,7 @@ import (
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
 	"github.com/Azure/dacs/cache-controller/internal/config"
 	"github.com/Azure/dacs/cache-controller/internal/controller"
+	"github.com/Azure/dacs/cache-controller/internal/management"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -245,6 +247,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	clientset, err := kubernetes.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to create kubernetes clientset")
+		os.Exit(1)
+	}
+
 	// Setup certificate rotation for webhooks using cert-controller
 	// This automatically generates and rotates certificates for webhook server
 	certSetupFinished := make(chan struct{})
@@ -307,6 +315,16 @@ func main() {
 			}
 			setupLog.Info("Webhooks registered successfully")
 		}()
+	}
+
+	if err := (&controller.RuntimeReconciler{
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		Clientset: clientset,
+		Tracker:   management.InitTracker(internalConfig),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Runtime")
+		os.Exit(1)
 	}
 
 	// +kubebuilder:scaffold:builder
