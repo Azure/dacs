@@ -26,6 +26,15 @@ rules:
   - watch
 - apiGroups:
   - ""
+  resources:
+  - nodes
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
   resourceNames:
   - cacheserver
   - cacheserver-discovery
