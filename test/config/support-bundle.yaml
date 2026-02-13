@@ -26,3 +26,10 @@ spec:
         namespace: cache-server
         selector:
           - dacs.azure.com/test-pod=true
+
+    # Collect cache-controller logs
+    - logs:
+        name: cache-controller-logs
+        namespace: cache-controller-system
+        selector:
+          - app.kubernetes.io/name=cache-controller
