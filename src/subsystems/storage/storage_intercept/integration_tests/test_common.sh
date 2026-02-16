@@ -11,6 +11,13 @@
 # - Configuration generation functions
 # - Cache server management functions
 # - Test utility functions
+#
+# AUTHENTICATION CONTEXT (CI migration):
+# This script runs on CI hosted pools where the local IMDS endpoint (169.254.169.254) is unavailable.
+# We have shifted from pulling Dynamic Managed Identity tokens (via IMDS) to "pushing" pre-generated
+# Access Tokens (via Workload Identity Federation). The 'AzureCLI@2' task authenticates the session
+# and injects the token as 'SI_azBlobAccessToken', which is then consumed by the test configuration.
+# Ref: internal-reference-removed
 #===============================================================================
 
 #===============================================================================
@@ -85,6 +92,8 @@ function append_interception_config_blob_prefix() {
     echo "${MOUNT_PREFIX}maxConnsPerBlobClient 200" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
     # Authentication priority: SAS Token -> Access Token
+    # Note: IMDS is unavailable in CI pools. We rely on WIF Access Token (SI_azBlobAccessToken).
+    # See "AUTHENTICATION CONTEXT" in file header for details.
     if [ -n "${MOUNT_SAS_TOKEN_NAME}" ] && [ -n "${!MOUNT_SAS_TOKEN_NAME:-}" ]
     then
       # SAS Token name provided and the actual token is non-empty
