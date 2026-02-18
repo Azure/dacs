@@ -280,10 +280,12 @@ func (c *Config) LoadJob() (*batchv1.Job, error) {
 		return nil, fmt.Errorf("failed to unmarshal perf client job: %w", err)
 	}
 
-	// Apply configuration to the job
-	jobName := string(c.Mode) + "-client"
+	// Apply configuration to the job — include the prefix in the job name
+	// to ensure uniqueness across test configs, preventing Kubernetes TTL
+	// controller from deleting a new job when a previous same-named job's TTL expires.
+	jobName := string(c.Mode) + "-client-" + c.Prefix
 	if c.ClientType == ClientTypeDirectBlob {
-		jobName = "direct-blob-" + string(c.Mode) + "-client"
+		jobName = "direct-blob-" + string(c.Mode) + "-client-" + c.Prefix
 	}
 	job.Name = jobName
 	job.Namespace = c.Namespace

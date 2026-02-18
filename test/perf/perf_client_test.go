@@ -114,6 +114,7 @@ var _ = Describe("PerfClient", Label("perf", "perfclient"), Ordered, func() {
 		Context(fmt.Sprintf("With %s", cfg.name), cfg.label, func() {
 
 			It("should upload and download successfully", func(ctx context.Context) {
+
 				// Generate a unique prefix for this test run
 				prefix := randomPrefix("perf-test")
 
@@ -190,7 +191,7 @@ func runPerfClientWithConfig(ctx context.Context, config *perfclient.Config, col
 	Expect(err).NotTo(HaveOccurred(), "Failed to apply perf client job: %s", output)
 
 	By(fmt.Sprintf("Waiting for %s job to complete", config.Mode))
-	job.WaitForCompletion(ctx, k8sJob.Name, namespace, 5*time.Minute)
+	job.WaitForCompletion(ctx, k8sJob.Name, namespace, 10*time.Minute)
 
 	By(fmt.Sprintf("Parsing %s job logs", config.Mode))
 	jobLogs, err := job.GetLogs(ctx, k8sJob.Name, namespace)

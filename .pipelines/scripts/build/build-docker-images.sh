@@ -30,6 +30,10 @@ echo "Cache Controller Image: $CACHECONTROLLER_IMAGE"
 # Registry for base images
 # Note: DOCKER_REGISTRY already includes .azurecr.io suffix from pipeline
 REGISTRY="${DOCKER_REGISTRY}"
+if [[ -z "$REGISTRY" ]]; then
+    REGISTRY="dacs.acr.io"
+    echo "DOCKER_REGISTRY not set; defaulting to: $REGISTRY"
+fi
 echo "image registry: $REGISTRY"
 
 # Check if base Dockerfiles changed

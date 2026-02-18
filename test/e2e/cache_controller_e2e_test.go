@@ -7,18 +7,18 @@
 //
 // Controller tests:
 //
-//	make test-e2e-controller
+//	make deploy CONTROLLER=new HELM_ARGS="--set cache.enabled=true"
+//	make test-e2e TEST_FILTER=controller
 //
-// # Environment Variables
+// # Prerequisites
 //
-//	INSTALL_CONTROLLER - Deploy using Cache controller instead of Helm
-//	INSTALL_PREREQ     - Deploy dacs-prereq DaemonSet
-//	UNINSTALL          - Clean up resources after tests
-//	SKIP_SUPPORT_BUNDLE - Skip collecting diagnostics after tests
+// Controller tests require:
+//   - New controller deployed via helm (CONTROLLER=new)
+//   - Cache CR deployed via helm (cache.enabled=true)
 //
 // # Controller Test Resources
 //
-// Controller tests create:
+// Tests verify controller-managed resources:
 //   - Cache CR (cache-sample) in test namespace
 //   - StatefulSet, Services, ConfigMaps (owned by Cache CR)
 //   - Controller deployment in cache-controller-system namespace
@@ -29,7 +29,6 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"time"
 
@@ -37,14 +36,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
-	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Azure/dacs/test/e2e/testutil"
-	"github.com/Azure/dacs/test/pkg/perfclient"
 )
 
 // Controller test constants
@@ -86,10 +83,11 @@ const (
 )
 
 var _ = Describe("Cache Controller", Label("e2e", "controller"), Ordered, func() {
-	// Skip controller tests when not running in controller mode
-	BeforeAll(func() {
-		if os.Getenv("INSTALL_CONTROLLER") != "true" {
-			Skip("Skipping controller tests - INSTALL_CONTROLLER is not set to true")
+	// Skip controller tests if Cache CRD is not installed (controller not deployed)
+	BeforeAll(func(ctx SpecContext) {
+		cmd := exec.CommandContext(ctx, "kubectl", "get", "crd", "caches.storage.azure.com")
+		if err := cmd.Run(); err != nil {
+			Skip("Skipping controller tests - Cache CRD not installed (dacs helm chart not deployed)")
 		}
 	})
 
@@ -98,27 +96,20 @@ var _ = Describe("Cache Controller", Label("e2e", "controller"), Ordered, func()
 	SetDefaultEventuallyPollingInterval(5 * time.Second)
 	EnforceDefaultTimeoutsWhenUsingContexts()
 
-	// Note: Controller deployment is handled by common.Setup() in BeforeSuite
-	// when INSTALL_CONTROLLER=true is set. This test assumes controller and
-	// Cache CR are already deployed.
+	// Note: Controller deployment is handled by helm deploy (CONTROLLER=new).
+	// Cache CR is deployed via helm with cache.enabled=true.
+	// Cleanup is handled by helm undeploy.
+	// Note: perf tests run BEFORE controller tests to avoid DNS propagation
+	// issues caused by StatefulSet mutations (scaling, spec updates).
 
 	AfterAll(func(ctx SpecContext) {
-		By("cleaning up perf test jobs")
+		By("cleaning up test jobs created by controller tests")
 		cmd := exec.CommandContext(ctx, "kubectl", "-n", namespace,
 			"delete", "job", "--all", "--wait=true", "--timeout="+JobCleanupTimeout)
 		if output, err := cmd.CombinedOutput(); err != nil {
 			GinkgoWriter.Printf("Warning: job cleanup had issues: %v\nOutput: %s\n", err, string(output))
 		}
-
-		By("ensuring Cache CR is cleaned up")
-		// Delete Cache CR to trigger cleanup of owned resources
-		cmd = exec.CommandContext(ctx, "kubectl", "-n", namespace,
-			"delete", "cache", CacheCRName, "--ignore-not-found=true", "--wait=true", "--timeout="+CacheDeleteTimeout)
-		if output, err := cmd.CombinedOutput(); err != nil {
-			GinkgoWriter.Printf("Warning: Cache CR cleanup had issues: %v\nOutput: %s\n", err, string(output))
-		} else {
-			GinkgoWriter.Println("Cache CR and owned resources cleaned up successfully")
-		}
+		// Note: Cache CR cleanup is handled by helm undeploy
 	})
 
 	Describe("Cache resource lifecycle", func() {
@@ -249,80 +240,6 @@ var _ = Describe("Cache Controller", Label("e2e", "controller"), Ordered, func()
 			testutil.PrintCacheStatus(ctx, CacheCRName, namespace)
 			testutil.PrintControllerLogs(ctx, ControllerNamespace, 50)
 			testutil.PrintServerLogs(ctx, namespace, 30)
-		})
-
-		It("should run upload test successfully", func(ctx SpecContext) {
-			By("creating and running upload perf test")
-			serverHostname := testutil.BuildCacheServerHostnames(CacheStatefulSetName, CacheServiceName, namespace, ExpectedReplicas)
-			jobConfig := perfclient.NewConfig().
-				WithMode(perfclient.ModeUpload).
-				WithNamespace(namespace).
-				WithServerHostname(serverHostname).
-				WithDataSizeGiB(1).
-				WithNumThreads(1).
-				WithNumIterations(1)
-
-			job, err := jobConfig.LoadJob()
-			Expect(err).NotTo(HaveOccurred())
-
-			By("creating upload job")
-			err = k8sClient.Create(ctx, job)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("waiting for upload job to complete")
-			Eventually(func(g Gomega) {
-				updatedJob := &batchv1.Job{}
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      job.Name,
-					Namespace: namespace,
-				}, updatedJob)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(updatedJob.Status.Succeeded).To(BeNumerically(">", 0))
-			}).WithContext(ctx).WithTimeout(3 * time.Minute).Should(Succeed())
-
-			By("verifying upload job logs show success")
-			logs := testutil.GetJobLogs(ctx, job.Name, namespace)
-			Expect(logs).To(ContainSubstring("All iterations succeeded: true"))
-
-			By("printing upload client logs")
-			testutil.PrintClientLogs(ctx, namespace, job.Name)
-		})
-
-		It("should run download test successfully", func(ctx SpecContext) {
-			By("creating and running download perf test")
-			serverHostname := testutil.BuildCacheServerHostnames(CacheStatefulSetName, CacheServiceName, namespace, ExpectedReplicas)
-			jobConfig := perfclient.NewConfig().
-				WithMode(perfclient.ModeDownload).
-				WithNamespace(namespace).
-				WithServerHostname(serverHostname).
-				WithDataSizeGiB(1).
-				WithNumThreads(1).
-				WithNumIterations(1)
-
-			job, err := jobConfig.LoadJob()
-			Expect(err).NotTo(HaveOccurred())
-
-			By("creating download job")
-			err = k8sClient.Create(ctx, job)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("waiting for download job to complete")
-			Eventually(func(g Gomega) {
-				updatedJob := &batchv1.Job{}
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      job.Name,
-					Namespace: namespace,
-				}, updatedJob)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(updatedJob.Status.Succeeded).To(BeNumerically(">", 0))
-			}).WithContext(ctx).WithTimeout(3 * time.Minute).Should(Succeed())
-
-			By("verifying download job logs show success")
-			logs := testutil.GetJobLogs(ctx, job.Name, namespace)
-			Expect(logs).To(ContainSubstring("All iterations succeeded: true"))
-
-			By("printing download client logs")
-			testutil.PrintClientLogs(ctx, namespace, job.Name)
 		})
 
 		It("should reconcile when scaling up replicas", func(ctx SpecContext) {

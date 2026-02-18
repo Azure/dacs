@@ -7,8 +7,9 @@ help-deploy:
 	@echo "  make unprovision                     	- Delete cluster (auto-detects from kubectl context)"
 	@echo ""
 	@echo "Helm Deployment:"
-	@echo "  make deploy                          	- Install all helm charts (prereq + cache-server)"
-	@echo "  make undeploy                        	- Uninstall all helm charts"
+	@echo "  make deploy                          	- Deploy cache-server helm chart (default: CONTROLLER=old)"
+	@echo "  make deploy CONTROLLER=new           	- Deploy dacs helm chart (new controller)"
+	@echo "  make undeploy                        	- Uninstall deployed helm charts"
 	@echo ""
 	@echo "AKS Options:"
 	@echo "  make provision TARGET=aks            	- Create AKS cluster"
@@ -24,6 +25,9 @@ AKS_LOCATION ?= eastus
 AKS_RESOURCE_GROUP ?= $(USER)-cache-$(AKS_TEMPLATE)-$(AKS_LOCATION)
 AKS_IS_TEST ?= false
 
+# Controller mode: old (cache-server helm chart) or new (dacs helm chart)
+CONTROLLER ?= old
+
 # Image settings
 DOCKER_REGISTRY ?= dacs.azurecr.io
 COMMIT_HASH ?= $(shell git describe --always --dirty)
@@ -31,6 +35,7 @@ BUILD_NUMBER ?= latest
 BASE_REPO ?= $(DOCKER_REGISTRY)
 CACHE_SERVER_IMG ?= $(BASE_REPO)/cache-server
 SCHEDULER_IMG ?= $(BASE_REPO)/cacheserver-scheduler
+CACHE_CONTROLLER_IMG ?= $(BASE_REPO)/cache-controller
 IMAGE_TAG ?= $(BUILD_NUMBER)
 
 # Tool versions
@@ -138,11 +143,20 @@ LOCAL_CACHE_SERVER_IMG ?= cache-server
 LOCAL_CACHE_SERVER_TAG ?= local
 LOCAL_SCHEDULER_IMG ?= cacheserver-scheduler
 LOCAL_SCHEDULER_TAG ?= local
+LOCAL_CACHE_CONTROLLER_IMG ?= cache-controller
+LOCAL_CACHE_CONTROLLER_TAG ?= local
 
-# Remote chart settings (ACR)
+# Remote chart settings (ACR) - cache-server (old controller)
 HELM_CHART_REPO ?= charts/cache-server
 HELM_CHART_BASE_VERSION ?= $(shell grep '^version:' helm/cache-server/Chart.yaml | awk '{print $$2}')
 HELM_CHART_VERSION ?= $(HELM_CHART_BASE_VERSION)-$(BUILD_NUMBER)
+
+# Remote chart settings (ACR) - dacs (new controller)
+DACS_CACHE_CHART_PATH ?= src/subsystems/cache-controller/charts/dacs
+DACS_CACHE_CHART_REPO ?= charts/dacs
+DACS_CACHE_CHART_BASE_VERSION ?= $(shell grep '^version:' $(DACS_CACHE_CHART_PATH)/Chart.yaml | awk '{print $$2}')
+DACS_CACHE_CHART_VERSION ?= $(DACS_CACHE_CHART_BASE_VERSION)-$(BUILD_NUMBER)
+DACS_CACHE_NAMESPACE ?= cache-controller-system
 
 define helm_install
 $(HELM_BIN) upgrade --install cache-server ./helm/cache-server \
@@ -212,24 +226,72 @@ helm-install-local: helm ## Deploy cache-server chart from local ./helm/cache-se
 helm-uninstall: helm ## Uninstall cache-server chart.
 	$(HELM_BIN) uninstall cache-server --namespace $(HELM_NAMESPACE) --ignore-not-found --wait
 
+##@ DACS Cache Controller Helm (New Controller)
+
+define helm_install_dacs_cache
+kubectl create namespace $(HELM_NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
+$(HELM_BIN) upgrade --install dacs ./$(DACS_CACHE_CHART_PATH) \
+	--namespace $(DACS_CACHE_NAMESPACE) --create-namespace \
+	--set manager.image.repository=$(1) \
+	--set manager.image.tag=$(2) \
+	--set cache.namespace=$(HELM_NAMESPACE) \
+	--set cache.enabled=true \
+	--wait --timeout 5m --atomic $(HELM_ARGS)
+endef
+
+define helm_install_dacs_cache_remote
+kubectl create namespace $(HELM_NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
+$(HELM_BIN) upgrade --install dacs oci://$(DOCKER_REGISTRY)/$(DACS_CACHE_CHART_REPO) \
+	--version $(DACS_CACHE_CHART_VERSION) \
+	--namespace $(DACS_CACHE_NAMESPACE) --create-namespace \
+	--set manager.image.repository=$(CACHE_CONTROLLER_IMG) \
+	--set manager.image.tag=$(IMAGE_TAG) \
+	--set cache.namespace=$(HELM_NAMESPACE) \
+	--set cache.enabled=true \
+	--wait --timeout 5m --atomic $(HELM_ARGS)
+endef
+
+.PHONY: helm-dacs-install
+helm-dacs-install: helm ## Deploy dacs chart (new controller).
+ifeq ($(CLUSTER_TYPE),minikube)
+	$(call helm_install_dacs_cache,$(LOCAL_CACHE_CONTROLLER_IMG),$(LOCAL_CACHE_CONTROLLER_TAG))
+else
+	$(call acr_login)
+	@echo "Installing dacs from $(DOCKER_REGISTRY)/$(DACS_CACHE_CHART_REPO):$(DACS_CACHE_CHART_VERSION)"
+	$(call helm_install_dacs_cache_remote)
+endif
+
+.PHONY: helm-dacs-uninstall
+helm-dacs-uninstall: helm ## Uninstall dacs chart.
+	$(HELM_BIN) uninstall dacs --namespace $(DACS_CACHE_NAMESPACE) --ignore-not-found --wait
+
 ##@ Unified Helm Deploy/Undeploy
 
 .PHONY: deploy
-deploy: helm ## Install all helm charts (prereq + cache-server for AKS, cache-server only for minikube).
+deploy: helm ## Deploy cache system. Use CONTROLLER=old (default) or CONTROLLER=new.
+ifeq ($(CONTROLLER),new)
+	@echo "Deploying with new controller (dacs helm chart)..."
+ifeq ($(CLUSTER_TYPE),minikube)
+	@$(MAKE) helm-dacs-install
+else
+	@$(MAKE) helm-prereq-install helm-dacs-install
+endif
+else
+	@echo "Deploying with old controller (cache-server helm chart)..."
 ifeq ($(CLUSTER_TYPE),minikube)
 	@$(MAKE) helm-install
 else
 	@$(MAKE) helm-prereq-install helm-install
 endif
-	@echo "Deployment complete."
+endif
+	@echo "Deployment complete (CONTROLLER=$(CONTROLLER))."
 
 .PHONY: undeploy
-undeploy: helm ## Uninstall all helm charts.
-ifeq ($(CLUSTER_TYPE),minikube)
+undeploy: helm ## Uninstall both helm charts (gracefully ignores missing).
+	@echo "Uninstalling dacs and cache-server charts..."
+	@$(MAKE) helm-dacs-uninstall
 	@$(MAKE) helm-uninstall
-else
-	@$(MAKE) helm-uninstall helm-prereq-uninstall
-endif
+	@$(MAKE) helm-prereq-uninstall
 	@echo "Undeployment complete."
 
 ##@ Dependencies

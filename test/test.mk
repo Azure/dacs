@@ -3,12 +3,13 @@
 .PHONY: help-test
 help-test:
 	@echo "E2E Testing:"
-	@echo "  make test-e2e                      	- Run e2e tests against current kubeconfig cluster (Old Controller)"
-	@echo "  make test-e2e-controller           	- Run e2e tests with new controller deployment (CRD-based)"
-	@echo "  make test-perf                     	- Run performance tests against current kubeconfig cluster"
+	@echo "  make test-e2e                      	- Run all tests against current kubeconfig cluster"
+	@echo "  make test-e2e TEST_FILTER=perf     	- Run only tests matching the 'perf' label"
+	@echo "  make test-e2e TEST_FILTER=controller	- Run controller tests (needs dacs helm chart deployment)"
 	@echo "  make get-support-bundle            	- Collect support bundle from cluster"
 	@echo ""
 	@echo "Test Options:"
+	@echo "  TEST_FILTER=<label>                    - Filter tests by Ginkgo label (e2e, perf, controller)"
 	@echo "  EXTRA_TEST_ARGS='--data-size-gib=100'  - Pass extra arguments to tests"
 	@echo "  TEST_TIMEOUT=90m                       - Set test timeout (default: 60m)"
 	@echo "  GIT_COMMIT=abc123                      - Override git commit for metrics"
@@ -23,7 +24,7 @@ TEST_COVER ?= $(shell pwd)/coverage.lcov
 SUMMARY_OUTPUT ?= $(shell pwd)/summary.md
 NO_COLOR ?= false
 FOCUS ?=
-LABEL_FILTER ?=
+TEST_FILTER ?=
 TEST_TIMEOUT ?= 60m
 
 # Ginkgo binary
@@ -53,27 +54,22 @@ GIT_BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "<unkn
 TEST_KUBE_CONTEXT := $(shell kubectl config current-context 2>/dev/null)
 TEST_CLUSTER_TYPE := $(shell if echo "$(TEST_KUBE_CONTEXT)" | grep -q "minikube"; then echo "minikube"; else echo "aks"; fi)
 
-# Set label filter based on cluster type (exclude aks-only tests on minikube)
-E2E_LABEL_FILTER := $(if $(filter minikube,$(TEST_CLUSTER_TYPE)),e2e && !aks,e2e)
-PERF_LABEL_FILTER := $(if $(filter minikube,$(TEST_CLUSTER_TYPE)),perf && !aks,perf)
+# Base label filter: exclude aks-only tests on minikube
+BASE_LABEL_FILTER := $(if $(filter minikube,$(TEST_CLUSTER_TYPE)),!aks,)
+
+# Build final label filter: combine TEST_FILTER with BASE_LABEL_FILTER
+# Wrap TEST_FILTER in parentheses to ensure correct operator precedence when combined with BASE_LABEL_FILTER
+COMPUTED_LABEL_FILTER := $(if $(TEST_FILTER),($(TEST_FILTER))$(if $(BASE_LABEL_FILTER), && $(BASE_LABEL_FILTER),),$(BASE_LABEL_FILTER))
 
 # Extra arguments to pass to ginkgo test (e.g., -- --data-size-gib=100)
 EXTRA_TEST_ARGS ?=
 
 .PHONY: test-e2e
-test-e2e: ginkgo kubectl ## Run e2e tests against cluster pointed to by kubeconfig.
-	$(call run_e2e_tests,$(E2E_LABEL_FILTER),./test/e2e)
-
-.PHONY: test-e2e-controller
-test-e2e-controller: ginkgo kubectl ## Run e2e tests with controller deployment (sets INSTALL_CONTROLLER=true and filters to controller tests).
-	INSTALL_CONTROLLER=true $(call run_e2e_tests,e2e && controller,./test/e2e)
-
-.PHONY: test-perf
-test-perf: ginkgo kubectl ## Run performance tests against cluster pointed to by kubeconfig.
-	$(call run_e2e_tests,$(PERF_LABEL_FILTER),./test/perf)
+test-e2e: ginkgo kubectl ## Run tests against cluster. Use TEST_FILTER to filter by label.
+	$(call run_e2e_tests,$(COMPUTED_LABEL_FILTER),./test/perf ./test/e2e)
 
 define run_e2e_tests
-GIT_COMMIT=$(GIT_COMMIT) GIT_BRANCH=$(GIT_BRANCH) PATH=$(LOCALBIN):$$PATH $(GINKGO) -v -r --timeout="$(TEST_TIMEOUT)" --label-filter="$(1)$(if $(LABEL_FILTER), && ($(LABEL_FILTER)))" --focus="$(FOCUS)" --no-color="$(NO_COLOR)" "$(2)" -- \
+GIT_COMMIT=$(GIT_COMMIT) GIT_BRANCH=$(GIT_BRANCH) PATH=$(LOCALBIN):$$PATH $(GINKGO) -v -r --timeout="$(TEST_TIMEOUT)" $(if $(1),--label-filter="$(1)",) --focus="$(FOCUS)" --no-color="$(NO_COLOR)" $(2) -- \
 	--junit-report=$(TEST_OUTPUT) --summary-report=$(SUMMARY_OUTPUT) --support-bundle-dir=$(SUPPORT_BUNDLE_OUTPUT_DIR) $(EXTRA_TEST_ARGS)
 endef
 
