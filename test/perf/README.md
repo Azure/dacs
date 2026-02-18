@@ -22,7 +22,7 @@ cd <Root Directory of DACS Project>
 - Set `STORAGE_ACCOUNT` env to storage account name
 - Run the dacs clients suite:
   ```sh
-  LABEL_FILTER=dacsclients make test-perf
+  make test-e2e TEST_FILTER="perf && dacsclients"
   ```
   (Or) other alternate way is
   ```sh
@@ -44,7 +44,7 @@ Notes:
 ## Sample Output
 
 ```sh
-mittas@sample-devbox:~/workspace/azure/DACS$ BUILD_NUMBER=latest DOCKER_REGISTRY=dacs.azurecr.io STORAGE_ACCOUNT=samplestorageacct LABEL_FILTER=dacsclients make test-perf
+mittas@sample-devbox:~/workspace/azure/DACS$ BUILD_NUMBER=latest DOCKER_REGISTRY=dacs.azurecr.io STORAGE_ACCOUNT=samplestorageacct make test-e2e TEST_FILTER="perf && dacsclients"
 
 GIT_COMMIT=e3f5968cd34e53cc1dd57efaf460f67e2e48fd7a GIT_BRANCH=sample/multicache-client PATH=/home/sampleuser/workspace/azure/DACS/.local/bin:$PATH /home/sampleuser/workspace/azure/DACS/.local/bin/ginkgo -v -r --timeout="60m" --label-filter="perf && (dacsclients)" --focus="" --no-color="false" "./test/perf" -- --junit-report=/home/sampleuser/workspace/azure/DACS/test.xml --summary-report=/home/sampleuser/workspace/azure/DACS/summary.md --support-bundle-dir=/home/sampleuser/workspace/azure/DACS/support-bundles
   I0124 16:32:16.416184  264576 perf_suite_test.go:80] "Starting DACS Performance test suite"

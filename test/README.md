@@ -114,7 +114,7 @@ SUPPORT_BUNDLE_OUTPUT=/tmp/my-bundle.tar.gz make get-support-bundle
 
 ## Performance Tests
 
-`make test-perf` runs performance tests against the cluster pointed to by your kubeconfig.
+`make test-e2e TEST_FILTER=perf` runs performance tests against the cluster pointed to by your kubeconfig.
 
 Performance tests measure throughput and latency of the cache-server using configurable parameters.
 
@@ -149,19 +149,19 @@ These metrics are automatically collected from the PerfClient logs and can be se
 
 ```sh
 # Run perf tests with default settings (1 GiB, 1 thread)
-make test-perf
+make test-e2e TEST_FILTER=perf
 
 # Run perf tests with 100 GiB data size and 32 threads
-make test-perf EXTRA_TEST_ARGS="--data-size-gib=100 --num-threads=32"
+make test-e2e TEST_FILTER=perf EXTRA_TEST_ARGS="--data-size-gib=100 --num-threads=32"
 
 # Run perf tests with 5 cache servers and crc32 checksum
-make test-perf EXTRA_TEST_ARGS="--cache-server-count=5 --checksum-algorithm=crc32"
+make test-e2e TEST_FILTER=perf EXTRA_TEST_ARGS="--cache-server-count=5 --checksum-algorithm=crc32"
 
 # Full example with all parameters
-make test-perf EXTRA_TEST_ARGS="--data-size-gib=100 --cache-server-count=5 --num-threads=32 --checksum-algorithm=xxhash32"
+make test-e2e TEST_FILTER=perf EXTRA_TEST_ARGS="--data-size-gib=100 --cache-server-count=5 --num-threads=32 --checksum-algorithm=xxhash32"
 
 # Send metrics to EventHub (requires Azure credentials)
-SEND_METRICS=true make test-perf EXTRA_TEST_ARGS="--data-size-gib=100 --num-threads=32"
+SEND_METRICS=true make test-e2e TEST_FILTER=perf EXTRA_TEST_ARGS="--data-size-gib=100 --num-threads=32"
 ```
 
 ### AKS Performance Testing Workflow
@@ -174,7 +174,7 @@ make provision TARGET=aks AKS_TEMPLATE=nvme-perf-l16 AKS_LOCATION=westus2
 DOCKER_REGISTRY=dacs.azurecr.io BUILD_NUMBER=20251222.6 make deploy
 
 # Run performance tests
-DOCKER_REGISTRY=dacs.azurecr.io BUILD_NUMBER=20251222.6 make test-perf EXTRA_TEST_ARGS="--data-size-gib=100 --cache-server-count=5 --num-threads=32"
+DOCKER_REGISTRY=dacs.azurecr.io BUILD_NUMBER=20251222.6 make test-e2e TEST_FILTER=perf EXTRA_TEST_ARGS="--data-size-gib=100 --cache-server-count=5 --num-threads=32"
 
 # Clean up
 make undeploy
@@ -226,7 +226,7 @@ The E2E and performance tests are integrated into the Azure DevOps pull request 
 2. Create Minikube cluster
 3. Deploy cache-server with `make provision TARGET=minikube && make deploy`
 4. Run E2E tests with `make test-e2e`
-5. Run performance tests with `make test-perf` (regression check)
+5. Run performance tests with `make test-e2e TEST_FILTER=perf` (regression check)
 6. Publish test results (JUnit XML)
 7. Upload support bundle artifacts
 

@@ -95,20 +95,31 @@ cache:
       numServers: 2
 
   # Server configuration
-  serverSizeInGB: 10
-  serverThreads: 16
+  serverSizeInGB: 4
+  serverThreads: 80
   port: 9065
   metricsPort: 9096
 
   # Resource limits
-  cpuLimit: 1
-  memoryLimitMB: 2048
-  egressBandwidthLimitGbps: 10
+  # cpuLimit: 4
+  # memoryLimitMB: 2048
+  # egressBandwidthLimitGbps: 10
 
   # Node selection
-  nodeSelectorKey: "kubernetes.io/os"
-  nodeSelectorValue: "linux"
+  nodeSelectorKey: "dacs.azure.com/processing-unit"
+  nodeSelectorValue: "cpu"
+
+  # Eviction configuration
+  eviction:
+    enableAccessTimeEviction: true
+    evictionMaintainFreeSpace: true
+    lastAccessThreshold: "30d"
+    passFrequency: "1h"
+    sizeTarget: "90"
+    sizeThreshold: "90"
 
   # Storage configuration
   storage:
-    ephemeral: true
+    ephemeral: false
+    hostPath: 
+      nodeCacheFolderPath: /var/lib/ssd/cacheserver

@@ -28,6 +28,10 @@ import (
 const (
 	// trueString is the string representation of a boolean true value.
 	trueString = "true"
+
+	controllerNamespace      = "cache-controller-system"
+	controllerDeploymentName = "dacs-manager"
+	cacheControllerCRDName   = "caches.storage.azure.com"
 )
 
 // log is the default logger for the test package. It uses klog's textlogger
@@ -40,20 +44,17 @@ var (
 	//   skip installation (assumes components are already deployed).
 	// - INSTALL_PREREQ=true: Install dacs-prereq before tests. Default
 	//   is to skip installation.
-	// - INSTALL_CONTROLLER=true: Install cache controller and deploy Cache CR
-	//   instead of helm-based deployment. Default is to skip controller install.
 	// - UNINSTALL=true: Uninstall DACS components after tests. Default is
 	//   to skip uninstallation.
 	// - UNINSTALL_PREREQ=true: Uninstall dacs-prereq after tests.
 	//   Default is to skip uninstallation.
 	// - SKIP_SUPPORT_BUNDLE=true: Skips collecting support bundle after the
 	//   test.
-	doInstall           = os.Getenv("INSTALL") == trueString
-	doInstallPrereq     = os.Getenv("INSTALL_PREREQ") == trueString
-	doInstallController = os.Getenv("INSTALL_CONTROLLER") == trueString
-	doUninstall         = os.Getenv("UNINSTALL") == trueString
-	doUninstallPrereq   = os.Getenv("UNINSTALL_PREREQ") == trueString
-	skipSupportBundle   = os.Getenv("SKIP_SUPPORT_BUNDLE") == trueString
+	doInstall         = os.Getenv("INSTALL") == trueString
+	doInstallPrereq   = os.Getenv("INSTALL_PREREQ") == trueString
+	doUninstall       = os.Getenv("UNINSTALL") == trueString
+	doUninstallPrereq = os.Getenv("UNINSTALL_PREREQ") == trueString
+	skipSupportBundle = os.Getenv("SKIP_SUPPORT_BUNDLE") == trueString
 
 	startTime     = time.Now()
 	filePathRegex = regexp.MustCompile(`[ /]`)
@@ -91,17 +92,15 @@ func Setup(ctx context.Context, k8sClient client.Client, namespace string) {
 	Expect(err).NotTo(HaveOccurred(), "Failed to get kubectl version")
 	log.Info("kubectl version", "version", output)
 
-	// If INSTALL_CONTROLLER is set, use controller-based deployment
-	if doInstallController {
-		log.Info("Using controller-based deployment (INSTALL_CONTROLLER=true)")
-		SetupController(ctx, k8sClient, namespace)
-		return
-	}
-
 	if !doInstall {
 		log.Info("Skipping installation (set INSTALL=true to install)")
-		By("validating that cache server pods are running")
-		VerifyCacheServerUp(ctx, k8sClient, namespace)
+		controllerPresent := controllerDeploymentExists(ctx, k8sClient)
+		if controllerPresent {
+			ensureControllerInstall(ctx, k8sClient)
+		}
+		Expect(statefulSetExists(ctx, k8sClient, namespace, "cacheserver")).To(BeTrue(),
+			"Cache StatefulSet not found. Ensure cache infrastructure is installed before running tests.")
+		ensureCacheReady(ctx, k8sClient, namespace, controllerPresent)
 		return
 	}
 
@@ -138,8 +137,37 @@ func Setup(ctx context.Context, k8sClient client.Client, namespace string) {
 		g.Expect(err).NotTo(HaveOccurred(), "Failed to deploy cache server")
 	}).WithTimeout(5*time.Minute).WithContext(ctx).Should(Succeed(), "Failed to deploy cache server")
 
-	By("validating that cache server pods are running")
-	VerifyCacheServerUp(ctx, k8sClient, namespace)
+	ensureCacheReady(ctx, k8sClient, namespace, false)
+}
+
+func controllerDeploymentExists(ctx context.Context, k8sClient client.Client) bool {
+	deploy := &appsv1.Deployment{}
+	err := k8sClient.Get(ctx, client.ObjectKey{
+		Name:      controllerDeploymentName,
+		Namespace: controllerNamespace,
+	}, deploy)
+
+	if err == nil {
+		return true
+	}
+
+	if !apierrors.IsNotFound(err) {
+		log.Info("Unable to query dacs controller deployment", "error", err)
+	}
+
+	return false
+}
+
+func statefulSetExists(ctx context.Context, k8sClient client.Client, namespace, name string) bool {
+	sts := &appsv1.StatefulSet{}
+	err := k8sClient.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, sts)
+	if err == nil {
+		return true
+	}
+	if !apierrors.IsNotFound(err) {
+		log.Info("Unable to query StatefulSet", "name", name, "namespace", namespace, "error", err)
+	}
+	return false
 }
 
 // Teardown undeploys DACS components and cleans up the cluster.
@@ -165,13 +193,6 @@ func Teardown(ctx context.Context, k8sClient client.Client, namespace string, su
 
 	if !doUninstall {
 		log.Info("Skipping uninstall (set UNINSTALL=true to uninstall)")
-		return
-	}
-
-	// If INSTALL_CONTROLLER was set, use controller-based teardown
-	if doInstallController {
-		log.Info("Using controller-based teardown (INSTALL_CONTROLLER=true)")
-		TeardownController(ctx, namespace)
 		return
 	}
 
@@ -207,95 +228,6 @@ func Teardown(ctx context.Context, k8sClient client.Client, namespace string, su
 			}
 		}).WithContext(ctx).Should(Succeed(), "Namespace deletion failed")
 	}
-}
-
-// SetupController deploys the cache controller and Cache CR for controller-based tests.
-func SetupController(ctx context.Context, k8sClient client.Client, namespace string) {
-	By("creating namespace for controller tests")
-	Eventually(func(g Gomega) {
-		ns := &corev1.Namespace{}
-		err := k8sClient.Get(ctx, client.ObjectKey{Name: namespace}, ns)
-		if apierrors.IsNotFound(err) {
-			ns = &corev1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: namespace,
-				},
-			}
-			err := k8sClient.Create(ctx, ns)
-			g.Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
-		} else {
-			g.Expect(err).NotTo(HaveOccurred(), "Failed to get namespace")
-		}
-	}).WithContext(ctx).Should(Succeed(), "Namespace creation failed or namespace not found")
-
-	By("deploying cache controller")
-	Eventually(func(g Gomega, ctx context.Context) {
-		controllerDir := filepath.Join("src", "subsystems", "cache-controller")
-		controllerImage := "cache-controller:local"
-
-		// Build controller image
-		cmd := exec.CommandContext(ctx, "make", "-C", controllerDir, "docker-build", fmt.Sprintf("IMG=%s", controllerImage))
-		output, err := utils.Run(cmd)
-		g.Expect(err).NotTo(HaveOccurred(), "Failed to build controller image: %s", output)
-
-		// Load image into minikube
-		cmd = exec.CommandContext(ctx, "minikube", "image", "load", controllerImage)
-		output, err = utils.Run(cmd)
-		g.Expect(err).NotTo(HaveOccurred(), "Failed to load controller image: %s", output)
-
-		// Deploy controller
-		cmd = exec.CommandContext(ctx, "make", "-C", controllerDir, "deploy", fmt.Sprintf("IMG=%s", controllerImage))
-		output, err = utils.Run(cmd)
-		g.Expect(err).NotTo(HaveOccurred(), "Failed to deploy controller: %s", output)
-	}).WithTimeout(5*time.Minute).WithContext(ctx).Should(Succeed(), "Failed to deploy cache controller")
-
-	By("waiting for controller to be ready")
-	Eventually(func(g Gomega) {
-		deployList := &appsv1.DeploymentList{}
-		err := k8sClient.List(ctx, deployList, client.InNamespace("cache-controller-system"))
-		g.Expect(err).NotTo(HaveOccurred(), "Failed to list deployments in cache-controller-system")
-		g.Expect(deployList.Items).NotTo(BeEmpty(), "No deployments found in cache-controller-system")
-
-		for _, deploy := range deployList.Items {
-			g.Expect(deploy.Status.ReadyReplicas).To(Equal(*deploy.Spec.Replicas),
-				fmt.Sprintf("Controller deployment %s not ready", deploy.Name))
-		}
-	}).WithContext(ctx).WithTimeout(2*time.Minute).Should(Succeed(), "Controller not ready")
-
-	By("deploying Cache CR")
-	Eventually(func(g Gomega, ctx context.Context) {
-		// Use the sample Cache CR from the controller config
-		samplePath := "src/subsystems/cache-controller/config/samples/storage_v1_cache.yaml"
-		cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", samplePath, "-n", namespace)
-		_, err := utils.Run(cmd)
-		g.Expect(err).NotTo(HaveOccurred(), "Failed to deploy Cache CR")
-	}).WithTimeout(2*time.Minute).WithContext(ctx).Should(Succeed(), "Failed to deploy Cache CR")
-
-	By("validating that cache server pods are running (controller-based)")
-	VerifyStatefulSetReady(ctx, k8sClient, namespace, "cacheserver")
-}
-
-// TeardownController cleans up controller-based deployment.
-func TeardownController(ctx context.Context, namespace string) {
-	By("deleting Cache CR and owned resources")
-	Eventually(func(g Gomega, ctx context.Context) {
-		cmd := exec.CommandContext(ctx, "kubectl", "delete", "cache", "--all", "-n", namespace, "--ignore-not-found=true", "--timeout=3m")
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			log.Info("Cache CR deletion had issues", "error", err, "output", string(output))
-		}
-		g.Expect(err).NotTo(HaveOccurred(), "Failed to delete Cache CR: %s", string(output))
-	}).WithTimeout(4*time.Minute).WithContext(ctx).Should(Succeed(), "Failed to delete Cache CR")
-
-	By("undeploying cache controller")
-	Eventually(func(g Gomega, ctx context.Context) {
-		controllerDir := filepath.Join("src", "subsystems", "cache-controller")
-		cmd := exec.CommandContext(ctx, "make", "-C", controllerDir, "undeploy")
-		output, err := utils.Run(cmd)
-		g.Expect(err).NotTo(HaveOccurred(), "Failed to undeploy controller: %s", output)
-	}).WithTimeout(3*time.Minute).WithContext(ctx).Should(Succeed(), "Failed to undeploy controller")
-
-	log.Info("Controller teardown completed successfully")
 }
 
 // PostReport generates the junit report for the test and copies it to
@@ -412,16 +344,36 @@ func CollectSuiteSupportBundle(ctx context.Context, supportBundleDir string) {
 	}
 }
 
-// VerifyCacheServerUp validates that the cache server pods are running as expected.
-// For helm-based deployments, it also verifies the scheduler pod.
-func VerifyCacheServerUp(ctx context.Context, k8sClient client.Client, namespace string) {
-	// Only verify scheduler pod for helm-based deployments (not controller-based)
-	if !doInstallController {
-		VerifyPodUp(ctx, k8sClient, namespace, "app=cacheserver-scheduler")
+// ensureCacheReady validates cache-server components and skips scheduler checks when controller-managed.
+func ensureCacheReady(ctx context.Context, k8sClient client.Client, namespace string, controllerManaged bool) {
+	VerifyStatefulSetReady(ctx, k8sClient, namespace, "cacheserver")
+
+	if controllerManaged {
+		log.Info("Skipping cacheserver-scheduler readiness check", "reason", "controller-managed deployment")
+		return
 	}
 
-	// Verify cache server statefulset pods are ready
-	VerifyStatefulSetReady(ctx, k8sClient, namespace, "cacheserver")
+	VerifyPodUp(ctx, k8sClient, namespace, "app=cacheserver-scheduler")
+}
+
+func ensureControllerInstall(ctx context.Context, k8sClient client.Client) {
+	By("validating dacs controller deployment is ready")
+	Eventually(func(g Gomega) {
+		deploy := &appsv1.Deployment{}
+		err := k8sClient.Get(ctx, client.ObjectKey{
+			Name:      controllerDeploymentName,
+			Namespace: controllerNamespace,
+		}, deploy)
+		g.Expect(err).NotTo(HaveOccurred(), "Failed to get controller deployment")
+		g.Expect(deploy.Spec.Replicas).NotTo(BeNil(), "Controller deployment has no replica spec")
+		g.Expect(deploy.Status.ReadyReplicas).To(Equal(*deploy.Spec.Replicas),
+			fmt.Sprintf("Controller deployment %s not ready", deploy.Name))
+	}).WithContext(ctx).Should(Succeed())
+
+	By("validating Cache CRD is installed")
+	cmd := exec.CommandContext(ctx, "kubectl", "get", "crd", cacheControllerCRDName)
+	_, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Cache CRD %s is not installed", cacheControllerCRDName)
 }
 
 // VerifyStatefulSetReady validates that a StatefulSet has all expected replicas ready.

@@ -50,6 +50,13 @@ spec:
   {{- with .Values.cache.egressBandwidthLimitGbps }}
   egressBandwidthLimitGbps: {{ . }}
   {{- end }}
+  eviction:
+    enableAccessTimeEviction: {{ .Values.cache.eviction.enableAccessTimeEviction }}
+    evictionMaintainFreeSpace: {{ .Values.cache.eviction.evictionMaintainFreeSpace }}
+    lastAccessThreshold: {{ .Values.cache.eviction.lastAccessThreshold | quote }}
+    passFrequency: {{ .Values.cache.eviction.passFrequency | quote }}
+    sizeTarget: {{ .Values.cache.eviction.sizeTarget | quote }}
+    sizeThreshold: {{ .Values.cache.eviction.sizeThreshold | quote }}
   storage:
     {{- if .Values.cache.storage.ephemeral }}
     ephemeral: true

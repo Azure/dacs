@@ -28,12 +28,16 @@ func Delete(ctx context.Context, name, ns string) error {
 // WaitForCompletion waits for a job to complete or fail.
 func WaitForCompletion(ctx context.Context, name, ns string, timeout time.Duration) {
 	Eventually(func(g Gomega) {
-		// Check if job failed first
+		// Check if job failed first — use StopTrying to fail immediately
+		// instead of retrying for the entire timeout duration.
 		failedCmd := exec.CommandContext(ctx, "kubectl", "get", "job", name,
 			"-n", ns,
 			"-o", "jsonpath={.status.conditions[?(@.type==\"Failed\")].status}")
 		failedOutput, _ := utils.RunOutput(failedCmd)
-		g.Expect(failedOutput).NotTo(Equal("True"), "Job failed")
+		if failedOutput == "True" {
+			dumpJobDebugInfo(ctx, name, ns)
+			StopTrying("Job failed").Wrap(fmt.Errorf("job %s in namespace %s has Failed status", name, ns)).Now()
+		}
 
 		// Check if job completed
 		cmd := exec.CommandContext(ctx, "kubectl", "get", "job", name,
@@ -44,6 +48,47 @@ func WaitForCompletion(ctx context.Context, name, ns string, timeout time.Durati
 		g.Expect(output).To(Equal("True"), "Job not yet complete")
 	}).WithTimeout(timeout).WithPolling(5*time.Second).Should(Succeed(),
 		fmt.Sprintf("Job %s did not complete within %v", name, timeout))
+}
+
+// dumpJobDebugInfo logs diagnostic information when a job fails.
+func dumpJobDebugInfo(ctx context.Context, name, ns string) {
+	log.Info("========== JOB FAILURE DEBUG INFO ==========", "job", name, "namespace", ns)
+
+	// Get job status
+	jobCmd := exec.CommandContext(ctx, "kubectl", "get", "job", name, "-n", ns, "-o", "yaml")
+	if output, err := utils.Run(jobCmd); err == nil {
+		log.Info("Job YAML", "output", output)
+	}
+
+	// Get pod status for the job
+	podListCmd := exec.CommandContext(ctx, "kubectl", "get", "pods", "-n", ns,
+		"-l", fmt.Sprintf("app=%s", name), "-o", "wide")
+	if output, err := utils.Run(podListCmd); err == nil {
+		log.Info("Pod list", "output", output)
+	}
+
+	// Describe pods for events
+	descCmd := exec.CommandContext(ctx, "kubectl", "describe", "pods", "-n", ns,
+		"-l", fmt.Sprintf("app=%s", name))
+	if output, err := utils.Run(descCmd); err == nil {
+		log.Info("Pod describe", "output", output)
+	}
+
+	// Get pod logs
+	logCmd := exec.CommandContext(ctx, "kubectl", "logs", "-n", ns,
+		"-l", fmt.Sprintf("app=%s", name), "--tail=100")
+	if output, err := utils.Run(logCmd); err == nil {
+		log.Info("Pod logs", "output", output)
+	}
+
+	// Get cache server pod status
+	csCmd := exec.CommandContext(ctx, "kubectl", "get", "pods", "-n", ns,
+		"-l", "app=cacheserver", "-o", "wide")
+	if output, err := utils.Run(csCmd); err == nil {
+		log.Info("Cache server pods", "output", output)
+	}
+
+	log.Info("========== END DEBUG INFO ==========")
 }
 
 // GetLogs returns the logs of a job's pod.

@@ -14,6 +14,7 @@ fi
 CACHE_SERVER_IMAGE="${CACHE_SERVER_IMAGE:-cache-server:local}"
 CACHE_CLIENT_IMAGE="${CACHE_CLIENT_IMAGE:-cache-test-client:local}"
 CACHE_SERVER_SCHEDULER_IMAGE="${CACHE_SERVER_SCHEDULER_IMAGE:-cacheserver-scheduler:local}"
+CACHE_CONTROLLER_IMAGE="${CACHE_CONTROLLER_IMAGE:-cache-controller:local}"
 AZURE_LINUX_IMAGE="mcr.microsoft.com/azurelinux/base/core:3.0"
 
 # Load images into Minikube
@@ -21,6 +22,7 @@ echo "Loading images into Minikube..."
 minikube image load "$CACHE_SERVER_IMAGE"
 minikube image load "$CACHE_CLIENT_IMAGE"
 minikube image load "$CACHE_SERVER_SCHEDULER_IMAGE"
+minikube image load "$CACHE_CONTROLLER_IMAGE"
 
 # Pull and load Azure Linux image (used by iperf tests)
 echo "Loading Azure Linux image for iperf tests..."
