@@ -16,6 +16,15 @@ help-deploy:
 	@echo ""
 	@echo "Minikube Options:"
 	@echo "  make load-images                     	- Load images into Minikube"
+	@echo ""
+	@echo "Perf Profiling (via kubectl-prof):"
+	@echo "  make perf-record-server              	- Profile all CacheServer pods"
+	@echo "  make perf-record-client              	- Profile PerfClient pods"
+	@echo ""
+	@echo "  PERF_SERVER_LABEL=app=cacheserver      \t- Label selector for cache server pods"
+	@echo "  PERF_CLIENT_LABEL=app=perf-client      \t- Label selector for perf client pods"
+	@echo "  PERF_DURATION=2m                      \t- Recording duration (e.g. 2m, 30s, 5m)"
+	@echo "  PERF_LANG=clang++                     \t- Language: clang, clang++, go, python, java, etc."
 
 ##@ Infrastructure
 
@@ -317,3 +326,62 @@ $(HELM_BIN): $(LOCALBIN)
 	mv linux-$(ARCH_SUFFIX)/helm $(HELM_BIN); \
 	rm -rf linux-$(ARCH_SUFFIX) helm.tar.gz; \
 	}
+
+##@ Perf Profiling (CPU flamegraphs via kubectl-prof)
+
+# Perf settings
+PERF_DURATION ?= 2m
+PERF_NAMESPACE ?= cache-server
+PERF_OUTPUT_DIR ?= $(shell pwd)/perf-results
+FLAMEGRAPH_DIR ?= $(shell pwd)/.local/FlameGraph
+PERF_SERVER_LABEL ?= app=cacheserver
+PERF_CLIENT_LABEL ?= app=perf-client
+PERF_LANG ?= clang++
+KUBECTL_PROF_VERSION ?= 1.11.0
+
+.PHONY: install-kubectl-prof
+install-kubectl-prof: ## Install kubectl-prof plugin.
+	@if command -v kubectl-prof >/dev/null 2>&1; then \
+		echo "kubectl-prof already installed: $$(kubectl-prof --version 2>/dev/null || echo 'unknown version')"; \
+	else \
+		echo "Installing kubectl-prof $(KUBECTL_PROF_VERSION)..."; \
+		wget -q https://github.com/josepdcs/kubectl-prof/releases/download/$(KUBECTL_PROF_VERSION)/kubectl-prof_$(KUBECTL_PROF_VERSION)_linux_$(ARCH_SUFFIX).tar.gz; \
+		tar xzf kubectl-prof_$(KUBECTL_PROF_VERSION)_linux_$(ARCH_SUFFIX).tar.gz kubectl-prof; \
+		sudo install kubectl-prof /usr/local/bin/; \
+		rm -f kubectl-prof kubectl-prof_$(KUBECTL_PROF_VERSION)_linux_$(ARCH_SUFFIX).tar.gz; \
+		echo "kubectl-prof $(KUBECTL_PROF_VERSION) installed"; \
+	fi
+
+$(FLAMEGRAPH_DIR)/flamegraph.pl:
+	@mkdir -p $(FLAMEGRAPH_DIR)
+	@curl -fsSL -o $@ https://raw.githubusercontent.com/brendangregg/FlameGraph/master/flamegraph.pl
+	@chmod +x $@
+
+# Convert any .txt without a matching .svg
+define generate_flamegraphs
+	@for RAW in $(1)/*.txt; do \
+		[ -f "$$RAW" ] || continue; \
+		SVG="$${RAW%.txt}.svg"; \
+		if [ ! -f "$$SVG" ]; then \
+			$(FLAMEGRAPH_DIR)/flamegraph.pl "$$RAW" > "$$SVG"; \
+			echo "Flamegraph: $$SVG"; \
+		fi; \
+	done
+endef
+
+# $(1) = label selector, $(2) = output subdir
+define perf_record
+	@mkdir -p $(PERF_OUTPUT_DIR)/$(2)
+	kubectl prof --selector $(1) -n $(PERF_NAMESPACE) \
+		-t $(PERF_DURATION) -l $(PERF_LANG) -o raw --tool perf \
+		--local-path=$(PERF_OUTPUT_DIR)/$(2)
+	$(call generate_flamegraphs,$(PERF_OUTPUT_DIR)/$(2))
+endef
+
+.PHONY: perf-record-server
+perf-record-server: $(FLAMEGRAPH_DIR)/flamegraph.pl ## Profile all CacheServer pods and generate flamegraphs.
+	$(call perf_record,$(PERF_SERVER_LABEL),server)
+
+.PHONY: perf-record-client
+perf-record-client: $(FLAMEGRAPH_DIR)/flamegraph.pl ## Profile PerfClient pods (by label selector) and generate flamegraphs.
+	$(call perf_record,$(PERF_CLIENT_LABEL),perf-client)
