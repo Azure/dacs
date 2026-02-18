@@ -61,6 +61,12 @@ function start_cache_server() {
 
   CACHE_SERVER_PID=$!
   echo "Started CacheServer in the background, pid: ${CACHE_SERVER_PID}"
+  
+  # Wait for server to be ready (timeout: 30s)
+  for i in {1..30}; do
+    nc -z 127.0.0.1 ${CACHE_SERVER_PORT} 2>/dev/null && break
+    sleep 1
+  done
 }
 
 # Cache Server Shutdown and Cleanup
@@ -76,8 +82,17 @@ function stop_cache_server() {
   else
     rm -rf ${CACHE_SERVER_PATH}
   fi
+  
+  # Cleanup discovery config files
+  sudo rm -f /serverConfig/cache_server_count /serverConfig/cache_server_endpoint_format
+  echo "Cleaned up discovery config files"
 
   echo "Stopped CacheServer"
+}
+
+# Generate unique datetime suffix for blob naming
+function generate_datetime_suffix() {
+  echo $(date +%Y%m%d_%H%M%S)
 }
 
 # change to the package parent directory
@@ -86,20 +101,59 @@ cd $SCRIPT_DIR/..
 
 # copy the intercept library to package directory
 arch_dir_name=$([[ "${BUILD_ARCH}" == *"x64"* ]] || [[ "${BUILD_ARCH}" == "amd64" ]] && echo "amd64" || echo "arm64")
-cp -v $REPOSITORY_ROOT/bin/$BUILD_CONFIGURATION/${arch_dir_name}/native-storage/storage/libStorageDirect.so ./dacs_cache_client/
+# Copy directly to the py_dacs_client module directory (where we are now after cd)
+cp -v $REPOSITORY_ROOT/bin/$BUILD_CONFIGURATION/${arch_dir_name}/native-storage/storage/libStorageDirect.so ./libStorageDirect.so
+
+# Set up PYTHONPATH so Python can find the py_dacs_client module
+export PYTHONPATH="${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client:${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client/py_dacs_client:${PYTHONPATH}"
+echo "PYTHONPATH set to: $PYTHONPATH"
+
+# Enable SAS token if provided
+if [[ -n "${STORAGE_INTCPT_SAS_TOKEN}" ]]; then
+    export USE_SAS_TOKEN="true"
+fi
 
 # start the cache server
 start_cache_server $REPOSITORY_ROOT/out_test_py_client_cache_server.log
 
-# Run the tests - Write and Read 10 blobs of size 32MB
-python3 $SCRIPT_DIR/../sample/dacs_cache_client_test.py --nBlobs 10 --blobSizeToBeRead 33554432
+# Generate unique datetime string for blob naming to avoid overwrite errors
+DATETIME_SUFFIX=$(generate_datetime_suffix)
 
-# Run the tests - ReadOnly mode - Read 10 blobs of size 32MB
-python3 $SCRIPT_DIR/../sample/dacs_cache_client_test.py --nBlobs 10 --blobSizeToBeRead 33554432 --readOnly
+echo "========================================="
+echo "Test 1: Static Cache Server List"
+echo "========================================="
+
+python3 $SCRIPT_DIR/../sample/dacs_client_test.py --nBlobs 10 --blobSizeToBeRead 33554432 --blobNamePattern "${DATETIME_SUFFIX}"
+
+echo "========================================="
+echo "Test 2: Cache Server Discovery API"
+echo "========================================="
+
+# Generate new datetime suffix to avoid blob name collision with Test 1
+DATETIME_SUFFIX=$(generate_datetime_suffix)
+
+# Setup discovery API config files
+sudo mkdir -p /serverConfig
+printf "1" | sudo tee /serverConfig/cache_server_count > /dev/null
+printf "127.0.{}.1" | sudo tee /serverConfig/cache_server_endpoint_format > /dev/null
+
+# Export discovery environment variables
+export CACHE_DISCOVERY_URL="127.0.0.1"
+
+# Unset static server list to force discovery usage
+unset CACHE_SERVER_LIST
+
+python3 $SCRIPT_DIR/../sample/dacs_client_test.py --nBlobs 10 --blobSizeToBeRead 33554432 --blobNamePattern "${DATETIME_SUFFIX}"
+
+# Cleanup discovery env vars
+unset CACHE_DISCOVERY_URL
+
+# Restore static server list for cleanup
+export CACHE_SERVER_LIST="127.0.0.1"
 
 # cleanup
 stop_cache_server
-rm -f ./dacs_cache_client/libStorageDirect.so
+rm -f ./libStorageDirect.so
 
 # go back to original directory
 cd $ORIGNAL_DIR

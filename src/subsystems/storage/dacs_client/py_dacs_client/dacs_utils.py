@@ -281,16 +281,29 @@ def _initialize_dacs_client_config(intercept_path: str = None, write_mode=None) 
             config_file.write("enableWriteRemote false\n")
             config_file.write("enableWriteRemoteAsync false\n")
 
-        # Check if CACHE_SERVER_LIST and CACHE_SERVER_PORT are set
+        # Cache configuration: Discovery or static server list
+        cache_discovery_url = os.environ.get("CACHE_DISCOVERY_URL")
         cache_server_list = os.environ.get("CACHE_SERVER_LIST")
         cache_server_port = os.environ.get("CACHE_SERVER_PORT")
-
-        # If both are set, append and configure cache related configurations to /tmp/storageIntercept.config
-        if cache_server_list and cache_server_port:
-            config_file.write("cacheEnable true\n")
-            config_file.write("cacheEnableRemote true\n")
+        
+        cache_enabled = False
+        
+        if cache_discovery_url and cache_server_port:
+            cache_enabled = True
+            config_file.write(f"cacheServerPort {cache_server_port}\n")
+            config_file.write("cacheServerDiscoveryEnabled true\n")
+            config_file.write(f"cacheServerDiscoveryEndpoint {cache_discovery_url}\n")
+            config_file.write("cacheServerDiscoveryIntervalInSeconds 300\n")
+            logger.debug(f"Configured cache with discovery API: {cache_discovery_url}")
+        elif cache_server_list and cache_server_port:
+            cache_enabled = True
             config_file.write(f"cacheServerPort {cache_server_port}\n")
             config_file.write(f"cacheServerList {cache_server_list}\n")
+            logger.debug(f"Configured cache with static server list: {cache_server_list}")
+        
+        if cache_enabled:
+            config_file.write("cacheEnable true\n")
+            config_file.write("cacheEnableRemote true\n")
             config_file.write("cacheRetryMaxAttempts 5\n")
             config_file.write("cacheRetryBaseDelayMs 100\n")
             config_file.write("cacheRetryMaxDelayMs 1000\n")
@@ -298,8 +311,7 @@ def _initialize_dacs_client_config(intercept_path: str = None, write_mode=None) 
             config_file.write("cacheNumUploadThreadsPerProcess 80\n")
             config_file.write("attributesCacheUseLocalServer false\n")
             config_file.write("attributesCacheUseRemoteServer true\n")
-            logger.debug(f"Configured cache related configurations in {config_path}")
         else:
-            logger.warning(
-                "CACHE_SERVER_LIST or CACHE_SERVER_PORT env variable is not set, working in Remote Blob mode only."
-            )
+            logger.warning("Cache not configured. Working in Remote Blob mode only.")
+    
+    logger.debug(f"Config file initialized: {config_path}")
