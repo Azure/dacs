@@ -206,9 +206,6 @@ class DACSAdapter:
 
             try:
                 self._file_handle = asyncio.run(self._client.get_file_handle(self._path, flags))
-            except DACSError:
-                # Re-raise our own exceptions as-is
-                raise
             except Exception as e:
                 raise handle_native_error(e, operation="open", path=self._path) from e
 
@@ -278,8 +275,6 @@ class DACSAdapter:
         # Determine read size - wrap in try-except for native errors
         try:
             read_size = asyncio.run(self._client.get_file_size(self._path)) if (size == -1 or size is None) else size
-        except DACSError:
-            raise
         except Exception as e:
             raise handle_native_error(e, operation="get_file_size", path=self._path) from e
 
@@ -299,8 +294,6 @@ class DACSAdapter:
             # Wrap in try-except to catch native library errors
             try:
                 bytes_read = asyncio.run(self._file_handle.read(buffer, read_size, 0))
-            except DACSError:
-                raise
             except Exception as e:
                 raise handle_native_error(e, operation="read", path=self._path) from e
 
@@ -404,8 +397,6 @@ class DACSAdapter:
             self._write_buffers.append((buffer, True))  # True = user-provided, don't release
             try:
                 bytes_written = asyncio.run(self._file_handle.write(buffer, size, 0))
-            except DACSError:
-                raise
             except Exception as e:
                 raise handle_native_error(e, operation="write", path=self._path) from e
 
@@ -431,8 +422,6 @@ class DACSAdapter:
 
             try:
                 bytes_written = asyncio.run(self._file_handle.write(internal_buffer, len(data_bytes), 0))
-            except DACSError:
-                raise
             except Exception as e:
                 raise handle_native_error(e, operation="write", path=self._path) from e
 
@@ -700,7 +689,10 @@ def _copy_remote_to_local(src: str, dst: str, return_md5: bool, overwrite: bool 
 
     # Get source file size for chunked reading
     client = _ClientManager.get_instance()
-    src_size = asyncio.run(client.get_file_size(src))
+    try:
+        src_size = asyncio.run(client.get_file_size(src))
+    except Exception as e:
+        raise handle_native_error(e, operation="get_file_size", path=src) from e
 
     def write_fn(tmp_dst):
         with DACSAdapter(src, "rb") as src_adapter:
@@ -712,7 +704,10 @@ def _copy_remote_to_local(src: str, dst: str, return_md5: bool, overwrite: bool 
                     buffer = alloc_buffer(chunk_size)
                     try:
                         # Read chunk - need to use the file handle directly for offset reads
-                        bytes_read = asyncio.run(src_adapter._file_handle.read(buffer, chunk_size, offset))
+                        try:
+                            bytes_read = asyncio.run(src_adapter._file_handle.read(buffer, chunk_size, offset))
+                        except Exception as e:
+                            raise handle_native_error(e, operation="read", path=src) from e
                         check_native_result(bytes_read, operation="read", path=src)
                         if bytes_read == 0:
                             break
@@ -750,12 +745,13 @@ def exists(path: str) -> bool:
         client = _ClientManager.get_instance()
         asyncio.run(client.get_file_stat(path))
         return True
-    except OSError as e:
-        # Check if the error is due to file not found (ENOENT)
-        if e.errno == errno.ENOENT:
+    except DACSNotFoundError:
+        return False
+    except Exception as e:
+        converted = handle_native_error(e, operation="stat", path=path)
+        if isinstance(converted, DACSNotFoundError):
             return False
-        # For other errors, re-raise
-        raise
+        raise converted from e
 
 
 def glob(pattern: str) -> Iterator[str]:
@@ -798,8 +794,11 @@ def listdir(path: str) -> Iterator[str]:
                         result.append(name)
             return result
 
-        for item in asyncio.run(_listdir_async()):
-            yield item
+        try:
+            for item in asyncio.run(_listdir_async()):
+                yield item
+        except Exception as e:
+            raise handle_native_error(e, operation="listdir", path=path) from e
 
 
 def scandir(path: str) -> Iterator[Any]:
@@ -838,30 +837,33 @@ def scandir(path: str) -> Iterator[Any]:
                         result.append(name)
             return result
 
-        for item in asyncio.run(_scandir_collect()):
-            # Construct full path
-            if path.endswith("/"):
-                full_path = path + item
-            else:
-                full_path = path + "/" + item
-            
-            # Determine if directory based on trailing slash
-            is_dir = item.endswith("/")
-            
-            # Get stat information for the entry
-            try:
-                entry_stat = stat(full_path)
-            except Exception:
-                # If stat fails, set to None
-                entry_stat = None
-            
-            yield DirEntry(
-                path=full_path,
-                name=item,
-                is_dir=is_dir,
-                is_file=not is_dir,
-                stat=entry_stat,
-            )
+        try:
+            for item in asyncio.run(_scandir_collect()):
+                # Construct full path
+                if path.endswith("/"):
+                    full_path = path + item
+                else:
+                    full_path = path + "/" + item
+
+                # Determine if directory based on trailing slash
+                is_dir = item.endswith("/")
+
+                # Get stat information for the entry
+                try:
+                    entry_stat = stat(full_path)
+                except Exception:
+                    # If stat fails, set to None
+                    entry_stat = None
+
+                yield DirEntry(
+                    path=full_path,
+                    name=item,
+                    is_dir=is_dir,
+                    is_file=not is_dir,
+                    stat=entry_stat,
+                )
+        except Exception as e:
+            raise handle_native_error(e, operation="scandir", path=path) from e
 
 
 def makedirs(path: str) -> None:
@@ -913,7 +915,10 @@ def stat(path: str) -> Any:
     )
 
     client = _ClientManager.get_instance()
-    stat_result = asyncio.run(client.get_file_stat(path))
+    try:
+        stat_result = asyncio.run(client.get_file_stat(path))
+    except Exception as e:
+        raise handle_native_error(e, operation="stat", path=path) from e
 
     return Stat(
         size=stat_result.st_size,
