@@ -26,6 +26,38 @@ The client supports two authentication modes:
 - Optionally override `MSI_SECRET` (defaults to `dummy` for IMDS)
 - Example: `export AZURE_CLIENT_ID="your-client-id"`
 
+### Cache Configuration
+The client supports both static and dynamic cache server discovery:
+
+**Static Cache Server List**
+- Set `CACHE_SERVER_LIST` with comma-separated list of servers
+- Set `CACHE_SERVER_PORT` for the cache server port
+- Example: 
+  ```bash
+  export CACHE_SERVER_LIST="server1,server2,server3"
+  export CACHE_SERVER_PORT="20000"
+  ```
+
+**Dynamic Cache Server Discovery (Recommended)**
+- Set `CACHE_DISCOVERY_URL` to the discovery service endpoint
+- Set `CACHE_SERVER_PORT` for the cache server port
+- The Python client automatically configures discovery when both variables are set
+- Discovery polling interval is set to 2 seconds for optimal performance
+- Example:
+  ```bash
+  export CACHE_DISCOVERY_URL="cacheserver-discovery.default.svc.cluster.local"
+  export CACHE_SERVER_PORT="20000"
+  ```
+
+**Note:** 
+- Python checks `CACHE_DISCOVERY_URL` + `CACHE_SERVER_PORT` to enable cache with discovery
+- When enabled, Python writes discovery configuration to the config file:
+  - `cacheServerDiscoveryEnabled true`
+  - `cacheServerDiscoveryEndpoint <CACHE_DISCOVERY_URL>`
+  - `cacheServerDiscoveryIntervalInSeconds 2`
+- The C++ library reads these settings from the config file and handles discovery automatically
+- Discovery API is polled every 2 seconds to fetch the latest cache server list
+
 ### Basic Operations
 - **`get_file_size(blob_path)`**:
   Retrieve the size of a blob.
