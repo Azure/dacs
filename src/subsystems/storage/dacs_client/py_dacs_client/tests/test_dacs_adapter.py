@@ -56,6 +56,7 @@ from py_dacs_client.dacs_exceptions import (
     errno_to_exception_class,
     handle_native_error,
     DACSError,
+    DACSNotFoundError,
     DACSIsDirectoryError,
     DACSNotDirectoryError,
     DACSNotEmptyError,
@@ -616,9 +617,9 @@ class TestRemoteBlobStat:
             assert result.mtime >= 0  # mtime may be 0 in some storage systems
 
     def test_stat_nonexistent_blob(self):
-        """Test stat() raises FileNotFoundError for non-existent blob."""
+        """Test stat() raises DACSNotFoundError for non-existent blob."""
         nonexistent_path = f"{AZURE_BLOB_PATH}/nonexistent_stat_{id(self)}.txt"
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(DACSNotFoundError):
             bf.stat(nonexistent_path)
 
     def test_stat_empty_blob(self):
@@ -1441,7 +1442,7 @@ class TestCopy:
         src_path = f"{AZURE_BLOB_PATH}/test_copy_nonexistent_{id(self)}.txt"
         dst_path = "/tmp/test_copy_dst_nonexistent.txt"
 
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(DACSNotFoundError):
             bf.copy(src_path, dst_path)
 
     def test_copy_directory_path_fails(self):

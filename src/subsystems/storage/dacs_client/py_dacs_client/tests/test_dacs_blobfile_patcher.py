@@ -4,9 +4,11 @@
 #
 # ---------------------------------------------------------------
 
+import errno
 import os
 import sys
 import pytest
+from unittest.mock import patch, MagicMock
 
 import blobfile as bf
 from dacs_blobfile_patcher import (
@@ -15,7 +17,26 @@ from dacs_blobfile_patcher import (
     is_patched,
     DACS_SUPPORTED_APIS,
 )
+from py_dacs_client.dacs_blobfile_exception_handler import normalize_exception
 from py_dacs_client.dacs_adapter import DACSAdapter, OperationNotSupportedError
+from py_dacs_client.dacs_exceptions import (
+    DACSNotFoundError,
+    DACSPermissionError,
+    DACSAuthenticationError,
+    DACSIsDirectoryError,
+    DACSNotDirectoryError,
+    DACSExistsError,
+    DACSTimeoutError,
+    DACSBusyError,
+    DACSQuotaError,
+    DACSNetworkError,
+    DACSInvalidInputError,
+    DACSServiceUnavailableError,
+    DACSNotEmptyError,
+    DACSNameTooLongError,
+    DACSReadOnlyError,
+    DACSStorageError,
+)
 
 # Import the unique session path from conftest.py
 from conftest import AZURE_BLOB_PATH
@@ -147,12 +168,12 @@ class TestPatcherRouting:
         
         # Test BlobFile write
         with bf.BlobFile(test_path, "w") as f:
-            assert isinstance(f, DACSAdapter), "BlobFile write should return DACSAdapter"
+            assert hasattr(f, '_adapter') or isinstance(f, DACSAdapter), "BlobFile write should use DACSAdapter"
             f.write(test_data)
         
         # Test BlobFile read
         with bf.BlobFile(test_path, "r") as f:
-            assert isinstance(f, DACSAdapter), "BlobFile read should return DACSAdapter"
+            assert hasattr(f, '_adapter') or isinstance(f, DACSAdapter), "BlobFile read should use DACSAdapter"
             content = f.read()
             assert content == test_data, "Content should match written data"
         
@@ -372,3 +393,160 @@ class TestNonCallableAttributesPassthrough:
                 _ = bf.AZURE
         except OperationNotSupportedError:
             pytest.fail("Non-callable attributes should not be blocked")
+
+
+# =============================================================================
+# CATEGORY 5: EXCEPTION CONVERSION TESTS
+# Tests: DACSErrors are converted to standard Python exceptions with
+# proper errno, strerror, and filename attributes. Standard exceptions
+# pass through unchanged.
+# =============================================================================
+
+class TestExceptionConversion:
+    """Test that DACSErrors are converted to standard Python exceptions."""
+
+    @pytest.mark.parametrize("dacs_exc_class,expected_builtin_class,errno_code,message,test_path", [
+        (DACSNotFoundError, FileNotFoundError, errno.ENOENT, "File not found", "az://account/container/missing.txt"),
+        (DACSPermissionError, PermissionError, errno.EACCES, "Permission denied", "az://account/container/restricted.txt"),
+        (DACSAuthenticationError, PermissionError, errno.EPERM, "Authentication failed", "az://account/container/auth.txt"),
+        (DACSIsDirectoryError, IsADirectoryError, errno.EISDIR, "Is a directory", "az://account/container/somedir/"),
+        (DACSNotDirectoryError, NotADirectoryError, errno.ENOTDIR, "Not a directory", "az://account/container/notdir"),
+        (DACSExistsError, FileExistsError, errno.EEXIST, "File exists", "az://account/container/existing.txt"),
+        (DACSTimeoutError, TimeoutError, errno.ETIMEDOUT, "Operation timed out", "az://account/container/slow.txt"),
+        (DACSNetworkError, OSError, errno.ECONNREFUSED, "Connection refused", "az://account/container/file.txt"),
+        (DACSNetworkError, OSError, errno.ENETUNREACH, "Network unreachable", "az://account/container/file.txt"),
+        (DACSNetworkError, OSError, errno.EHOSTUNREACH, "Host unreachable", "az://account/container/file.txt"),
+        (DACSNetworkError, OSError, errno.ECONNRESET, "Connection reset", "az://account/container/file.txt"),
+        (DACSBusyError, OSError, errno.EBUSY, "Resource busy", "az://account/container/busy.txt"),
+        (DACSQuotaError, OSError, errno.EDQUOT, "Quota exceeded", "az://account/container/file.txt"),
+        (DACSQuotaError, OSError, errno.EFBIG, "File too large", "az://account/container/big.txt"),
+        (DACSInvalidInputError, OSError, errno.EINVAL, "Invalid input", "az://account/container/file.txt"),
+        (DACSServiceUnavailableError, OSError, errno.EAGAIN, "Service unavailable", "az://account/container/file.txt"),
+        (DACSNotEmptyError, OSError, errno.ENOTEMPTY, "Directory not empty", "az://account/container/dir/"),
+        (DACSNameTooLongError, OSError, errno.ENAMETOOLONG, "Name too long", "az://account/container/verylongname.txt"),
+        (DACSReadOnlyError, PermissionError, errno.EROFS, "Read-only filesystem", "az://account/container/file.txt"),
+        (DACSStorageError, OSError, errno.EIO, "I/O error", "az://account/container/file.txt"),
+    ])
+    def test_dacs_exception_conversion(self, dacs_exc_class, expected_builtin_class, errno_code, message, test_path):
+        """Test that DACSErrors are converted to the appropriate standard Python exceptions."""
+        exc = dacs_exc_class(
+            message=message,
+            path=test_path,
+            errno_code=errno_code
+        )
+        
+        converted = normalize_exception(exc)
+        
+        assert isinstance(converted, expected_builtin_class)
+        assert converted.errno == errno_code
+        assert converted.strerror == message
+        assert converted.filename == test_path
+        # Verify diagnostic attributes are preserved
+        assert hasattr(converted, 'errno_code')
+        assert converted.errno_code == errno_code
+
+    def test_standard_exceptions_pass_through_unchanged(self):
+        """Test that standard Python exceptions are not converted."""
+        test_exceptions = [
+            ValueError("test value error"),
+            TypeError("test type error"),
+            AttributeError("test attribute error"),
+            FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), "test.txt"),
+            PermissionError(errno.EACCES, os.strerror(errno.EACCES), "test.txt"),
+        ]
+        
+        for exc in test_exceptions:
+            converted = normalize_exception(exc)
+            assert converted is exc, f"{type(exc).__name__} should pass through unchanged"
+
+    def test_conversion_preserves_diagnostic_attributes(self):
+        """Test that conversion preserves all diagnostic attributes from DACSError."""
+        exc = DACSNotFoundError(
+            message="File not found",
+            path="az://account/container/file.txt",
+            errno_code=errno.ENOENT,
+            error_code="BlobNotFound",
+            request_id="req-12345"
+        )
+        
+        converted = normalize_exception(exc)
+        
+        # Verify diagnostic attributes are preserved
+        assert hasattr(converted, 'path')
+        assert converted.path == "az://account/container/file.txt"
+        assert hasattr(converted, 'errno_code')
+        assert converted.errno_code == errno.ENOENT
+        assert hasattr(converted, 'error_code')
+        assert converted.error_code == "BlobNotFound"
+        assert hasattr(converted, 'request_id')
+        assert converted.request_id == "req-12345"
+
+    def test_patched_functions_raise_converted_exceptions(self):
+        """Test that patched functions properly convert and raise exceptions."""
+        enable_dacs_backend()
+        
+        # Use a non-existent Azure path
+        nonexistent_path = f"{AZURE_BLOB_PATH}/nonexistent_file_{id(self)}.txt"
+        
+        # Test exists - should return False, not raise
+        result = bf.exists(nonexistent_path)
+        assert result is False
+        
+        # Test stat - should raise FileNotFoundError
+        with pytest.raises(FileNotFoundError) as exc_info:
+            bf.stat(nonexistent_path)
+        
+        # Verify the exception has proper attributes
+        assert exc_info.value.errno == errno.ENOENT
+        assert exc_info.value.filename == nonexistent_path
+        assert exc_info.value.strerror  # Original message is preserved as strerror
+
+    def test_patched_blobfile_raises_converted_exceptions(self):
+        """Test that BlobFile properly converts exceptions on file operations."""
+        enable_dacs_backend()
+        
+        # Try to read a non-existent file
+        nonexistent_path = f"{AZURE_BLOB_PATH}/nonexistent_file_{id(self)}.txt"
+        
+        with pytest.raises(FileNotFoundError) as exc_info:
+            with bf.BlobFile(nonexistent_path, "r") as f:
+                f.read()
+        
+        # Verify the exception has proper attributes
+        assert exc_info.value.errno == errno.ENOENT
+        assert exc_info.value.strerror  # Original message is preserved as strerror
+
+    def test_patched_copy_nonexistent_source_raises_converted_exception(self):
+        """Test that copy with non-existent source raises FileNotFoundError, not DACSError."""
+        enable_dacs_backend()
+
+        nonexistent_src = f"{AZURE_BLOB_PATH}/nonexistent_copy_src_{id(self)}.txt"
+        dst_path = "/tmp/test_copy_dst_patcher.txt"
+
+        with pytest.raises(FileNotFoundError) as exc_info:
+            bf.copy(nonexistent_src, dst_path)
+
+        assert exc_info.value.errno == errno.ENOENT
+
+    def test_bf_error_is_oserror_when_patched(self):
+        """Test that bf.Error is set to OSError when patcher is enabled."""
+        enable_dacs_backend()
+        assert bf.Error is OSError
+
+    def test_bf_error_restored_when_unpatched(self):
+        """Test that bf.Error is restored to original when patcher is disabled."""
+        original_error = bf.Error
+        enable_dacs_backend()
+        assert bf.Error is OSError
+        disable_dacs_backend()
+        assert bf.Error is original_error
+
+    def test_bf_error_catches_converted_exceptions(self):
+        """Test that except bf.Error catches our converted OSError subclasses."""
+        enable_dacs_backend()
+
+        nonexistent_path = f"{AZURE_BLOB_PATH}/nonexistent_bf_error_{id(self)}.txt"
+
+        # bf.Error (= OSError) should catch FileNotFoundError since it's a subclass
+        with pytest.raises(bf.Error):
+            bf.stat(nonexistent_path)

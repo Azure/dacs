@@ -22,11 +22,14 @@
 #
 # --------------------------------------------------------------------------------------------------------------------
 
+import errno
 import os
 import re
 import warnings
 import blobfile as bf
 from typing import Optional
+
+from py_dacs_client.dacs_blobfile_exception_handler import convert_and_raise
 
 _BLOBFILE_PATCHED = False
 _BLOBFILE_ORIGINAL_FUNCTIONS = {}
@@ -83,6 +86,7 @@ def enable_dacs_backend():
         'listdir': bf.listdir,
         'scandir': bf.scandir,
         'stat': bf.stat,
+        'Error': bf.Error,
     }
 
     def _is_azure_path(path):
@@ -91,23 +95,61 @@ def enable_dacs_backend():
 
     # --- Patched functions ---
 
+    class _BlobFileWrapper:
+        """Wrapper that intercepts errors from DACSAdapter
+        and converts them to blobfile-compatible exceptions."""
+
+        def __init__(self, adapter, original_path):
+            self._adapter = adapter
+            self._original_path = original_path
+
+        def __enter__(self):
+            try:
+                self._adapter.__enter__()
+                return self
+            except Exception as e:
+                convert_and_raise(e, original_path=self._original_path)
+
+        def __exit__(self, *args):
+            return self._adapter.__exit__(*args)
+
+        def __getattr__(self, name):
+            attr = getattr(self._adapter, name)
+            if not callable(attr):
+                return attr
+
+            def wrapper(*args, **kwargs):
+                try:
+                    return attr(*args, **kwargs)
+                except Exception as e:
+                    convert_and_raise(e, original_path=self._original_path)
+
+            return wrapper
+
     def patched_BlobFile(path, mode="r", streaming=None, buffer_size=None,
                          cache_dir=None, file_size=None, **kwargs):
         if _is_azure_path(path):
             # Filter kwargs to only those supported by DACSAdapter
             dacs_kwargs = {k: v for k, v in kwargs.items() if k in ('write_mode',)}
-            return DACSAdapter(
-                path=path, mode=mode, streaming=streaming,
-                buffer_size=buffer_size, cache_dir=cache_dir,
-                file_size=file_size, **dacs_kwargs
-            )
+            try:
+                adapter = DACSAdapter(
+                    path=path, mode=mode, streaming=streaming,
+                    buffer_size=buffer_size, cache_dir=cache_dir,
+                    file_size=file_size, **dacs_kwargs
+                )
+                return _BlobFileWrapper(adapter, path)
+            except Exception as e:
+                convert_and_raise(e, original_path=path)
         return _BLOBFILE_ORIGINAL_FUNCTIONS['BlobFile'](
             path, mode, streaming, buffer_size, cache_dir, file_size, **kwargs
         )
 
     def patched_exists(path):
         if _is_azure_path(path):
-            return dacs_exists(path)
+            try:
+                return dacs_exists(path)
+            except Exception as e:
+                convert_and_raise(e, original_path=path)
         return _BLOBFILE_ORIGINAL_FUNCTIONS['exists'](path)
 
     _URI_SCHEME_RE = re.compile(r'^[a-zA-Z][a-zA-Z0-9+\-.]+://')
@@ -126,21 +168,24 @@ def enable_dacs_backend():
 
         # Route to dacs_copy only when both paths are supported (azure or local)
         if src_supported and dst_supported:
-            unsupported = []
-            if parallel:
-                unsupported.append("parallel")
-            if parallel_executor is not None:
-                unsupported.append("parallel_executor")
-            if dst_version is not None:
-                unsupported.append("dst_version")
-            if unsupported:
-                warnings.warn(
-                    f"DACS copy does not support the following arguments, they will be ignored: "
-                    f"{', '.join(unsupported)}",
-                    UserWarning,
-                    stacklevel=2
-                )
-            return dacs_copy(src, dst, overwrite=overwrite, return_md5=return_md5)
+            try:
+                unsupported = []
+                if parallel:
+                    unsupported.append("parallel")
+                if parallel_executor is not None:
+                    unsupported.append("parallel_executor")
+                if dst_version is not None:
+                    unsupported.append("dst_version")
+                if unsupported:
+                    warnings.warn(
+                        f"DACS copy does not support the following arguments, they will be ignored: "
+                        f"{', '.join(unsupported)}",
+                        UserWarning,
+                        stacklevel=2
+                    )
+                return dacs_copy(src, dst, overwrite=overwrite, return_md5=return_md5)
+            except Exception as e:
+                convert_and_raise(e, original_path=src)
 
         # Fallback to native blobfile for non-azure/non-local paths (e.g. gs://)
         return _BLOBFILE_ORIGINAL_FUNCTIONS['copy'](
@@ -157,7 +202,10 @@ def enable_dacs_backend():
                     "Got shard_prefix_length=%r"
                     % shard_prefix_length
                 )
-            return dacs_listdir(path)
+            try:
+                return dacs_listdir(path)
+            except Exception as e:
+                convert_and_raise(e, original_path=path)
         return _BLOBFILE_ORIGINAL_FUNCTIONS['listdir'](path, shard_prefix_length)
 
     def patched_scandir(path, shard_prefix_length=0):
@@ -168,12 +216,18 @@ def enable_dacs_backend():
                     "Got shard_prefix_length=%r"
                     % shard_prefix_length
                 )
-            return dacs_scandir(path)
+            try:
+                return dacs_scandir(path)
+            except Exception as e:
+                convert_and_raise(e, original_path=path)
         return _BLOBFILE_ORIGINAL_FUNCTIONS['scandir'](path, shard_prefix_length)
 
     def patched_stat(path):
         if _is_azure_path(path):
-            return dacs_stat(path)
+            try:
+                return dacs_stat(path)
+            except Exception as e:
+                convert_and_raise(e, original_path=path)
         return _BLOBFILE_ORIGINAL_FUNCTIONS['stat'](path)
 
     # Apply patches to supported APIs
@@ -183,6 +237,7 @@ def enable_dacs_backend():
     bf.listdir = patched_listdir
     bf.scandir = patched_scandir
     bf.stat = patched_stat
+    bf.Error = OSError
 
     # --- Intercept unsupported APIs via __getattribute__ ---
 
@@ -196,8 +251,8 @@ def enable_dacs_backend():
             if name.startswith('_'):
                 return super().__getattribute__(name)
 
-            # Allow supported APIs
-            if name in DACS_SUPPORTED_APIS:
+            # Allow supported APIs and Error
+            if name in DACS_SUPPORTED_APIS or name == 'Error':
                 return super().__getattribute__(name)
 
             # Try to get the attribute
@@ -244,6 +299,7 @@ def disable_dacs_backend():
     bf.listdir = _BLOBFILE_ORIGINAL_FUNCTIONS['listdir']
     bf.scandir = _BLOBFILE_ORIGINAL_FUNCTIONS['scandir']
     bf.stat = _BLOBFILE_ORIGINAL_FUNCTIONS['stat']
+    bf.Error = _BLOBFILE_ORIGINAL_FUNCTIONS['Error']
 
     # Restore original module class
     if _BLOBFILE_ORIGINAL_MODULE_CLASS:

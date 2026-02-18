@@ -566,9 +566,22 @@ def handle_native_error(
         except Exception as e:
             raise handle_native_error(e, operation="read", path=blob_path)
     """
+    # If already a DACSError, update path if provided and return as-is
+    if isinstance(error, DACSError):
+        if path is not None and hasattr(error, 'path'):
+            error.path = path
+        return error
+
     error_message = str(error)
     request_id = _extract_request_id(error_message)
-    error_class, errno_code = _classify_error(error_message)
+
+    # For OSError with a valid errno, use errno directly instead of lossy message pattern matching.
+    # The native storage intercept sets errno reliably; message patterns are a fallback for non-OSError.
+    if isinstance(error, OSError) and error.errno:
+        errno_code = error.errno
+        error_class = errno_to_exception_class(errno_code)
+    else:
+        error_class, errno_code = _classify_error(error_message)
 
     # For OperationNotSupportedError, use different constructor
     if error_class == OperationNotSupportedError:
