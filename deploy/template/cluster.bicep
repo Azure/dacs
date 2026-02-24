@@ -184,6 +184,22 @@ resource aks 'Microsoft.ContainerService/managedClusters@2024-01-01' = {
   }
 }
 
+// Azure Security Linux Agent extension for Defender for Containers
+resource azureSecurityLinuxAgent 'Microsoft.KubernetesConfiguration/extensions@2023-05-01' = {
+  name: 'azuresecuritylinuxagent'
+  scope: aks
+  properties: {
+    extensionType: 'Microsoft.AzureSecurityLinuxAgent'
+    autoUpgradeMinorVersion: true
+    releaseTrain: 'stable'
+    scope: {
+      cluster: {
+        releaseNamespace: 'azuresecuritylinuxagent'
+      }
+    }
+  }
+}
+
 output name string = aks.name
 output kubeletIdentity string = aks.properties.identityProfile.kubeletidentity.objectId
 output oidcIssuerUrl string = aks.properties.oidcIssuerProfile.issuerURL
