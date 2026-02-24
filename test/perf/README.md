@@ -44,20 +44,27 @@ Notes:
 ## Sample Output
 
 ```sh
+<<<<<<< HEAD
 mittas@sample-devbox:~/workspace/azure/DACS$ BUILD_NUMBER=latest DOCKER_REGISTRY=dacs.azurecr.io STORAGE_ACCOUNT=samplestorageacct make test-e2e TEST_FILTER="perf && dacsclients"
 
 GIT_COMMIT=e3f5968cd34e53cc1dd57efaf460f67e2e48fd7a GIT_BRANCH=sample/multicache-client PATH=/home/sampleuser/workspace/azure/DACS/.local/bin:$PATH /home/sampleuser/workspace/azure/DACS/.local/bin/ginkgo -v -r --timeout="60m" --label-filter="perf && (dacsclients)" --focus="" --no-color="false" "./test/perf" -- --junit-report=/home/sampleuser/workspace/azure/DACS/test.xml --summary-report=/home/sampleuser/workspace/azure/DACS/summary.md --support-bundle-dir=/home/sampleuser/workspace/azure/DACS/support-bundles
   I0124 16:32:16.416184  264576 perf_suite_test.go:80] "Starting DACS Performance test suite"
+=======
+ BUILD_NUMBER=latest DOCKER_REGISTRY=dacs.azurecr.io STORAGE_ACCOUNT=samplestorageacct LABEL_FILTER=dacsclients make test-perf EXTRA_TEST_ARGS="--client-image=dacs.azurecr.io/cache-test-client:latest --blob-count=20 --blob-size=536870912"
+Using system kubectl
+GIT_COMMIT=75661283f4ae11826f796ee4d1a13c390430d155 GIT_BRANCH=sample/perf-branch PATH=/home/sampleuser/workspace/azure/DACS/.local/bin:$PATH /home/sampleuser/workspace/azure/DACS/.local/bin/ginkgo -v -r --timeout="60m" --label-filter="perf && (dacsclients)" --focus="" --no-color="false" "./test/perf" -- --junit-report=/home/sampleuser/workspace/azure/DACS/test.xml --summary-report=/home/sampleuser/workspace/azure/DACS/summary.md --support-bundle-dir=/home/sampleuser/workspace/azure/DACS/support-bundles --client-image=dacs.azurecr.io/cache-test-client:latest --blob-count=20 --blob-size=536870912
+  I0210 06:14:38.589093 1623035 perf_suite_test.go:80] "Starting DACS Performance test suite"
+>>>>>>> 4c6fd8c1 (chore: move dacs client to run as MPI workers)
 Running Suite: perf suite - /home/sampleuser/workspace/azure/DACS/test/perf
 ==========================================================================
-Random Seed: 1769272333
+Random Seed: 1770704074
 
 Will run 1 of 6 specs
 ------------------------------
 [BeforeSuite]
 /home/sampleuser/workspace/azure/DACS/test/perf/perf_suite_test.go:84
-  I0124 16:32:16.419214  264576 utils.go:55] "running command" command="az --version"
-  I0124 16:32:17.460568  264576 common.go:84] "az cli version" version=<
+  I0210 06:14:38.591808 1623035 utils.go:55] "running command" command="az --version"
+  I0210 06:14:40.118540 1623035 common.go:87] "az cli version" version=<
         WARNING: You have 2 update(s) available. Consider updating your CLI installation with 'az upgrade'
         azure-cli                         2.81.0 *
 
@@ -82,227 +89,227 @@ Will run 1 of 6 specs
 
 
    >
-  I0124 16:32:17.461138  264576 utils.go:55] "running command" command="kubectl version"
-  I0124 16:32:17.767158  264576 common.go:89] "kubectl version" version=<
+  I0210 06:14:40.119003 1623035 utils.go:55] "running command" command="kubectl version"
+  I0210 06:14:40.584738 1623035 common.go:92] "kubectl version" version=<
         Client Version: v1.35.0
         Kustomize Version: v5.7.1
         Server Version: v1.33.5
         Warning: version difference between client (1.35) and server (1.33) exceeds the supported minor version skew of +/-1
    >
-  I0124 16:32:17.767273  264576 common.go:92] "Skipping installation (set INSTALL=true to install)"
-  STEP: validating that cache server pods are running @ 01/24/26 16:32:17.767
-  STEP: validating that the pod with label app=cacheserver-scheduler is running as expected @ 01/24/26 16:32:17.767
-  I0124 16:32:17.835310  264576 common.go:358] "Checking pod status" pod="cacheserver-scheduler-fbfbf9559-qwnp4"
-  STEP: validating that StatefulSet cacheserver has all replicas ready @ 01/24/26 16:32:17.835
-  I0124 16:32:17.845280  264576 common.go:324] "StatefulSet is ready" name="cacheserver" ready=3 total=3
-[BeforeSuite] PASSED [1.427 seconds]
+  I0210 06:14:40.584881 1623035 common.go:102] "Skipping installation (set INSTALL=true to install)"
+  STEP: validating that cache server pods are running @ 02/10/26 06:14:40.584
+  STEP: validating that the pod with label app=cacheserver-scheduler is running as expected @ 02/10/26 06:14:40.585
+  I0210 06:14:40.681141 1623035 common.go:476] "Checking pod status" pod="cacheserver-scheduler-77f67d57c7-g24sj"
+  STEP: validating that StatefulSet cacheserver has all replicas ready @ 02/10/26 06:14:40.681
+  I0210 06:14:40.689099 1623035 common.go:442] "StatefulSet is ready" name="cacheserver" ready=3 total=3
+[BeforeSuite] PASSED [2.098 seconds]
 ------------------------------
-SSS
+SS
 ------------------------------
 Multiple DACS Clients E2E Tests Multiple DACS Clients Test Suite Should run multiple dacs cache clients performing writes [dacsclients, perf, aks]
-/home/sampleuser/workspace/azure/DACS/test/perf/dacs_client_suite_test.go:94
-  I0124 16:32:17.846179  264576 utils.go:55] "running command" command="kubectl get ns dacs-clients"
-  E0124 16:32:18.128057  264576 utils.go:58] "command failed" err="exit status 1" command="kubectl get ns dacs-clients" output=<
+/home/sampleuser/workspace/azure/DACS/test/perf/dacs_client_suite_test.go:132
+  STEP: Installing mpi-operator in the cluster @ 02/10/26 06:14:40.69
+  I0210 06:14:40.691042 1623035 utils.go:55] "running command" command="kubectl apply --server-side -f https://raw.githubusercontent.com/kubeflow/mpi-operator/master/deploy/v2beta1/mpi-operator.yaml"
+  I0210 06:14:42.697607 1623035 utils.go:55] "running command" command="kubectl get pod -o jsonpath='{.items[*].metadata.name},' -n mpi-operator"
+  I0210 06:14:42.978555 1623035 utils.go:55] "running command" command="kubectl get pod mpi-operator-5d8b594fbb-w5g2s -n mpi-operator -o jsonpath={.status.phase}"
+  I0210 06:14:48.275264 1623035 utils.go:55] "running command" command="kubectl get pod -o jsonpath='{.items[*].metadata.name},' -n mpi-operator"
+  I0210 06:14:48.580332 1623035 utils.go:55] "running command" command="kubectl get pod mpi-operator-5d8b594fbb-w5g2s -n mpi-operator -o jsonpath={.status.phase}"
+  I0210 06:14:49.446432 1623035 utils.go:55] "running command" command="kubectl get ns dacs-clients"
+  E0210 06:14:49.722171 1623035 utils.go:58] "command failed" err="exit status 1" command="kubectl get ns dacs-clients" output=<
         Error from server (NotFound): namespaces "dacs-clients" not found
    >
-  I0124 16:32:18.128316  264576 utils.go:55] "running command" command="kubectl create ns dacs-clients"
-  I0124 16:32:18.699953  264576 utils.go:55] "running command" command="az storage container exists --name dacs-perf-2026-01-24t16-32-18z --account-name samplestorageacct --query exists -o tsv"
-  I0124 16:32:22.208892  264576 utils.go:55] "running command" command="az storage container create --name dacs-perf-2026-01-24t16-32-18z --account-name samplestorageacct"
-  I0124 16:32:26.574535  264576 utils.go:55] "running command" command="az storage account show --name samplestorageacct --query id -o tsv"
-  I0124 16:32:29.491746  264576 utils.go:55] "running command" command="az ad sp show --id 00000000-0000-0000-0000-000000000000 --query id -o tsv"
-  I0124 16:32:30.760613  264576 utils.go:55] "running command" command="az role assignment list --assignee-object-id 00000000-0000-0000-0000-000000000000 --scope /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/sample-rg/providers/Microsoft.Storage/storageAccounts/samplestorageacct --role Storage Blob Data Contributor --query [].id -o tsv"
-  STEP: Waiting for dacs-clients-4 job to complete @ 01/24/26 16:32:33.656
-  I0124 16:32:33.657139  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:32:33.942633  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:32:39.237326  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:32:39.521316  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:32:44.794751  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:32:45.080576  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:32:50.355783  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:32:50.637793  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:32:55.913526  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:32:56.188670  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:33:01.467981  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:33:01.751357  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:33:07.046842  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:33:07.361499  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:33:12.661561  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:33:12.940425  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:33:18.228232  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:33:18.512408  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:33:23.796869  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:33:24.079911  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:33:29.355877  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:33:29.637992  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:33:34.919281  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:33:35.210707  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:33:40.510803  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:33:40.795538  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:33:46.078496  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:33:46.388930  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:33:51.662683  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:33:51.964256  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:33:57.249992  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:33:57.535776  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:34:02.811936  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:34:03.105854  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:34:08.394824  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:34:08.677854  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:34:13.970604  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:34:14.252309  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:34:19.539584  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:34:19.822648  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:34:25.096347  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:34:25.386016  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:34:30.675589  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:34:30.951832  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:34:36.228970  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:34:36.509615  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:34:41.791528  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:34:42.081639  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:34:47.373784  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:34:47.650901  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:34:52.939250  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:34:53.217362  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:34:58.497404  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:34:58.777547  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:35:04.087255  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:35:04.374369  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:35:09.659952  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:35:09.942524  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:35:15.208807  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:35:15.489679  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:35:20.772764  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:35:21.093709  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:35:26.392564  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:35:26.663091  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:35:31.950163  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:35:32.250580  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:35:37.537216  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:35:37.818400  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:35:43.095978  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:35:43.389140  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:35:48.677642  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:35:48.970091  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:35:54.242333  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:35:54.518858  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:35:59.793393  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:36:00.081175  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  I0124 16:36:05.368511  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
-  I0124 16:36:05.657092  264576 utils.go:55] "running command" command="kubectl get job dacs-clients-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Complete\")].status}"
-  STEP: Parsing performance metrics from pod dacs-clients/dacs-clients-4-5xtq5 logs @ 01/24/26 16:36:05.989
-  I0124 16:36:05.990374  264576 utils.go:55] "running command" command="kubectl logs dacs-clients-4-5xtq5 -n dacs-clients"
-  I0124 16:36:07.147200  264576 utils.go:55] "running command" command="kubectl get node aks-manipool1-53964174-vmss000000 -o jsonpath={.metadata.labels.node\\.kubernetes\\.io/instance-type}"
-  STEP: Parsing performance metrics from pod dacs-clients/dacs-clients-4-8wlhf logs @ 01/24/26 16:36:07.414
-  I0124 16:36:07.415142  264576 utils.go:55] "running command" command="kubectl logs dacs-clients-4-8wlhf -n dacs-clients"
-  I0124 16:36:08.455465  264576 utils.go:55] "running command" command="kubectl get node aks-manipool1-53964174-vmss000002 -o jsonpath={.metadata.labels.node\\.kubernetes\\.io/instance-type}"
-  STEP: Parsing performance metrics from pod dacs-clients/dacs-clients-4-j4fz2 logs @ 01/24/26 16:36:08.739
-  I0124 16:36:08.739429  264576 utils.go:55] "running command" command="kubectl logs dacs-clients-4-j4fz2 -n dacs-clients"
-  I0124 16:36:09.810888  264576 utils.go:55] "running command" command="kubectl get node aks-manipool1-53964174-vmss000001 -o jsonpath={.metadata.labels.node\\.kubernetes\\.io/instance-type}"
-  STEP: Parsing performance metrics from pod dacs-clients/dacs-clients-4-wrg9k logs @ 01/24/26 16:36:10.089
-  I0124 16:36:10.089965  264576 utils.go:55] "running command" command="kubectl logs dacs-clients-4-wrg9k -n dacs-clients"
-  I0124 16:36:11.295875  264576 utils.go:55] "running command" command="kubectl get node aks-manipool1-53964174-vmss000008 -o jsonpath={.metadata.labels.node\\.kubernetes\\.io/instance-type}"
-  STEP: Aggregated Cache Client Performance Summary: TotalBlobsWritten: 200, TotalBytesWritten: 214748364800, TotalWriteTimeSeconds: 211.13, WriteThroughputGbps: 30.33, TotalBytesRead: 214748364800, TotalReadTimeSeconds: 252.00, ReadThroughputGbps: 25.43 @ 01/24/26 16:36:11.59
-  STEP: Logging performance metrics @ 01/24/26 16:36:11.59
-  I0124 16:36:11.590786  264576 utils.go:55] "running command" command="helm list -n cache-server -o json"
-  I0124 16:36:12.181248  264576 kusto.go:162] "Perf metric" metric=<
+  I0210 06:14:49.722481 1623035 utils.go:55] "running command" command="kubectl create ns dacs-clients"
+  I0210 06:14:50.059428 1623035 utils.go:55] "running command" command="az storage container exists --name dacs-perf-2026-02-10t06-14-50z --account-name samplestorageacct --query exists -o tsv"
+  I0210 06:14:56.831436 1623035 utils.go:55] "running command" command="az storage container create --name dacs-perf-2026-02-10t06-14-50z --account-name samplestorageacct"
+  I0210 06:15:01.130183 1623035 utils.go:55] "running command" command="az aks list --query [?name=='sample-cluster'].resourceGroup -o tsv"
+  STEP: Checking if managed identity with clientId 00000000-0000-0000-0000-000000000000 has required role assignment on storage account samplestorageacct @ 02/10/26 06:15:15.065
+  I0210 06:15:15.066186 1623035 utils.go:55] "running command" command="az storage account show --name samplestorageacct --query id -o tsv"
+  I0210 06:15:19.286428 1623035 utils.go:55] "running command" command="az ad sp show --id 00000000-0000-0000-0000-000000000000 --query id -o tsv"
+  I0210 06:15:20.700080 1623035 utils.go:55] "running command" command="az role assignment list --assignee 00000000-0000-0000-0000-000000000000 --scope /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/sample-rg/providers/Microsoft.Storage/storageAccounts/samplestorageacct --role Storage Blob Data Contributor --query [].id -o tsv"
+  I0210 06:15:24.521288 1623035 utils.go:55] "running command" command="kubectl apply -f -"
+  STEP: Waiting for dacs-client-mpi-4 job to complete @ 02/10/26 06:15:25.133
+  I0210 06:15:25.133976 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:15:25.430754 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:15:30.918847 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:15:31.403157 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:15:36.892946 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:15:37.208789 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:15:42.490086 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:15:43.843136 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:15:49.167817 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:15:49.463744 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:15:54.771283 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:15:55.088411 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:16:00.373737 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:16:00.658123 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:16:05.951623 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:16:06.468895 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:16:11.752216 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:16:12.040127 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:16:17.353077 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:16:17.661441 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:16:22.966781 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:16:23.289700 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:16:28.583128 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:16:28.902121 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:16:34.184704 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:16:34.472366 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:16:39.767535 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:16:40.057063 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:16:45.338229 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:16:45.622704 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:16:50.918210 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:16:51.233155 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:16:56.523713 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:16:56.819762 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:17:02.111610 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:17:02.398525 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:17:07.680288 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Failed\")].status}"
+  I0210 06:17:07.977546 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:17:08.257154 1623035 utils.go:55] "running command" command="kubectl get mpijob dacs-client-mpi-4 -n dacs-clients -o jsonpath={.status.conditions[?(@.type==\"Succeeded\")].status}"
+  I0210 06:17:08.640950 1623035 utils.go:55] "running command" command="kubectl logs dacs-client-mpi-4-launcher-m55r7 -n dacs-clients"
+  STEP: Collecting test result of Pod: 0 dacs-clients/dacs-client-mpi-4-worker-0 through launcher pod dacs-clients/dacs-client-mpi-4-launcher-m55r7 logs @ 02/10/26 06:17:09.676
+  I0210 06:17:09.855498 1623035 utils.go:55] "running command" command="kubectl get node aks-manipool1-53964174-vmss000001 -o jsonpath={.metadata.labels.node\\.kubernetes\\.io/instance-type}"
+  STEP: Collecting test result of Pod: 1 dacs-clients/dacs-client-mpi-4-worker-1 through launcher pod dacs-clients/dacs-client-mpi-4-launcher-m55r7 logs @ 02/10/26 06:17:10.129
+  I0210 06:17:10.298727 1623035 utils.go:55] "running command" command="kubectl get node aks-manipool1-53964174-vmss000000 -o jsonpath={.metadata.labels.node\\.kubernetes\\.io/instance-type}"
+  STEP: Collecting test result of Pod: 2 dacs-clients/dacs-client-mpi-4-worker-2 through launcher pod dacs-clients/dacs-client-mpi-4-launcher-m55r7 logs @ 02/10/26 06:17:10.581
+  I0210 06:17:10.758357 1623035 utils.go:55] "running command" command="kubectl get node aks-manipool1-53964174-vmss000008 -o jsonpath={.metadata.labels.node\\.kubernetes\\.io/instance-type}"
+  STEP: Collecting test result of Pod: 3 dacs-clients/dacs-client-mpi-4-worker-3 through launcher pod dacs-clients/dacs-client-mpi-4-launcher-m55r7 logs @ 02/10/26 06:17:11.058
+  I0210 06:17:11.230622 1623035 utils.go:55] "running command" command="kubectl get node aks-manipool1-53964174-vmss000002 -o jsonpath={.metadata.labels.node\\.kubernetes\\.io/instance-type}"
+  STEP: Aggregated Cache Client Performance Summary: TotalBlobsWritten: 80, TotalBytesWritten: 42949672960, TotalWriteTimeSeconds: 52.94, WriteThroughputGbps: 24.19, TotalBytesRead: 42949672960, TotalReadTimeSeconds: 44.29, ReadThroughputGbps: 28.92 @ 02/10/26 06:17:11.521
+  STEP: Logging performance metrics @ 02/10/26 06:17:11.522
+  I0210 06:17:11.522146 1623035 utils.go:55] "running command" command="helm list -n cache-server -o json"
+  I0210 06:17:12.399799 1623035 kusto.go:165] "Perf metric" metric=<
         {
           "RunID": "",
           "SuiteID": "00000000-0000-0000-0000-000000000000",
-          "Timestamp": "2026-01-24T16:36:12Z",
+          "Timestamp": "2026-02-10T06:17:12Z",
           "TestName": "Multiple DACS Clients E2E Tests Multiple DACS Clients Test Suite Should run multiple dacs cache clients performing writes",
-          "TestGitCommit": "e3f5968cd34e53cc1dd57efaf460f67e2e48fd7a",
-          "TestGitBranch": "sample/multicache-client",
+          "TestGitCommit": "75661283f4ae11826f796ee4d1a13c390430d155",
+          "TestGitBranch": "sample/perf-branch",
           "HelmChartVersion": "cache-server-0.1.0",
           "HelmAppVersion": "1.16.0",
           "TestMetadata": {
             "StorageAccount": "samplestorageacct",
-            "ContainerName": "dacs-perf-2026-01-24t16-32-18z",
+            "ContainerName": "dacs-perf-2026-02-10t06-14-50z",
             "ClusterName": "sample-cluster",
-            "JobName": "dacs-clients-4",
+            "JobName": "dacs-client-mpi-4",
             "IsMinikube": false,
             "WriteMode": "write_sync",
             "Clients": 4,
             "PodsMetadata": [
               {
-                "PodName": "dacs-clients-4-5xtq5",
-                "NodeName": "aks-manipool1-53964174-vmss000000",
-                "NodeSKU": "Standard_L8as_v3",
-                "PerfSummary": {
-                  "BlobSize": 0,
-                  "TotalBlobsWritten": 50,
-                  "TotalBytesWritten": 53687091200,
-                  "TotalWriteTimeSeconds": 54.9,
-                  "WriteThroughputGbps": 7.286381797025932,
-                  "TotalBytesRead": 53687091200,
-                  "TotalReadTimeSeconds": 66.49,
-                  "ReadThroughputGbps": 6.01550857528266
-                }
-              },
-              {
-                "PodName": "dacs-clients-4-8wlhf",
-                "NodeName": "aks-manipool1-53964174-vmss000002",
-                "NodeSKU": "Standard_L8as_v3",
-                "PerfSummary": {
-                  "BlobSize": 0,
-                  "TotalBlobsWritten": 50,
-                  "TotalBytesWritten": 53687091200,
-                  "TotalWriteTimeSeconds": 51.46,
-                  "WriteThroughputGbps": 7.772426612307109,
-                  "TotalBytesRead": 53687091200,
-                  "TotalReadTimeSeconds": 62.24,
-                  "ReadThroughputGbps": 6.426567545553806
-                }
-              },
-              {
-                "PodName": "dacs-clients-4-j4fz2",
+                "PodName": "dacs-client-mpi-4-worker-0",
                 "NodeName": "aks-manipool1-53964174-vmss000001",
                 "NodeSKU": "Standard_L8as_v3",
                 "PerfSummary": {
                   "BlobSize": 0,
-                  "TotalBlobsWritten": 50,
-                  "TotalBytesWritten": 53687091200,
-                  "TotalWriteTimeSeconds": 52.29,
-                  "WriteThroughputGbps": 7.649950609733157,
-                  "TotalBytesRead": 53687091200,
-                  "TotalReadTimeSeconds": 60.31,
-                  "ReadThroughputGbps": 6.631936616657981
+                  "TotalBlobsWritten": 20,
+                  "TotalBytesWritten": 10737418240,
+                  "TotalWriteTimeSeconds": 13.42,
+                  "WriteThroughputGbps": 5.959842750559369,
+                  "TotalBytesRead": 10737418240,
+                  "TotalReadTimeSeconds": 11.05,
+                  "ReadThroughputGbps": 7.2384613672106966
                 }
               },
               {
-                "PodName": "dacs-clients-4-wrg9k",
+                "PodName": "dacs-client-mpi-4-worker-1",
+                "NodeName": "aks-manipool1-53964174-vmss000000",
+                "NodeSKU": "Standard_L8as_v3",
+                "PerfSummary": {
+                  "BlobSize": 0,
+                  "TotalBlobsWritten": 20,
+                  "TotalBytesWritten": 10737418240,
+                  "TotalWriteTimeSeconds": 13.57,
+                  "WriteThroughputGbps": 5.895850718011859,
+                  "TotalBytesRead": 10737418240,
+                  "TotalReadTimeSeconds": 10.77,
+                  "ReadThroughputGbps": 7.431389649315301
+                }
+              },
+              {
+                "PodName": "dacs-client-mpi-4-worker-2",
                 "NodeName": "aks-manipool1-53964174-vmss000008",
                 "NodeSKU": "Standard_L8as_v3",
                 "PerfSummary": {
                   "BlobSize": 0,
-                  "TotalBlobsWritten": 50,
-                  "TotalBytesWritten": 53687091200,
-                  "TotalWriteTimeSeconds": 52.48,
-                  "WriteThroughputGbps": 7.621540634195236,
-                  "TotalBytesRead": 53687091200,
-                  "TotalReadTimeSeconds": 62.96,
-                  "ReadThroughputGbps": 6.353031326702011
+                  "TotalBlobsWritten": 20,
+                  "TotalBytesWritten": 10737418240,
+                  "TotalWriteTimeSeconds": 12.95,
+                  "WriteThroughputGbps": 6.179253804582445,
+                  "TotalBytesRead": 10737418240,
+                  "TotalReadTimeSeconds": 11.61,
+                  "ReadThroughputGbps": 6.88868642772152
+                }
+              },
+              {
+                "PodName": "dacs-client-mpi-4-worker-3",
+                "NodeName": "aks-manipool1-53964174-vmss000002",
+                "NodeSKU": "Standard_L8as_v3",
+                "PerfSummary": {
+                  "BlobSize": 0,
+                  "TotalBlobsWritten": 20,
+                  "TotalBytesWritten": 10737418240,
+                  "TotalWriteTimeSeconds": 13,
+                  "WriteThroughputGbps": 6.152980407097097,
+                  "TotalBytesRead": 10737418240,
+                  "TotalReadTimeSeconds": 10.86,
+                  "ReadThroughputGbps": 7.363876208149876
                 }
               }
             ]
           },
           "Result": {
             "BlobSize": 0,
-            "TotalBlobsWritten": 200,
-            "TotalBytesWritten": 214748364800,
-            "TotalWriteTimeSeconds": 211.13,
-            "WriteThroughputGbps": 30.330299653261434,
-            "TotalBytesRead": 214748364800,
-            "TotalReadTimeSeconds": 252,
-            "ReadThroughputGbps": 25.42704406419646
+            "TotalBlobsWritten": 80,
+            "TotalBytesWritten": 42949672960,
+            "TotalWriteTimeSeconds": 52.94,
+            "WriteThroughputGbps": 24.18792768025077,
+            "TotalBytesRead": 42949672960,
+            "TotalReadTimeSeconds": 44.29,
+            "ReadThroughputGbps": 28.922413652397395
           }
         }
    >
-  I0124 16:36:12.183096  264576 kusto.go:166] "SEND_METRICS not set to 'true', skipping EventHub send"
-  I0124 16:36:12.183286  264576 utils.go:55] "running command" command="az storage container delete --name dacs-perf-2026-01-24t16-32-18z --account-name samplestorageacct"
-  I0124 16:36:15.745058  264576 utils.go:55] "running command" command="kubectl delete ns dacs-clients --ignore-not-found --wait"
-• [244.098 seconds]
+  I0210 06:17:12.401447 1623035 kusto.go:169] "SEND_METRICS not set to 'true', skipping EventHub send"
+  I0210 06:17:12.401588 1623035 utils.go:55] "running command" command="az storage container delete --name dacs-perf-2026-02-10t06-14-50z --account-name samplestorageacct"
+  I0210 06:17:17.073896 1623035 utils.go:55] "running command" command="kubectl delete ns dacs-clients --ignore-not-found --wait"
+  STEP: Uninstalling mpi-operator from the cluster @ 02/10/26 06:17:28.389
+  I0210 06:17:28.390527 1623035 utils.go:55] "running command" command="kubectl delete -f https://raw.githubusercontent.com/kubeflow/mpi-operator/master/deploy/v2beta1/mpi-operator.yaml"
+• [174.195 seconds]
 ------------------------------
+SSS
+------------------------------
+[AfterSuite]
+/home/sampleuser/workspace/azure/DACS/test/perf/perf_suite_test.go:88
+  I0210 06:17:34.886123 1623035 perf_suite_test.go:101] "Cleaning up test jobs"
+  I0210 06:17:34.886407 1623035 utils.go:55] "running command" command="kubectl delete jobs -n cache-server -l dacs.azure.com/test-pod=true --ignore-not-found=true"
+  STEP: collecting support bundle @ 02/10/26 06:17:35.178
+  STEP: cleaning up test jobs @ 02/10/26 06:17:42.118
+  I0210 06:17:42.399109 1623035 common.go:163] "Test jobs cleaned up successfully" output=<
+        No resources found
+   >
+  I0210 06:17:42.399190 1623035 common.go:167] "Skipping uninstall (set UNINSTALL=true to uninstall)"
+[AfterSuite] PASSED [7.513 seconds]
+------------------------------
+[ReportAfterSuite] perf reporter
+/home/sampleuser/workspace/azure/DACS/test/perf/perf_suite_test.go:93
+  STEP: Collecting support bundle for the suite @ 02/10/26 06:17:42.399
+  I0210 06:17:42.399584 1623035 common.go:407] "Collecting support bundle for suite" path="/home/sampleuser/workspace/azure/DACS/support-bundles/suite.tar.gz"
+  STEP: generating junit report @ 02/10/26 06:17:49.395
+  STEP: generating path to absolute path: /home/sampleuser/workspace/azure/DACS/test.xml @ 02/10/26 06:17:49.395
+  STEP: Generating markdown report @ 02/10/26 06:17:49.398
+  I0210 06:17:49.399073 1623035 utils.go:55] "running command" command="kubectl config current-context"
+[ReportAfterSuite] PASSED [7.237 seconds]
+------------------------------
+
+Ran 1 of 6 Specs in 183.808 seconds
+SUCCESS! -- 1 Passed | 0 Failed | 0 Pending | 5 Skipped
+PASS
+
+Ginkgo ran 1 suite in 3m15.073097053s
+Test Suite Passed------------------------------
 SS
 ------------------------------
 [AfterSuite]

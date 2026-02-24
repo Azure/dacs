@@ -61,12 +61,21 @@ Option A: Fetch access token from outside the lib and pass a static access token
 azBlobAccessToken <token>
 ```
 
-Option B: Enable the lib to fetch token internally by configuring the these settings
+Option B: Enable the lib to fetch token internally via MSI by configuring these settings
 ```
 azBlobMSIEndpoint <msi-endpoint>
 azBlobMSISecret <msi-secret>
 azBlobIdentityClientId <identity-client-id>
 ```
+
+Option C: Enable the lib to fetch token internally via [AKS Workload Identity](https://learn.microsoft.com/en-us/azure/aks/workload-identity-deploy-cluster?tabs=new-cluster)
+```
+azBlobIdentityClientId <managed-identity-client-id>
+azBlobFederatedTokenFile <path-to-projected-sa-token-file>
+azBlobTenantId <azure-ad-tenant-id>
+azBlobAuthorityHost <authority-host-url> # optional, default: https://login.microsoftonline.com
+```
+When AKS Workload Identity is enabled, the mutating webhook automatically injects the environment variables `AZURE_FEDERATED_TOKEN_FILE`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, and `AZURE_AUTHORITY_HOST` into the pod. The lib reads the projected service account token from `azBlobFederatedTokenFile` and exchanges it with Azure AD for an access token using the [OAuth 2.0 client credentials flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow#successful-response-1) with a JWT bearer assertion. The token file is automatically refreshed by the kubelet before expiry.
 
 To enable dynamic account interception, use
 ```

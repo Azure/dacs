@@ -122,7 +122,6 @@ setup(
     packages=[
         "py_dacs_client",
         "py_dacs_client.utils",
-        "py_dacs_client.sample",
         "py_dacs_client.tests",
         "py_dacs_client.benchmarks",
     ],

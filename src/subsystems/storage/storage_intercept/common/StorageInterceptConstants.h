@@ -85,6 +85,9 @@ namespace StorageInterceptConstants
     const char* const ConfigNameAzBlobMSIEndpoint = "azBlobMSIEndpoint";
     const char* const ConfigNameAzBlobMSISecret = "azBlobMSISecret";
     const char* const ConfigNameAzBlobIdentityClientId = "azBlobIdentityClientId";
+    const char* const ConfigNameAzBlobFederatedTokenFile = "azBlobFederatedTokenFile";
+    const char* const ConfigNameAzBlobTenantId = "azBlobTenantId";
+    const char* const ConfigNameAzBlobAuthorityHost = "azBlobAuthorityHost";
     const char* const ConfigNameAzBlobStorageAccKey = "azBlobStorageAccountKey";
     const char* const ConfigNameAzBlobStorageEndpointUrl = "azBlobStorageEndpoint";
     const char* const ConfigNameAzBlobContainerName = "azBlobContainerName";

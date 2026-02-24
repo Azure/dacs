@@ -836,6 +836,33 @@ std::string StorageInterceptConfig::GetIdentityClientId(const std::string& mount
         "");
 }
 //---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::GetFederatedTokenFile(const std::string& mountName)
+{
+    return StorageInterceptConfig::GetOptionalConfigStr(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameAzBlobFederatedTokenFile,
+        "");
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::GetTenantId(const std::string& mountName)
+{
+    return StorageInterceptConfig::GetOptionalConfigStr(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameAzBlobTenantId,
+        "");
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::GetAuthorityHost(const std::string& mountName)
+{
+    return StorageInterceptConfig::GetOptionalConfigStr(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameAzBlobAuthorityHost,
+        "https://login.microsoftonline.com");
+}
+//---------------------------------------------------------------------------------------------------------------------
 std::string StorageInterceptConfig::GetBlobContainerName(const std::string& mountName)
 {
     return StorageInterceptConfig::GetConfigStr(

@@ -143,13 +143,7 @@ func (p DACSClientPerfSummary) String() string {
 	)
 }
 
-// Regex pattern to extract the performance summary
-var (
-	writePerfRegx = regexp.MustCompile(`DACS_Cache_Client_Test:Wrote (\d+) blobs with total (\d+) bytes .* in ([\d.]+) seconds at ([\d.]+) Gbps`)
-	readPerfRegx  = regexp.MustCompile(`DACS_Cache_Client_Test:Read (\d+) bytes .* in ([\d.]+) seconds at ([\d.]+) Gbps`)
-)
-
-func ParseDACSClientPerfSummary(logs string) (*DACSClientPerfSummary, error) {
+func ParseDACSClientPerfSummary(logs string, writePerfRegx, readPerfRegx *regexp.Regexp) (*DACSClientPerfSummary, error) {
 	// Implementation to parse logs and extract performance metrics
 	matchesWrite := writePerfRegx.FindStringSubmatch(logs)
 	if matchesWrite == nil {

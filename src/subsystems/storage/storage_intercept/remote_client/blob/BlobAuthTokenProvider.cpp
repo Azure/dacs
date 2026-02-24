@@ -114,10 +114,220 @@ void BlobAuthTokenProvider::PerformTokenUpdate(const std::string& mountPath) {
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-// Function to fetch new access token for a given mount path
+// Detect whether to use MSI or Workload Identity based on available config
+TokenFetchMode BlobAuthTokenProvider::DetectTokenFetchMode(const std::string& mountPath)
+{
+    std::string federatedTokenFile = StorageInterceptConfig::GetInstance().GetFederatedTokenFile(mountPath);
+    std::string tenantId = StorageInterceptConfig::GetInstance().GetTenantId(mountPath);
+
+    if (!federatedTokenFile.empty() && !tenantId.empty())
+    {
+        LOG_INFO("Workload identity config detected for mount path: {}", mountPath);
+        return TokenFetchMode::WorkloadIdentity;
+    }
+
+    LOG_INFO("Using MSI token fetch for mount path: {}", mountPath);
+    return TokenFetchMode::MSI;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Function to fetch new access token for a given mount path (dispatches to MSI or Workload Identity)
 TokenInfo BlobAuthTokenProvider::FetchNewAccessToken(const std::string& mountPath)
 {
     LOG_INFO("Fetching new access token for mount path: {}", mountPath);
+
+    TokenFetchMode mode = DetectTokenFetchMode(mountPath);
+
+    if (mode == TokenFetchMode::WorkloadIdentity)
+    {
+        return FetchTokenViaWorkloadIdentity(mountPath);
+    }
+    else
+    {
+        return FetchTokenViaMSI(mountPath);
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Read the projected service account token from the file injected by the AKS workload identity webhook
+std::string BlobAuthTokenProvider::ReadFederatedTokenFile(const std::string& filePath)
+{
+    std::ifstream tokenFile(filePath);
+    if (!tokenFile.is_open())
+    {
+        throw RemoteClientException("WorkloadIdentityError: Failed to open federated token file: " + filePath);
+    }
+
+    std::string token((std::istreambuf_iterator<char>(tokenFile)),
+                       std::istreambuf_iterator<char>());
+
+    // Trim trailing whitespace/newlines
+    while (!token.empty() && (token.back() == '\n' || token.back() == '\r' || token.back() == ' '))
+    {
+        token.pop_back();
+    }
+
+    if (token.empty())
+    {
+        throw RemoteClientException("WorkloadIdentityError: Federated token file is empty: " + filePath);
+    }
+
+    return token;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// URL-encode a string using libcurl
+std::string BlobAuthTokenProvider::UrlEncode(CURL* curl, const std::string& value)
+{
+    char* encoded = curl_easy_escape(curl, value.c_str(), static_cast<int>(value.length()));
+    if (!encoded)
+    {
+        throw RemoteClientException("CurlError: Failed to URL-encode value");
+    }
+    std::string result(encoded);
+    curl_free(encoded);
+    return result;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Common retry helper: executes httpRequestFn on each attempt with exponential backoff + jitter.
+// On HTTP 200, delegates to responseHandlerFn to parse the response and return TokenInfo.
+// On non-retryable errors, throws immediately. On retryable errors, retries up to MAX_RETRIES.
+TokenInfo BlobAuthTokenProvider::ExecuteWithRetry(
+    const std::string& context,
+    std::function<HttpResponse(int attempt)> httpRequestFn,
+    std::function<TokenInfo(const std::string& responseData)> responseHandlerFn)
+{
+    int attempt = 1;
+
+    while (attempt <= MAX_RETRIES)
+    {
+        LOG_INFO("{}: attempt {}/{}", context, attempt, MAX_RETRIES);
+        HttpResponse response = httpRequestFn(attempt);
+
+        if (response.curlCode == CURLE_OK && response.statusCode == 200)
+        {
+            return responseHandlerFn(response.responseData);
+        }
+
+        if (!IsRetryableError(response.curlCode, response.statusCode))
+        {
+            if (response.curlCode == CURLE_OK)
+            {
+                LOG_ERROR("{}: non-retryable HTTP status: {}, response: {}",
+                          context, response.statusCode, response.responseData);
+                throw RemoteClientException(
+                    "TokenFetchError: " + context + " failed with HTTP status: " +
+                    std::to_string(response.statusCode));
+            }
+            else
+            {
+                LOG_ERROR("{}: non-retryable curl error: {} ({})",
+                          context, curl_easy_strerror(response.curlCode), response.curlCode);
+                throw RemoteClientException(
+                    "CurlError: " + context + ": " + std::string(curl_easy_strerror(response.curlCode)));
+            }
+        }
+
+        attempt++;
+        if (attempt > MAX_RETRIES)
+        {
+            LOG_ERROR("{}: max retries {} exhausted", context, MAX_RETRIES);
+            break;
+        }
+
+        // Exponential backoff with jitter
+        LOG_WARN("{}: attempt {} failed, retrying...", context, attempt - 1);
+        auto interval_without_jitter = BASE_DELAY_SEC << attempt;
+        std::uniform_int_distribution<int> dist(1, std::min(MAX_DELAY_SEC, interval_without_jitter));
+        auto interval_with_jitter = std::chrono::seconds(dist(m_rng));
+        LOG_INFO("{}: will retry in {} seconds", context, interval_with_jitter.count());
+        std::this_thread::sleep_for(interval_with_jitter);
+    }
+
+    throw RemoteClientException("TokenFetchError: Max retries reached for " + context);
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Fetch token via AKS Workload Identity (OAuth 2.0 client credentials with federated assertion)
+TokenInfo BlobAuthTokenProvider::FetchTokenViaWorkloadIdentity(const std::string& mountPath)
+{
+    LOG_INFO("Fetching access token via Workload Identity for mount path: {}", mountPath);
+
+    const std::string federatedTokenFile = StorageInterceptConfig::GetInstance().GetFederatedTokenFile(mountPath);
+    const std::string tenantId = StorageInterceptConfig::GetInstance().GetTenantId(mountPath);
+    const std::string clientId = StorageInterceptConfig::GetInstance().GetIdentityClientId(mountPath);
+    const std::string authorityHost = StorageInterceptConfig::GetInstance().GetAuthorityHost(mountPath);
+
+    if (federatedTokenFile.empty() || tenantId.empty() || clientId.empty())
+    {
+        LOG_ERROR("Workload identity config incomplete for mount path: {} "
+                  "(federatedTokenFile={}, tenantId={}, clientId={})",
+                  mountPath,
+                  federatedTokenFile.empty() ? "<empty>" : "<set>",
+                  tenantId.empty() ? "<empty>" : "<set>",
+                  clientId.empty() ? "<empty>" : "<set>");
+        throw RemoteClientException(
+            "ConfigurationError: Workload identity requires azBlobFederatedTokenFile, "
+            "azBlobTenantId, and azBlobIdentityClientId for mount path " + mountPath);
+    }
+
+    // Build the AAD token endpoint URL
+    std::string tokenUrl = authorityHost + "/" + tenantId + "/oauth2/v2.0/token";
+
+    auto httpRequestFn = [&](int attempt) -> HttpResponse
+    {
+        // Re-read the federated token on each attempt (it can be rotated by kubelet)
+        std::string federatedToken = ReadFederatedTokenFile(federatedTokenFile);
+
+        auto encodeCurl = std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>(curl_easy_init(), &curl_easy_cleanup);
+        if (!encodeCurl)
+        {
+            throw RemoteClientException("CurlError: Failed to initialize libcurl for URL encoding");
+        }
+
+        std::string postData =
+            "grant_type=" + UrlEncode(encodeCurl.get(), "client_credentials") +
+            "&client_id=" + UrlEncode(encodeCurl.get(), clientId) +
+            "&client_assertion_type=" + UrlEncode(encodeCurl.get(), "urn:ietf:params:oauth:client-assertion-type:jwt-bearer") +
+            "&client_assertion=" + UrlEncode(encodeCurl.get(), federatedToken) +
+            "&scope=" + UrlEncode(encodeCurl.get(), std::string(STORAGE_RESOURCE) + "/.default");
+
+        return PerformCurlPostRequest(tokenUrl, postData);
+    };
+
+    auto responseHandlerFn = [&](const std::string& responseData) -> TokenInfo
+    {
+        Json::Value jsonResponse;
+        Json::CharReaderBuilder readerBuilder;
+        std::string errors;
+        std::istringstream responseStream(responseData);
+        if (!Json::parseFromStream(readerBuilder, responseStream, &jsonResponse, &errors))
+        {
+            LOG_WARN("Failed to parse workload identity JSON response: {}", errors);
+            throw RemoteClientException("JsonError: Failed to parse workload identity token response");
+        }
+
+        if (!jsonResponse.isMember("access_token") || !jsonResponse.isMember("expires_in"))
+        {
+            LOG_ERROR("Invalid workload identity token response: missing required fields (access_token={}, expires_in={})",
+                      jsonResponse.isMember("access_token") ? "<set>" : "<empty>",
+                      jsonResponse.isMember("expires_in") ? "<set>" : "<empty>");
+            throw RemoteClientException(
+                "TokenFetchError: Invalid workload identity token response: missing required fields");
+        }
+
+        std::string accessToken = jsonResponse["access_token"].asString();
+        int64_t expiresIn = jsonResponse["expires_in"].asInt64();
+        auto expiryTime = std::chrono::system_clock::now() + std::chrono::seconds(expiresIn);
+
+        LOG_INFO("Successfully fetched workload identity access token for mountPath: {} expires in {} seconds",
+                 mountPath, expiresIn);
+        return { accessToken, expiryTime };
+    };
+
+    return ExecuteWithRetry("WorkloadIdentity[" + mountPath + "]", httpRequestFn, responseHandlerFn);
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Fetch token via traditional MSI/IMDS endpoint
+TokenInfo BlobAuthTokenProvider::FetchTokenViaMSI(const std::string& mountPath)
+{
+    LOG_INFO("Fetching new access token via MSI for mount path: {}", mountPath);
 
     std::string msiEndpoint = StorageInterceptConfig::GetInstance().GetMSIEndpoint(mountPath);   
     std::string msiSecret = StorageInterceptConfig::GetInstance().GetMSISecret(mountPath);
@@ -131,76 +341,38 @@ TokenInfo BlobAuthTokenProvider::FetchNewAccessToken(const std::string& mountPat
 
     std::string url = GenerateMSIUrl(msiEndpoint, identityClientId);
 
-    int attempt = 1;
-    TokenInfo tokenInfo;
-
-    while (attempt <= MAX_RETRIES)
+    auto httpRequestFn = [&](int /*attempt*/) -> HttpResponse
     {
-        LOG_INFO("Sending request to MSI endpoint (attempt {}): {}", attempt, url);
-        HttpResponse response = PerformCurlRequestWithHeaders(url, msiSecret);
+        return PerformCurlRequestWithHeaders(url, msiSecret);
+    };
 
-        if (response.curlCode == CURLE_OK && response.statusCode == 200)
+    auto responseHandlerFn = [&](const std::string& responseData) -> TokenInfo
+    {
+        Json::Value jsonResponse;
+        Json::CharReaderBuilder readerBuilder;
+        std::string errors;
+        std::istringstream responseStream(responseData);
+        if (!Json::parseFromStream(readerBuilder, responseStream, &jsonResponse, &errors))
         {
-            // Try to parse and validate token
-            try {
-                Json::Value jsonResponse;
-                Json::CharReaderBuilder readerBuilder;
-                std::string errors;
-                std::istringstream responseStream(response.responseData);
-                if (!Json::parseFromStream(readerBuilder, responseStream, &jsonResponse, &errors))
-                {
-                    LOG_WARN("Failed to parse JSON response: {}", errors);
-                    throw RemoteClientException("JsonError: Failed to parse JSON response");
-                }
-
-                if (!jsonResponse.isMember("access_token") || !jsonResponse.isMember("expires_on"))
-                {
-                    LOG_ERROR("Invalid token response: missing required fields");
-                    throw RemoteClientException("TokenFetchError: Invalid token response: missing required fields");
-                }
-
-                std::string accessToken = jsonResponse["access_token"].asString();
-                int64_t expiresOn = std::stoll(jsonResponse["expires_on"].asString());
-                auto expiryTime = std::chrono::system_clock::time_point(std::chrono::seconds(expiresOn));
-                
-                tokenInfo = { accessToken, expiryTime };
-                LOG_INFO("Successfully fetched new access token for mountPath: {}", mountPath);
-                return tokenInfo;  // Success case - immediately return
-
-            } catch (const std::exception& e) {
-                LOG_ERROR("Failed to process token response: {}", e.what());
-                throw RemoteClientException("TokenFetchError: Failed to process token response: " + std::string(e.what()));
-            }
+            LOG_WARN("Failed to parse MSI JSON response: {}", errors);
+            throw RemoteClientException("JsonError: Failed to parse JSON response");
         }
 
-        if (!IsRetryableError(response.curlCode, response.statusCode))
+        if (!jsonResponse.isMember("access_token") || !jsonResponse.isMember("expires_on"))
         {
-            if (response.curlCode == CURLE_OK) {
-                LOG_ERROR("Received non-retryable HTTP status code: {}", response.statusCode);
-                throw RemoteClientException("TokenFetchError: Unexpected HTTP status code: " + std::to_string(response.statusCode));
-            } else {
-                LOG_ERROR("Non-retryable curl error: {} ({})", curl_easy_strerror(response.curlCode), response.curlCode);
-                throw RemoteClientException("CurlError: " + std::string(curl_easy_strerror(response.curlCode)));
-            }
+            LOG_ERROR("Invalid MSI token response: missing required fields");
+            throw RemoteClientException("TokenFetchError: Invalid token response: missing required fields");
         }
 
-        attempt++;       
-        if (attempt > MAX_RETRIES)
-        {
-            LOG_ERROR("Max retries {} reached for fetching token from MSI endpoint: {}", MAX_RETRIES, msiEndpoint);
-            break;
-        }
+        std::string accessToken = jsonResponse["access_token"].asString();
+        int64_t expiresOn = std::stoll(jsonResponse["expires_on"].asString());
+        auto expiryTime = std::chrono::system_clock::time_point(std::chrono::seconds(expiresOn));
 
-        // Exponential backoff with jitter
-        LOG_WARN("Token fetch attempt {} failed, retrying...", attempt-1);
-        auto interval_without_jitter = BASE_DELAY_SEC << attempt;
-        std::uniform_int_distribution<int> dist(1, std::min(MAX_DELAY_SEC, interval_without_jitter));
-        auto interval_with_jitter = std::chrono::seconds(dist(m_rng));
-        LOG_INFO("Will retry in {} seconds", interval_with_jitter.count());
-        std::this_thread::sleep_for(interval_with_jitter);
-    }
+        LOG_INFO("Successfully fetched MSI access token for mountPath: {}", mountPath);
+        return { accessToken, expiryTime };
+    };
 
-    throw RemoteClientException("TokenFetchError: Max retries reached for fetching token from MSI endpoint");
+    return ExecuteWithRetry("MSI[" + mountPath + "]", httpRequestFn, responseHandlerFn);
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -350,6 +522,56 @@ HttpResponse BlobAuthTokenProvider::PerformCurlRequestWithHeaders(const std::str
     curl_easy_cleanup(curl);
 
     LOG_INFO("CURL response code: {}, http status code: {}", response.curlCode, response.statusCode);
+    return response;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Function to perform a POST request (used for workload identity token exchange)
+HttpResponse BlobAuthTokenProvider::PerformCurlPostRequest(const std::string& url, const std::string& postData)
+{
+    HttpResponse response = {CURLE_OK, 0, ""};
+    std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> curl(curl_easy_init(), &curl_easy_cleanup);
+    if (!curl)
+    {
+        throw RemoteClientException("CurlError: Failed to initialize libcurl");
+    }
+
+    curl_easy_setopt(curl.get(), CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl.get(), CURLOPT_POST, 1L);
+    curl_easy_setopt(curl.get(), CURLOPT_POSTFIELDS, postData.c_str());
+    curl_easy_setopt(curl.get(), CURLOPT_POSTFIELDSIZE, static_cast<long>(postData.length()));
+
+    // SSL configuration
+    if (!m_enableSSLVerification)
+    {
+        LOG_INFO("SSL verification is disabled");
+        curl_easy_setopt(curl.get(), CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl.get(), CURLOPT_SSL_VERIFYHOST, 0L);
+    }
+
+    curl_easy_setopt(curl.get(), CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl.get(), CURLOPT_MAXREDIRS, 5L);
+    curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT, HTTP_TIMEOUT_SECONDS);
+    curl_easy_setopt(curl.get(), CURLOPT_CONNECTTIMEOUT, CONNECTION_TIMEOUT_SECONDS);
+
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
+    if (!headers)
+    {
+        // unique_ptr will handle cleanup
+        throw RemoteClientException("CurlError: Failed to create header list");
+    }
+
+    curl_easy_setopt(curl.get(), CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &response.responseData);
+
+    response.curlCode = PerformCurlRequest(curl.get());
+    response.statusCode = GetStatusCode(curl.get());
+
+    curl_slist_free_all(headers);
+    // unique_ptr will handle cleanup
+
+    LOG_INFO("CURL POST response code: {}, http status code: {}", response.curlCode, response.statusCode);
     return response;
 }
 //---------------------------------------------------------------------------------------------------------------------

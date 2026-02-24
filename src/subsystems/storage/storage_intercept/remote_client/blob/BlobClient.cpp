@@ -133,6 +133,14 @@ void BlobClient::GetConfigProperties()
         m_isTokenFetchEnabled = true;
     }
 
+    // Also enable token fetch for workload identity (federated token file + tenant ID + client ID)
+    if (StorageInterceptConfig::GetInstance().GetFederatedTokenFile(m_strMountName).length() != 0 &&
+        StorageInterceptConfig::GetInstance().GetTenantId(m_strMountName).length() != 0 &&
+        StorageInterceptConfig::GetInstance().GetIdentityClientId(m_strMountName).length() != 0)
+    {
+        m_isTokenFetchEnabled = true;
+    }
+
     if (m_bIsDynamicAccount)
     {
         if (StorageInterceptConfig::GetInstance().GetStorageSASToken(m_strMountName).length() != 0)

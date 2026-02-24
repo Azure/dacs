@@ -8,7 +8,7 @@ import (
 // DACSCacheClientYAML is the path to the dacs cache client job fixture.
 const DACSCacheClientYAML = "dacs_cacheclient_job.yaml"
 
-//go:embed iperf-server.yaml iperf-client.yaml perf-client.yaml dacs_cacheclient_job.yaml perf-client-serviceaccount.yaml
+//go:embed iperf-server.yaml iperf-client.yaml perf-client.yaml dacs_cacheclient_job.yaml perf-client-serviceaccount.yaml mpi-job.yaml
 var fs embed.FS
 
 // ReadIperfServer reads the iperf server pod fixture.
@@ -34,4 +34,9 @@ func ReadDACSCacheClientJob() ([]byte, error) {
 // ReadPerfClientServiceAccount reads the perf client service account fixture for workload identity.
 func ReadPerfClientServiceAccount() ([]byte, error) {
 	return fs.ReadFile("perf-client-serviceaccount.yaml")
+}
+
+// ReadMPIJob reads the MPIJob from fixture
+func ReadMPIJob() ([]byte, error) {
+	return fs.ReadFile("mpi-job.yaml")
 }

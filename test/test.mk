@@ -66,7 +66,7 @@ COMPUTED_LABEL_FILTER := $(if $(TEST_FILTER),($(TEST_FILTER))$(if $(BASE_LABEL_F
 EXTRA_TEST_ARGS ?=
 
 .PHONY: test-e2e
-test-e2e: ginkgo kubectl ## Run tests against cluster. Use TEST_FILTER to filter by label.
+test-e2e: ginkgo kubectl mpi-operator ## Run tests against cluster. Use TEST_FILTER to filter by label.
 	$(call run_e2e_tests,$(COMPUTED_LABEL_FILTER),./test/perf ./test/e2e)
 
 define run_e2e_tests
@@ -75,6 +75,16 @@ GIT_COMMIT=$(GIT_COMMIT) GIT_BRANCH=$(GIT_BRANCH) PATH=$(LOCALBIN):$$PATH $(GINK
 endef
 
 ##@ Test Dependencies
+
+.PHONY: mpi-operator
+mpi-operator: $(KUBECTL)
+	@echo "Install MPI Operator..."
+	@$(KUBECTL) apply --server-side -f https://raw.githubusercontent.com/kubeflow/mpi-operator/v0.8.0/deploy/v2beta1/mpi-operator.yaml
+	# Check the return status of the kubectl command to ensure it succeeded
+	@if [ $$? -ne 0 ]; then \
+		echo "Failed to install MPI Operator"; \
+		exit 1; \
+	fi
 
 .PHONY: ginkgo
 ginkgo: $(GINKGO) ## Download ginkgo locally if necessary.
@@ -108,7 +118,7 @@ get-support-bundle: support-bundle ## Collect support bundle from the cluster.
 		-o $(if $(SUPPORT_BUNDLE_OUTPUT),$(SUPPORT_BUNDLE_OUTPUT),$(SUPPORT_BUNDLE_OUTPUT_DIR)/support-bundle.tar.gz)
 	@tar -xvf $(if $(SUPPORT_BUNDLE_OUTPUT),$(SUPPORT_BUNDLE_OUTPUT),$(SUPPORT_BUNDLE_OUTPUT_DIR)/support-bundle.tar.gz) -C $(SUPPORT_BUNDLE_OUTPUT_DIR)
 	@echo "Collecting Kubernetes events..."
-	@kubectl get events --all-namespaces -o wide --sort-by='.lastTimestamp' > $(SUPPORT_BUNDLE_OUTPUT_DIR)/events.txt || echo "Failed to collect events" > $(SUPPORT_BUNDLE_OUTPUT_DIR)/events.txt
+	@$(KUBECTL) get events --all-namespaces -o wide --sort-by='.lastTimestamp' > $(SUPPORT_BUNDLE_OUTPUT_DIR)/events.txt || echo "Failed to collect events" > $(SUPPORT_BUNDLE_OUTPUT_DIR)/events.txt
 	@rm -f $(if $(SUPPORT_BUNDLE_OUTPUT),$(SUPPORT_BUNDLE_OUTPUT),$(SUPPORT_BUNDLE_OUTPUT_DIR)/support-bundle.tar.gz)
 
 # Support bundle CLI version

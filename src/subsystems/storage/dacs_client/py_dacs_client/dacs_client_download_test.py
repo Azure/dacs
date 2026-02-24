@@ -5,6 +5,7 @@
 import argparse
 import asyncio
 import os
+import shutil
 import sys
 import time
 from py_dacs_client.dacs_utils import logger
@@ -32,8 +33,12 @@ def download_remote_blobs_to_disk_test(azBlobDirPath: str, localDownloadPath: st
     if not os.path.exists(localDownloadPath):
         os.makedirs(localDownloadPath)
     else:
-        os.system(f"rm -rf {localDownloadPath}/*")
-
+        for filename in os.listdir(localDownloadPath):
+            file_path = os.path.join(localDownloadPath, filename)
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.unlink(file_path)
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)
     download_remote_blobs_to_disk(azBlobDirPath, localDownloadPath)
 
 
