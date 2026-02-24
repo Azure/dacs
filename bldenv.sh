@@ -61,6 +61,17 @@ echo "AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-not set}"
 echo "USER_VM_AZURE_CLIENT_ID: ${USER_VM_AZURE_CLIENT_ID:-not set}"
 echo "========================================================"
 
+# Auto-detect InfiniBand devices for RDMA support
+IB_DEVICES=""
+IB_EXTRA_FLAGS=""
+if [ -d /dev/infiniband ]; then
+    echo "InfiniBand devices detected, enabling RDMA support"
+    for dev in /dev/infiniband/*; do
+        IB_DEVICES="${IB_DEVICES} --device ${dev}"
+    done
+    IB_EXTRA_FLAGS="--network=host --cap-add=IPC_LOCK --ulimit memlock=-1:-1 -v /sys/class/infiniband:/sys/class/infiniband:ro"
+fi
+
 docker run \
     --rm \
     -i \
@@ -80,4 +91,6 @@ docker run \
     -v $DIR:/workspaces/$WORKSPACE_NAME \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -w /workspaces/$WORKSPACE_NAME \
+    $IB_DEVICES \
+    $IB_EXTRA_FLAGS \
     $nativeBuildImage $CMD
