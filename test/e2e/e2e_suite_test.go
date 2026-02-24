@@ -17,7 +17,9 @@ import (
 
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
 	"github.com/Azure/dacs/test/pkg/common"
-	e2eflags "github.com/Azure/dacs/test/pkg/flux/e2e"
+
+	// For sake of cacheintegration pipeline we are pointing to perf options
+	e2eflags "github.com/Azure/dacs/test/pkg/flux/perf"
 	"github.com/Azure/dacs/test/pkg/logger"
 )
 

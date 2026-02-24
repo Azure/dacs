@@ -1,0 +1,131 @@
+apiVersion: kubeflow.org/v2beta1
+kind: MPIJob
+metadata:
+  name: cacheclient
+spec:
+  runPolicy:
+    backoffLimit: 2
+    cleanPodPolicy: None
+    ttlSecondsAfterFinished: 300
+  mpiReplicaSpecs:
+    Launcher:
+      replicas: 1
+      restartPolicy: Never
+      template:
+        metadata:
+          labels:
+            dacs.azure.com/test-pod: "true"
+        spec:
+          containers:
+          - name: launcher
+            image: cache-test-client:latest
+            imagePullPolicy: IfNotPresent
+            env:
+            - name: OMPI_ALLOW_RUN_AS_ROOT
+              value: "1"
+            - name: OMPI_ALLOW_RUN_AS_ROOT_CONFIRM
+              value: "1"
+            - name: CACHE_SERVER_PORT
+              value: "9065"
+            - name: CACHE_SERVER_LIST
+              value: "cacheserver-0.cacheserver.cache-server.svc.cluster.local#cacheserver-1.cacheserver.cache-server.svc.cluster.local#cacheserver-2.cacheserver.cache-server.svc.cluster.local"
+            - name: SI_cacheKeyExpirySeconds
+              value: "1200"
+            - name: JOB_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['training.kubeflow.org/job-name']
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            command: ["/bin/bash", "-lc"]
+            args:
+              - |
+                set -uo pipefail
+                echo "Waiting for DNS to resolve CACHE_SERVER_LIST..."
+                IFS='#' read -ra HOSTS <<< "${CACHE_SERVER_LIST}"
+                resolve_once() {
+                  local h="$1"
+                  # Try multiple resolvers for robustness
+                  ssh "$h" "echo 'Connected to $h'" >/dev/null
+                  # getent hosts "$h" >/dev/null 2>&1
+                }
+                wait_all() {
+                  local ok=0
+                  local service_prefix=${JOB_NAME}-worker
+                  local service_suffix=${JOB_NAME}.${POD_NAMESPACE}.svc
+                  for worker_index in $(seq 0 0); do
+                    local name=$service_prefix-${worker_index}.$service_suffix
+                    if ! resolve_once "$name"; then
+                      echo "DNS not ready for $name"
+                      ok=1
+                    else
+                      echo "Resolved $name"
+                    fi
+                  done
+                  return $ok
+                }
+                attempts=60
+                sleep_between=5
+                all_resolved=false
+                for i in $(seq 1 "$attempts"); do
+                  if wait_all; then
+                    echo "All cache servers resolved."
+                    all_resolved=true
+                    break
+                  fi
+                  echo "Attempt $i/$attempts: retrying in ${sleep_between}s..."
+                  sleep "$sleep_between"
+                done
+                if ! $all_resolved; then
+                  echo "ERROR: DNS resolution failed after ${attempts} attempts" >&2
+                  exit 1
+                fi
+                sleep 10
+
+                exec mpirun \
+                  -x AZURE_CLIENT_ID \
+                  -x CACHE_SERVER_LIST \
+                  -x CACHE_SERVER_PORT \
+                  -x SI_cacheKeyExpirySeconds \
+                  -x POD_NAME \
+                  --tag-output \
+                  --merge-stderr-to-stdout \
+                  -n 1 \
+                  /bin/bash -c 'cd /app && python3 -m py_dacs_client.dacs_client_test --azBlobDirPath az://storageaccount.blob.core.windows.net/test-data/${POD_NAME}-rank-${OMPI_COMM_WORLD_RANK} --nBlobs 10 --blobSizeToBeRead 1073741824'
+    Worker:
+      replicas: 1
+      template:
+        spec:
+          restartPolicy: Never
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+              - labelSelector:
+                  matchExpressions:
+                  - key: training.kubeflow.org/job-name
+                    operator: In
+                    values:
+                    - cacheclient
+                topologyKey: kubernetes.io/hostname
+          containers:
+          - name: worker
+            image: cache-test-client:latest
+            imagePullPolicy: Always
+            env:
+            - name: OMPI_ALLOW_RUN_AS_ROOT
+              value: "1"
+            - name: OMPI_ALLOW_RUN_AS_ROOT_CONFIRM
+              value: "1"
+            - name: JOB_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['training.kubeflow.org/job-name']
+            ports:
+            - name: ssh
+              containerPort: 2222

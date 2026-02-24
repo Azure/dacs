@@ -11,6 +11,8 @@ import time
 from ctypes import memset  # Added for fast buffer initialization
 from py_dacs_client.dacs_utils import alloc_buffer, logger, release_buffer
 from py_dacs_client.dacs_client import DACSCacheClient, DACSCacheFileHandle
+from mpi4py import MPI
+import socket
 
 
 def run_all_tasks(tasks: list[asyncio.Task]) -> None:
@@ -52,11 +54,9 @@ def perf_test_read(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobSi
     # Read the blobs
     read_tasks = []
 
-    async def read_blob_async(dacs_client_instance: DACSCacheClient, blob_path: str) -> None:
+    async def read_blob_async(dacs_client_instance: DACSCacheClient, blob_path: str, blob_size: int) -> None:
 
         nonlocal total_bytes_read
-        # Use the size from blob_dict
-        blob_size = blob_dict[i]["size"]
         # Allocate buffer for reading
         buffer = alloc_buffer(blob_size)
         if not buffer:
@@ -72,7 +72,8 @@ def perf_test_read(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobSi
 
     for i in range(nBlobs):
         blob_path = os.path.join(azBlobDirPath, blob_dict[i]["name"])
-        read_tasks.append(read_blob_async(dacs_client_instance, blob_path))
+        blob_size = blob_dict[i]["size"]
+        read_tasks.append(read_blob_async(dacs_client_instance, blob_path, blob_size))
 
     run_all_tasks(read_tasks)
     end_time = time.time()
@@ -121,7 +122,7 @@ def perf_test_write(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobS
 
     # Open file handles for each blob
     start_time = time.time()
-    write_file_handles = []
+    write_file_handles = [None] * nBlobs
     open_tasks = []
     for i in range(nBlobs):
         blob_name = f"testWrite_{i}_{blobNamePattern}"
@@ -130,14 +131,15 @@ def perf_test_write(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobS
         async def open_file_handle_async(
             dacs_client_instance: DACSCacheClient,
             blob_path: str,
+            index: int,
         ) -> None:
             file_handle = await dacs_client_instance.get_file_handle(
                 blob_path, os.O_CREAT | os.O_WRONLY | os.O_EXCL
             )
-            write_file_handles.append(file_handle)
+            write_file_handles[index] = file_handle
             logger.info(f"Opened file handle for blob {blob_path}")
 
-        open_tasks.append(open_file_handle_async(dacs_client_instance, blob_path))
+        open_tasks.append(open_file_handle_async(dacs_client_instance, blob_path, i))
 
     run_all_tasks(open_tasks)
     open_handles_time = time.time() - start_time
@@ -172,13 +174,24 @@ def perf_test_write(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobS
                 )
             total_bytes_written += bytes_written
             # Release the buffer after closing the file handle
-            await file_handle.__aexit__(None, None, None)
-            release_buffer(buffer)
+            try:
+                await file_handle.__aexit__(None, None, None)
+            except Exception as e:
+                # Bubble up the error so the caller can decide.
+                logger.error(f"Error closing file handle for blob {blob_path}: {e}")
+                raise
+            finally:
+                release_buffer(buffer)
             logger.info(f"Completed writing blob {blob_path}, total size: {bytes_written} bytes")
 
         write_tasks.append(write_blob_async(dacs_client_instance, write_file_handles[i], buffer, blobSize))
 
-    run_all_tasks(write_tasks)
+    # If any file handle close fails, stop and return to caller
+    try:
+        run_all_tasks(write_tasks)
+    except Exception as e:
+        logger.fatal(f"Write tasks failed: {e}")
+        return None
     end_time = time.time()
     write_and_close_elapsed = end_time - start
     uploadSpeedMBps = (
@@ -214,8 +227,25 @@ if __name__ == "__main__":
         f"\n\nDACS_Cache_Client_Test:Starting Perf test with nBlobs:{args.nBlobs} azBlobDirPath:{args.azBlobDirPath} blobNamePattern:{args.blobNamePattern}\n\n"
     )
 
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    host = socket.gethostname()
+
+    time.sleep(rank * 3) # staggered start to reduce contention
+    logger.info(f"Ready to run test on host: {host}")
+
+    # Logical synchronization
+    comm.Barrier()
+
+    test_start_time = MPI.Wtime()
+    logger.info(f"Starting test on {host} at time {test_start_time}")
+
     if not args.readOnly:
-        perf_test_write(args.nBlobs, args.azBlobDirPath, args.blobNamePattern, args.blobSizeToBeRead, args.writeMode)
+        try: 
+            perf_test_write(args.nBlobs, args.azBlobDirPath, args.blobNamePattern, args.blobSizeToBeRead, args.writeMode)
+        except Exception as e:
+            logger.fatal(f"Write test failed: {e}")
+            sys.exit(1)
 
         # sleep for a while to allow async uploads to complete if any
         async_upload_wait_time = os.environ.get("ASYNC_UPLOAD_WAIT_TIME_SECONDS", "20")
@@ -225,3 +255,6 @@ if __name__ == "__main__":
         f"\n\nDACS_Cache_Client_Test:Starting Read back test with nBlobs:{args.nBlobs} azBlobDirPath:{args.azBlobDirPath} blobNamePattern:{args.blobNamePattern}\n\n"
     )
     perf_test_read(args.nBlobs, args.azBlobDirPath, args.blobNamePattern, args.blobSizeToBeRead)
+
+    test_end_time = MPI.Wtime()
+    logger.info(f"Completed test on {host} at time {test_end_time} elapsed seconds: {test_end_time - test_start_time}\n\n")

@@ -28,7 +28,10 @@ RUN apt-get update && \
     vim \
     libboost-program-options-dev \
     libboost-system1.74-dev \
-    libxxhash0 && \
+    libxxhash0 \
+    libopenmpi-dev \
+    openssh-client \
+    openssh-server && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get clean
 
@@ -38,7 +41,8 @@ RUN pip3 install --no-cache-dir \
     blobfile \
     boostedblob \
     azure-storage-blob \
-    azure-identity
+    azure-identity \
+    mpi4py
 
 # Install azcopy
 RUN wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb && \
@@ -48,6 +52,20 @@ RUN wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-p
     rm -rf /var/lib/apt/lists/* && \
     apt-get clean && \
     rm -f packages-microsoft-prod.deb
+
+# Generate SSH host keys
+RUN ssh-keygen -A
+
+# SSH server config (MPI expects 2222)
+RUN echo "Port 2222" >> /etc/ssh/sshd_config \
+    && echo "StrictModes no" >> /etc/ssh/sshd_config
+
+# SSH client config (for mpirun -> ssh)
+RUN printf "Host *\n\
+    StrictHostKeyChecking no\n\
+    Port 2222\n" > /etc/ssh/ssh_config
+
+RUN mkdir -p /run/sshd
 
 # Create app directories
 RUN mkdir -p /app/mounts /app/lib /app/_cache /app/_cacheTemp

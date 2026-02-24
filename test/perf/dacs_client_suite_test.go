@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Azure/dacs/test/pkg/common"
+	"github.com/Azure/dacs/test/pkg/kube/pod"
 	"github.com/Azure/dacs/test/pkg/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -26,20 +27,12 @@ import (
 
 var testMultipleDACSClients = func(ctx context.Context) {
 	var count int
-	var storageAccount string
 	flag.Parse()
 	err := validateWriteMode(opts.WriteMode)
 	Expect(err).ShouldNot(HaveOccurred(), "Invalid write mode provided")
 
-	storageAccount = opts.StorageAccount
-	if storageAccount == "" {
-		// Fallback to read from environment variable
-		storageAccount = os.Getenv("STORAGE_ACCOUNT")
-	}
+	opts.ResolveDefaults(ctx)
 
-	if storageAccount == "" {
-		Fail("Storage account name must be provided via -storageAccount flag (OR) setting STORAGE_ACCOUNT environment variable")
-	}
 	// Build K8s client
 	k8sClient := getK8sClientOrDie()
 	now := time.Now().Format(time.RFC3339)
@@ -54,41 +47,49 @@ var testMultipleDACSClients = func(ctx context.Context) {
 		Expect(err).ShouldNot(HaveOccurred(), "Failed to get node list from cluster")
 		count = len(nodeList.Items)
 	}
+
 	config := &CacheClientConfig{
-		k8sClient:            k8sClient,
-		count:                count,
-		cacheServerNamespace: common.DEFAULT_CACHESERVER_NAMESPACE,
-		cacheClientImage:     getDefaultImage(),
-		storageAccountName:   storageAccount,
-		containerName:        containerNamePrefix + now,
-		blobCount:            opts.BlobCount,
-		blobSize:             opts.BlobSize,
-		writeMode:            opts.WriteMode,
+		k8sClient:                k8sClient,
+		workloadIdentityClientID: opts.WorkloadIdentityClientID,
+		serviceAccountName:       opts.WorkloadIdentitySA,
+		count:                    count,
+		cacheServerNamespace:     common.DEFAULT_CACHESERVER_NAMESPACE,
+		cacheClientImage:         getDefaultImage(),
+		storageAccountName:       opts.StorageAccount,
+		containerName:            containerNamePrefix + now,
+		blobCount:                opts.BlobCount,
+		blobSize:                 opts.BlobSize,
+		writeMode:                opts.WriteMode,
 	}
 
 	config.dacsClientTestSuite(ctx)
 }
 
-var _ = PDescribe("Multiple DACS Clients E2E Tests", Label("dacsclients", "perf", "aks"), Ordered, func() {
+var _ = Describe("Multiple DACS Clients E2E Tests", Label("dacsclients", "perf", "aks"), Ordered, func() {
 	Context("Multiple DACS Clients Test Suite", Label("dacsclients"), func() {
 		BeforeAll(func(ctx context.Context) {
 			Eventually(func(g Gomega) {
+				// Wait for pods to come into running state
+				cmd := exec.CommandContext(ctx, "kubectl", "get", "pod", "-o", "jsonpath='{.items[*].metadata.name},'", "-n", "mpi-operator")
+				output, err := utils.RunOutput(cmd)
+				g.Expect(err).ShouldNot(HaveOccurred(), "Failed to get mpi-operator pods")
+				podNames := strings.Split(strings.Trim(output, "'"), ",")
+				for _, podName := range podNames {
+					if strings.TrimSpace(podName) == "" {
+						continue
+					}
+					phase, err := pod.GetPhase(ctx, podName, "mpi-operator")
+					g.Expect(err).ShouldNot(HaveOccurred(), "Failed to get phase for pod %s in mpi-operator namespace", podName)
+					g.Expect(phase).To(Equal("Running"), "Pod %s in mpi-operator namespace is not running", podName)
+				}
+			}).WithContext(ctx).WithTimeout(defaultWaitTime).WithPolling(5*time.Second).Should(Succeed(), "mpi-operator pods should come to running state")
+
+			Eventually(func(g Gomega) {
 				// Create namespace for cacheclients
 				cmd := exec.CommandContext(ctx, "kubectl", "get", "ns", cacheClientNs)
-				if _, err := utils.Run(cmd); err != nil {
-					cmd := exec.CommandContext(ctx, "kubectl", "create", "ns", cacheClientNs)
-					_, err := utils.Run(cmd)
-					g.Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
-				}
+				_, err := utils.Run(cmd)
+				g.Expect(err).ShouldNot(HaveOccurred(), "Failed to check existence of %s namespace", cacheClientNs)
 			}).WithContext(ctx).Should(Succeed(), "Namespace creation failed or namespace not found")
-
-			DeferCleanup(func(ctx context.Context) {
-				Eventually(func(g Gomega, ctx context.Context) {
-					cmd := exec.CommandContext(ctx, "kubectl", "delete", "ns", cacheClientNs, "--ignore-not-found", "--wait")
-					_, err := utils.Run(cmd)
-					g.Expect(err).NotTo(HaveOccurred(), "Failed to delete namespace")
-				}).WithContext(ctx).Should(Succeed(), "Namespace deletion failed")
-			})
 		})
 
 		It("Should run multiple dacs cache clients performing writes", testMultipleDACSClients)

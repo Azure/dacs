@@ -114,6 +114,7 @@ class _FileHandleManager:
             if ret < 0:
                 error_message = os.strerror(ctypes.get_errno())
                 logger.error(f"Failed to close file handle {filehandle}: {error_message}")
+                raise OSError(ctypes.get_errno(), f"Failed to close file handle: {error_message}")
         return
 
     async def clear_file_handle_entries(self) -> None:
@@ -250,6 +251,7 @@ class DACSCacheFileHandle:
                 logger.debug(f"DACSCacheFileHandle: Released file handle {self.fd} for {self.pathname}")
             except Exception as e:
                 logger.warning(f"Error releasing file handle {self.fd} for {self.pathname}: {e}")
+                raise handle_native_error(e, operation="close", path=self.pathname) from e
             finally:
                 self.fd = None
 

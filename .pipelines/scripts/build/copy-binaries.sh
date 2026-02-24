@@ -57,12 +57,6 @@ for f in "$PY_DACS_CLIENT_PATH"/*.py; do
     [ -f "$f" ] && cp "$f" "$PY_DACS_CLIENT/"
 done
 
-# Copy sample directory
-if [ -d "$PY_DACS_CLIENT_PATH/sample" ]; then
-    echo "Copying sample directory..."
-    cp -r "$PY_DACS_CLIENT_PATH/sample" "$PY_DACS_CLIENT/sample/"
-fi
-
 # Summary
 echo ""
 echo "Binaries copied successfully to $DOCKER_STORAGE"

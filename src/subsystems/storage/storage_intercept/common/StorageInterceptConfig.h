@@ -101,6 +101,9 @@ class StorageInterceptConfig
         std::string GetMSIEndpoint(const std::string& mountName);
         std::string GetMSISecret(const std::string& mountName);
         std::string GetIdentityClientId(const std::string& mountName);
+        std::string GetFederatedTokenFile(const std::string& mountName);
+        std::string GetTenantId(const std::string& mountName);
+        std::string GetAuthorityHost(const std::string& mountName);
         std::string GetStorageEndpointUrl(const std::string& mountName);
         std::string GetBlobContainerName(const std::string& mountName);
         bool IsDynamicAccountMount(const std::string& mountName);

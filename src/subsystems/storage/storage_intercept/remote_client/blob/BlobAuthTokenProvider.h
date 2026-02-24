@@ -12,7 +12,15 @@
 #include <curl/curl.h> 
 #include <sstream>
 #include <future>
+#include <fstream>
+#include <functional>
 #include <jsoncpp/json/json.h>
+
+enum class TokenFetchMode
+{
+    MSI,              // Traditional managed identity via MSI endpoint (IMDS)
+    WorkloadIdentity  // AKS workload identity via federated token exchange
+};
 
 struct TokenInfo
 {
@@ -42,10 +50,23 @@ private:
     bool IsTokenExpired(TokenInfo& tokenInfo);
     bool IsTokenNearingExpiry(TokenInfo& tokenInfo);
     TokenInfo FetchNewAccessToken(const std::string& mountPath);
+    TokenInfo FetchTokenViaMSI(const std::string& mountPath);
+    TokenInfo FetchTokenViaWorkloadIdentity(const std::string& mountPath);
+    TokenFetchMode DetectTokenFetchMode(const std::string& mountPath);
+    static std::string ReadFederatedTokenFile(const std::string& filePath);
+    static std::string UrlEncode(CURL* curl, const std::string& value);
     void PerformTokenUpdate(const std::string& mountPath);
+
+    // Common retry helper: executes httpRequestFn on each attempt, then responseHandlerFn on success.
+    // httpRequestFn(attempt) returns HttpResponse. responseHandlerFn(responseData) returns TokenInfo.
+    TokenInfo ExecuteWithRetry(
+        const std::string& context,
+        std::function<HttpResponse(int attempt)> httpRequestFn,
+        std::function<TokenInfo(const std::string& responseData)> responseHandlerFn);
     virtual CURLcode PerformCurlRequest(CURL* curl); 
     virtual long GetStatusCode(CURL* curl);
     HttpResponse PerformCurlRequestWithHeaders(const std::string& url, const std::string& msiSecret);
+    HttpResponse PerformCurlPostRequest(const std::string& url, const std::string& postData);
 
 
     static std::string GenerateMSIUrl(const std::string& msiEndpoint, const std::string& identityClientId);

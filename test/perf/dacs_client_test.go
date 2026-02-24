@@ -11,6 +11,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Azure/dacs/test/pkg/cluster"
@@ -18,31 +21,35 @@ import (
 	"github.com/Azure/dacs/test/pkg/common/fixtures"
 	"github.com/Azure/dacs/test/pkg/git"
 	"github.com/Azure/dacs/test/pkg/helm"
-	jobhelper "github.com/Azure/dacs/test/pkg/kube/job"
+	"github.com/Azure/dacs/test/pkg/kube/mpi"
 	"github.com/Azure/dacs/test/pkg/kube/node"
-	podhelper "github.com/Azure/dacs/test/pkg/kube/pod"
 	"github.com/Azure/dacs/test/pkg/kube/secret"
 	"github.com/Azure/dacs/test/pkg/kusto"
 	perf "github.com/Azure/dacs/test/pkg/perfsummary"
 	"github.com/Azure/dacs/test/pkg/utils"
+	"github.com/kubeflow/mpi-operator/pkg/apis/kubeflow/v2beta1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"go.yaml.in/yaml/v3"
 	appsv1 "k8s.io/api/apps/v1"
-	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 )
 
 var (
-	cacheClientNs       = "dacs-clients"
+	// Note: To resolve authentication issue in pipeline, test must run in cache-server namespace
+	cacheClientNs       = "cache-server"
 	containerNamePrefix = "dacs-perf-"
 	defaultWaitTime     = 2 * time.Minute
+	// Install latest version
+	mpiOperatorPath = "https://raw.githubusercontent.com/kubeflow/mpi-operator/master/deploy/v2beta1/mpi-operator.yaml"
 )
 
 // CacheClient holds information required to deploy cacheclient
 type CacheClientConfig struct {
-	k8sClient client.Client // Kubernetes client to interact with cluster
+	k8sClient                client.Client // Kubernetes client to interact with cluster
+	workloadIdentityClientID string        // Client ID of the Azure managed identity to be used for workload identity auth (if applicable)
+	serviceAccountName       string        // Kubernetes ServiceAccount name to be used for workload identity (if applicable)
 
 	count                int    // Number of dacs clients to deploy
 	cacheServerNamespace string // Namespace where cacheservers are deployed
@@ -68,13 +75,10 @@ func (config *CacheClientConfig) dacsClientTestSuite(ctx context.Context) {
 }
 
 func (config *CacheClientConfig) dacsClientTest(ctx context.Context, testName string) {
-	// Read the job fixture file and modify it to create multiple dacs clients
-	jobData, err := fixtures.ReadDACSCacheClientJob()
-	Expect(err).NotTo(HaveOccurred(), "Failed to read cacheclient job fixture file")
-
-	var job batchv1.Job
-	err = yaml.Unmarshal(jobData, &job)
-	Expect(err).ShouldNot(HaveOccurred(), "Failed to unmarshal cacheclient job fixture")
+	mpiJobName := fmt.Sprintf("dacs-client-mpi-%d", config.count)
+	// Read MPI job fixture and modify accordingly
+	mpiJob, err := mpi.LoadMPIJob(fixtures.ReadMPIJob)
+	Expect(err).ShouldNot(HaveOccurred(), "Failed to load MPI job fixture")
 
 	cacheServerList, err := config.getCacheServerList()
 	Expect(err).ShouldNot(HaveOccurred(), "Failed to get cacheserver list for cacheclient job")
@@ -82,39 +86,67 @@ func (config *CacheClientConfig) dacsClientTest(ctx context.Context, testName st
 	accessEnvKey, accessEnvValue, err := config.getStorageAccessEnv()
 	Expect(err).ShouldNot(HaveOccurred(), "Failed to get storage access key/value for cacheclient job")
 
-	// Update the job with following details
-	// 1. Update the namespace
-	// 2. Set completions and parallelism to config.CountLabels
-	// 3. Update the PodAntiAffinity to spread across nodes
-	jobConfig := jobhelper.NewJobConfig(&job).
-		WithName(fmt.Sprintf("dacs-clients-%d", config.count)).
-		WithNamespace(cacheClientNs).
-		WithParallelism(int32(config.count)).
-		WithCompletions(int32(config.count)).
-		WithMatchLabels(map[string]string{"app": "write-cache-client"}).
-		WithRestartPolicy(corev1.RestartPolicyNever).
-		WithPodAntiAffinity().
-		WithImage(config.cacheClientImage).
-		WithEnv(0, "AZURE_STORAGE_ACCOUNT_NAME", config.storageAccountName).
-		WithEnv(0, "CACHE_SERVER_LIST", cacheServerList).
-		WithEnv(0, "CACHE_SERVER_PORT", "9065").
-		WithCommandArgs(0, []string{config.getDACSCacheClientCommandArgs()}).
-		WithEnvDownwardAPIPodName()
+	// Wait for any existing mpijob with the same name to be deleted before creating a new one
+	By("Waiting for any existing mpijob with the same name to be deleted")
+	_, err = utils.Run(exec.CommandContext(ctx, "kubectl", "delete", "mpijob", mpiJobName, "-n", cacheClientNs))
+	if err != nil && !strings.Contains(err.Error(), "NotFound") {
+		log.Error(err, "Error while deleting existing mpijob %s/%s (non-fatal)", cacheClientNs, mpiJobName)
+	}
+	Eventually(func(g Gomega) {
+		By(fmt.Sprintf("Checking if the existing mpijob %s/%s has been deleted", cacheClientNs, mpiJobName))
+		cmd := exec.CommandContext(ctx, "kubectl", "get", "mpijob", mpiJobName, "-n", cacheClientNs)
+		output, err := utils.Run(cmd)
+		if err != nil {
+			// "NotFound" error means the job is already deleted — which is the desired state
+			g.Expect(strings.Contains(output, "NotFound")).To(BeTrue(),
+				"Unexpected error while checking mpijob %s/%s: %s", cacheClientNs, mpiJobName, output)
+			return
+		}
+		// If no error, the job still exists — fail so Eventually retries
+		g.Expect(output).To(BeEmpty(), "Expected mpijob %s/%s to be deleted", cacheClientNs, mpiJobName)
+	}).WithContext(ctx).WithTimeout(defaultWaitTime).WithPolling(5 * time.Second).Should(Succeed())
 
-	// Configure Credentials based on access mode
-	if accessEnvKey == common.CACHECLIENT_SAS_TOKEN_KEY {
+	// If workload identity is configured, ensure the ServiceAccount exists
+	if saYAML, err := config.serviceAccountYAML(); err == nil && saYAML != nil {
+		By("Ensuring workload identity ServiceAccount exists")
+		cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", "-")
+		cmd.Stdin = utils.NewStringReader(string(saYAML))
+		output, err := utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "Failed to apply ServiceAccount: %s", output)
+	}
+
+	// Overwrite only required fields in the MPIJob fixture
+	mpiJob = mpiJob.WithName(mpiJobName).
+		WithNamespace(cacheClientNs).
+		WithCleanPodPolicy(v2beta1.CleanPodPolicyNone).
+		WithLauncherImage(config.cacheClientImage, corev1.PullIfNotPresent).
+		WithWorkerImage(config.cacheClientImage, corev1.PullIfNotPresent).
+		WithWorkerReplicas(int32(config.count)).
+		WithLauncherEnv(corev1.EnvVar{Name: "CACHE_SERVER_LIST", Value: cacheServerList}).
+		WithLauncherEnv(corev1.EnvVar{Name: "AZURE_STORAGE_ACCOUNT_NAME", Value: config.storageAccountName}).
+		WithLauncherCommand([]string{"/bin/bash", "-lc"}...).
+		WithWorkerPodAntiAffinityForJob().
+		WithLauncherArgs(config.getLauncherCommandArgs()...)
+
+	// Note: WorkloadIdentityClientID will take higher precedence
+	if config.workloadIdentityClientID != "" && config.serviceAccountName != "" {
+		By(fmt.Sprintf("Using WorkloadIdentity ClientID: %s for authentication", config.workloadIdentityClientID))
+		mpiJob = mpiJob.WithServiceAccountName(config.serviceAccountName).
+			WithWorkloadIdentityLabel()
+	} else if accessEnvKey == common.CACHECLIENT_SAS_TOKEN_KEY {
 		// Create Secret with SAS token in the job namespace
+		By("Using SAS_TOKEN for client authentication")
 		secret := secret.NewSecret().
 			WithName("cacheclient-secret").
-			WithNamespace(job.Namespace).
+			WithNamespace(mpiJob.Namespace).
 			WithData(map[string]string{
 				common.CACHECLIENT_SAS_TOKEN_KEY: accessEnvValue,
 			})
 		err = config.k8sClient.Create(ctx, secret.Secret)
 		Expect(err).ShouldNot(HaveOccurred(), "Failed to create secret for cacheclient job")
-		jobConfig.WithEnvFromSecret(0, secret.Secret)
-
+		mpiJob = mpiJob.WithLauncherEnv(corev1.EnvVar{Name: common.CACHECLIENT_SAS_TOKEN_KEY, Value: accessEnvValue})
 	} else {
+		By(fmt.Sprintf("Using AKS Node Pool Managed identity %s for authentication", accessEnvValue))
 		cmd, err := getRoleAssignmentCommand(config.storageAccountName)
 		Expect(err).ShouldNot(HaveOccurred(), "Failed to get role assignment command")
 		roleErrorMsg := fmt.Sprintf(
@@ -134,33 +166,64 @@ func (config *CacheClientConfig) dacsClientTest(ctx context.Context, testName st
 			}
 			return isRoleAlreadyExist
 		}).WithContext(ctx).WithTimeout(defaultWaitTime).Should(BeTrue(), roleErrorMsg)
-		jobConfig.WithEnv(0, common.CACHECLIENT_CLIENT_ID_KEY, accessEnvValue)
+		mpiJob = mpiJob.WithLauncherEnv(corev1.EnvVar{Name: common.CACHECLIENT_CLIENT_ID_KEY, Value: accessEnvValue})
 	}
 
-	job = *jobConfig.Job
-
-	// Create the job in the cluster
-	err = config.k8sClient.Create(ctx, &job)
-	Expect(err).ShouldNot(HaveOccurred(), "Failed to create cacheclient job in cluster")
+	mpiJobYAML, err := mpiJob.YAML()
+	Expect(err).ShouldNot(HaveOccurred())
+	cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", "-")
+	cmd.Stdin = utils.NewStringReader(string(mpiJobYAML))
+	output, err := utils.Run(cmd)
+	Expect(err).ShouldNot(HaveOccurred(), "Failed to apply cacheclient MPI job: %s", output)
 
 	// Wait for the job to complete
-	By(fmt.Sprintf("Waiting for %s job to complete", job.Name))
-	jobhelper.WaitForCompletion(ctx, job.Name, job.Namespace, 15*time.Minute)
+	By(fmt.Sprintf("Waiting for %s job to complete", mpiJob.ObjectMeta.Name))
+	mpi.WaitForCompletion(ctx, mpiJob.ObjectMeta.Name, mpiJob.ObjectMeta.Namespace, 15*time.Minute)
 
-	// Fetch the write and read metrics from the all the pods of completed job
-	var podList corev1.PodList
-	err = config.k8sClient.List(ctx, &podList, client.InNamespace(job.Namespace), client.MatchingLabels(job.Spec.Template.Labels))
+	isJobSucceeded, err := mpi.IsJobSucceeded(ctx, mpiJob.ObjectMeta.Name, mpiJob.ObjectMeta.Namespace)
+	Expect(err).ShouldNot(HaveOccurred(), "Failed to check if mpijob succeeded")
+	Expect(isJobSucceeded).Should(BeTrue(), "Cacheclient MPI job did not complete successfully")
+
+	// Since launcher pod does exec into workers and runs the test command, we can get the aggregated test results from launcher pod logs
+	var launcherPodList corev1.PodList
+	err = config.k8sClient.List(ctx, &launcherPodList, client.InNamespace(mpiJob.ObjectMeta.Namespace), client.MatchingLabels(mpiJob.GetLauncherPodLabels()))
 	Expect(err).ShouldNot(HaveOccurred(), "Failed to list pods for cacheclient job")
 
-	podsMetadata := make([]kusto.PodMetadata, len(podList.Items))
-	var perfSummary perf.DACSClientPerfSummary
-	for i, pod := range podList.Items {
-		if !podhelper.IsPodExitedSuccessfully(ctx, &pod) {
-			continue
+	var launcherPod *corev1.Pod
+	// Note: It was observed that dns resolution to worker may fail in pipeline which causes the new launcher pod to run
+	// Pick only the pod which was completed
+	for i := range launcherPodList.Items {
+		if launcherPodList.Items[i].Status.Phase == corev1.PodSucceeded {
+			launcherPod = &launcherPodList.Items[i]
+			break
 		}
-		By(fmt.Sprintf("Parsing performance metrics from pod %s/%s logs", pod.Namespace, pod.Name))
-		perfMetrics, err := getPerformanceMetrics(ctx, pod.Name, pod.Namespace)
+	}
+
+	// List the worker pods to map node name to test result for each client
+	var workerPodList corev1.PodList
+	err = config.k8sClient.List(ctx, &workerPodList, client.InNamespace(mpiJob.ObjectMeta.Namespace), client.MatchingLabels(mpiJob.GetWorkerPodLabels()))
+	Expect(err).ShouldNot(HaveOccurred(), "Failed to list pods for cacheclient job")
+	Expect(config.count).Should(Equal(len(workerPodList.Items)), "Expected exactly %d worker pods, but found %d", config.count, len(workerPodList.Items))
+
+	// Collect the logs of launcher pod which has the aggregated performance metrics from all clients and parse the results
+	Expect(launcherPod).ShouldNot(BeNil(), "Failed to find the launcher pod which completed successfully")
+	err = collectLogsFromLauncherPod(ctx, launcherPod.Name, launcherPod.Namespace)
+	Expect(err).ShouldNot(HaveOccurred(), "Failed to collect logs from launcher pod %s/%s", launcherPod.Namespace, launcherPod.Name)
+
+	podsMetadata := make([]kusto.PodMetadata, len(workerPodList.Items))
+	var perfSummary perf.DACSClientPerfSummary
+	for i, pod := range workerPodList.Items {
+
+		By(fmt.Sprintf("Collecting test result of Pod: %d %s/%s through launcher pod %s/%s logs", i, pod.Namespace, pod.Name, launcherPod.Namespace, launcherPod.Name))
+
+		// Extract Index from worker pod name
+		indexStr := strings.Split(pod.Name, "-")[len(strings.Split(pod.Name, "-"))-1]
+		podIndex, err := strconv.Atoi(indexStr)
+		Expect(err).ShouldNot(HaveOccurred(), fmt.Sprintf("Failed to extract index from worker pod name %s", pod.Name))
+
+		perfMetrics, err := getPerformanceMetricsFromLogs(podIndex)
 		Expect(err).ShouldNot(HaveOccurred(), fmt.Sprintf("Failed to get performance metrics of pod %s/%s", pod.Namespace, pod.Name))
+
 		podsMetadata[i] = kusto.PodMetadata{
 			PodName:  pod.Name,
 			NodeName: pod.Spec.NodeName,
@@ -205,7 +268,7 @@ func (config *CacheClientConfig) dacsClientTest(ctx context.Context, testName st
 			ClusterName:    clusterName,
 			StorageAccount: config.storageAccountName,
 			ContainerName:  config.containerName,
-			JobName:        job.Name,
+			JobName:        mpiJob.Name,
 			Clients:        config.count,
 			PodsMetadata:   podsMetadata,
 			IsMinikube:     cluster.IsMinikube(),
@@ -226,6 +289,10 @@ func (config *CacheClientConfig) dacsClientTest(ctx context.Context, testName st
 	if err != nil {
 		log.Error(err, "Failed to send perf metric (non-fatal)")
 	}
+
+	// NOTE: No deletion of the mpijob required since
+	// ttlSecondsAfterFinished is set to 300, to allow
+	// log collection from support bundle.
 }
 
 func (config *CacheClientConfig) getCacheServerList() (string, error) {
@@ -244,24 +311,79 @@ func (config *CacheClientConfig) getCacheServerList() (string, error) {
 	return cacheServerList[:len(cacheServerList)-1], nil
 }
 
-// getDACSCacheClientCommandArgs returns the multiline string command
-func (config *CacheClientConfig) getDACSCacheClientCommandArgs() string {
-	azBlobDir := fmt.Sprintf("az://%s.blob.core.windows.net/%s/${POD_NAME}/", config.storageAccountName, config.containerName)
-	commandLineArgs := fmt.Sprintf(`
-cd /app/
-python3 -m py_dacs_client.sample.dacs_client_test --azBlobDirPath %s --nBlobs %d --blobSizeToBeRead %d --writeMode %s
-`, azBlobDir, config.blobCount, config.blobSize, config.writeMode)
-	return commandLineArgs
-}
-
-func getPerformanceMetrics(ctx context.Context, podName, namespace string) (*perf.DACSClientPerfSummary, error) {
-	// Get the logs from the pod
+// Store the logs on temp directory with filename format: <pod-name>_logs.txt
+func collectLogsFromLauncherPod(ctx context.Context, podName, namespace string) error {
+	// Capture logs directly and write to file; avoid shell redirection
 	cmd := exec.CommandContext(ctx, "kubectl", "logs", podName, "-n", namespace)
 	logs, err := utils.Run(cmd)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get logs from pod %s/%s: %v", namespace, podName, err)
+		return err
 	}
-	return perf.ParseDACSClientPerfSummary(logs)
+	// If SupportBundle directory doesn't exist, create it
+	if _, err := os.Stat(opts.SupportBundleDir); os.IsNotExist(err) {
+		log.Info("Support bundle directory does not exist, creating it: %s", opts.SupportBundleDir)
+		err = os.MkdirAll(opts.SupportBundleDir, 0755)
+		if err != nil {
+			return fmt.Errorf("failed to create support bundle directory: %v", err)
+		}
+	}
+	outPath := fmt.Sprintf("%s/%s_logs.txt", opts.SupportBundleDir, podName)
+	err = os.WriteFile(outPath, []byte(logs), 0644)
+	if err != nil {
+		return err
+	}
+
+	// Collected logs will look like below format:
+	/*
+	   [1,0]<stdout>:DACS_CTR:WARN|CacheClient|time_int:1770614852712707521|pid:57|tid:76|operation_Id:|rank:-1|CacheClientImpl.cpp:operator()(391): reqid:134b3627-59ae5344-4863b053-76e5046b| ...
+	   [1,1]<stdout>:DACS_CTR:INFO|StorageCommon|time_int:1770614852646534453|pid:69|tid:69|operation_Id:|rank:-1|ConnectionManager.cpp:~ConnectionManager(187): Purge all open connections
+	   [1,2]<stdout>:DACS_CTR:WARN|StorageCommon|time_int:1770614852736524792|pid:45|tid:89|operation_Id:|rank:-1|SocketConnection.cpp:TimedWrite(157): ...
+	   [1,3]<stdout>:DACS_CTR:WARN|CacheClient|time_int:1770614852893491893|pid:69|tid:96|operation_Id:|rank:-1|CacheClientImpl.cpp:operator()(330): ...
+	*/
+	lines := strings.Split(logs, "\n")
+	out := make(map[int][]string)
+	for _, line := range lines {
+		// Expect prefix like [1,3]
+		if len(line) < 5 || line[0] != '[' {
+			continue
+		}
+		// Find comma and closing bracket
+		comma := strings.IndexByte(line, ',')
+		end := strings.IndexByte(line, ']')
+		if comma <= 1 || end <= comma+1 {
+			continue
+		}
+		// Parse worker index between comma+1 and ]
+		idxStr := line[comma+1 : end]
+		podIdx, err := strconv.Atoi(idxStr)
+		if err != nil {
+			continue
+		}
+		out[podIdx] = append(out[podIdx], line)
+	}
+	// Join grouped lines
+	for k, v := range out {
+		err := os.WriteFile(fmt.Sprintf("%s/worker-%d", opts.SupportBundleDir, k), []byte(strings.Join(v, "\n")), 0644)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// getPerformanceMetricsFromLogs parses metrics from a provided logs string for a specific worker index
+func getPerformanceMetricsFromLogs(workerPodIndex int) (*perf.DACSClientPerfSummary, error) {
+	logsBytes, err := os.ReadFile(fmt.Sprintf("%s/worker-%d", opts.SupportBundleDir, workerPodIndex))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read logs for worker index %d: %v", workerPodIndex, err)
+	}
+	logs := string(logsBytes)
+	if strings.TrimSpace(logs) == "" {
+		return nil, fmt.Errorf("empty logs for worker index %d", workerPodIndex)
+	}
+	writePerfRegx := regexp.MustCompile(fmt.Sprintf("(?m)^\\[%d,%d\\]<stdout>:.*?DACS_Cache_Client_Test:Wrote (\\d+) blobs with total (\\d+) bytes .* in (\\d+(?:\\.\\d+)?) seconds at (\\d+(?:\\.\\d+)?) Gbps$", 1, workerPodIndex))
+	readPerfRegx := regexp.MustCompile(fmt.Sprintf("(?m)^\\[%d,%d\\]<stdout>:.*?DACS_Cache_Client_Test:Read (\\d+) bytes .* in (\\d+(?:\\.\\d+)?) seconds at (\\d+(?:\\.\\d+)?) Gbps$", 1, workerPodIndex))
+	return perf.ParseDACSClientPerfSummary(logs, writePerfRegx, readPerfRegx)
 }
 
 func getNodeList(client client.Client) (*corev1.NodeList, error) {
@@ -316,4 +438,53 @@ func getRoleAssignmentCommand(saName string) (string, error) {
 		"--template-file deploy/template/storage.bicep " +
 		"--parameters storageAccountName=" + saName + " " +
 		"aksName=" + clusterName + " aksResourceGroup=" + rg, nil
+}
+
+func (config *CacheClientConfig) getLauncherCommandArgs() []string {
+	cmd := mpi.GetLauncherCommandForWorkerReadiness(config.count) + fmt.Sprintf(`exec mpirun \
+			-x AZURE_CLIENT_ID \
+			-x AZURE_TENANT_ID \
+			-x AZURE_FEDERATED_TOKEN_FILE \
+			-x AZURE_AUTHORITY_HOST \
+			-x CACHE_SERVER_LIST \
+			-x CACHE_SERVER_PORT \
+			-x SI_cacheKeyExpirySeconds \
+			-x POD_NAME \
+			-x AZURE_STORAGE_ACCOUNT_NAME \
+			--tag-output \
+			--merge-stderr-to-stdout \
+			-n %d \
+			/bin/bash -c 'cd /app && python3 -m py_dacs_client.dacs_client_test --azBlobDirPath %s --nBlobs %d --blobSizeToBeRead %d --writeMode %s'`,
+		config.count,
+		fmt.Sprintf("az://%s.blob.core.windows.net/%s/${POD_NAME}-rank-${OMPI_COMM_WORLD_RANK}", config.storageAccountName, config.containerName),
+		config.blobCount,
+		config.blobSize,
+		config.writeMode,
+	)
+	return []string{cmd}
+}
+
+func (config *CacheClientConfig) serviceAccountYAML() ([]byte, error) {
+	// If workload identity client ID is not set, return nil to indicate no ServiceAccount is needed
+	if config.workloadIdentityClientID == "" || config.serviceAccountName == "" {
+		return nil, fmt.Errorf("WorkloadIdentityClientID or WorkloadIdentitySA is not set, skipping ServiceAccount creation")
+	}
+	var sa corev1.ServiceAccount
+	data, err := fixtures.ReadPerfClientServiceAccount()
+	if err != nil {
+		return nil, err
+	}
+	err = yaml.Unmarshal(data, &sa)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to unmarshal ServiceAccount YAML: %v", err)
+	}
+	sa.Name = config.serviceAccountName
+	sa.Namespace = cacheClientNs
+	// Set the workload identity client ID annotation
+	if sa.Annotations == nil {
+		sa.Annotations = make(map[string]string)
+	}
+	sa.Annotations["azure.workload.identity/client-id"] = config.workloadIdentityClientID
+
+	return yaml.Marshal(&sa)
 }
