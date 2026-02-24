@@ -335,7 +335,7 @@ PERF_NAMESPACE ?= cache-server
 PERF_OUTPUT_DIR ?= $(shell pwd)/perf-results
 FLAMEGRAPH_DIR ?= $(shell pwd)/.local/FlameGraph
 PERF_SERVER_LABEL ?= app=cacheserver
-PERF_CLIENT_LABEL ?= app=perf-client
+PERF_CLIENT_LABEL ?= dacs.azure.com/test-pod=true
 PERF_LANG ?= clang++
 KUBECTL_PROF_VERSION ?= 1.11.0
 

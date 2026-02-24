@@ -12,14 +12,11 @@ spec:
   selector:
     matchLabels:
       app: perf-client
-      dacs.azure.com/perf-mode: placeholder
   parallelism: 1
   template:
     metadata:
       labels:
         app: perf-client
-        dacs.azure.com/test-pod: "true"
-        dacs.azure.com/perf-mode: placeholder
     spec:
       affinity:
         nodeAffinity:

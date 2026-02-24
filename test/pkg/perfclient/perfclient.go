@@ -294,14 +294,15 @@ func (c *Config) LoadJob() (*batchv1.Job, error) {
 	if job.Labels == nil {
 		job.Labels = make(map[string]string)
 	}
+	job.Labels["app"] = jobName
 	job.Labels["dacs.azure.com/perf-mode"] = string(c.Mode)
 	job.Labels["dacs.azure.com/client-type"] = string(c.ClientType)
 
-	// Update selector labels (use perf-mode so each mode has a unique selector;
-	// app=perf-client stays constant for kubectl-prof --selector)
-	job.Spec.Selector.MatchLabels["dacs.azure.com/perf-mode"] = string(c.Mode)
+	// Update selector labels
+	job.Spec.Selector.MatchLabels["app"] = jobName
 
 	// Update pod template labels - include test-pod label for support bundle collection
+	job.Spec.Template.Labels["app"] = jobName
 	job.Spec.Template.Labels["dacs.azure.com/test-pod"] = "true"
 	job.Spec.Template.Labels["dacs.azure.com/perf-mode"] = string(c.Mode)
 
@@ -341,8 +342,8 @@ func (c *Config) LoadJob() (*batchv1.Job, error) {
 				pref := &job.Spec.Template.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution[i]
 				for j := range pref.PodAffinityTerm.LabelSelector.MatchExpressions {
 					expr := &pref.PodAffinityTerm.LabelSelector.MatchExpressions[j]
-					if expr.Key == "dacs.azure.com/perf-mode" {
-						expr.Values = []string{string(c.Mode)}
+					if expr.Key == "app" {
+						expr.Values = []string{jobName}
 					}
 				}
 			}
