@@ -32,4 +32,4 @@ spec:
         name: cache-controller-logs
         namespace: cache-controller-system
         selector:
-          - app.kubernetes.io/name=cache-controller
+          - app.kubernetes.io/name=dacs

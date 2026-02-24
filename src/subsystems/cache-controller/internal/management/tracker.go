@@ -386,6 +386,7 @@ func (t *Tracker) GetCurrentPods() (scheduledPods []Pod, pendingPods []Pod) {
 	return scheduledPods, pendingPods
 }
 
+// Get the list of pods which are considered stuck based on their state and duration they have been in that state.
 func (t *Tracker) GetStuckPods() []Pod {
 	var stuckPods []Pod
 	for _, pod := range t.State.CurrentPods {
@@ -398,6 +399,21 @@ func (t *Tracker) GetStuckPods() []Pod {
 		}
 	}
 	return stuckPods
+}
+
+// Get the count of pods which are in a state which is considered for stuck evaluation (e.g. Failed, Unknown, NotReady etc).
+// This includes pods which have not considered stuck yet as they have not crossed the stuck threshold duration.
+func (t *Tracker) GetPodCountInStuckStates() int {
+	count := 0
+	for _, pod := range t.State.CurrentPods {
+		for _, stuckState := range podStuckStates {
+			if pod.State == stuckState {
+				count++
+				break
+			}
+		}
+	}
+	return count
 }
 
 func (t *Tracker) GetLastRunningNodeForPod(namespace string, podName string) (string, bool) {

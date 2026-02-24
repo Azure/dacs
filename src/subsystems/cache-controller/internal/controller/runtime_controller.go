@@ -72,9 +72,14 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, fmt.Errorf("scheduler execution errors occurred")
 	}
 
-	// Note: We are requeuing after a short delay to allow any stuck pods to be acted upon in a timely manner,
-	// instead of waiting for another event to trigger the reconcile.
-	return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
+	// Note: We are requeuing after a short delay if there are any stuck\potentially stuck pods,
+	// so that they can be acted upon in a timely manner, instead of waiting for another event to trigger the reconcile.
+	stuckStatePodCount := r.Tracker.GetPodCountInStuckStates()
+	if stuckStatePodCount > 0 {
+		log.Info("Stuck pods detected, requeuing reconcile after short delay", "stuckStatePodCount", stuckStatePodCount)
+		return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
+	}
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
