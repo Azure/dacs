@@ -23,17 +23,14 @@ import (
 	"github.com/Azure/dacs/test/pkg/helm"
 	"github.com/Azure/dacs/test/pkg/kube/mpi"
 	"github.com/Azure/dacs/test/pkg/kube/node"
-	"github.com/Azure/dacs/test/pkg/kube/secret"
 	"github.com/Azure/dacs/test/pkg/kusto"
 	perf "github.com/Azure/dacs/test/pkg/perfsummary"
 	"github.com/Azure/dacs/test/pkg/utils"
 	"github.com/kubeflow/mpi-operator/pkg/apis/kubeflow/v2beta1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/yaml"
 )
 
 var (
@@ -64,14 +61,15 @@ type CacheClientConfig struct {
 func (config *CacheClientConfig) dacsClientTestSuite(ctx context.Context) {
 	testName := fmt.Sprintf("Should create and run %d cache clients successfully", config.count)
 
-	err := utils.CreateContainerIfNotExists(config.storageAccountName, config.containerName)
-	Expect(err).ShouldNot(HaveOccurred(), "Failed to check/create container in storage account")
+	// TODO: Re-enable dynamic container creation after fixing az storage CLI access from pipeline agents.
+	// err := utils.CreateContainerIfNotExists(config.storageAccountName, config.containerName)
+	// Expect(err).ShouldNot(HaveOccurred(), "Failed to check/create container in storage account")
 
 	config.dacsClientTest(ctx, testName)
 
-	// Cleanup: Delete the created container
-	err = utils.DeleteContainer(config.storageAccountName, config.containerName)
-	Expect(err).ShouldNot(HaveOccurred(), "Failed to delete container in storage account")
+	// TODO: Re-enable container cleanup after fixing az storage CLI access from pipeline agents.
+	// err = utils.DeleteContainer(config.storageAccountName, config.containerName)
+	// Expect(err).ShouldNot(HaveOccurred(), "Failed to delete container in storage account")
 }
 
 func (config *CacheClientConfig) dacsClientTest(ctx context.Context, testName string) {
@@ -80,10 +78,10 @@ func (config *CacheClientConfig) dacsClientTest(ctx context.Context, testName st
 	mpiJob, err := mpi.LoadMPIJob(fixtures.ReadMPIJob)
 	Expect(err).ShouldNot(HaveOccurred(), "Failed to load MPI job fixture")
 
-	cacheServerList, err := config.getCacheServerList()
+	cacheServerList, err := common.GetCacheServerList(ctx, config.k8sClient, config.cacheServerNamespace)
 	Expect(err).ShouldNot(HaveOccurred(), "Failed to get cacheserver list for cacheclient job")
 
-	accessEnvKey, accessEnvValue, err := config.getStorageAccessEnv()
+	accessEnvKey, accessEnvValue, err := common.GetStorageAccessEnv(ctx, config.k8sClient, config.storageAccountName)
 	Expect(err).ShouldNot(HaveOccurred(), "Failed to get storage access key/value for cacheclient job")
 
 	// Wait for any existing mpijob with the same name to be deleted before creating a new one
@@ -107,7 +105,7 @@ func (config *CacheClientConfig) dacsClientTest(ctx context.Context, testName st
 	}).WithContext(ctx).WithTimeout(defaultWaitTime).WithPolling(5 * time.Second).Should(Succeed())
 
 	// If workload identity is configured, ensure the ServiceAccount exists
-	if saYAML, err := config.serviceAccountYAML(); err == nil && saYAML != nil {
+	if saYAML, err := common.WorkloadIdentitySAYAML(config.serviceAccountName, cacheClientNs, config.workloadIdentityClientID); err == nil && saYAML != nil {
 		By("Ensuring workload identity ServiceAccount exists")
 		cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", "-")
 		cmd.Stdin = utils.NewStringReader(string(saYAML))
@@ -136,25 +134,23 @@ func (config *CacheClientConfig) dacsClientTest(ctx context.Context, testName st
 	} else if accessEnvKey == common.CACHECLIENT_SAS_TOKEN_KEY {
 		// Create Secret with SAS token in the job namespace
 		By("Using SAS_TOKEN for client authentication")
-		secret := secret.NewSecret().
-			WithName("cacheclient-secret").
-			WithNamespace(mpiJob.Namespace).
-			WithData(map[string]string{
-				common.CACHECLIENT_SAS_TOKEN_KEY: accessEnvValue,
-			})
-		err = config.k8sClient.Create(ctx, secret.Secret)
+		_, err := common.CreateSASTokenSecret(ctx, config.k8sClient, "cacheclient-secret", mpiJob.Namespace, accessEnvValue)
 		Expect(err).ShouldNot(HaveOccurred(), "Failed to create secret for cacheclient job")
 		mpiJob = mpiJob.WithLauncherEnv(corev1.EnvVar{Name: common.CACHECLIENT_SAS_TOKEN_KEY, Value: accessEnvValue})
 	} else {
 		By(fmt.Sprintf("Using AKS Node Pool Managed identity %s for authentication", accessEnvValue))
-		cmd, err := getRoleAssignmentCommand(config.storageAccountName)
-		Expect(err).ShouldNot(HaveOccurred(), "Failed to get role assignment command")
+		clusterName, err := cluster.GetCurrentContext()
+		Expect(err).ShouldNot(HaveOccurred(), "Failed to get cluster name")
+
+		rg, err := utils.GetResourceGroupOfCluster(clusterName)
+		Expect(err).ShouldNot(HaveOccurred(), "Failed to get resource group")
+
+		cmd := utils.GetRoleAssignmentCommand(config.storageAccountName, clusterName, rg)
 		roleErrorMsg := fmt.Sprintf(
 			"Ensure to grant 'Storage Blob Data Contributor' role to the managed identity %s. By running: %s",
 			accessEnvValue,
 			cmd,
 		)
-
 		// Using Kubelet Identity for storageaccount access
 		// Note: If access is granted recently then role assignment propagation might take some time
 		Eventually(func() bool {
@@ -251,7 +247,7 @@ func (config *CacheClientConfig) dacsClientTest(ctx context.Context, testName st
 
 	// Log and optionally send metrics to Kusto via EventHub
 	By("Logging performance metrics")
-	helmInfo := helm.GetReleaseInfo(ctx, config.cacheServerNamespace, "cache-server")
+	helmInfo := helm.GetCacheReleaseInfo(ctx, config.cacheServerNamespace)
 	gitCommit := git.GetCommit(ctx)
 	gitBranch := git.GetBranch(ctx)
 	clusterName, _ := cluster.GetCurrentContext()
@@ -293,22 +289,6 @@ func (config *CacheClientConfig) dacsClientTest(ctx context.Context, testName st
 	// NOTE: No deletion of the mpijob required since
 	// ttlSecondsAfterFinished is set to 300, to allow
 	// log collection from support bundle.
-}
-
-func (config *CacheClientConfig) getCacheServerList() (string, error) {
-	// Get the cacheserver list by querying no.of cacheservers in the specified namespace
-	var cacheServerSts appsv1.StatefulSet
-	err := config.k8sClient.Get(context.Background(), client.ObjectKey{Namespace: config.cacheServerNamespace, Name: common.DEFAULT_CACHESERVER_NAME}, &cacheServerSts)
-	if err != nil {
-		return "", fmt.Errorf("Failed to get cacheserver information from namespace: %s error: %v", config.cacheServerNamespace, err)
-	}
-	var cacheServerList string
-	for i := int32(0); i < *cacheServerSts.Spec.Replicas; i++ {
-		// Format: <service-name>-<pod-index>.<service-name>.<namespace>.svc.cluster.local
-		cacheServerList += fmt.Sprintf("%s-%d.%s.%s.svc.cluster.local#", common.DEFAULT_CACHESERVER_NAME, i, common.DEFAULT_CACHESERVER_SERVICE_NAME, config.cacheServerNamespace)
-	}
-	// Remove trailing #
-	return cacheServerList[:len(cacheServerList)-1], nil
 }
 
 // Store the logs on temp directory with filename format: <pod-name>_logs.txt
@@ -386,60 +366,6 @@ func getPerformanceMetricsFromLogs(workerPodIndex int) (*perf.DACSClientPerfSumm
 	return perf.ParseDACSClientPerfSummary(logs, writePerfRegx, readPerfRegx)
 }
 
-func getNodeList(client client.Client) (*corev1.NodeList, error) {
-	var nodeList corev1.NodeList
-	err := client.List(context.Background(), &nodeList)
-	if err != nil {
-		return nil, err
-	}
-	return &nodeList, nil
-}
-
-func (config *CacheClientConfig) getClientID() (string, error) {
-	nodeList, err := getNodeList(config.k8sClient)
-	if err != nil {
-		return "", fmt.Errorf("Failed to get node list from cluster: %v", err)
-	}
-	if len(nodeList.Items) == 0 {
-		return "", fmt.Errorf("No nodes found in the cluster")
-	}
-
-	for _, node := range nodeList.Items {
-		if val, exists := node.Labels[common.KUBERNETES_NODE_CLIENT_ID_KEY]; exists {
-			return val, nil
-		}
-	}
-	return "", fmt.Errorf("No managed identity clientId found on any node")
-
-}
-
-func (config *CacheClientConfig) getStorageAccessEnv() (string, string, error) {
-	value, isSASKeyExist := os.LookupEnv(common.CACHECLIENT_SAS_TOKEN_KEY)
-	if isSASKeyExist {
-		return common.CACHECLIENT_SAS_TOKEN_KEY, value, nil
-	}
-	clientID, err := config.getClientID()
-	if err != nil {
-		return "", "", fmt.Errorf("No storage access environment variable found for account: %s error: %v", config.storageAccountName, err)
-	}
-	return common.CACHECLIENT_CLIENT_ID_KEY, clientID, nil
-}
-
-func getRoleAssignmentCommand(saName string) (string, error) {
-	clusterName, err := cluster.GetCurrentContext()
-	if err != nil {
-		return "", err
-	}
-	rg, err := utils.GetResourceGroupOfCluster(clusterName)
-	if err != nil {
-		return "", err
-	}
-	return "az deployment group create --resource-group " + rg + " " +
-		"--template-file deploy/template/storage.bicep " +
-		"--parameters storageAccountName=" + saName + " " +
-		"aksName=" + clusterName + " aksResourceGroup=" + rg, nil
-}
-
 func (config *CacheClientConfig) getLauncherCommandArgs() []string {
 	cmd := mpi.GetLauncherCommandForWorkerReadiness(config.count) + fmt.Sprintf(`exec mpirun \
 			-x AZURE_CLIENT_ID \
@@ -462,29 +388,4 @@ func (config *CacheClientConfig) getLauncherCommandArgs() []string {
 		config.writeMode,
 	)
 	return []string{cmd}
-}
-
-func (config *CacheClientConfig) serviceAccountYAML() ([]byte, error) {
-	// If workload identity client ID is not set, return nil to indicate no ServiceAccount is needed
-	if config.workloadIdentityClientID == "" || config.serviceAccountName == "" {
-		return nil, fmt.Errorf("WorkloadIdentityClientID or WorkloadIdentitySA is not set, skipping ServiceAccount creation")
-	}
-	var sa corev1.ServiceAccount
-	data, err := fixtures.ReadPerfClientServiceAccount()
-	if err != nil {
-		return nil, err
-	}
-	err = yaml.Unmarshal(data, &sa)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to unmarshal ServiceAccount YAML: %v", err)
-	}
-	sa.Name = config.serviceAccountName
-	sa.Namespace = cacheClientNs
-	// Set the workload identity client ID annotation
-	if sa.Annotations == nil {
-		sa.Annotations = make(map[string]string)
-	}
-	sa.Annotations["azure.workload.identity/client-id"] = config.workloadIdentityClientID
-
-	return yaml.Marshal(&sa)
 }

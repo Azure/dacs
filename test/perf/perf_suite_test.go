@@ -27,7 +27,7 @@ import (
 
 var log = logger.New()
 
-const namespace = "cache-server"
+var namespace = common.GetNamespace()
 
 var (
 	// suiteUUID is a unique identifier for this test run, generated at startup.
@@ -51,8 +51,7 @@ func TestMain(m *testing.M) {
 	}
 
 	if os.Getenv(clientcmd.RecommendedConfigPathEnvVar) == "" {
-		err := os.Setenv(clientcmd.RecommendedConfigPathEnvVar, defaultKubeConfigPath)
-		if err != nil {
+		if err := os.Setenv(clientcmd.RecommendedConfigPathEnvVar, defaultKubeConfigPath); err != nil {
 			log.Error(err, "Failed to set default kubeconfig path")
 			os.Exit(1)
 		}
@@ -68,7 +67,6 @@ func TestMain(m *testing.M) {
 		log.Error(err, "Failed to get kubeconfig")
 		os.Exit(1)
 	}
-
 	k8sClient, err = client.New(cfg, client.Options{})
 	if err != nil {
 		log.Error(err, "Failed to create controller-runtime client")
@@ -120,7 +118,7 @@ func newPerfMetricBase(ctx context.Context, podName, nodeName, nodeSKU string) *
 	gitCommit := git.GetCommit(ctx)
 	gitBranch := git.GetBranch(ctx)
 	specReport := CurrentSpecReport()
-	helmInfo := helm.GetReleaseInfo(ctx, namespace, "cache-server")
+	helmInfo := helm.GetCacheReleaseInfo(ctx, namespace)
 
 	return &kusto.PerfMetric{
 		SuiteID:          suiteUUID,

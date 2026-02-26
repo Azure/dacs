@@ -3,6 +3,7 @@
 # DACS Data Loader
 # --------------------------------------------------------------------------------------------------------------------
 from py_dacs_client.dacs_utils import logger
+import ctypes
 import os
 from ctypes import (
     CDLL,
@@ -20,6 +21,7 @@ from ctypes import (
     c_ushort,
     c_void_p,
 )
+
 
 
 class Stat64(Structure):
@@ -43,6 +45,11 @@ class Stat64(Structure):
         ("st_ctimensec", c_long),
     ]
 
+
+# Fix ctypes.string_at to support sizes > 2GB
+# By default, ctypes._string_at uses c_int (32-bit) for size, causing overflow for large reads.
+# Override to use c_ssize_t (64-bit signed) to support files larger than 2GB.
+ctypes._string_at.argtypes = [ctypes.c_void_p, ctypes.c_ssize_t]
 
 # Get the directory where the current python file exists
 current_dir = os.path.dirname(os.path.abspath(__file__))

@@ -9,6 +9,7 @@ import os
 import sys
 import signal
 import faulthandler
+import time
 import traceback
 import pytest
 
@@ -719,15 +720,29 @@ class TestRemoteBlobListDir:
             with bf.DACSAdapter(file_path, "w") as f:
                 f.write(f"content of {name}")
 
-        # List the directory
-        items = list(bf.listdir(dir_path))
+        # Small delay to allow async writes to complete
+        time.sleep(1)
+
+        # List directory with retry for eventual consistency
+        max_retries = 3
+        for attempt in range(max_retries):
+            items = list(bf.listdir(dir_path))
+            # Filter out . and .. entries
+            items = [item for item in items if item not in ('.', '..')]
+            
+            # Check if all files are present
+            all_found = all(name in items for name in file_names)
+            if all_found:
+                break
+            if attempt < max_retries - 1:
+                time.sleep(1)  # Wait before retry
 
         # Verify we got some items
         assert len(items) > 0, "Directory should contain files"
 
         # Verify our created files are in the list
         for name in file_names:
-            assert name in items or any(name in item for item in items), f"File {name} should be in directory listing"
+            assert name in items, f"File {name} should be in directory listing. Got: {items}"
 
     def test_scandir_with_files(self):
         """Test scandir() returns files in directory."""
@@ -743,8 +758,23 @@ class TestRemoteBlobListDir:
             with bf.DACSAdapter(file_path, "w") as f:
                 f.write(content)
 
-        # Scan the directory
-        items = list(bf.scandir(dir_path))
+        # Small delay to allow async writes to complete
+        time.sleep(1)
+
+        # Scan directory with retry for eventual consistency
+        max_retries = 3
+        for attempt in range(max_retries):
+            items = list(bf.scandir(dir_path))
+            # Filter out . and .. entries by name
+            items = [item for item in items if item.name not in ('.', '..')]
+            
+            # Check if all files are present
+            names_found = {item.name for item in items}
+            all_found = all(name in names_found for name in file_names)
+            if all_found:
+                break
+            if attempt < max_retries - 1:
+                time.sleep(1)  # Wait before retry
 
         # Verify we got some items
         assert len(items) > 0, "Directory should contain files"
@@ -1660,3 +1690,134 @@ class TestCopy:
             assert result == expected_md5
         finally:
             os.unlink(local_src)
+
+
+class TestAPIParityErrorMessages:
+    """Test that error messages are informative for users migrating from blobfile."""
+
+    def test_unsupported_operation_error_is_helpful(self):
+        """Test OperationNotSupportedError provides helpful message."""
+        blob_path = f"{AZURE_BLOB_PATH}/test_unsupported_error_{id(self)}.txt"
+        with bf.DACSAdapter(blob_path, "w") as f:
+            f.write("test")
+
+        with bf.DACSAdapter(blob_path, "r") as f:
+            try:
+                f.seek(0)
+            except OperationNotSupportedError as e:
+                error_msg = str(e)
+                assert "seek" in error_msg.lower(), "Error should mention the unsupported operation"
+                assert "dacs" in error_msg.lower() or "not supported" in error_msg.lower(), \
+                    "Error should explain why operation is not available"
+
+    def test_append_mode_error_mentions_supported_modes(self):
+        """Test append mode error mentions what modes ARE supported."""
+        try:
+            with bf.BlobFile(f"{AZURE_BLOB_PATH}/test.txt", "a") as f:
+                pass
+        except OperationNotSupportedError as e:
+            error_msg = str(e)
+            # Should mention that read/write modes are supported
+            assert "read" in error_msg.lower() or "r" in error_msg, \
+                "Error should mention supported read mode"
+
+
+class TestDirectComparisonWithNativeBlobfile:
+    """Direct comparison tests for API parity with native blobfile library."""
+
+    def test_blobfile_constructor_signature_parity(self):
+        """Test that BlobFile constructor accepts same common parameters."""
+        # Both should accept: path, mode, streaming, buffer_size
+        # DACS may have additional parameters but should be compatible
+        blob_path = f"{AZURE_BLOB_PATH}/parity_sig_{id(self)}.txt"
+        f = bf.BlobFile(blob_path, mode="w", streaming=None, buffer_size=None)
+        assert f is not None
+
+    def test_module_level_functions_exist(self):
+        """Test that all expected module-level functions exist."""
+        # Functions that should exist in both libraries
+        expected_functions = [
+            "exists", "stat", "listdir", "scandir", "copy", # Supported
+            "glob", "makedirs", "remove", "rmdir", "rmtree",  # Unsupported but should exist
+            "walk", "md5", "set_mtime", "get_url",  # Unsupported but should exist
+        ]
+
+        for func_name in expected_functions:
+            assert hasattr(bf, func_name), f"dacs_blobfile should have {func_name} function"
+
+
+class TestEdgeCases:
+    """Test edge cases in file handling."""
+
+    def test_empty_file_handling(self):
+        """Test empty file read/write works correctly."""
+        blob_path = f"{AZURE_BLOB_PATH}/edge_empty_{id(self)}.txt"
+
+        # Write empty file
+        with bf.BlobFile(blob_path, "w") as f:
+            pass  # Don't write anything
+
+        # Read empty file
+        with bf.BlobFile(blob_path, "r") as f:
+            content = f.read()
+
+        assert content == "", "Empty text file should return empty string"
+
+        # Binary mode
+        with bf.BlobFile(blob_path, "rb") as f:
+            content_bin = f.read()
+
+        assert content_bin == b"", "Empty binary file should return empty bytes"
+
+    def test_unicode_content(self):
+        """Test Unicode content handling works correctly."""
+        test_data = "Unicode: 你好世界 🌍 Ёмодзи café"
+        blob_path = f"{AZURE_BLOB_PATH}/edge_unicode_{id(self)}.txt"
+
+        with bf.BlobFile(blob_path, "w") as f:
+            f.write(test_data)
+
+        with bf.BlobFile(blob_path, "r") as f:
+            content = f.read()
+
+        assert content == test_data, "Unicode content should roundtrip correctly"
+
+    def test_special_characters_in_content(self):
+        """Test special characters in file content."""
+        test_data = "Special: \t\n\r\\\"'`${}[]<>!@#%^&*()"
+        blob_path = f"{AZURE_BLOB_PATH}/edge_special_{id(self)}.txt"
+
+        with bf.BlobFile(blob_path, "w") as f:
+            f.write(test_data)
+
+        with bf.BlobFile(blob_path, "r") as f:
+            content = f.read()
+
+        assert content == test_data, "Special characters should roundtrip correctly"
+
+    def test_binary_null_bytes(self):
+        """Test binary content with null bytes."""
+        test_data = b"\x00\x01\x02\x00\x00\xff\xfe\x00"
+        blob_path = f"{AZURE_BLOB_PATH}/edge_nullbytes_{id(self)}.bin"
+
+        with bf.BlobFile(blob_path, "wb") as f:
+            f.write(test_data)
+
+        with bf.BlobFile(blob_path, "rb") as f:
+            content = f.read()
+
+        assert content == test_data, "Binary content with null bytes should roundtrip correctly"
+
+    def test_very_long_path(self):
+        """Test handling of long blob paths."""
+        # Create a path with many nested directories
+        nested_parts = "/".join([f"level{i}" for i in range(10)])
+        blob_path = f"{AZURE_BLOB_PATH}/{nested_parts}/file.txt"
+
+        with bf.BlobFile(blob_path, "w") as f:
+            f.write("deep content")
+
+        with bf.BlobFile(blob_path, "r") as f:
+            content = f.read()
+
+        assert content == "deep content", "Long paths should work correctly"

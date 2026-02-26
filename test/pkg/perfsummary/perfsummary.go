@@ -3,6 +3,7 @@
 package perfsummary
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -208,4 +209,54 @@ func ParseDACSClientPerfSummary(logs string, writePerfRegx, readPerfRegx *regexp
 	}
 
 	return summary, nil
+}
+
+// DACSAdapterBenchmarkResult holds performance results for a single client from the benchmark.
+type DACSAdapterBenchmarkResult struct {
+	WriteBytesTransferred uint64  `json:"write_bytes"`
+	WriteDurationSeconds  float64 `json:"write_duration_seconds"`
+	WriteThroughputMbps   float64 `json:"write_mbps"`
+	ReadBytesTransferred  uint64  `json:"read_bytes"`
+	ReadDurationSeconds   float64 `json:"read_duration_seconds"`
+	ReadThroughputMbps    float64 `json:"read_mbps"`
+}
+
+// DACSAdapterBenchmarkConfig holds the benchmark configuration.
+type DACSAdapterBenchmarkConfig struct {
+	StorageAccount string  `json:"storage_account"`
+	Container      string  `json:"container"`
+	BlobSizeGB     float64 `json:"blob_size_gb"`
+	NumBlobs       int     `json:"num_blobs"`
+	NumProcesses   int     `json:"num_processes"`
+	WriteMode      string  `json:"write_mode"`
+}
+
+// DACSAdapterBenchmarkSummary holds the complete benchmark output.
+type DACSAdapterBenchmarkSummary struct {
+	Timestamp string                                   `json:"timestamp"`
+	Config    DACSAdapterBenchmarkConfig            `json:"config"`
+	Results   map[string]DACSAdapterBenchmarkResult `json:"results"`
+}
+
+// String returns a formatted string representation of the Summary.
+func (s DACSAdapterBenchmarkSummary) String() string {
+	var result string
+	for client, r := range s.Results {
+		result += fmt.Sprintf(
+			"[%s] Write: %.2f GB in %.2fs (%.0f MB/s), Read: %.2f GB in %.2fs (%.0f MB/s)\n",
+			client,
+			float64(r.WriteBytesTransferred)/(1024*1024*1024), r.WriteDurationSeconds, r.WriteThroughputMbps,
+			float64(r.ReadBytesTransferred)/(1024*1024*1024), r.ReadDurationSeconds, r.ReadThroughputMbps,
+		)
+	}
+	return result
+}
+
+// ParseDACSAdapterBenchmark parses the JSON output from throughput_benchmark.py.
+func ParseDACSAdapterBenchmark(jsonData string) (*DACSAdapterBenchmarkSummary, error) {
+	var summary DACSAdapterBenchmarkSummary
+	if err := json.Unmarshal([]byte(jsonData), &summary); err != nil {
+		return nil, fmt.Errorf("failed to parse benchmark JSON: %w", err)
+	}
+	return &summary, nil
 }

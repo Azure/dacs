@@ -21,8 +21,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Azure/dacs/test/pkg/cluster"
+	"github.com/Azure/dacs/test/pkg/common/fixtures"
+	"github.com/Azure/dacs/test/pkg/kube/secret"
 	"github.com/Azure/dacs/test/pkg/logger"
 	"github.com/Azure/dacs/test/pkg/utils"
+	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -59,6 +62,14 @@ var (
 	startTime     = time.Now()
 	filePathRegex = regexp.MustCompile(`[ /]`)
 )
+
+// GetNamespace returns the namespace from environment or default.
+func GetNamespace() string {
+	if ns := os.Getenv("CACHE_NAMESPACE"); ns != "" {
+		return ns
+	}
+	return DEFAULT_CACHESERVER_NAMESPACE
+}
 
 // GetDefaultImage returns the default perf client image based on environment variables
 // matching the helm chart configuration. On minikube, uses local image.
@@ -430,4 +441,117 @@ func VerifyPodUp(ctx context.Context, k8sClient client.Client, namespace, podLab
 		}
 	}
 	Eventually(verifyPodUp).WithContext(ctx).Should(Succeed())
+}
+
+// GetCacheServerList returns a formatted list of cache server endpoints.
+// It queries the StatefulSet in the specified namespace and constructs service endpoints.
+//
+// Deprecated: Use GetDiscoveryURL instead. The discovery service allows the dacs client
+// to discover cache servers dynamically without needing a pre-built server list.
+func GetCacheServerList(ctx context.Context, k8sClient client.Client, namespace string) (string, error) {
+	var cacheServerSts appsv1.StatefulSet
+	err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: DEFAULT_CACHESERVER_NAME}, &cacheServerSts)
+	if err != nil {
+		return "", fmt.Errorf("Failed to get cacheserver information from namespace: %s error: %v", namespace, err)
+	}
+	var cacheServerList string
+	if cacheServerSts.Spec.Replicas == nil || *cacheServerSts.Spec.Replicas == 0 {
+		return "", nil
+	}
+	for i := int32(0); i < *cacheServerSts.Spec.Replicas; i++ {
+		// Format: <service-name>-<pod-index>.<service-name>.<namespace>.svc.cluster.local
+		cacheServerList += fmt.Sprintf("%s-%d.%s.%s.svc.cluster.local#", DEFAULT_CACHESERVER_NAME, i, DEFAULT_CACHESERVER_SERVICE_NAME, namespace)
+	}
+	// Remove trailing #
+	return cacheServerList[:len(cacheServerList)-1], nil
+}
+
+// GetDiscoveryURL returns the FQDN of the cache server discovery service.
+func GetDiscoveryURL(namespace string) string {
+	return fmt.Sprintf("%s.%s.svc.cluster.local", DEFAULT_DISCOVERY_SERVICE_NAME, namespace)
+}
+
+// GetNodeList returns the list of nodes in the cluster.
+func GetNodeList(ctx context.Context, k8sClient client.Client) (*corev1.NodeList, error) {
+	var nodeList corev1.NodeList
+	err := k8sClient.List(ctx, &nodeList)
+	if err != nil {
+		return nil, err
+	}
+	return &nodeList, nil
+}
+
+// GetClientID retrieves the managed identity client ID from node labels.
+func GetClientID(ctx context.Context, k8sClient client.Client) (string, error) {
+	nodeList, err := GetNodeList(ctx, k8sClient)
+	if err != nil {
+		return "", fmt.Errorf("Failed to get node list from cluster: %v", err)
+	}
+	if len(nodeList.Items) == 0 {
+		return "", fmt.Errorf("No nodes found in the cluster")
+	}
+
+	for _, node := range nodeList.Items {
+		if val, exists := node.Labels[KUBERNETES_NODE_CLIENT_ID_KEY]; exists {
+			return val, nil
+		}
+	}
+	return "", fmt.Errorf("No managed identity clientId found on any node")
+}
+
+// GetStorageAccessEnv determines the storage access method and returns the appropriate
+// environment variable key and value (either SAS token or managed identity client ID).
+func GetStorageAccessEnv(ctx context.Context, k8sClient client.Client, storageAccountName string) (string, string, error) {
+	value, isSASKeyExist := os.LookupEnv(CACHECLIENT_SAS_TOKEN_KEY)
+	if isSASKeyExist {
+		return CACHECLIENT_SAS_TOKEN_KEY, value, nil
+	}
+	clientID, err := GetClientID(ctx, k8sClient)
+	if err != nil {
+		return "", "", fmt.Errorf("No storage access environment variable found for account: %s error: %v", storageAccountName, err)
+	}
+	return CACHECLIENT_CLIENT_ID_KEY, clientID, nil
+}
+
+// CreateSASTokenSecret creates a Kubernetes Secret containing the SAS token
+// and applies it to the cluster.
+func CreateSASTokenSecret(ctx context.Context, k8sClient client.Client, name, namespace, sasToken string) (*corev1.Secret, error) {
+	s := secret.NewSecret().
+		WithName(name).
+		WithNamespace(namespace).
+		WithData(map[string]string{
+			CACHECLIENT_SAS_TOKEN_KEY: sasToken,
+		})
+	if err := k8sClient.Create(ctx, s.Secret); err != nil {
+		return nil, fmt.Errorf("failed to create SAS token secret %s/%s: %w", namespace, name, err)
+	}
+	return s.Secret, nil
+}
+
+// WorkloadIdentitySAYAML creates a ServiceAccount YAML configured for Azure
+// workload identity. It reads the perf-client SA fixture, sets the name,
+// namespace, and workload identity client ID annotation.
+func WorkloadIdentitySAYAML(name, namespace, clientID string) ([]byte, error) {
+	if clientID == "" || name == "" {
+		return nil, fmt.Errorf("workload identity client ID and service account name must be set")
+	}
+
+	data, err := fixtures.ReadPerfClientServiceAccount()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read service account fixture: %w", err)
+	}
+
+	var sa corev1.ServiceAccount
+	if err := yaml.Unmarshal(data, &sa); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal service account YAML: %w", err)
+	}
+
+	sa.Name = name
+	sa.Namespace = namespace
+	if sa.Annotations == nil {
+		sa.Annotations = make(map[string]string)
+	}
+	sa.Annotations["azure.workload.identity/client-id"] = clientID
+
+	return yaml.Marshal(&sa)
 }

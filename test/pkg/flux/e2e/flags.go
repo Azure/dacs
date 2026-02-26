@@ -14,16 +14,17 @@ import (
 )
 
 type Options struct {
-	// Common report/output flags
+	// Common flags (includes StorageAccount, ClientImage, WorkloadIdentity)
 	*flux.Options
 }
 
-// AddFlags adds performance test specific flags to the provided FlagSet
+// AddFlags adds e2e test specific flags to the provided FlagSet
 func AddFlags(fs *flag.FlagSet, opts *Options) error {
 	var commonOpts flux.Options
 	if err := flux.AddFlags(fs, &commonOpts); err != nil {
 		return err
 	}
 	opts.Options = &commonOpts
+
 	return nil
 }
