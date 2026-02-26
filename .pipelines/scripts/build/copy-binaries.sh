@@ -52,10 +52,26 @@ cp "$BINARIES_PATH/dacsfs" "$CACHE_TEST/dacsfs"
 
 # Copy py_dacs_client library (excluding tests and __pycache__)
 echo "Copying py_dacs_client library..."
+# Clear existing py_dacs_client directory to avoid nested directories
+rm -rf "$PY_DACS_CLIENT"
+mkdir -p "$PY_DACS_CLIENT"
+
 # Copy Python files (library only, exclude tests directory and __pycache__)
 for f in "$PY_DACS_CLIENT_PATH"/*.py; do
     [ -f "$f" ] && cp "$f" "$PY_DACS_CLIENT/"
 done
+
+# Copy sample directory
+if [ -d "$PY_DACS_CLIENT_PATH/sample" ]; then
+    echo "Copying sample directory..."
+    cp -r "$PY_DACS_CLIENT_PATH/sample" "$PY_DACS_CLIENT/"
+fi
+
+# Copy benchmarks directory
+if [ -d "$PY_DACS_CLIENT_PATH/benchmarks" ]; then
+    echo "Copying benchmarks directory..."
+    cp -r "$PY_DACS_CLIENT_PATH/benchmarks" "$PY_DACS_CLIENT/"
+fi
 
 # Summary
 echo ""

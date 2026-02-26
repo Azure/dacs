@@ -9,6 +9,15 @@ import (
 	"github.com/Azure/dacs/test/pkg/utils"
 )
 
+const (
+	// OldControllerReleaseName is the helm release name for the old cache-server chart.
+	OldControllerReleaseName = "cache-server"
+	// NewControllerReleaseName is the helm release name for the new dacs chart.
+	NewControllerReleaseName = "dacs"
+	// NewControllerNamespace is the namespace where the new controller is deployed.
+	NewControllerNamespace = "cache-controller-system"
+)
+
 // Info contains helm chart version information.
 type Info struct {
 	ChartVersion string
@@ -52,4 +61,17 @@ func GetReleaseInfo(ctx context.Context, namespace, releaseName string) Info {
 	}
 
 	return Info{ChartVersion: "<unknown>", AppVersion: "<unknown>"}
+}
+
+// GetCacheReleaseInfo returns helm info for the deployed cache system.
+// It checks for the new dacs release first, then falls back to the old cache-server release.
+func GetCacheReleaseInfo(ctx context.Context, cacheNamespace string) Info {
+	// Try new controller first (dacs in cache-controller-system namespace)
+	info := GetReleaseInfo(ctx, NewControllerNamespace, NewControllerReleaseName)
+	if info.ChartVersion != "<unknown>" {
+		return info
+	}
+
+	// Fall back to old controller (cache-server in cache namespace)
+	return GetReleaseInfo(ctx, cacheNamespace, OldControllerReleaseName)
 }

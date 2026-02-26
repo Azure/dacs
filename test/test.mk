@@ -6,20 +6,19 @@ help-test:
 	@echo "  make test-e2e                      	- Run all tests against current kubeconfig cluster"
 	@echo "  make test-e2e TEST_FILTER=perf     	- Run only tests matching the 'perf' label"
 	@echo "  make test-e2e TEST_FILTER=controller	- Run controller tests (needs dacs helm chart deployment)"
+	@echo "  make test-e2e TEST_FILTER=adapter  	- Run adapter tests (e2e + perf)"
 	@echo "  make get-support-bundle            	- Collect support bundle from cluster"
 	@echo ""
 	@echo "Test Options:"
 	@echo "  TEST_FILTER=<label>                    - Filter tests by Ginkgo label (e2e, perf, controller)"
 	@echo "  EXTRA_TEST_ARGS='--data-size-gib=100'  - Pass extra arguments to tests"
-	@echo "  TEST_TIMEOUT=90m                       - Set test timeout (default: 60m)"
-	@echo "  GIT_COMMIT=abc123                      - Override git commit for metrics"
-	@echo "  GIT_BRANCH=main                        - Override git branch for metrics"
 
 ##@ Testing
 
 # Test settings
 SUPPORT_BUNDLE_OUTPUT_DIR ?= $(shell pwd)/support-bundles
 TEST_OUTPUT ?= $(shell pwd)/test.xml
+PYTEST_OUTPUT ?= $(shell pwd)/pytest.xml
 TEST_COVER ?= $(shell pwd)/coverage.lcov
 SUMMARY_OUTPUT ?= $(shell pwd)/summary.md
 NO_COLOR ?= false

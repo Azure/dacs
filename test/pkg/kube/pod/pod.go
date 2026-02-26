@@ -60,6 +60,13 @@ func GetLogs(ctx context.Context, name, ns string) (string, error) {
 	return utils.RunOutput(cmd)
 }
 
+// ReadFile reads a file from a pod using kubectl exec.
+func ReadFile(ctx context.Context, name, ns, filePath string) (string, error) {
+	cmd := exec.CommandContext(ctx, "kubectl", "exec", name,
+		"-n", ns, "--", "cat", filePath)
+	return utils.RunOutput(cmd)
+}
+
 // WaitForRunning waits for a pod to be in the Running phase.
 func WaitForRunning(ctx context.Context, name, ns string, timeout time.Duration) {
 	Eventually(func(g Gomega) {
@@ -128,4 +135,35 @@ func IsPodExitedSuccessfully(ctx context.Context, pod *corev1.Pod) bool {
 		}
 	}
 	return false
+}
+
+// Exec executes a command in a pod and returns the output.
+func Exec(ctx context.Context, name, ns, cmd string) (string, error) {
+	kubectlCmd := exec.CommandContext(ctx, "kubectl", "exec", name,
+		"-n", ns, "--", "bash", "-c", cmd)
+	return utils.RunOutput(kubectlCmd)
+}
+
+// CopyTo copies a local file to a pod.
+func CopyTo(ctx context.Context, localPath, name, ns, remotePath string) error {
+	dstPath := fmt.Sprintf("%s/%s:%s", ns, name, remotePath)
+	cmd := exec.CommandContext(ctx, "kubectl", "cp", localPath, dstPath)
+	_, err := utils.Run(cmd)
+	return err
+}
+
+// CopyFrom copies a file from a pod to local path.
+func CopyFrom(ctx context.Context, name, ns, remotePath, localPath string) error {
+	srcPath := fmt.Sprintf("%s/%s:%s", ns, name, remotePath)
+	cmd := exec.CommandContext(ctx, "kubectl", "cp", srcPath, localPath)
+	_, err := utils.Run(cmd)
+	return err
+}
+
+// MkDir creates a directory in a pod.
+func MkDir(ctx context.Context, name, ns, path string) error {
+	cmd := exec.CommandContext(ctx, "kubectl", "exec", name,
+		"-n", ns, "--", "mkdir", "-p", path)
+	_, err := utils.Run(cmd)
+	return err
 }

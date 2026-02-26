@@ -346,3 +346,12 @@ func GetResourceGroupOfCluster(clusterName string) (string, error) {
 	}
 	return strings.TrimSpace(string(output)), nil
 }
+
+// GetRoleAssignmentCommand returns the Azure CLI command to create role assignment
+// for the storage account using Bicep template.
+func GetRoleAssignmentCommand(saName, clusterName, resourceGroup string) string {
+	return "az deployment group create --resource-group " + resourceGroup + " " +
+		"--template-file deploy/template/storage.bicep " +
+		"--parameters storageAccountName=" + saName + " " +
+		"aksName=" + clusterName + " aksResourceGroup=" + resourceGroup
+}

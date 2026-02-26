@@ -100,6 +100,11 @@ func (jc *JobConfig) WithImage(image string) *JobConfig {
 	return jc
 }
 
+func (jc *JobConfig) WithImagePullPolicy(policy corev1.PullPolicy) *JobConfig {
+	jc.Spec.Template.Spec.Containers[0].ImagePullPolicy = policy
+	return jc
+}
+
 func (jc *JobConfig) WithRestartPolicy(policy corev1.RestartPolicy) *JobConfig {
 	jc.Spec.Template.Spec.RestartPolicy = policy
 	return jc
@@ -129,6 +134,21 @@ func (jc *JobConfig) WithEnv(containerIndex int, name, value string) *JobConfig 
 			Value: value,
 		},
 	)
+	return jc
+}
+
+// WithServiceAccountName sets the service account for the job's pod template.
+func (jc *JobConfig) WithServiceAccountName(name string) *JobConfig {
+	jc.Spec.Template.Spec.ServiceAccountName = name
+	return jc
+}
+
+// WithWorkloadIdentityLabel adds the Azure workload identity label to the job's pod template.
+func (jc *JobConfig) WithWorkloadIdentityLabel() *JobConfig {
+	if jc.Spec.Template.Labels == nil {
+		jc.Spec.Template.Labels = make(map[string]string)
+	}
+	jc.Spec.Template.Labels["azure.workload.identity/use"] = "true"
 	return jc
 }
 

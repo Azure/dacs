@@ -2,7 +2,7 @@
 # =============================================================================
 # Throughput Benchmark Script for DACS Client
 # =============================================================================
-# Usage: ./run_benchmark.sh [NUM_NODES] [STORAGE_ACCOUNT] [NUM_PROCESSES] [NUM_BLOBS] [BLOB_SIZE_GB] [WRITE_MODE]
+# Usage: ./run_benchmark.sh [NUM_NODES] [STORAGE_ACCOUNT] [NUM_PROCESSES] [NUM_BLOBS] [BLOB_SIZE_GB] [WRITE_MODE] [CLIENTS]
 # 
 # This script validates that ALL data is successfully written and read before
 # calculating throughput. Partial completions are reported as FAILED.
@@ -31,6 +31,7 @@ NUM_PROCESSES="${3:-16}"
 NUM_BLOBS="${4:-2}"
 BLOB_SIZE_GB="${5:-7}"
 WRITE_MODE="${6:-write_blob_only}"
+CLIENTS="${7:-dacs_zero_copy}"
 
 # Expected data per node in GB
 EXPECTED_DATA_PER_NODE_GB=$((NUM_PROCESSES * NUM_BLOBS * BLOB_SIZE_GB))
@@ -91,6 +92,7 @@ echo "Retry Configuration (based on $NUM_NODES nodes):"
 echo "  Max Attempts:    $BLOB_RETRY_MAX_ATTEMPTS"
 echo "  Base Delay:      ${BLOB_RETRY_BASE_DELAY_SECONDS}s"
 echo "  Max Delay:       ${BLOB_RETRY_MAX_DELAY_SECONDS}s"
+echo "  Clients:         $CLIENTS"
 echo "======================================================================" 
 echo ""
 
@@ -109,6 +111,7 @@ for pod in $PODS; do
         --num-processes $NUM_PROCESSES \
         --num-blobs $NUM_BLOBS \
         --blob-size-gb $BLOB_SIZE_GB \
+        --clients $CLIENTS \
         --write-mode $WRITE_MODE \
         --node-id node${i}" > /tmp/benchmark_results/node${i}.txt 2>&1 &
     PIDS="$PIDS $!"

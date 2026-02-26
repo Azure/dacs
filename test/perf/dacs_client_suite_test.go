@@ -35,15 +35,17 @@ var testMultipleDACSClients = func(ctx context.Context) {
 
 	// Build K8s client
 	k8sClient := getK8sClientOrDie()
-	now := time.Now().Format(time.RFC3339)
-	now = strings.ReplaceAll(strings.ToLower(now), ":", "-")
+	// TODO: Re-enable dynamic container creation after fixing az storage CLI access from pipeline agents.
+	// now := time.Now().Format(time.RFC3339)
+	// now = strings.ReplaceAll(strings.ToLower(now), ":", "-")
+	// containerName := containerNamePrefix + now
 
 	// Get no.of clients to be deployed based on k8s nodes
 	if opts.ClientCount > 0 {
 		log.Info("Using user provided cache client count: %d", opts.ClientCount)
 		count = int(opts.ClientCount)
 	} else {
-		nodeList, err := getNodeList(k8sClient)
+		nodeList, err := common.GetNodeList(ctx, k8sClient)
 		Expect(err).ShouldNot(HaveOccurred(), "Failed to get node list from cluster")
 		count = len(nodeList.Items)
 	}
@@ -53,10 +55,10 @@ var testMultipleDACSClients = func(ctx context.Context) {
 		workloadIdentityClientID: opts.WorkloadIdentityClientID,
 		serviceAccountName:       opts.WorkloadIdentitySA,
 		count:                    count,
-		cacheServerNamespace:     common.DEFAULT_CACHESERVER_NAMESPACE,
-		cacheClientImage:         getDefaultImage(),
+		cacheServerNamespace:     common.GetNamespace(),
+		cacheClientImage:         getClientImage(),
 		storageAccountName:       opts.StorageAccount,
-		containerName:            containerNamePrefix + now,
+		containerName:            opts.StorageContainer,
 		blobCount:                opts.BlobCount,
 		blobSize:                 opts.BlobSize,
 		writeMode:                opts.WriteMode,
@@ -96,8 +98,8 @@ var _ = Describe("Multiple DACS Clients E2E Tests", Label("dacsclients", "perf",
 	})
 })
 
-// getDefaultImage returns the default dacs client image based on environment variables
-func getDefaultImage() string {
+// getClientImage returns the dacs client image from command-line flag, or falls back to default.
+func getClientImage() string {
 	if opts.ClientImage != "" {
 		return opts.ClientImage
 	}

@@ -48,6 +48,7 @@ from py_dacs_client.dacs_exceptions import (
 # Re-export exceptions for backwards compatibility
 __all__ = [
     "DACSAdapter",
+    "BlobFile",  # Alias for drop-in blobfile compatibility
     "WriteMode",
     "DACSError",
     "DACSStorageError",
@@ -71,6 +72,12 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
+def _is_azure_path(path: str) -> bool:
+    """Check if a path is an Azure blob path (az:// or https://<account>.blob.core.windows.net/<container>/<blob>)."""
+    return (
+        path.startswith("az://")
+        or (path.startswith("https://") and ".blob.core.windows.net" in path)
+    )
 
 class _ClientManager:
     """Thread-safe singleton manager for DACSCacheClient instance."""
@@ -181,7 +188,7 @@ class DACSAdapter:
     def __enter__(self):
         """Context manager entry."""
         # For remote paths, get and cache the file handle
-        if self._path.startswith("az://"):
+        if _is_azure_path(self._path):
             # DACS Client has limited write support:
             # - Does NOT support append mode ('a', 'ab') - would require read-modify-write
             # - Does NOT support overwrite mode for existing files - O_EXCL is used in write_blob
@@ -263,7 +270,7 @@ class DACSAdapter:
                 release_buffer(buffer)  # User responsible for freeing
                 # mv is now invalid - do not access!
         """
-        if not self._path.startswith("az://"):
+        if not _is_azure_path(self._path):
             # Local file read
             with open(self._path, self._mode) as f:
                 return f.read(size)
@@ -308,7 +315,10 @@ class DACSAdapter:
                 char_array = array_type.from_buffer(buffer)
                 return memoryview(char_array)
             else:
-                # Copy data to Python bytes (buffer will be released in finally)
+                # Copy data to Python bytes - maintains API parity with native blobfile
+                # Note: ctypes._string_at.argtypes is patched at module load to use
+                # c_ssize_t (64-bit) instead of c_int (32-bit), enabling reads > 2GB
+                # For faster reads, use the zero-copy path with a pre-allocated buffer
                 data = ctypes.string_at(buffer, bytes_read)
         finally:
             # Only release buffer if we allocated it internally
@@ -376,7 +386,7 @@ class DACSAdapter:
         if self._write_mode == WriteMode.WRITE_DISABLED:
             raise OperationNotSupportedError("Write operations are disabled. WriteMode is set to WRITE_DISABLED.")
 
-        if not self._path.startswith("az://"):
+        if not _is_azure_path(self._path):
             # Local file write (buffer mode not supported for local files)
             if buffer is not None:
                 raise OperationNotSupportedError("User-provided buffer is not supported for local file writes.")
@@ -736,7 +746,7 @@ def _compute_file_md5(path: str) -> str:
 
 def exists(path: str) -> bool:
     """Check if a file or directory exists. Supported API."""
-    if not path.startswith("az://"):
+    if not _is_azure_path(path):
         # Local file check
         return os.path.exists(path)
 
@@ -775,7 +785,7 @@ def isdir(path: str) -> bool:
 
 def listdir(path: str) -> Iterator[str]:
     """List contents of a directory. Supported API."""
-    if not path.startswith("az://"):
+    if not _is_azure_path(path):
         # Local directory listing
         for item in os.listdir(path):
             yield item
@@ -801,7 +811,7 @@ def listdir(path: str) -> Iterator[str]:
             raise handle_native_error(e, operation="listdir", path=path) from e
 
 
-def scandir(path: str) -> Iterator[Any]:
+def scandir(path: str) -> Iterator[str]:
     """
     List contents of a directory (generator). Supported API.
     Returns DirEntry objects with path, name, is_dir, is_file, and stat fields.
@@ -817,8 +827,8 @@ def scandir(path: str) -> Iterator[Any]:
             "stat",    # Stat object (or None)
         ],
     )
-    
-    if not path.startswith("az://"):
+
+    if not _is_azure_path(path):
         # Local directory listing
         for entry in os.scandir(path):
             yield entry.name
@@ -888,7 +898,7 @@ def rmtree(path: str) -> None:
 
 def stat(path: str) -> Any:
     """Get file statistics. Supported API."""
-    if not path.startswith("az://"):
+    if not _is_azure_path(path):
         # Local file statistics
         return os.stat(path)
 
@@ -1058,3 +1068,8 @@ def shutdown() -> None:
     """
     client = _ClientManager.get_instance()
     asyncio.run(client.shutdown())
+
+
+# Alias for drop-in blobfile compatibility
+# Users can do: from dacs_adapter import BlobFile
+BlobFile = DACSAdapter

@@ -25,7 +25,7 @@ import (
 
 var log = logger.New()
 
-const namespace = "cache-server"
+var namespace = common.GetNamespace()
 
 var (
 	// k8sClient is the controller-runtime client for interacting with the cluster.
@@ -92,4 +92,11 @@ var _ = AfterSuite(func(ctx context.Context) {
 var _ = ReportAfterSuite("e2e reporter", func(ctx SpecContext, r Report) {
 	common.CollectSuiteSupportBundle(ctx, fluxOpts.SupportBundleDir)
 	common.PostReport(ctx, r, fluxOpts.JunitReport, fluxOpts.SummaryReport)
+
+	// Write collected pytest results if any
+	if fluxOpts.PytestOutput != "" {
+		if err := WritePytestResults(fluxOpts.PytestOutput); err != nil {
+			log.Error(err, "Failed to write pytest JUnit XML")
+		}
+	}
 })

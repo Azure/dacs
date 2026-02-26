@@ -28,8 +28,8 @@ spec:
         env:
         - name: CACHE_SERVER_PORT
           value: "9065"
-        - name: CACHE_SERVER_LIST
-          value: "<placeholder_for_cacheserver_list>"
+        - name: CACHE_DISCOVERY_URL
+          value: "<placeholder_for_discovery_url>"
         - name: SI_cacheKeyExpirySeconds
           value: "1200"
         - name: SI_cacheIBEnabled
