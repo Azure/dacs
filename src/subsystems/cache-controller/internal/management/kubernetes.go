@@ -6,20 +6,67 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Constants
 const (
-	MaxRetries          = 3
-	RetryInterval       = 5 * time.Second
-	ControllerName      = "cache-controller"
-	CacheDataVolumeName = "cache-data-volume"
-	PodLabelSelectorStr = "app=cacheserver"
-	StatefulSetName     = "cacheserver"
+	MaxRetries            = 3
+	RetryInterval         = 5 * time.Second
+	ControllerName        = "cache-controller"
+	CacheDataVolumeName   = "cache-data-volume"
+	PodLabelSelectorKey   = "app"
+	PodLabelSelectorValue = "cacheserver"
+	StatefulSetName       = "cacheserver"
 )
+
+func buildNodeListFromK8sNodes(nodes []v1.Node) []Node {
+	nodeList := make([]Node, 0, len(nodes))
+	for _, node := range nodes {
+		nodeObj := Node{
+			NodeName:    node.Name,
+			Schedulable: !node.Spec.Unschedulable,
+			NodeLabels:  node.Labels,
+		}
+		nodeList = append(nodeList, nodeObj)
+	}
+
+	return nodeList
+}
+
+func buildPodListFromK8sPods(pods []v1.Pod) []Pod {
+	var podList []Pod
+	for _, pod := range pods {
+		if !sanityCheckPod(pod) {
+			log.Errorf("Pod %s(%s) failed sanity check. Ignoring", pod.Name, pod.Namespace)
+			continue
+		}
+
+		podObj := Pod{
+			PodName:             pod.Name,
+			Namespace:           pod.Namespace,
+			NodeName:            pod.Spec.NodeName,
+			State:               getPodState(pod),
+			SchedulerBypassed:   pod.Spec.SchedulerName != ControllerName,
+			NodeSelectorKey:     "",
+			NodeSelectorValue:   "",
+			UseEphemeralStorage: usesEphemeralStorage(pod),
+		}
+
+		if pod.Spec.Affinity != nil && pod.Spec.Affinity.NodeAffinity != nil &&
+			pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution != nil {
+			podObj.NodeSelectorKey = getPodNodeSelectorKey(pod)
+			podObj.NodeSelectorValue = getPodNodeSelectorValue(pod)
+		}
+		podList = append(podList, podObj)
+	}
+
+	return podList
+}
 
 func getCacheDataVolume(pod v1.Pod) *v1.Volume {
 	for _, volume := range pod.Spec.Volumes {
@@ -124,98 +171,34 @@ func getPodState(pod v1.Pod) PodStatus {
 	}
 }
 
-func GetNodesFromK8s(clientset kubernetes.Interface) ([]Node, error) {
+func GetNodesFromCache(ctx context.Context, reader ctrlclient.Reader) ([]Node, error) {
 	nodes := &v1.NodeList{}
-	retryCount := 0
-	for retryCount < MaxRetries {
-		var err error
-		nodes, err = clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			log.Warnf("Kubernetes client encountered error getting nodes: %s", err.Error())
-			if retryCount < MaxRetries {
-				log.Warnf("Retrying k8s get nodes in %s", RetryInterval)
-				retryCount++
-				time.Sleep(RetryInterval)
-				continue
-			} else {
-				log.Errorf("Max retries exceeded for k8s get nodes")
-				return nil, err
-			}
-		} else {
-			break
-		}
+	if err := reader.List(ctx, nodes); err != nil {
+		log.Errorf("Error listing cached nodes: %s", err.Error())
+		return nil, err
 	}
 
-	nodeList := []Node{}
-	for _, node := range nodes.Items {
-		nodeObj := Node{
-			NodeName:    node.Name,
-			Schedulable: !node.Spec.Unschedulable,
-			NodeLabels:  node.Labels,
-		}
-		nodeList = append(nodeList, nodeObj)
-	}
-
-	return nodeList, nil
+	return buildNodeListFromK8sNodes(nodes.Items), nil
 }
 
-func GetPodsFromK8s(clientset kubernetes.Interface) ([]Pod, error) {
+func GetPodsFromCache(ctx context.Context, reader ctrlclient.Reader) ([]Pod, error) {
 	pods := &v1.PodList{}
-	retryCount := 0
-	for retryCount < MaxRetries {
-		var err error
-		pods, err = clientset.CoreV1().Pods("").List(
-			context.TODO(),
-			metav1.ListOptions{
-				LabelSelector: PodLabelSelectorStr,
-			})
-		if err != nil {
-			log.Errorf("Kubernetes client encountered error getting pods: %s", err.Error())
-			if retryCount < MaxRetries {
-				log.Warnf("Retrying k8s get pods in %s", RetryInterval)
-				retryCount++
-				time.Sleep(RetryInterval)
-				continue
-			} else {
-				log.Errorf("Max retries exceeded for k8s get pods")
-				return nil, err
-			}
-		} else {
-			break
-		}
+	if err := reader.List(ctx, pods, ctrlclient.MatchingLabels{PodLabelSelectorKey: PodLabelSelectorValue}); err != nil {
+		log.Errorf("Error listing cached pods: %s", err.Error())
+		return nil, err
 	}
 
-	podList := []Pod{}
-	for _, pod := range pods.Items {
-		if !sanityCheckPod(pod) {
-			log.Errorf("Pod %s(%s) failed sanity check. Ignoring", pod.Name, pod.Namespace)
-			continue
-		}
-
-		podObj := Pod{
-			PodName:             pod.Name,
-			Namespace:           pod.Namespace,
-			NodeName:            pod.Spec.NodeName,
-			State:               getPodState(pod),
-			SchedulerBypassed:   pod.Spec.SchedulerName != ControllerName,
-			NodeSelectorKey:     getPodNodeSelectorKey(pod),
-			NodeSelectorValue:   getPodNodeSelectorValue(pod),
-			UseEphemeralStorage: usesEphemeralStorage(pod),
-		}
-		podList = append(podList, podObj)
-	}
-
-	return podList, nil
+	return buildPodListFromK8sPods(pods.Items), nil
 }
 
-func executeDeleteInstruction(clientset kubernetes.Interface, namespace string, podName string) error {
-	deletionGracePeriodSeconds := int64(0)
-	err := clientset.CoreV1().Pods(namespace).Delete(
-		context.TODO(),
-		podName,
-		metav1.DeleteOptions{
-			GracePeriodSeconds: &deletionGracePeriodSeconds,
-		})
+func executeDeleteInstruction(ctx context.Context, k8sClient ctrlclient.Client, namespace string, podName string) error {
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      podName,
+			Namespace: namespace,
+		},
+	}
+	err := k8sClient.Delete(ctx, pod, ctrlclient.GracePeriodSeconds(0))
 
 	if err != nil {
 		log.Errorf("Error deleting pod %s(%s): %s", podName, namespace, err.Error())
@@ -226,22 +209,25 @@ func executeDeleteInstruction(clientset kubernetes.Interface, namespace string, 
 	return nil
 }
 
-func executeBindInstruction(clientset kubernetes.Interface, namespace string, podName string, destinationNode string) error {
-	err := clientset.CoreV1().Pods(namespace).Bind(
-		context.TODO(),
-		&v1.Binding{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      podName,
-				Namespace: namespace,
-			},
-			Target: v1.ObjectReference{
-				APIVersion: "v1",
-				Kind:       "Node",
-				Name:       destinationNode,
-			},
+func executeBindInstruction(ctx context.Context, k8sClient ctrlclient.Client, namespace string, podName string, destinationNode string) error {
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      podName,
+			Namespace: namespace,
 		},
-		metav1.CreateOptions{},
-	)
+	}
+	binding := &v1.Binding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      podName,
+			Namespace: namespace,
+		},
+		Target: v1.ObjectReference{
+			APIVersion: "v1",
+			Kind:       "Node",
+			Name:       destinationNode,
+		},
+	}
+	err := k8sClient.SubResource("binding").Create(ctx, pod, binding)
 
 	if err != nil {
 		log.Errorf("Error binding pod %s(%s) to node %s: %s", podName, namespace, destinationNode, err.Error())
@@ -252,7 +238,7 @@ func executeBindInstruction(clientset kubernetes.Interface, namespace string, po
 	return nil
 }
 
-func emitFailedSchedulingEvent(clientset kubernetes.Interface, namespace string, podName string, reason string) error {
+func emitFailedSchedulingEvent(ctx context.Context, k8sClient ctrlclient.Client, namespace string, podName string, reason string) error {
 	log.Warnf("Emitting event for pod %s(%s) schedule failure due to %s", podName, namespace, reason)
 	event := &v1.Event{
 		ObjectMeta: metav1.ObjectMeta{
@@ -273,10 +259,10 @@ func emitFailedSchedulingEvent(clientset kubernetes.Interface, namespace string,
 		},
 	}
 
-	_, err := clientset.CoreV1().Events(namespace).Create(context.TODO(), event, metav1.CreateOptions{})
+	err := k8sClient.Create(ctx, event)
 	if err != nil {
 		// Ignore already exists error
-		if err.Error() != fmt.Sprintf("events \"%s\" already exists", podName) {
+		if !apierrors.IsAlreadyExists(err) {
 			log.Errorf("Error emitting event for pod %s(%s): %s", podName, namespace, err.Error())
 			return err
 		}
@@ -286,7 +272,7 @@ func emitFailedSchedulingEvent(clientset kubernetes.Interface, namespace string,
 	return nil
 }
 
-func ExecuteSchedulerInstructionsOnK8s(clientset kubernetes.Interface, instructions []SchedulerInstruction) []error {
+func ExecuteSchedulerInstructionsOnK8s(ctx context.Context, k8sClient ctrlclient.Client, instructions []SchedulerInstruction) []error {
 	errors := []error{}
 	for _, instruction := range instructions {
 		if instruction.Type == DeleteInstruction {
@@ -296,7 +282,7 @@ func ExecuteSchedulerInstructionsOnK8s(clientset kubernetes.Interface, instructi
 				"reason":    instruction.Reason,
 			}).Info("Executing delete pod instruction")
 
-			err := executeDeleteInstruction(clientset, instruction.Namespace, instruction.PodName)
+			err := executeDeleteInstruction(ctx, k8sClient, instruction.Namespace, instruction.PodName)
 			if err != nil {
 				errors = append(errors, err)
 			}
@@ -309,12 +295,12 @@ func ExecuteSchedulerInstructionsOnK8s(clientset kubernetes.Interface, instructi
 			}).Info("Executing bind pod instruction")
 
 			if instruction.DestinationNode != "" {
-				err := executeBindInstruction(clientset, instruction.Namespace, instruction.PodName, instruction.DestinationNode)
+				err := executeBindInstruction(ctx, k8sClient, instruction.Namespace, instruction.PodName, instruction.DestinationNode)
 				if err != nil {
 					errors = append(errors, err)
 				}
 			} else {
-				err := emitFailedSchedulingEvent(clientset, instruction.Namespace, instruction.PodName, instruction.Reason)
+				err := emitFailedSchedulingEvent(ctx, k8sClient, instruction.Namespace, instruction.PodName, instruction.Reason)
 				if err != nil {
 					errors = append(errors, err)
 				}
@@ -328,8 +314,9 @@ func ExecuteSchedulerInstructionsOnK8s(clientset kubernetes.Interface, instructi
 }
 
 // GetDesiredReplicaCountFromK8s fetches desired replica count from K8s StatefulSet
-func GetDesiredReplicaCountFromK8s(clientset kubernetes.Interface, namespace string) (int, error) {
-	statefulset, err := clientset.AppsV1().StatefulSets(namespace).Get(context.TODO(), StatefulSetName, metav1.GetOptions{})
+func GetDesiredReplicaCountFromK8s(ctx context.Context, k8sClient ctrlclient.Client, namespace string) (int, error) {
+	statefulset := &appsv1.StatefulSet{}
+	err := k8sClient.Get(ctx, ctrlclient.ObjectKey{Namespace: namespace, Name: StatefulSetName}, statefulset)
 	if err != nil {
 		log.Warnf("Error getting StatefulSet '%s' in namespace %s: %v", StatefulSetName, namespace, err)
 		return 0, err

@@ -11,7 +11,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -27,7 +26,6 @@ import (
 type RuntimeReconciler struct {
 	client.Client
 	Scheme    *runtime.Scheme
-	Clientset kubernetes.Interface
 	Tracker   management.Tracker
 }
 
@@ -38,19 +36,28 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	log := logf.FromContext(ctx)
 	log.V(1).Info("Runtime reconcile triggered", "trigger", req.NamespacedName)
 
-	// Fetch current nodes
-	nodes, err := management.GetNodesFromK8s(r.Clientset)
+	var (
+		nodes []management.Node
+		pods  []management.Pod
+		err   error
+	)
+
+	// Fetch current nodes/pods from controller-runtime cache
+	nodes, err = management.GetNodesFromCache(ctx, r.Client)
 	if err != nil {
-		log.Error(err, "Failed to get nodes")
+		log.Error(err, "Failed to get nodes from cache")
 		return ctrl.Result{}, err
 	}
 
-	// Fetch current pods
-	pods, err := management.GetPodsFromK8s(r.Clientset)
+	pods, err = management.GetPodsFromCache(ctx, r.Client)
 	if err != nil {
-		log.Error(err, "Failed to get pods")
+		log.Error(err, "Failed to get pods from cache")
 		return ctrl.Result{}, err
 	}
+
+	log.V(1).Info("Fetched runtime resources",
+		"nodes", len(nodes),
+		"pods", len(pods))
 
 	// Fetch current Cache CRDs
 	var cacheList storagev1.CacheList
@@ -59,14 +66,17 @@ func (r *RuntimeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
+	log.V(1).Info("Fetched runtime CRDs", "caches", len(cacheList.Items))
+
 	// Update tracker
 	r.Tracker.UpdateTracker(nodes, pods, cacheList.Items)
 
 	// Scheduler run
-	schedulerInstructions := management.Schedule(r.Tracker, r.Clientset)
+	schedulerInstructions := management.Schedule(ctx, r.Tracker, r.Client)
+	log.V(1).Info("Scheduler generated instructions", "count", len(schedulerInstructions))
 
 	// Apply scheduler instructions
-	executionErrors := management.ExecuteSchedulerInstructionsOnK8s(r.Clientset, schedulerInstructions)
+	executionErrors := management.ExecuteSchedulerInstructionsOnK8s(ctx, r.Client, schedulerInstructions)
 	if len(executionErrors) > 0 {
 		log.Info("Errors while executing scheduler instructions", "errors", executionErrors)
 		return ctrl.Result{}, fmt.Errorf("scheduler execution errors occurred")

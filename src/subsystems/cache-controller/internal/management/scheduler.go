@@ -1,12 +1,13 @@
 package management
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
-	"k8s.io/client-go/kubernetes"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Types of instructions
@@ -110,7 +111,7 @@ func findNodeToSchedule(tracker Tracker, podToSchedule Pod, occupiedNodes nodeLi
 // in order to not lose the cached data on those nodes. If that is not possible, it tries to schedule
 // pods on healthy nodes (nodes without recent cacheserver errors). If no healthy nodes are available,
 // it falls back to scheduling on any available node matching the pod's node affinity.
-func Schedule(tracker Tracker, clientset kubernetes.Interface) []SchedulerInstruction {
+func Schedule(ctx context.Context, tracker Tracker, k8sClient ctrlclient.Client) []SchedulerInstruction {
 	nodeCount := tracker.GetTotalNodeCount()
 	occupiedNodes := tracker.GetNodesWithPods()
 	log.Debugf("Found %d total nodes, %d nodes with pods", nodeCount, len(occupiedNodes))
@@ -136,7 +137,7 @@ func Schedule(tracker Tracker, clientset kubernetes.Interface) []SchedulerInstru
 
 	// Issue delete instructions for excess pods (index >= desired replicas)
 	allPods := append(scheduledPods, pendingPods...)
-	excessPods := identifyExcessPods(clientset, allPods)
+	excessPods := identifyExcessPods(ctx, k8sClient, allPods)
 	for _, excessPod := range excessPods {
 		instructionReason := fmt.Sprintf("Pod %s(%s) has index >= desired replica count, cleaning up excess pod",
 			excessPod.PodName, excessPod.Namespace)
@@ -176,7 +177,7 @@ func Schedule(tracker Tracker, clientset kubernetes.Interface) []SchedulerInstru
 }
 
 // identifyExcessPods identifies pods with index >= desired replica count
-func identifyExcessPods(clientset kubernetes.Interface, allPods []Pod) []Pod {
+func identifyExcessPods(ctx context.Context, k8sClient ctrlclient.Client, allPods []Pod) []Pod {
 	desiredReplicasMap := make(map[string]int)
 	failedNamespaces := make(map[string]bool)
 
@@ -189,7 +190,7 @@ func identifyExcessPods(clientset kubernetes.Interface, allPods []Pod) []Pod {
 		if _, exists := desiredReplicasMap[namespace]; !exists {
 			// Note: we are directly issuing k8s API call in the middle of scheduling logic here, which is not ideal.
 			// In the future, we can have the tracker track the cache StatefulSet and query it instead (like we do for nodes and pods)
-			desiredReplicas, err := GetDesiredReplicaCountFromK8s(clientset, namespace)
+			desiredReplicas, err := GetDesiredReplicaCountFromK8s(ctx, k8sClient, namespace)
 			if err != nil {
 				failedNamespaces[namespace] = true
 				log.Warnf("Unable to get desired replica count for namespace %s: %v."+

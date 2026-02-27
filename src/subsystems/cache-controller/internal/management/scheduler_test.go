@@ -11,19 +11,28 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/apimachinery/pkg/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
 	config "github.com/Azure/dacs/cache-controller/internal/config"
 )
 
-var clientset kubernetes.Interface
+var k8sClient ctrlclient.Client
 var tracker Tracker
 
+func newTestScheme() *runtime.Scheme {
+	s := runtime.NewScheme()
+	_ = clientgoscheme.AddToScheme(s)
+	_ = storagev1.AddToScheme(s)
+	return s
+}
+
 func init() {
-	clientset := fake.NewSimpleClientset()
-	mockLazyInit(clientset)
+	k8sClient = ctrlfake.NewClientBuilder().WithScheme(newTestScheme()).Build()
+	mockLazyInit(k8sClient)
 }
 
 func getSchedulerInstructionForPod(schedulerInstructions []SchedulerInstruction, namespace string, podName string) *SchedulerInstruction {
@@ -110,9 +119,9 @@ func resetTracker() {
 	tracker = newTracker
 }
 
-// mockLazyInit sets the clientset to the provided fake clientset.
-func mockLazyInit(fakeClientset kubernetes.Interface) {
-	clientset = fakeClientset
+// mockLazyInit sets the k8sClient to the provided fake client.
+func mockLazyInit(fakeClient ctrlclient.Client) {
+	k8sClient = fakeClient
 }
 
 // Helper function to create a mock Kubernetes StatefulSet
@@ -146,7 +155,7 @@ func getSchedulerInstructions(pods []Pod, nodes []Node) []SchedulerInstruction {
 	tracker.UpdateTracker(nodes, pods, []storagev1.Cache{})
 
 	// Get scheduler instructions
-	return Schedule(tracker, clientset)
+	return Schedule(context.TODO(), tracker, k8sClient)
 }
 
 func TestPodSticksToNode(t *testing.T) {
@@ -593,8 +602,8 @@ func TestExcessPodsCleanup(t *testing.T) {
 
 	// Create a mock StatefulSet with 6 desired replicas
 	statefulset := createMockStatefulSet("cacheserver", "azureml", 6)
-	_, err := clientset.AppsV1().StatefulSets("azureml").Create(context.TODO(), statefulset, metav1.CreateOptions{})
-	assert.NilError(t, err)
+	k8sClient = ctrlfake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(statefulset).Build()
+	mockLazyInit(k8sClient)
 
 	// Create 10 nodes (enough for the desired 6 pods)
 	nodes := CreateMockGpuNodeList(10)
@@ -675,13 +684,11 @@ func TestExcessPodsCleanup(t *testing.T) {
 // the desired replica count matches the running pod count and indices
 func TestNoExcessPodsWhenDesiredMatches(t *testing.T) {
 	resetTracker()
-	clientset := fake.NewSimpleClientset()
-	mockLazyInit(clientset)
 
 	// Create a mock StatefulSet with 4 desired replicas
 	statefulset := createMockStatefulSet("cacheserver", "azureml", 4)
-	_, err := clientset.AppsV1().StatefulSets("azureml").Create(context.TODO(), statefulset, metav1.CreateOptions{})
-	assert.NilError(t, err)
+	k8sClient = ctrlfake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(statefulset).Build()
+	mockLazyInit(k8sClient)
 
 	nodes := CreateMockGpuNodeList(4)
 
