@@ -64,12 +64,15 @@ from py_dacs_client.dacs_exceptions import (
     DACSNameTooLongError,
     DACSReadOnlyError,
 )
-from dacs_utils import alloc_buffer, release_buffer
+from dacs_utils import BoundedBufferManager
 
 # Import the unique session path from conftest.py
 # This ensures all tests use the same isolated path for this test run,
 # avoiding conflicts with other concurrent test runs
 from conftest import AZURE_BLOB_PATH, TEST_SESSION_ID
+
+# Shared BoundedBufferManager instance for tests (1 GB limit for test environment)
+_test_buffer_manager = BoundedBufferManager(max_memory_limit=1024 * 1024 * 1024)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -110,14 +113,16 @@ class TestRemoteBlobRead:
 
     def test_read_with_user_allocated_buffer(self):
         """Test reading with user-allocated buffer (caller manages lifecycle)."""
+        import asyncio
+
         test_data = "User buffer test data"
         blob_path = f"{AZURE_BLOB_PATH}/test_read_user_buffer_{id(self)}.txt"
         with bf.DACSAdapter(blob_path, "w") as f:
             f.write(test_data)
 
-        # Allocate buffer externally - user is responsible for releasing
+        # Allocate buffer via BoundedBufferManager - user is responsible for releasing
         buffer_size = len(test_data) + 10  # Extra space
-        user_buffer = alloc_buffer(buffer_size)
+        user_buffer = asyncio.run(_test_buffer_manager.acquire_buffer(buffer_size))
 
         try:
             with bf.DACSAdapter(blob_path, "rb") as f:
@@ -129,11 +134,13 @@ class TestRemoteBlobRead:
             # Buffer should still be valid and usable after read
             # (not released by DACSAdapter since user provided it)
         finally:
-            # User must release the buffer
-            release_buffer(user_buffer)
+            # User must release the buffer via BoundedBufferManager
+            asyncio.run(_test_buffer_manager.release_buffer(user_buffer))
 
     def test_read_with_user_buffer_reuse(self):
         """Test reusing user-allocated buffer across multiple reads."""
+        import asyncio
+
         test_data_1 = "First file content"
         test_data_2 = "Second file data"
         blob_path_1 = f"{AZURE_BLOB_PATH}/test_read_reuse_1_{id(self)}.txt"
@@ -145,9 +152,9 @@ class TestRemoteBlobRead:
         with bf.DACSAdapter(blob_path_2, "w") as f:
             f.write(test_data_2)
 
-        # Allocate a single buffer large enough for both
+        # Allocate a single buffer large enough for both via BoundedBufferManager
         buffer_size = max(len(test_data_1), len(test_data_2)) + 10
-        user_buffer = alloc_buffer(buffer_size)
+        user_buffer = asyncio.run(_test_buffer_manager.acquire_buffer(buffer_size))
 
         try:
             # Read first file
@@ -160,11 +167,12 @@ class TestRemoteBlobRead:
                 content_2 = f.read(size=len(test_data_2), buffer=user_buffer)
             assert bytes(content_2) == test_data_2.encode("utf-8")
         finally:
-            # Release once at the end
-            release_buffer(user_buffer)
+            # Release once at the end via BoundedBufferManager
+            asyncio.run(_test_buffer_manager.release_buffer(user_buffer))
 
     def test_read_zero_copy_memoryview(self):
         """Test that zero-copy read returns memoryview pointing to user buffer."""
+        import asyncio
         import ctypes
 
         test_data = "Zero copy memoryview test"
@@ -173,7 +181,7 @@ class TestRemoteBlobRead:
             f.write(test_data)
 
         buffer_size = len(test_data) + 10
-        user_buffer = alloc_buffer(buffer_size)
+        user_buffer = asyncio.run(_test_buffer_manager.acquire_buffer(buffer_size))
 
         try:
             with bf.DACSAdapter(blob_path, "rb") as f:
@@ -188,7 +196,7 @@ class TestRemoteBlobRead:
             # Memoryview should be valid while buffer is alive
             assert len(result) == len(test_data), "Memoryview length should match data length"
         finally:
-            release_buffer(user_buffer)
+            asyncio.run(_test_buffer_manager.release_buffer(user_buffer))
 
     def test_read_standard_path_returns_bytes(self):
         """Test that standard read (no user buffer) returns bytes, not memoryview."""
@@ -206,6 +214,7 @@ class TestRemoteBlobRead:
 
     def test_read_zero_copy_buffer_reuse_no_extra_allocation(self):
         """Test zero-copy read path reuses buffer without extra allocations."""
+        import asyncio
         import ctypes
 
         # Create multiple files
@@ -218,9 +227,9 @@ class TestRemoteBlobRead:
                 f.write(test_data)
             blob_paths.append(path)
 
-        # Single buffer for all reads
+        # Single buffer for all reads via BoundedBufferManager
         buffer_size = len(test_data) + 10
-        user_buffer = alloc_buffer(buffer_size)
+        user_buffer = asyncio.run(_test_buffer_manager.acquire_buffer(buffer_size))
 
         try:
             for path in blob_paths:
@@ -231,7 +240,7 @@ class TestRemoteBlobRead:
                 assert isinstance(result, memoryview)
                 assert bytes(result) == test_data.encode("utf-8")
         finally:
-            release_buffer(user_buffer)
+            asyncio.run(_test_buffer_manager.release_buffer(user_buffer))
 
 
 class TestRemoteBlobWrite:
@@ -247,13 +256,14 @@ class TestRemoteBlobWrite:
 
     def test_write_with_user_buffer_zero_copy(self):
         """Test zero-copy write using user-provided buffer."""
+        import asyncio
         import ctypes
 
         test_data = b"Zero copy write test data"
         blob_path = f"{AZURE_BLOB_PATH}/test_write_zerocopy_{id(self)}.txt"
 
-        # Allocate buffer and fill with data
-        user_buffer = alloc_buffer(len(test_data))
+        # Allocate buffer and fill with data via BoundedBufferManager
+        user_buffer = asyncio.run(_test_buffer_manager.acquire_buffer(len(test_data)))
         ctypes.memmove(user_buffer, test_data, len(test_data))
 
         try:
@@ -268,15 +278,16 @@ class TestRemoteBlobWrite:
                 content = f.read()
             assert content == test_data, "Read content should match written data"
         finally:
-            release_buffer(user_buffer)
+            asyncio.run(_test_buffer_manager.release_buffer(user_buffer))
 
     def test_write_zero_copy_buffer_reuse(self):
         """Test zero-copy write path with buffer reuse across multiple writes."""
+        import asyncio
         import ctypes
 
-        # Create buffer large enough for multiple writes
+        # Create buffer large enough for multiple writes via BoundedBufferManager
         max_size = 100
-        user_buffer = alloc_buffer(max_size)
+        user_buffer = asyncio.run(_test_buffer_manager.acquire_buffer(max_size))
 
         try:
             for i in range(3):
@@ -296,7 +307,7 @@ class TestRemoteBlobWrite:
                     content = f.read()
                 assert content == test_data
         finally:
-            release_buffer(user_buffer)
+            asyncio.run(_test_buffer_manager.release_buffer(user_buffer))
 
     def test_write_standard_path_with_string(self):
         """Test standard write path with string data (internal buffer allocation)."""
@@ -330,12 +341,13 @@ class TestRemoteBlobWrite:
 
     def test_write_zero_copy_requires_size(self):
         """Test that zero-copy write with buffer requires size parameter."""
+        import asyncio
         import ctypes
 
         test_data = b"Test data"
         blob_path = f"{AZURE_BLOB_PATH}/test_write_no_size_{id(self)}.txt"
 
-        user_buffer = alloc_buffer(len(test_data))
+        user_buffer = asyncio.run(_test_buffer_manager.acquire_buffer(len(test_data)))
         ctypes.memmove(user_buffer, test_data, len(test_data))
 
         try:
@@ -344,18 +356,19 @@ class TestRemoteBlobWrite:
                 with pytest.raises(ValueError, match="size must be specified"):
                     f.write(buffer=user_buffer)
         finally:
-            release_buffer(user_buffer)
+            asyncio.run(_test_buffer_manager.release_buffer(user_buffer))
 
     def test_read_write_zero_copy_roundtrip(self):
         """Test complete zero-copy roundtrip: write with buffer, read with buffer."""
+        import asyncio
         import ctypes
 
         test_data = b"Complete zero-copy roundtrip test data"
         blob_path = f"{AZURE_BLOB_PATH}/test_zerocopy_roundtrip_{id(self)}.txt"
 
-        # Use same buffer for both write and read
+        # Use same buffer for both write and read via BoundedBufferManager
         buffer_size = len(test_data) + 20
-        user_buffer = alloc_buffer(buffer_size)
+        user_buffer = asyncio.run(_test_buffer_manager.acquire_buffer(buffer_size))
 
         try:
             # Zero-copy write
@@ -374,7 +387,7 @@ class TestRemoteBlobWrite:
             assert isinstance(result, memoryview)
             assert bytes(result) == test_data
         finally:
-            release_buffer(user_buffer)
+            asyncio.run(_test_buffer_manager.release_buffer(user_buffer))
 
     def test_write_multiple_times_to_remote_blob(self):
         """Test that multiple write operations are not supported (limitation).
@@ -455,12 +468,13 @@ class TestRemoteBlobWrite:
 
     def test_write_user_buffer_not_released_on_close(self):
         """Test that user-provided buffers are NOT released by DACSAdapter on close()."""
+        import asyncio
         import ctypes
 
         test_data = b"User buffer lifetime test"
         blob_path = f"{AZURE_BLOB_PATH}/test_user_buffer_lifetime_{id(self)}.txt"
 
-        user_buffer = alloc_buffer(len(test_data))
+        user_buffer = asyncio.run(_test_buffer_manager.acquire_buffer(len(test_data)))
         ctypes.memmove(user_buffer, test_data, len(test_data))
 
         # Write using user buffer
@@ -480,11 +494,12 @@ class TestRemoteBlobWrite:
             content = ctypes.string_at(user_buffer, len(test_data))
             assert content == test_data, "User buffer should still be usable after close"
         finally:
-            # User is responsible for releasing
-            release_buffer(user_buffer)
+            # User is responsible for releasing via BoundedBufferManager
+            asyncio.run(_test_buffer_manager.release_buffer(user_buffer))
 
     def test_write_mixed_internal_and_user_buffers(self):
         """Test mixing internal and user-provided buffers in writes."""
+        import asyncio
         import ctypes
 
         internal_data = "Internal buffer data"
@@ -492,7 +507,7 @@ class TestRemoteBlobWrite:
         blob_path_1 = f"{AZURE_BLOB_PATH}/test_mixed_internal_{id(self)}.txt"
         blob_path_2 = f"{AZURE_BLOB_PATH}/test_mixed_user_{id(self)}.txt"
 
-        user_buffer = alloc_buffer(len(user_data))
+        user_buffer = asyncio.run(_test_buffer_manager.acquire_buffer(len(user_data)))
         ctypes.memmove(user_buffer, user_data, len(user_data))
 
         try:
@@ -520,17 +535,18 @@ class TestRemoteBlobWrite:
                     if content:  # Only check if we got data
                         assert content == user_data
         finally:
-            release_buffer(user_buffer)
+            asyncio.run(_test_buffer_manager.release_buffer(user_buffer))
 
     def test_write_user_buffer_must_stay_alive_until_close(self):
         """Document and test the requirement that user buffers must stay alive until close()."""
+        import asyncio
         import ctypes
 
         test_data = b"Buffer lifetime critical test"
         blob_path = f"{AZURE_BLOB_PATH}/test_buffer_lifetime_{id(self)}.txt"
 
-        # Allocate buffer that will stay alive for entire write operation
-        user_buffer = alloc_buffer(len(test_data))
+        # Allocate buffer that will stay alive for entire write operation via BoundedBufferManager
+        user_buffer = asyncio.run(_test_buffer_manager.acquire_buffer(len(test_data)))
         ctypes.memmove(user_buffer, test_data, len(test_data))
 
         try:
@@ -549,7 +565,7 @@ class TestRemoteBlobWrite:
                 assert content == test_data, "Buffer content should remain intact"
             # close() called - now safe to release buffer
         finally:
-            release_buffer(user_buffer)
+            asyncio.run(_test_buffer_manager.release_buffer(user_buffer))
 
 
 class TestRemoteBlobExists:
