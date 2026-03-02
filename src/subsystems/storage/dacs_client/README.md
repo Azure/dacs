@@ -13,6 +13,7 @@ This Python library provides interfaces to perform file operations on Azure blob
   - [DACSAdapter (blobfile-compatible, sync)](#dacsadapter-blobfile-compatible-sync)
   - [Blobfile Integration (monkey-patching)](#blobfile-integration-monkey-patching)
   - [Utility API](#utility-api)
+    - [BoundedBufferManager](#boundedbuffermanager)
   - [Exception Hierarchy](#exception-hierarchy)
 - [Sample Code](#sample-code)
 - [FAQs](#faqs)
@@ -270,14 +271,126 @@ if is_patched():
 ### Utility API
 
 ```python
-from py_dacs_client.dacs_utils import alloc_buffer, release_buffer, BoundedBufferManager
+from py_dacs_client.dacs_utils import alloc_buffer, release_buffer, BoundedBufferManager, get_memory_limit
 ```
 
 | Function / Class | Description |
 | --- | --- |
 | `alloc_buffer(size) -> ctypes buffer` | Allocate a raw C buffer of the specified size (via `malloc`). Raises `MemoryError` on failure. |
 | `release_buffer(buffer)` | Release a previously allocated buffer (via `free`). |
-| `BoundedBufferManager(max_memory_limit)` | Async-safe buffer pool that enforces a total memory usage cap. Use `await .acquire_buffer(size)` and `await .release_buffer(buffer)`. |
+| `get_memory_limit() -> int` | Get the container memory limit in bytes. Reads `DACS_MEMORY_MB` env var (default: 2048 MB). |
+| `BoundedBufferManager(max_memory_limit)` | Async-safe buffer pool that enforces a total memory usage cap. See [BoundedBufferManager](#boundedbuffermanager). |
+
+> **Note:** For production workloads, prefer `BoundedBufferManager` over raw `alloc_buffer`/`release_buffer` to prevent unbounded memory growth when processing many blobs concurrently.
+
+#### BoundedBufferManager
+
+An async-safe buffer pool that enforces a total memory usage cap across all concurrent operations. It prevents out-of-memory conditions by blocking `acquire_buffer()` calls when the memory limit would be exceeded, and automatically unblocking them when buffers are released.
+
+```python
+from py_dacs_client.dacs_utils import BoundedBufferManager, get_memory_limit
+```
+
+##### Constructor
+
+```python
+BoundedBufferManager(max_memory_limit: int = 1024 * 1024 * 1024)
+```
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `max_memory_limit` | `int` | `1073741824` (1 GB) | Maximum total bytes that can be allocated across all buffers. A common pattern is to use 80% of the container memory limit via `get_memory_limit()`. |
+
+##### Methods
+
+| Method | Description |
+| --- | --- |
+| `await acquire_buffer(buf_size) -> ctypes.c_void_p` | Allocate a buffer of the requested size. Blocks (async) if the allocation would exceed `max_memory_limit`, resuming automatically when other buffers are released. If `buf_size` exceeds `max_memory_limit`, the allocation proceeds anyway to avoid deadlock. Raises `MemoryError` on `malloc` failure. |
+| `await release_buffer(buffer) -> None` | Release a previously acquired buffer back to the pool (frees the underlying C memory via `free`). Signals any waiting `acquire_buffer()` calls that memory is available. Logs a warning and skips if `buffer` is `None`. |
+
+##### Memory Pressure Logging
+
+`BoundedBufferManager` logs at `INFO` level when memory usage exceeds 90% of the limit, and at `DEBUG` level otherwise. This helps identify memory pressure without excessive log noise.
+
+##### Standalone Usage (async)
+
+```python
+import asyncio
+from py_dacs_client.dacs_utils import BoundedBufferManager, get_memory_limit
+
+memory_limit = get_memory_limit()
+buffer_manager = BoundedBufferManager(max_memory_limit=int(memory_limit * 0.8))
+
+async def process_blob(client, blob_path, blob_size):
+    buffer = await buffer_manager.acquire_buffer(blob_size)
+    try:
+        bytes_read = await client.read_blob(blob_path, buffer, blob_size, 0)
+        # Process the data in buffer...
+    finally:
+        await buffer_manager.release_buffer(buffer)
+
+# Multiple concurrent reads are automatically bounded
+async def main():
+    tasks = [process_blob(client, path, size) for path, size in blob_list]
+    await asyncio.gather(*tasks)
+```
+
+##### With DACSAdapter (automatic)
+
+When using `DACSAdapter`, a singleton `BoundedBufferManager` (80% of container memory) is created automatically — no manual setup is needed. Internal read and write buffers are acquired and released through this shared pool:
+
+- **Reads without a user buffer:** The adapter acquires a buffer internally, copies data to Python bytes, and releases the buffer immediately.
+- **Reads with a user buffer:** The user allocates via `BoundedBufferManager.acquire_buffer()` and is responsible for calling `release_buffer()` after use.
+- **Writes without a user buffer:** The adapter acquires internal buffers that are automatically released on `close()`.
+- **Writes with a user buffer:** The user must keep the buffer alive until `close()` and release it via `BoundedBufferManager.release_buffer()` afterward.
+
+```python
+import asyncio
+from py_dacs_client.dacs_adapter import DACSAdapter
+from py_dacs_client.dacs_utils import BoundedBufferManager
+
+# For user-managed buffer reads, create or share a BoundedBufferManager
+buffer_manager = BoundedBufferManager(max_memory_limit=1024 * 1024 * 1024)
+
+async def read_blob_with_buffer():
+    buffer = await buffer_manager.acquire_buffer(4096)
+    try:
+        with DACSAdapter("az://account.blob.core.windows.net/container/blob", "rb") as f:
+            mv = f.read(size=4096, buffer=buffer)
+            data = bytes(mv)
+    finally:
+        await buffer_manager.release_buffer(buffer)
+
+asyncio.run(read_blob_with_buffer())
+```
+
+##### Concurrent Blob Downloads with Bounded Memory
+
+```python
+import asyncio
+from py_dacs_client.dacs_client import DACSCacheClient
+from py_dacs_client.dacs_utils import BoundedBufferManager, get_memory_limit
+
+memory_limit = get_memory_limit()
+buffer_manager = BoundedBufferManager(max_memory_limit=int(memory_limit * 0.8))
+client = DACSCacheClient()
+
+async def download_blob(blob_path, blob_size):
+    buffer = await buffer_manager.acquire_buffer(blob_size)
+    try:
+        await client.read_blob(blob_path, buffer, blob_size, 0)
+        # Process buffer contents...
+    finally:
+        await buffer_manager.release_buffer(buffer)
+
+async def main():
+    blob_list = [(f"az://account.blob.core.windows.net/container/blob_{i}", 32 * 1024 * 1024) for i in range(100)]
+    tasks = [download_blob(path, size) for path, size in blob_list]
+    await asyncio.gather(*tasks)  # Memory stays within 80% of container limit
+    await client.shutdown()
+
+asyncio.run(main())
+```
 
 ---
 
@@ -366,6 +479,29 @@ async for entry in client.list_dir("az://account.blob.core.windows.net/container
 
 #### Read blob contents
 
+Using `BoundedBufferManager` (recommended for concurrent workloads):
+
+```python
+from py_dacs_client.dacs_utils import BoundedBufferManager, get_memory_limit
+
+memory_limit = get_memory_limit()
+buffer_manager = BoundedBufferManager(max_memory_limit=int(memory_limit * 0.8))
+
+read_size = 33554432  # 32 MB
+buffer = await buffer_manager.acquire_buffer(read_size)
+
+try:
+    bytes_read = await client.read_blob(
+        "az://account.blob.core.windows.net/container/path/to/blob",
+        buffer, read_size, chunk_offset
+    )
+    # Process the data in buffer...
+finally:
+    await buffer_manager.release_buffer(buffer)
+```
+
+Using raw `alloc_buffer` / `release_buffer` (simple single-buffer use):
+
 ```python
 read_size = 33554432  # 32 MB
 buffer = alloc_buffer(read_size)
@@ -384,6 +520,30 @@ finally:
 ```
 
 #### Write blob contents
+
+Using `BoundedBufferManager` (recommended for concurrent workloads):
+
+```python
+import ctypes
+from py_dacs_client.dacs_utils import BoundedBufferManager, get_memory_limit
+
+memory_limit = get_memory_limit()
+buffer_manager = BoundedBufferManager(max_memory_limit=int(memory_limit * 0.8))
+
+write_size = len(data_bytes)
+buffer = await buffer_manager.acquire_buffer(write_size)
+ctypes.memmove(buffer, data_bytes, write_size)
+
+try:
+    bytes_written = await client.write_blob(
+        "az://account.blob.core.windows.net/container/path/to/new_blob",
+        buffer, write_size
+    )
+finally:
+    await buffer_manager.release_buffer(buffer)
+```
+
+Using raw `alloc_buffer` / `release_buffer` (simple single-buffer use):
 
 ```python
 write_size = len(data_bytes)
@@ -432,6 +592,27 @@ with DACSAdapter("az://account.blob.core.windows.net/container/blob", "rb") as f
 ```
 
 #### Read with a user-provided buffer (zero-copy)
+
+Using `BoundedBufferManager` (recommended — enforces memory limits):
+
+```python
+import asyncio
+from py_dacs_client.dacs_adapter import DACSAdapter
+from py_dacs_client.dacs_utils import BoundedBufferManager
+
+buffer_manager = BoundedBufferManager(max_memory_limit=1024 * 1024 * 1024)  # 1 GB limit
+
+buffer = asyncio.run(buffer_manager.acquire_buffer(1024))
+try:
+    with DACSAdapter("az://account.blob.core.windows.net/container/blob", "rb") as f:
+        mv = f.read(size=1024, buffer=buffer)
+        # Use memoryview — buffer must stay alive
+        data = bytes(mv)  # Copy if needed after release
+finally:
+    asyncio.run(buffer_manager.release_buffer(buffer))  # User responsible for releasing
+```
+
+Using raw `alloc_buffer` / `release_buffer`:
 
 ```python
 from py_dacs_client.dacs_adapter import DACSAdapter
@@ -534,6 +715,9 @@ for name in bf.listdir("az://account.blob.core.windows.net/container/dir/"):
 | `CACHE_DISCOVERY_URL` | No | Cache server discovery endpoint URL. Enables dynamic cache server discovery when set with `CACHE_SERVER_PORT`. Takes precedence over `CACHE_SERVER_LIST`. |
 | `CACHE_SERVER_PORT` | No | Cache server port. Required for both static and discovery-based cache configurations. |
 | `BLOBFILE_USE_DACS` | No | Set to `"1"` to auto-enable blobfile monkey-patching on import. See [Blobfile Integration](#blobfile-integration-monkey-patching). |
+| `DACS_MEMORY_MB` | No | Container memory limit in MB. Used by `get_memory_limit()` and `BoundedBufferManager` to derive buffer pool size. Defaults to `2048` (2 GB). |
+| `DACS_PY_CACHE_CLIENT_THREADPOOL_SIZE` | No | Thread pool size for parallel downloads. Defaults to `min(cpu_count * 4, 48)`. |
+| `DACS_PY_CACHE_CLIENT_CHUNK_SIZE` | No | Chunk size in bytes for chunked blob downloads. Defaults to `268435456` (256 MB). |
 | `DACS_DATA_LOG_LEVEL` | No | Logging level (`DEBUG`, `INFO`, `WARNING`, etc.). Defaults to `INFO`. |
 
 ---

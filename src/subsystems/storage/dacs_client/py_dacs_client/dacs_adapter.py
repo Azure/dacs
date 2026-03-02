@@ -20,7 +20,7 @@ from typing import Optional, Union, Iterator, List, Any, Tuple
 from enum import Enum
 
 from py_dacs_client.dacs_client import DACSCacheClient
-from py_dacs_client.dacs_utils import alloc_buffer, release_buffer
+from py_dacs_client.dacs_utils import alloc_buffer, release_buffer, BoundedBufferManager, get_memory_limit
 from py_dacs_client.dacs_exceptions import (
     DACSError,
     DACSStorageError,
@@ -80,9 +80,10 @@ def _is_azure_path(path: str) -> bool:
     )
 
 class _ClientManager:
-    """Thread-safe singleton manager for DACSCacheClient instance."""
+    """Thread-safe singleton manager for DACSCacheClient and BoundedBufferManager instances."""
 
     _instance = None
+    _buffer_manager = None
     _lock = threading.Lock()
     _write_mode = None
 
@@ -104,6 +105,30 @@ class _ClientManager:
                     cls._write_mode = write_mode if write_mode else WriteMode.WRITE_SYNC
                     cls._instance = DACSCacheClient(write_mode=cls._write_mode)
         return cls._instance
+
+    @classmethod
+    def get_buffer_manager(cls) -> BoundedBufferManager:
+        """
+        Get or create the singleton BoundedBufferManager instance.
+        The memory limit is derived from the container memory limit
+        (DACS_MEMORY_MB env var, default 2 GB), using 80% of
+        that limit for buffer allocations.
+
+        Returns:
+            BoundedBufferManager: The singleton buffer manager instance
+        """
+        if cls._buffer_manager is None:
+            with cls._lock:
+                if cls._buffer_manager is None:
+                    memory_limit = get_memory_limit()
+                    # Use 80% of container memory for buffer allocations
+                    buffer_memory_limit = int(memory_limit * 0.8)
+                    cls._buffer_manager = BoundedBufferManager(max_memory_limit=buffer_memory_limit)
+                    logger.info(
+                        f"BoundedBufferManager initialized with {buffer_memory_limit} bytes "
+                        f"({buffer_memory_limit / (1024 * 1024):.0f} MB) limit"
+                    )
+        return cls._buffer_manager
 
 
 class WriteMode(Enum):
@@ -177,6 +202,9 @@ class DACSAdapter:
 
         # Get and cache the DACSCacheClient instance with write_mode
         self._client = _ClientManager.get_instance(write_mode=self._write_mode)
+
+        # Get the BoundedBufferManager for memory-limited buffer allocations
+        self._buffer_manager = _ClientManager.get_buffer_manager()
 
         # Cache for file handle (only for remote paths)
         self._file_handle = None
@@ -291,10 +319,10 @@ class DACSAdapter:
                 return ""  # Text mode returns empty string
             return b""  # Binary mode returns empty bytes
 
-        # Use user-provided buffer or allocate internal buffer
+        # Use user-provided buffer or allocate internal buffer via BoundedBufferManager
         user_buffer_provided = buffer is not None
         if not user_buffer_provided:
-            buffer = alloc_buffer(read_size)
+            buffer = asyncio.run(self._buffer_manager.acquire_buffer(read_size))
 
         try:
             # Use the cached file handle's read method directly
@@ -323,7 +351,7 @@ class DACSAdapter:
         finally:
             # Only release buffer if we allocated it internally
             if not user_buffer_provided:
-                release_buffer(buffer)
+                asyncio.run(self._buffer_manager.release_buffer(buffer))
 
         # Decode to string if opened in text mode (only for non-user-buffer case)
         if "b" not in self._mode:
@@ -423,8 +451,8 @@ class DACSAdapter:
             else:
                 data_bytes = data
 
-            # Allocate buffer and copy data - DO NOT release until close()
-            internal_buffer = alloc_buffer(len(data_bytes))
+            # Allocate buffer via BoundedBufferManager and copy data - DO NOT release until close()
+            internal_buffer = asyncio.run(self._buffer_manager.acquire_buffer(len(data_bytes)))
             ctypes.memmove(internal_buffer, data_bytes, len(data_bytes))
 
             # Track internal buffer for release on close()
@@ -468,11 +496,11 @@ class DACSAdapter:
     def close(self) -> None:
         """Close the file and release all internally-allocated write buffers."""
         if not self._closed:
-            # Release all internally-allocated write buffers
+            # Release all internally-allocated write buffers via BoundedBufferManager
             # User-provided buffers are NOT released - caller is responsible
             for buffer, is_user_provided in self._write_buffers:
                 if not is_user_provided:
-                    release_buffer(buffer)
+                    asyncio.run(self._buffer_manager.release_buffer(buffer))
             self._write_buffers.clear()
             self._closed = True
 
@@ -705,13 +733,14 @@ def _copy_remote_to_local(src: str, dst: str, return_md5: bool, overwrite: bool 
         raise handle_native_error(e, operation="get_file_size", path=src) from e
 
     def write_fn(tmp_dst):
+        buffer_manager = _ClientManager.get_buffer_manager()
         with DACSAdapter(src, "rb") as src_adapter:
             with open(tmp_dst, "wb") as dst_file:
                 offset = 0
                 while offset < src_size:
                     chunk_size = min(COPY_CHUNK_SIZE, src_size - offset)
-                    # Allocate buffer for this chunk
-                    buffer = alloc_buffer(chunk_size)
+                    # Allocate buffer for this chunk via BoundedBufferManager
+                    buffer = asyncio.run(buffer_manager.acquire_buffer(chunk_size))
                     try:
                         # Read chunk - need to use the file handle directly for offset reads
                         try:
@@ -728,7 +757,7 @@ def _copy_remote_to_local(src: str, dst: str, return_md5: bool, overwrite: bool 
                         dst_file.write(chunk_data)
                         offset += bytes_read
                     finally:
-                        release_buffer(buffer)
+                        asyncio.run(buffer_manager.release_buffer(buffer))
 
     _atomic_write_to_local(dst, overwrite, write_fn)
 

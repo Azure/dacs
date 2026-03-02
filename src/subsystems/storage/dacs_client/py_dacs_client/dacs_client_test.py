@@ -9,7 +9,7 @@ import random
 import sys
 import time
 from ctypes import memset  # Added for fast buffer initialization
-from py_dacs_client.dacs_utils import alloc_buffer, logger, release_buffer
+from py_dacs_client.dacs_utils import alloc_buffer, logger, release_buffer, BoundedBufferManager, get_memory_limit
 from py_dacs_client.dacs_client import DACSCacheClient, DACSCacheFileHandle
 from mpi4py import MPI
 import socket
@@ -41,6 +41,11 @@ def perf_test_read(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobSi
     # Initialize the DACSCacheClient
     dacs_client_instance = DACSCacheClient()
 
+    # Initialize BoundedBufferManager to limit memory usage
+    memory_limit = get_memory_limit()
+    buffer_manager = BoundedBufferManager(max_memory_limit=int(memory_limit * 0.8))
+    logger.info(f"BoundedBufferManager initialized with {int(memory_limit * 0.8) / (1024*1024):.0f} MB limit")
+
     # TODO: also test list blobs api to get the blob names matching the pattern
     # For now, we will construct the blob names based on the pattern
     blob_dict = {}
@@ -57,18 +62,20 @@ def perf_test_read(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobSi
     async def read_blob_async(dacs_client_instance: DACSCacheClient, blob_path: str, blob_size: int) -> None:
 
         nonlocal total_bytes_read
-        # Allocate buffer for reading
-        buffer = alloc_buffer(blob_size)
+        # Allocate buffer for reading via BoundedBufferManager
+        buffer = await buffer_manager.acquire_buffer(blob_size)
         if not buffer:
             raise MemoryError("Failed to allocate buffer for reading blob")
-        logger.info(f"Reading blob {blob_path} with size {blob_size} bytes")
-        size_read = await dacs_client_instance.read_blob(blob_path, buffer, blob_size, 0)
-        if size_read != blob_size:
-            logger.error(f"Error reading blob {blob_path}, expected size: {blob_size}, read size: {size_read}")
-            raise IOError(f"Error reading blob {blob_path}, expected size: {blob_size}, read size: {size_read}")
-        # Once the read is complete, perform the required operation and then we should release the buffer
-        release_buffer(buffer)
-        total_bytes_read += size_read
+        try:
+            logger.info(f"Reading blob {blob_path} with size {blob_size} bytes")
+            size_read = await dacs_client_instance.read_blob(blob_path, buffer, blob_size, 0)
+            if size_read != blob_size:
+                logger.error(f"Error reading blob {blob_path}, expected size: {blob_size}, read size: {size_read}")
+                raise IOError(f"Error reading blob {blob_path}, expected size: {blob_size}, read size: {size_read}")
+            total_bytes_read += size_read
+        finally:
+            # Release the buffer regardless of success or failure
+            await buffer_manager.release_buffer(buffer)
 
     for i in range(nBlobs):
         blob_path = os.path.join(azBlobDirPath, blob_dict[i]["name"])
@@ -94,7 +101,7 @@ def perf_test_write(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobS
     """
     # TODO: very hacky test code, need following improvements
     # 1. write in chunks to open file handle, write in chunks parallely and then close the handle
-    # 2. keep memory usage in check
+    # 2. memory usage is now bounded via BoundedBufferManager
     # 3. read back the written file and validate contents
 
     # Check if the azBlobDirPath is set
@@ -107,14 +114,26 @@ def perf_test_write(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobS
     # Initialize the DACSCacheClient
     dacs_client_instance = DACSCacheClient(write_mode=write_mode)
 
-    # Generate write buffers for each blob
+    # Initialize BoundedBufferManager to limit memory usage during writes
+    memory_limit = get_memory_limit()
+    buffer_manager = BoundedBufferManager(max_memory_limit=int(memory_limit * 0.8))
+    logger.info(f"BoundedBufferManager initialized with {int(memory_limit * 0.8) / (1024*1024):.0f} MB limit")
+
+    # Generate write buffers for each blob using BoundedBufferManager
     start_time = time.time()
-    write_buffers = [alloc_buffer(blobSize) for _ in range(nBlobs)]
-    for buffer in write_buffers:
-        if not buffer:
-            raise MemoryError("Failed to allocate buffer for writing blob")
-        # Fast fill buffer with a repeating byte pattern (0xAB) and make it unique per blob
-        memset(buffer, 0xAB + random.randint(0, 255), blobSize)
+
+    async def _alloc_write_buffers():
+        buffers = []
+        for _ in range(nBlobs):
+            buf = await buffer_manager.acquire_buffer(blobSize)
+            if not buf:
+                raise MemoryError("Failed to allocate buffer for writing blob")
+            # Fast fill buffer with a repeating byte pattern (0xAB) and make it unique per blob
+            memset(buf, 0xAB + random.randint(0, 255), blobSize)
+            buffers.append(buf)
+        return buffers
+
+    write_buffers = asyncio.run(_alloc_write_buffers())
     elapsed_time = time.time() - start_time
     logger.info(
         f"Allocated and initialized {nBlobs} write buffers of size {blobSize} bytes each in {elapsed_time:.2f} seconds"
@@ -181,7 +200,7 @@ def perf_test_write(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobS
                 logger.error(f"Error closing file handle for blob {blob_path}: {e}")
                 raise
             finally:
-                release_buffer(buffer)
+                await buffer_manager.release_buffer(buffer)
             logger.info(f"Completed writing blob {blob_path}, total size: {bytes_written} bytes")
 
         write_tasks.append(write_blob_async(dacs_client_instance, write_file_handles[i], buffer, blobSize))
