@@ -133,6 +133,13 @@ az aks get-credentials \
     --name "$AKS_RESOURCE_GROUP-cluster" \
     --overwrite-existing
 
+# Apply custom Prometheus scrape settings if monitoring is enabled
+PARAM_FILE="$DEPLOY_DIR/parameters/$AKS_TEMPLATE.json"
+if jq -e '.parameters.azureMonitorWorkspaceId.value // empty' "$PARAM_FILE" > /dev/null 2>&1; then
+    echo "Applying ama-metrics settings ConfigMap..."
+    kubectl apply -f "$DEPLOY_DIR/ama-metrics-settings-configmap.yaml"
+fi
+
 echo ""
 echo "AKS cluster created successfully!"
 echo ""

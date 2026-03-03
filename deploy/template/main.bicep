@@ -19,8 +19,17 @@ param zones array = []
 @description('Is test resource.')
 param isTest bool = false
 
-@description('Enable monitoring for test clusters.')
-param enableMonitoring bool = false
+@description('The resource ID of the Log Analytics workspace. If provided, Container Insights is enabled.')
+param logAnalyticsWorkspaceId string = ''
+
+@description('The location of the Log Analytics workspace. Required when logAnalyticsWorkspaceId is set.')
+param logAnalyticsWorkspaceLocation string = ''
+
+@description('The resource ID of the Azure Monitor workspace for Prometheus metrics. If provided, Managed Prometheus is enabled.')
+param azureMonitorWorkspaceId string = ''
+
+@description('The location of the Azure Monitor workspace. Required when azureMonitorWorkspaceId is set.')
+param azureMonitorWorkspaceLocation string = ''
 
 @description('Whether to create a storage account.')
 param createStorageAccount bool = true
@@ -41,7 +50,9 @@ param tags object = {}
 param currentTimeISO string = utcNow('o')
 
 // Combine tags with test-specific tags if isTest is true
-var finalTags = union(tags, isTest ? {
+var finalTags = union(tags, {
+  managedBy: 'cache-server-infra'
+}, isTest ? {
   createdBy: 'cache-server-tests'
   createdAt: currentTimeISO
 } : {})
@@ -60,7 +71,10 @@ module cluster 'cluster.bicep' = {
     agentCount: agentCount
     agentVMSize: agentVMSize
     osSKU: osSKU
-    enableMonitoring: enableMonitoring
+    logAnalyticsWorkspaceId: logAnalyticsWorkspaceId
+    logAnalyticsWorkspaceLocation: logAnalyticsWorkspaceLocation
+    azureMonitorWorkspaceId: azureMonitorWorkspaceId
+    azureMonitorWorkspaceLocation: azureMonitorWorkspaceLocation
   }
 }
 

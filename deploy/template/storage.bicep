@@ -24,6 +24,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   location: resourceGroup().location
   tags: {
     purpose: 'dacs-test'
+    managedBy: 'cache-server-infra'
   }
   sku: {
     name: 'Standard_LRS'

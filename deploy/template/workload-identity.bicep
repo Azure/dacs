@@ -30,6 +30,7 @@ resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-
   tags: {
     purpose: 'workload-identity'
     aksCluster: aksClusterName
+    managedBy: 'cache-server-infra'
   }
 }
 
