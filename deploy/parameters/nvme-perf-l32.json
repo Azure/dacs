@@ -11,8 +11,17 @@
         "createStorageAccount": {
             "value": true
         },
-        "enableMonitoring": {
-            "value": true
+        "logAnalyticsWorkspaceId": {
+            "value": "/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/storage_dacs_rg/providers/microsoft.operationalinsights/workspaces/dacs-analytics"
+        },
+        "logAnalyticsWorkspaceLocation": {
+            "value": "westus2"
+        },
+        "azureMonitorWorkspaceId": {
+            "value": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/storage_dacs_rg/providers/microsoft.monitor/accounts/dacs-monitor"
+        },
+        "azureMonitorWorkspaceLocation": {
+            "value": "westus2"
         }
     }
 }

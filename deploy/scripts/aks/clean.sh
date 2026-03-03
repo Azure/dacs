@@ -39,21 +39,13 @@ if [ "$(az group exists --name "$AKS_RESOURCE_GROUP")" = "false" ]; then
     exit 0
 fi
 
-# Check if the resource group is empty or just has expected resources
-# Expected resources created by bicep templates:
-#   - AKS cluster: {resource-group}-cluster (cluster.bicep)
-#   - VNet: {resource-group}-vnet (cluster.bicep)
-#   - Storage account: {resource-group}storage (storage.bicep)
-#   - Data collection rule: {resource-group}-dcr (cluster.bicep, when monitoring enabled)
-#   - Managed identity: perf-client-identity (workload-identity.bicep)
-#   - NRMS-* resources: auto-created by Azure for network management
-storage_account_name=$(echo "${AKS_RESOURCE_GROUP}storage" | tr -d '-' | tr '[:upper:]' '[:lower:]' | cut -c1-24)
-vnet_name="${AKS_RESOURCE_GROUP}-vnet"
-dcr_name="${AKS_RESOURCE_GROUP}-dcr"
-workload_identity_name="perf-client-identity"
-resources=$(az resource list --resource-group "$AKS_RESOURCE_GROUP" --query "[?name!='${AKS_RESOURCE_GROUP}-cluster' && name!='${vnet_name}' && name!='${storage_account_name}' && name!='${dcr_name}' && name!='${workload_identity_name}' && !starts_with(name, 'NRMS-')].name" --output tsv)
-if [[ -n "$resources" ]]; then
-    echo "Resource group $AKS_RESOURCE_GROUP is not empty. Resources found: $resources."
+# Check if the resource group is empty or only has resources we created
+# All resources created by our Bicep templates are tagged with managedBy=cache-server-infra
+unmanaged_resources=$(az resource list --resource-group "$AKS_RESOURCE_GROUP" \
+    --query "[?tags.managedBy != 'cache-server-infra' && !starts_with(name, 'NRMS-')].name" \
+    --output tsv)
+if [[ -n "$unmanaged_resources" ]]; then
+    echo "Resource group $AKS_RESOURCE_GROUP contains unmanaged resources: $unmanaged_resources"
     echo "Skipping resource group deletion as a safety measure."
     exit 0
 fi
