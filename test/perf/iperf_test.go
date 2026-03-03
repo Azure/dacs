@@ -159,26 +159,61 @@ func deployIperfServer(ctx context.Context, name, nodeName string) {
 }
 
 // runIperfClient runs an iperf3 client as a pod and returns the results.
+// It retries up to maxIperfRetries times on transient failures (no JSON output or zero bandwidth).
 func runIperfClient(ctx context.Context, config *iperf.ClientConfig) *iperf.Result {
-	// Delete any existing client pod
-	_ = pod.Delete(ctx, config.Name, config.Namespace)
+	const maxIperfRetries = 3
 
-	podYAML, err := config.PodYAML()
-	Expect(err).NotTo(HaveOccurred(), "Failed to generate iperf client YAML")
+	var lastErr error
+	var result *iperf.Result
 
-	err = pod.Apply(ctx, string(podYAML))
-	Expect(err).NotTo(HaveOccurred(), "Failed to create iperf client")
+	for attempt := 1; attempt <= maxIperfRetries; attempt++ {
+		if attempt > 1 {
+			log.Info("Retrying iperf client", "attempt", attempt, "maxRetries", maxIperfRetries, "lastError", lastErr)
+			time.Sleep(5 * time.Second)
+		}
 
-	// Wait for client to complete (needs more time for tdnf install)
-	pod.WaitForComplete(ctx, config.Name, config.Namespace, 3*time.Minute)
+		// Delete any existing client pod
+		_ = pod.Delete(ctx, config.Name, config.Namespace)
 
-	// Get logs and parse results
-	logsOutput, err := pod.GetLogs(ctx, config.Name, config.Namespace)
-	Expect(err).NotTo(HaveOccurred(), "Failed to get iperf client logs")
+		podYAML, err := config.PodYAML()
+		Expect(err).NotTo(HaveOccurred(), "Failed to generate iperf client YAML")
 
-	result, err := iperf.ParseOutput(logsOutput)
-	Expect(err).NotTo(HaveOccurred(), "Failed to parse iperf3 JSON output")
-	return result
+		err = pod.Apply(ctx, string(podYAML))
+		Expect(err).NotTo(HaveOccurred(), "Failed to create iperf client")
+
+		// Wait for client to complete (needs more time for tdnf install)
+		pod.WaitForComplete(ctx, config.Name, config.Namespace, 3*time.Minute)
+
+		// Get logs and parse results
+		logsOutput, err := pod.GetLogs(ctx, config.Name, config.Namespace)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to get iperf client logs: %w", err)
+			continue
+		}
+
+		result, err = iperf.ParseOutput(logsOutput)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to parse iperf3 JSON output: %w", err)
+			continue
+		}
+
+		// Retry if bandwidth is zero (transient networking issue)
+		if result.SenderBandwidthMbps == 0 && result.ReceiverBandwidthMbps == 0 {
+			lastErr = fmt.Errorf("iperf3 reported zero bandwidth (sender=%.2f, receiver=%.2f Mbps)",
+				result.SenderBandwidthMbps, result.ReceiverBandwidthMbps)
+			continue
+		}
+
+		// Success
+		if attempt > 1 {
+			log.Info("iperf client succeeded after retry", "attempt", attempt)
+		}
+		return result
+	}
+
+	// All retries exhausted — fail with last error
+	Fail(fmt.Sprintf("iperf client failed after %d attempts: %v", maxIperfRetries, lastErr))
+	return nil // unreachable
 }
 
 // sendIperfMetrics sends iperf test results to Kusto via EventHub.
