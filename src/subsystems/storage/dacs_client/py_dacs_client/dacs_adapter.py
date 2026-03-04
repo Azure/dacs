@@ -967,12 +967,12 @@ def stat(path: str) -> Any:
         version=None,  # Azure doesn't provide version via stat
         st_atime=stat_result.st_atime,
         st_mode=stat_result.st_mode,
-        st_ino=stat_result.st_ino,
-        st_dev=stat_result.st_dev,
-        st_rdev=stat_result.st_rdev,
-        st_nlink=stat_result.st_nlink,
-        st_uid=stat_result.st_uid,
-        st_gid=stat_result.st_gid,
+        st_ino=0,      # Not provided by DACS
+        st_dev=0,      # Not provided by DACS
+        st_rdev=0,     # Not provided by DACS
+        st_nlink=0,    # Not provided by DACS
+        st_uid=0,      # Not provided by DACS
+        st_gid=0,      # Not provided by DACS
     )
 
 

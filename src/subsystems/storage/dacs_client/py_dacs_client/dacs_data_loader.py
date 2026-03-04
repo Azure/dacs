@@ -12,37 +12,29 @@ from ctypes import (
     c_char,
     c_char_p,
     c_int,
+    c_int64,
     c_long,
     c_size_t,
     c_ssize_t,
     c_ubyte,
-    c_uint,
+    c_uint32,
     c_ulong,
     c_ushort,
     c_void_p,
 )
 
 
-
+# Architecture-agnostic file stat struct matching FileStat in native code.
+# Uses fixed-width types so the layout is identical on all architectures.
+# Only includes fields actually populated by the storage intercept layer.
 class Stat64(Structure):
     _fields_ = [
-        # Define the fields of the struct stat64 here
-        ("st_dev", c_ulong),
-        ("st_ino", c_ulong),
-        ("st_mode", c_uint),
-        ("st_nlink", c_ulong),
-        ("st_uid", c_uint),
-        ("st_gid", c_uint),
-        ("st_rdev", c_ulong),
-        ("st_size", c_long),
-        ("st_blksize", c_long),
-        ("st_blocks", c_long),
-        ("st_atime", c_long),
-        ("st_atimensec", c_long),
-        ("st_mtime", c_long),
-        ("st_mtimensec", c_long),
-        ("st_ctime", c_long),
-        ("st_ctimensec", c_long),
+        ("st_mode", c_uint32),
+        ("st_size", c_int64),
+        ("st_blksize", c_int64),
+        ("st_atime", c_int64),
+        ("st_mtime", c_int64),
+        ("st_ctime", c_int64),
     ]
 
 
@@ -86,8 +78,8 @@ storage_intercept_lib.pwrite.restype = c_ssize_t
 storage_intercept_lib.close.argtypes = [c_int]
 storage_intercept_lib.close.restype = c_int
 
-storage_intercept_lib.stat64.argtypes = [c_char_p, POINTER(Stat64)]
-storage_intercept_lib.stat64.restype = c_int
+storage_intercept_lib.dacs_stat.argtypes = [c_char_p, POINTER(Stat64)]
+storage_intercept_lib.dacs_stat.restype = c_int
 
 # struct dirent *readdir(DIR *dirp);
 
@@ -125,7 +117,7 @@ class DirectoryEntry(Structure):
         ("d_off", c_long),
         ("d_reclen", c_ushort),
         ("d_type", c_ubyte),
-        ("d_name", c_char * 1025),  # Assuming max filename length is 1024 + null terminator
+        ("d_name", c_char * 1024),
         ("d_size", c_long),
         ("d_atime", c_long),
         ("d_mtime", c_long),
@@ -167,7 +159,7 @@ class DACSCacheDataLoader:
     @staticmethod
     def stat64(pathname: str, statbuf: POINTER(Stat64)) -> int:
         logger.debug(f"Entering DACSCacheDataLoader.stat64 for path {pathname}")
-        return storage_intercept_lib.stat64(pathname.encode("utf-8"), statbuf)
+        return storage_intercept_lib.dacs_stat(pathname.encode("utf-8"), statbuf)
 
     @staticmethod
     def opendir(pathname: str) -> c_void_p:

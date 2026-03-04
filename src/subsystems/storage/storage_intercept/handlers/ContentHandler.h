@@ -12,6 +12,7 @@
 #include "DirectoryStream.h"
 #include "FileAttributes.h"
 #include "FileDescriptor.h"
+#include "FileStat.h"
 #include "StreamingClient.h"
 //---------------------------------------------------------------------------------------------------------------------
 class ContentHandler
@@ -104,6 +105,10 @@ class ContentHandler
         int HandleStat64(
             /*[in] */ const char* pathname,
             /*[out]*/ struct stat64* statbuf);
+
+        int HandleDACSStat(
+            /*[in] */ const char* pathname,
+            /*[out]*/ struct FileStat* statbuf);
 
         int HandleXstat(
             /*[in] */ int __ver,
@@ -352,6 +357,10 @@ class ContentHandler
         void CopyStat64ToStat(
             /*[in] */ const struct stat64* stat64buf,
             /*[out]*/ struct stat* statbuf);
+
+        void CopyStat64ToFileStat(
+            /*[in] */ const struct stat64* stat64buf,
+            /*[out]*/ struct FileStat* statbuf);
 
         // Get FD value if the stream was managed by us, if not return -1
         int GetFdFromStream(/*[in]*/ void* stream);

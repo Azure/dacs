@@ -1120,6 +1120,17 @@ int ContentHandler::HandleStat64(const char* pathname, struct stat64* statbuf)
     return GetPropertiesInternal(*mountInfo, relPath, "stat64", statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
+int ContentHandler::HandleDACSStat(const char* pathname, struct FileStat* statbuf)
+{
+    struct stat64 st;
+    int ret = HandleStat64(pathname, &st);
+    if (ret == 0 && statbuf != nullptr)
+    {
+        CopyStat64ToFileStat(&st, statbuf);
+    }
+    return ret;
+}
+//---------------------------------------------------------------------------------------------------------------------
 int ContentHandler::HandleXstat(int __ver, const char* pathname, struct stat* statbuf)
 {
     std::string relPath;
@@ -1862,6 +1873,16 @@ void ContentHandler::CopyStat64ToStat(const struct stat64* stat64buf, struct sta
     statbuf->st_atime = stat64buf->st_atime;
     statbuf->st_ctime = stat64buf->st_ctime;
     statbuf->st_blksize = stat64buf->st_blksize;
+}
+//---------------------------------------------------------------------------------------------------------------------
+void ContentHandler::CopyStat64ToFileStat(const struct stat64* stat64buf, struct FileStat* statbuf)
+{
+    statbuf->st_mode      = stat64buf->st_mode;
+    statbuf->st_size      = stat64buf->st_size;
+    statbuf->st_blksize   = stat64buf->st_blksize;
+    statbuf->st_atime_sec = stat64buf->st_atim.tv_sec;
+    statbuf->st_mtime_sec = stat64buf->st_mtim.tv_sec;
+    statbuf->st_ctime_sec = stat64buf->st_ctim.tv_sec;
 }
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t ContentHandler::HandleListxattr(const char* path, char* list, size_t size)
