@@ -522,3 +522,38 @@ TEST_F(StreamingClientTest, WriteSparseFileTest)
     m_spStreamingClient->Close(writeFileName, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, WriteFileLastAppendWithinChunkBoundary)
+{
+    // Regression test: UploadCache file size was only updated in Put() when creating
+    // a new chunk. Writes extending an existing chunk did not update the tracked size,
+    // causing Close() to upload a truncated file to blob.
+    //
+    // To trigger: choose appendSize and fileSize so that the LAST write lands entirely
+    // within an existing chunk (doesn't cross a chunk boundary).
+    //
+    // With chunkSize=4MB and appendSize=300KB:
+    //   - Write at offset ~3.9MB crosses into chunk 1, creating it via Put()
+    //   - Subsequent writes at ~4.2MB and ~4.5MB land within chunk 1 (existing)
+    //   - Without the fix, UploadCache tracks ~4.2MB instead of ~4.6MB
+    //   - Close() uploads truncated data → GetProperties returns wrong size,
+    //     ReadFile returns truncated/wrong data
+    if (!StorageInterceptConfig::GetInstance().IsWriteSupportEnabled())
+    {
+        GTEST_SKIP();
+    }
+
+    // 4MB + 512KB: enough for writes to continue past the chunk 0→1 boundary crossing
+    const size_t fileSize = DEFAULT_STREAMING_CHUNK_SIZE + 512 * 1024;
+    // 300KB: does not divide evenly into 4MB, so the boundary-crossing write
+    // leaves room for subsequent writes within the new chunk
+    const size_t appendSize = 300 * 1024;
+
+    auto writeData = GetRandDataBuffer(fileSize);
+    std::string writeFileName = "unalignedAppendsFileSizeTest" + GenerateRandomString(4);
+
+    // WriteAppendsTest writes in append-sized chunks, closes, verifies file size
+    // via GetProperties, and reads back the full file for data integrity check.
+    // Without the fix, the GetProperties size assertion or data integrity check fails.
+    WriteAppendsTest(writeFileName, writeData, appendSize);
+}
+//---------------------------------------------------------------------------------------------------------------------

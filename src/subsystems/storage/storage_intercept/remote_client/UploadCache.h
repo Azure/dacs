@@ -38,6 +38,11 @@ class UploadCache
         std::shared_ptr<FileData> Get(
             /*[in] */ const std::string& path,
             /*[in] */ off64_t offset) const;
+        // Updates the tracked file size if newFileSize is larger than the current tracked size.
+        // Called after writes to existing chunks that extend the file beyond the previously tracked size.
+        void UpdateFileSize(
+            /*[in] */ const std::string& path,
+            /*[in] */ size_t newFileSize);
         void Purge(/*[in] */ const std::string& path);
         void PurgeChunk(
             /*[in] */ const std::string& path,
