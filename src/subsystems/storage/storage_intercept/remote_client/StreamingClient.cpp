@@ -384,6 +384,11 @@ ssize_t StreamingClient::WriteFile(
         bytesWritten += bytesToWrite;
     }
 
+    // Update file size to reflect the full extent of data written.
+    // Put() only updates file size when a new chunk is created, but writes to
+    // existing chunks can extend the file beyond the previously tracked size.
+    UploadCache::GetInstance().UpdateFileSize(cacheFilePath, writeOffset + bytesWritten);
+
     return bytesWritten;
 }
 //---------------------------------------------------------------------------------------------------------------------

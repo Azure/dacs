@@ -72,6 +72,16 @@ size_t UploadCache::GetFileSize(const std::string& path) const
     return sizeIt->second;
 }
 //---------------------------------------------------------------------------------------------------------------------
+void UploadCache::UpdateFileSize(const std::string& path, size_t newFileSize)
+{
+    std::unique_lock<std::shared_mutex> buffersLock(m_mutexBlockBuffers);
+    auto sizeIt = m_mapFileSizes.find(path);
+    if (sizeIt != m_mapFileSizes.end() && newFileSize > sizeIt->second)
+    {
+        sizeIt->second = newFileSize;
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
 std::shared_ptr<FileData> UploadCache::Get(const std::string& path, off64_t offset) const
 {
     std::shared_lock<std::shared_mutex> buffersLock(m_mutexBlockBuffers);    
