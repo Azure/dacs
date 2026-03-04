@@ -707,3 +707,13 @@ extern "C" int SI_fstat(/*[in]*/ int fd, /*[in]*/ struct stat *statbuf, /*[out]*
     return StorageInterceptorImpl::SI_fstat(fd, statbuf, errorString);
 }
 //---------------------------------------------------------------------------------------------------------------------
+// Architecture-agnostic stat API for Python binding.
+// Uses FileStat struct with fixed-width types whose layout is identical on all architectures.
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int dacs_stat(const char* pathname, struct FileStat* out)
+{
+    EXCEPTION_SAFE_WRAPPER(int, -1,
+        return StorageInterceptorImpl::dacs_stat(pathname, out);
+    )
+}
+//---------------------------------------------------------------------------------------------------------------------

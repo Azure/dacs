@@ -15,6 +15,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <stdlib.h>
+#include "FileStat.h"
 //---------------------------------------------------------------------------------------------------------------------
 ContentHandlerTest::ContentHandlerTest()
     : TestBase()
@@ -187,6 +188,39 @@ TEST_F(ContentHandlerTest, GetPropertiesOneThreadTest)
 
     // Execute GetPropertiesCheck with the task parameters
     GetPropertiesCheck(task);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, DACSStatFileTest)
+{
+    std::string filePath = m_strInterceptPath + '/' + m_strRemoteFilePath;
+    struct FileStat fileStat = {};
+
+    int ret = ContentHandler::GetInstance().HandleDACSStat(filePath.c_str(), &fileStat);
+    ASSERT_EQ(ret, 0);
+    ASSERT_TRUE(S_ISREG(fileStat.st_mode));
+    ASSERT_EQ(fileStat.st_size, REMOTE_FILE_SIZE);
+    ASSERT_GT(fileStat.st_blksize, 0);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, DACSStatDirectoryTest)
+{
+    std::string dirPath = m_strInterceptPath + '/' + m_strRemoteDirPath;
+    struct FileStat dirStat = {};
+
+    int ret = ContentHandler::GetInstance().HandleDACSStat(dirPath.c_str(), &dirStat);
+    ASSERT_EQ(ret, 0);
+    ASSERT_TRUE(S_ISDIR(dirStat.st_mode));
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, DACSStatNonExistentTest)
+{
+    std::string nonExistentPath = m_strInterceptPath + "/non-existent-dacs-stat-file";
+    struct FileStat badStat = {};
+
+    errno = 0;
+    int ret = ContentHandler::GetInstance().HandleDACSStat(nonExistentPath.c_str(), &badStat);
+    ASSERT_EQ(ret, -1);
+    ASSERT_EQ(errno, ENOENT);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(ContentHandlerTest, GetPropertiesNonExistentTest)

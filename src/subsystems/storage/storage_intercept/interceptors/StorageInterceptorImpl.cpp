@@ -112,6 +112,11 @@ int StorageInterceptorImpl::stat64(const char* pathname, struct stat64* statbuf)
     return ContentHandler::GetInstance().HandleStat64(pathname, statbuf);
 }
 //---------------------------------------------------------------------------------------------------------------------
+int StorageInterceptorImpl::dacs_stat(const char* pathname, struct FileStat* statbuf)
+{
+    return ContentHandler::GetInstance().HandleDACSStat(pathname, statbuf);
+}
+//---------------------------------------------------------------------------------------------------------------------
 int StorageInterceptorImpl::xstat(int __ver, const char* pathname, struct stat* statbuf)
 {
     return ContentHandler::GetInstance().HandleXstat(__ver, pathname, statbuf);

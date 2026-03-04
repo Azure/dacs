@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <stdarg.h>
+#include "../common/FileStat.h"
 //---------------------------------------------------------------------------------------------------------------------
 class StorageInterceptorImpl
 {
@@ -38,6 +39,7 @@ class StorageInterceptorImpl
         static int access(const char *pathname, int mode);
         static int stat(const char* pathname, struct stat* statbuf);
         static int stat64(const char* pathname, struct stat64* statbuf);
+        static int dacs_stat(const char* pathname, struct FileStat* statbuf);
         static int xstat(int __ver, const char* pathname, struct stat* statbuf);
         static int xstat64(int __ver, const char* pathname, struct stat64* statbuf);
         static int fstat(int fd, struct stat* statbuf);
