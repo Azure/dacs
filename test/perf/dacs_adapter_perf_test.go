@@ -189,10 +189,15 @@ func sendAdapterBenchmarkMetrics(ctx context.Context, result *perfsummary.DACSAd
 				ClusterName: clusterName,
 				IsMinikube:  cluster.IsMinikube(),
 			},
-			Result: kusto.PerfResult{
-				Mode:           fmt.Sprintf("%s-write", clientName),
-				DurationMs:     int64(r.WriteDurationSeconds * 1000),
-				ThroughputMbps: int64(r.WriteThroughputMbps),
+			Result: kusto.AdapterPerfResult{
+				ClientName:            fmt.Sprintf("%s-write", clientName),
+				BlobSizeGB:            result.Config.BlobSizeGB,
+				NumBlobs:              result.Config.NumBlobs,
+				NumProcesses:          result.Config.NumProcesses,
+				WriteMode:             result.Config.WriteMode,
+				TotalBytesTransferred: r.WriteBytesTransferred,
+				DurationSeconds:       r.WriteDurationSeconds,
+				ThroughputMbps:        r.WriteThroughputMBps * 8, // Convert MBps to Mbps
 			},
 		}
 		if err := kusto.SendPerfMetric(ctx, kusto.DefaultEventHubConfig, writeMetric); err != nil {
@@ -210,10 +215,15 @@ func sendAdapterBenchmarkMetrics(ctx context.Context, result *perfsummary.DACSAd
 				ClusterName: clusterName,
 				IsMinikube:  cluster.IsMinikube(),
 			},
-			Result: kusto.PerfResult{
-				Mode:           fmt.Sprintf("%s-read", clientName),
-				DurationMs:     int64(r.ReadDurationSeconds * 1000),
-				ThroughputMbps: int64(r.ReadThroughputMbps),
+			Result: kusto.AdapterPerfResult{
+				ClientName:            fmt.Sprintf("%s-read", clientName),
+				BlobSizeGB:            result.Config.BlobSizeGB,
+				NumBlobs:              result.Config.NumBlobs,
+				NumProcesses:          result.Config.NumProcesses,
+				WriteMode:             result.Config.WriteMode,
+				TotalBytesTransferred: r.ReadBytesTransferred,
+				DurationSeconds:       r.ReadDurationSeconds,
+				ThroughputMbps:        r.ReadThroughputMBps * 8, // Convert MBps to Mbps
 			},
 		}
 		if err := kusto.SendPerfMetric(ctx, kusto.DefaultEventHubConfig, readMetric); err != nil {

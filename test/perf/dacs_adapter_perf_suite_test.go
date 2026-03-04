@@ -90,8 +90,8 @@ var testAdapterBenchmark = func(ctx context.Context) {
 	for clientName, r := range result.Results {
 		log.Info("Result",
 			"client", clientName,
-			"writeMbps", r.WriteThroughputMbps,
-			"readMbps", r.ReadThroughputMbps,
+			"writeMBps", r.WriteThroughputMBps,
+			"readMBps", r.ReadThroughputMBps,
 		)
 	}
 
@@ -101,9 +101,9 @@ var testAdapterBenchmark = func(ctx context.Context) {
 	// Add report entries
 	for clientName, r := range result.Results {
 		AddReportEntry(clientName+" Write", ReportEntryVisibilityAlways,
-			fmt.Sprintf("%.0f MB/s", r.WriteThroughputMbps))
+			fmt.Sprintf("%.0f MB/s", r.WriteThroughputMBps))
 		AddReportEntry(clientName+" Read", ReportEntryVisibilityAlways,
-			fmt.Sprintf("%.0f MB/s", r.ReadThroughputMbps))
+			fmt.Sprintf("%.0f MB/s", r.ReadThroughputMBps))
 	}
 
 	Expect(len(result.Results)).To(BeNumerically(">", 0), "No benchmark results")
