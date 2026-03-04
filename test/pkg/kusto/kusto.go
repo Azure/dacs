@@ -65,6 +65,18 @@ type TestMetadata struct {
 	IsMinikube  bool   `json:"IsMinikube"`
 }
 
+// AdapterPerfResult contains the adapter benchmark results (dynamic column in Kusto).
+type AdapterPerfResult struct {
+	ClientName            string  `json:"ClientName"`
+	BlobSizeGB            float64 `json:"BlobSizeGB"`
+	NumBlobs              int     `json:"NumBlobs"`
+	NumProcesses          int     `json:"NumProcesses"`
+	WriteMode             string  `json:"WriteMode"`
+	TotalBytesTransferred uint64  `json:"TotalBytesTransferred"`
+	DurationSeconds       float64 `json:"DurationSeconds"`
+	ThroughputMbps        float64 `json:"ThroughputMbps"`
+}
+
 // PerfResult contains the cache server performance test results (dynamic column in Kusto).
 type PerfResult struct {
 	Mode                    string `json:"Mode"`
