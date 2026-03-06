@@ -61,12 +61,17 @@ fi
 # Ensure pytest is installed
 if ! command -v pytest &> /dev/null; then
     echo "Installing pytest..."
-    pip install pytest pytest-timeout
+    pip install pytest pytest-timeout pytest-asyncio
 else
     # Ensure pytest-timeout is installed
     if ! pip show pytest-timeout &> /dev/null 2>&1; then
         echo "Installing pytest-timeout..."
         pip install pytest-timeout
+    fi
+    # Ensure pytest-asyncio is installed
+    if ! pip show pytest-asyncio &> /dev/null 2>&1; then
+        echo "Installing pytest-asyncio..."
+        pip install pytest-asyncio
     fi
 fi
 
