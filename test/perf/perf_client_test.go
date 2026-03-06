@@ -33,6 +33,7 @@ type perfTestConfig struct {
 	enableValidateChecksum  bool                  // for download
 	colocate                bool                  // schedule on same node as cache server
 	clientType              perfclient.ClientType // cache or direct-blob
+	chunkSizeBytes          int                   // optional override for chunk size (0 = default)
 }
 
 // newPerfConfig creates a fully configured perfclient.Config from this test configuration.
@@ -51,6 +52,10 @@ func (c *perfTestConfig) newPerfConfig(mode perfclient.Mode, prefix string) *per
 		WithNamespace(namespace).
 		WithDataSizeGiB(opts.DataSizeGiB).
 		WithNumThreads(opts.NumThreads)
+
+	if c.chunkSizeBytes > 0 {
+		config.WithChunkSizeBytes(c.chunkSizeBytes)
+	}
 
 	if mode == perfclient.ModeUpload {
 		config.WithCalculateChecksum(c.enableCalculateChecksum)
@@ -82,11 +87,15 @@ var _ = Describe("PerfClient", Label("perf", "perfclient"), Ordered, func() {
 
 	configs := []perfTestConfig{
 		{
-			name:                    "checksum disabled",
-			label:                   Label("cache"),
-			enableCalculateChecksum: false,
-			enableValidateChecksum:  false,
-			clientType:              perfclient.ClientTypeCache,
+			name:       "checksum disabled",
+			label:      Label("cache"),
+			clientType: perfclient.ClientTypeCache,
+		},
+		{
+			name:           "checksum disabled - 64KiB chunk",
+			label:          Label("cache", "small-chunk"),
+			clientType:     perfclient.ClientTypeCache,
+			chunkSizeBytes: 64 << 10, // 64 KiB
 		},
 		{
 			name:                    "checksum enabled",
@@ -96,17 +105,21 @@ var _ = Describe("PerfClient", Label("perf", "perfclient"), Ordered, func() {
 			clientType:              perfclient.ClientTypeCache,
 		},
 		{
-			name:                    "colocated single server",
-			label:                   Label("cache"),
-			enableCalculateChecksum: false,
-			enableValidateChecksum:  false,
-			colocate:                true,
-			clientType:              perfclient.ClientTypeCache,
+			name:       "colocated single server",
+			label:      Label("cache"),
+			colocate:   true,
+			clientType: perfclient.ClientTypeCache,
 		},
 		{
 			name:       "direct blob storage",
 			label:      Label("directblob", "aks"),
 			clientType: perfclient.ClientTypeDirectBlob,
+		},
+		{
+			name:           "direct blob storage - 64KiB chunk",
+			label:          Label("directblob", "aks", "small-chunk"),
+			clientType:     perfclient.ClientTypeDirectBlob,
+			chunkSizeBytes: 64 << 10, // 64 KiB
 		},
 	}
 
