@@ -148,13 +148,13 @@ class BoundedBufferManager:
                     if not buffer:
                         raise MemoryError("Failed to allocate buffer for reading blob chunk")
 
-                self.current_memory_usage += buf_size
-                usage_percent = (self.current_memory_usage / self.max_memory_limit) * 100
-                logger.log(
-                    logging.INFO if usage_percent > 90 else logging.DEBUG,
-                    f"Buffer acquired. Current memory usage: {self.current_memory_usage} bytes ({usage_percent:.2f}%)",
-                )
-                return buffer
+                    self.current_memory_usage += buf_size
+                    usage_percent = (self.current_memory_usage / self.max_memory_limit) * 100
+                    logger.log(
+                        logging.INFO if usage_percent > 90 else logging.DEBUG,
+                        f"Buffer acquired. Current memory usage: {self.current_memory_usage} bytes ({usage_percent:.2f}%)",
+                    )
+                    return buffer
 
             await self.buffer_released_event.wait()
             self.buffer_released_event.clear()
