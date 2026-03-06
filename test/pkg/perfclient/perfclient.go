@@ -4,7 +4,6 @@ package perfclient
 
 import (
 	"fmt"
-	"os"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -230,26 +229,6 @@ func (c *Config) Description() string {
 		c.Mode, c.EnableCalculateChecksum, c.EnableValidateChecksum, c.ColocateWithServer)
 }
 
-// getDefaultImage returns the default perf client image based on environment variables
-// matching the helm chart configuration. On minikube, uses local image.
-func getDefaultImage() string {
-	// On minikube, use the local image that was loaded via `minikube image load`
-	if cluster.IsMinikube() {
-		return "cache-test-client:local"
-	}
-
-	registry := os.Getenv("DOCKER_REGISTRY")
-	if registry == "" {
-		registry = "docker.io"
-	}
-	buildNumber := os.Getenv("BUILD_NUMBER")
-	if buildNumber == "" {
-		buildNumber = "latest"
-	}
-
-	return fmt.Sprintf("%s/cache-test-client:%s", registry, buildNumber)
-}
-
 // LoadJob loads the perf client job from the embedded fixture
 // and applies the provided configuration by modifying the parsed struct.
 func (c *Config) LoadJob() (*batchv1.Job, error) {
@@ -355,52 +334,26 @@ func (c *Config) LoadJob() (*batchv1.Job, error) {
 		container := &job.Spec.Template.Spec.Containers[0]
 		container.Image = c.Image
 
-		// Build the args array with config values
-		container.Args = []string{
-			"--server-port", "9065",
-			"--server-hostname", c.ServerHostname,
-			"--num-threads", fmt.Sprintf("%d", c.NumThreads),
-			"--data-size-GiB", fmt.Sprintf("%d", c.DataSizeGiB),
-			"--prefix", c.Prefix,
-			"--mode", string(c.Mode),
-			"--num-iterations", fmt.Sprintf("%d", c.NumIterations),
-			"--ib-enabled", "false",
-			"--chunk-size-bytes", fmt.Sprintf("%d", c.ChunkSizeBytes),
-		}
-
 		// Set image pull policy: Always for AKS easier for when perfclient image
 		// is changed frequently, but use IfNotPresent for minikube to work with locally loaded images
 		if !cluster.IsMinikube() {
 			container.ImagePullPolicy = corev1.PullAlways
 		}
 
-		// Build the args array based on client type
-		if c.ClientType == ClientTypeDirectBlob {
-			// Direct blob client args - uses Entra ID / Workload Identity for auth
+		// Client-type-specific prefix args (must come first)
+		switch c.ClientType {
+		case ClientTypeDirectBlob:
 			container.Args = []string{
 				"--direct-blob-client",
 				"--storage-account", c.StorageAccount,
 				"--container", c.StorageContainer,
-				"--num-threads", fmt.Sprintf("%d", c.NumThreads),
-				"--data-size-GiB", fmt.Sprintf("%d", c.DataSizeGiB),
-				"--prefix", c.Prefix,
-				"--mode", string(c.Mode),
-				"--num-iterations", fmt.Sprintf("%d", c.NumIterations),
 			}
-		} else {
-			// Cache client args (default)
+		case ClientTypeCache:
 			container.Args = []string{
 				"--server-port", "9065",
 				"--server-hostname", c.ServerHostname,
-				"--num-threads", fmt.Sprintf("%d", c.NumThreads),
-				"--data-size-GiB", fmt.Sprintf("%d", c.DataSizeGiB),
-				"--prefix", c.Prefix,
-				"--mode", string(c.Mode),
-				"--num-iterations", fmt.Sprintf("%d", c.NumIterations),
 				"--ib-enabled", "false",
 			}
-
-			// Only add checksum args if checksum is enabled
 			if c.EnableCalculateChecksum || c.EnableValidateChecksum {
 				container.Args = append(container.Args,
 					"--enable-calculate-checksum", fmt.Sprintf("%t", c.EnableCalculateChecksum),
@@ -408,7 +361,19 @@ func (c *Config) LoadJob() (*batchv1.Job, error) {
 					"--checksum-algorithm", string(c.ChecksumAlgorithm),
 				)
 			}
+		default:
+			return nil, fmt.Errorf("unsupported client type: %v", c.ClientType)
 		}
+
+		// Append common args shared by all client types
+		container.Args = append(container.Args,
+			"--num-threads", fmt.Sprintf("%d", c.NumThreads),
+			"--data-size-GiB", fmt.Sprintf("%d", c.DataSizeGiB),
+			"--prefix", c.Prefix,
+			"--mode", string(c.Mode),
+			"--num-iterations", fmt.Sprintf("%d", c.NumIterations),
+			"--chunk-size-bytes", fmt.Sprintf("%d", c.ChunkSizeBytes),
+		)
 	}
 
 	return &job, nil
