@@ -27,20 +27,20 @@ const (
 	PodLabelSelectorStr         = "app=cacheserver"
 )
 
-func getCacheDataVolume(pod v1.Pod) *v1.Volume {
-	for _, volume := range pod.Spec.Volumes {
-		if volume.Name == CacheDataVolumeName {
-			return &volume
+func getCacheDataVolume(pod *v1.Pod) *v1.Volume {
+	for i := range pod.Spec.Volumes {
+		if pod.Spec.Volumes[i].Name == CacheDataVolumeName {
+			return &pod.Spec.Volumes[i]
 		}
 	}
 	return nil
 }
 
-func usesEpehemeralStorage(pod v1.Pod) bool {
+func usesEpehemeralStorage(pod *v1.Pod) bool {
 	return getCacheDataVolume(pod).EmptyDir != nil
 }
 
-func sanityCheckPod(pod v1.Pod) bool {
+func sanityCheckPod(pod *v1.Pod) bool {
 	if pod.Spec.NodeName == "" && pod.Status.Phase != v1.PodPending {
 		log.Errorf("Pod %s has no node assigned, but is in non-pending state %s", pod.Name, pod.Status.Phase)
 		return false
@@ -89,7 +89,7 @@ func sanityCheckPod(pod v1.Pod) bool {
 	return true
 }
 
-func getPodAllowedProcessingUnits(pod v1.Pod) []string {
+func getPodAllowedProcessingUnits(pod *v1.Pod) []string {
 	allowedProcessingUnits := []string{}
 	for _, term := range pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms {
 		for _, expression := range term.MatchExpressions {
@@ -101,7 +101,7 @@ func getPodAllowedProcessingUnits(pod v1.Pod) []string {
 	return allowedProcessingUnits
 }
 
-func getPodAllowedAgentpools(pod v1.Pod) []string {
+func getPodAllowedAgentpools(pod *v1.Pod) []string {
 	allowedAgentpools := []string{}
 	for _, term := range pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms {
 		for _, expression := range term.MatchExpressions {
@@ -113,7 +113,7 @@ func getPodAllowedAgentpools(pod v1.Pod) []string {
 	return allowedAgentpools
 }
 
-func getPodState(pod v1.Pod) PodStatus {
+func getPodState(pod *v1.Pod) PodStatus {
 	if pod.ObjectMeta.DeletionTimestamp != nil {
 		log.Infof("Pod %s is terminating", pod.Name)
 		return PodStatusTerminating
@@ -185,7 +185,8 @@ func GetNodesFromK8s() ([]Node, error) {
 	}
 
 	nodeList := []Node{}
-	for _, node := range nodes.Items {
+	for i := range nodes.Items {
+		node := &nodes.Items[i]
 		nodeObj := Node{
 			NodeName:       node.Name,
 			Schedulable:    !node.Spec.Unschedulable,
@@ -227,7 +228,8 @@ func GetPodsFromK8s() ([]Pod, error) {
 	}
 
 	podList := []Pod{}
-	for _, pod := range pods.Items {
+	for i := range pods.Items {
+		pod := &pods.Items[i]
 		if !sanityCheckPod(pod) {
 			log.Errorf("Pod %s failed sanity check. Ignoring", pod.Name)
 			continue

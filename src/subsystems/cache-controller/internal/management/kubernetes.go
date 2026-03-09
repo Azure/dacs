@@ -26,7 +26,8 @@ const (
 
 func buildNodeListFromK8sNodes(nodes []v1.Node) []Node {
 	nodeList := make([]Node, 0, len(nodes))
-	for _, node := range nodes {
+	for i := range nodes {
+		node := &nodes[i]
 		nodeObj := Node{
 			NodeName:    node.Name,
 			Schedulable: !node.Spec.Unschedulable,
@@ -40,7 +41,8 @@ func buildNodeListFromK8sNodes(nodes []v1.Node) []Node {
 
 func buildPodListFromK8sPods(pods []v1.Pod) []Pod {
 	var podList []Pod
-	for _, pod := range pods {
+	for i := range pods {
+		pod := &pods[i]
 		if !sanityCheckPod(pod) {
 			log.Errorf("Pod %s(%s) failed sanity check. Ignoring", pod.Name, pod.Namespace)
 			continue
@@ -68,20 +70,20 @@ func buildPodListFromK8sPods(pods []v1.Pod) []Pod {
 	return podList
 }
 
-func getCacheDataVolume(pod v1.Pod) *v1.Volume {
-	for _, volume := range pod.Spec.Volumes {
-		if volume.Name == CacheDataVolumeName {
-			return &volume
+func getCacheDataVolume(pod *v1.Pod) *v1.Volume {
+	for i := range pod.Spec.Volumes {
+		if pod.Spec.Volumes[i].Name == CacheDataVolumeName {
+			return &pod.Spec.Volumes[i]
 		}
 	}
 	return nil
 }
 
-func usesEphemeralStorage(pod v1.Pod) bool {
+func usesEphemeralStorage(pod *v1.Pod) bool {
 	return getCacheDataVolume(pod).EmptyDir != nil
 }
 
-func sanityCheckPod(pod v1.Pod) bool {
+func sanityCheckPod(pod *v1.Pod) bool {
 	if pod.Spec.NodeName == "" && pod.Status.Phase != v1.PodPending {
 		log.Errorf("Pod %s(%s) has no node assigned, but is in non-pending state %s", pod.Name, pod.Namespace, pod.Status.Phase)
 		return false
@@ -133,15 +135,15 @@ func sanityCheckPod(pod v1.Pod) bool {
 	return true
 }
 
-func getPodNodeSelectorKey(pod v1.Pod) string {
+func getPodNodeSelectorKey(pod *v1.Pod) string {
 	return pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions[0].Key
 }
 
-func getPodNodeSelectorValue(pod v1.Pod) string {
+func getPodNodeSelectorValue(pod *v1.Pod) string {
 	return pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions[0].Values[0]
 }
 
-func getPodState(pod v1.Pod) PodStatus {
+func getPodState(pod *v1.Pod) PodStatus {
 	if pod.ObjectMeta.DeletionTimestamp != nil {
 		log.Infof("Pod %s(%s) is terminating", pod.Name, pod.Namespace)
 		return PodStatusTerminating
