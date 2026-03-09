@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Pytest configuration and fixtures for dacs_blobfile tests.
+Pytest configuration and fixtures for DACS adapter tests (blobfile and boostedblob).
 
 This file contains session-level hooks that are guaranteed to run
 at the end of the test session.
@@ -9,6 +9,9 @@ at the end of the test session.
 import logging
 import os
 import uuid
+
+from py_dacs_client.dacs_client import normalize_azure_path
+
 
 # Get the Azure blob base path from environment or use default
 _AZURE_BLOB_BASE_PATH = os.environ.get(
@@ -19,12 +22,14 @@ _AZURE_BLOB_BASE_PATH = os.environ.get(
 # This prevents conflicts when multiple users/CI jobs run tests simultaneously
 TEST_SESSION_ID = os.environ.get("PYTEST_SESSION_ID", str(uuid.uuid4())[:8])
 
-# Create the unique session path that all tests will use
-# Format: {base_path}/session_{unique_id}
-AZURE_BLOB_PATH = f"{_AZURE_BLOB_BASE_PATH}/session_{TEST_SESSION_ID}"
+# Create the unique session base path that all tests will use
+# Normalize to az:// format - the adapters accept this directly
+# Each test module appends its own adapter-specific sub-path (e.g., /blobfile, /boostedblob)
+_raw_path = f"{_AZURE_BLOB_BASE_PATH}/session_{TEST_SESSION_ID}"
+BASE_BLOB_PATH = normalize_azure_path(_raw_path)
 
 print(f"Test session ID: {TEST_SESSION_ID}")
-print(f"Test blob path: {AZURE_BLOB_PATH}")
+print(f"Test base blob path: {BASE_BLOB_PATH}")
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -34,8 +39,8 @@ def pytest_sessionfinish(session, exitstatus):
     regardless of test success/failure.
 
     Note: We use the Azure Storage SDK directly for cleanup because the
-    dacs_blobfile module intentionally does not support delete operations
-    (bf.remove() and bf.rmtree() raise OperationNotSupportedError).
+    DACS adapters intentionally do not support delete operations
+    (e.g., bf.remove() and bf.rmtree() raise OperationNotSupportedError).
     This is by design to prevent accidental data loss in production usage.
     """
     import sys
@@ -43,13 +48,13 @@ def pytest_sessionfinish(session, exitstatus):
     # Use print() to ensure visibility (logging may not be configured)
     print(f"\n{'='*60}")
     print(f"pytest_sessionfinish: Cleaning up test session {TEST_SESSION_ID}")
-    print(f"Cleaning up test blobs under {AZURE_BLOB_PATH}")
+    print(f"Cleaning up test blobs under {BASE_BLOB_PATH}")
     print(f"Exit status: {exitstatus}")
     print(f"{'='*60}")
     sys.stdout.flush()
 
     try:
-        # Using Azure SDK directly since dacs_blobfile doesn't support
+        # Using Azure SDK directly since the DACS adapters don't support
         # delete operations (remove/rmtree raise OperationNotSupportedError)
         print("Importing Azure SDK...")
         sys.stdout.flush()
@@ -60,7 +65,7 @@ def pytest_sessionfinish(session, exitstatus):
         sys.stdout.flush()
 
         # Parse the Azure blob path: az://account.blob.core.windows.net/container/prefix
-        path = AZURE_BLOB_PATH
+        path = BASE_BLOB_PATH
         if path.startswith("az://"):
             path = path[5:]  # Remove 'az://'
 
@@ -73,7 +78,7 @@ def pytest_sessionfinish(session, exitstatus):
             container_name = container_and_prefix[0]
             prefix = container_and_prefix[1] if len(container_and_prefix) > 1 else ""
         else:
-            logging.warning("Could not parse container from AZURE_BLOB_PATH")
+            logging.warning("Could not parse container from BASE_BLOB_PATH")
             return
 
         # Prefer access token if provided, else fall back to DefaultAzureCredential

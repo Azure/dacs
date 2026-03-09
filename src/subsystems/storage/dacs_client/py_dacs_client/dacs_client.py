@@ -44,6 +44,49 @@ from typing import AsyncIterator, List, Dict
 DEFAULT_INTERCEPT_PATH = "/mnt/dacs_cache"
 
 
+def normalize_azure_path(path: str) -> str:
+    """Normalize Azure blob path to internal DACS format.
+    
+    Accepts the following formats (compatible with native blobfile/boostedblob):
+    - az://account/container/blob (short form - native blobfile/boostedblob format)
+    - az://account.blob.core.windows.net/container/blob (long form - DACS internal format)
+    - https://account.blob.core.windows.net/container/blob (https form - native blobfile format)
+    
+    Returns the internal DACS format:
+    - az://account.blob.core.windows.net/container/blob
+    
+    This ensures API parity with native blobfile/boostedblob - users can use the same
+    paths without modification when switching between native and DACS APIs.
+    """
+    if path.startswith("https://"):
+        # https://account.blob.core.windows.net/container/blob
+        # -> az://account.blob.core.windows.net/container/blob
+        parts = path[len("https://"):].split("/", 1)
+        host = parts[0]
+        rest = parts[1] if len(parts) > 1 else ""
+        if not host.endswith(".blob.core.windows.net"):
+            raise ValueError(f"Invalid https Azure path: {path}. Expected format: https://account.blob.core.windows.net/container/blob")
+        return f"az://{host}/{rest}"
+    
+    if path.startswith("az://"):
+        # Check if it's already in long form (has .blob.core.windows.net)
+        path_without_prefix = path[len("az://"):]
+        parts = path_without_prefix.split("/", 1)
+        first_part = parts[0]
+        rest = parts[1] if len(parts) > 1 else ""
+        
+        if first_part.endswith(".blob.core.windows.net"):
+            # Already in long form: az://account.blob.core.windows.net/container/blob
+            return path
+        else:
+            # Short form: az://account/container/blob
+            # -> az://account.blob.core.windows.net/container/blob
+            account = first_part
+            return f"az://{account}.blob.core.windows.net/{rest}"
+    
+    raise ValueError(f"Invalid URL '{path}'; expected 'https' or 'az' scheme")
+
+
 # Internal class to manage file handles
 class _FileHandleManager:
     def __init__(self, executor: concurrent.futures.Executor):
@@ -285,15 +328,14 @@ class DACSCacheFileHandle:
 
 
 def _dacs_get_intercept_file_path(intercept_base_path: str, blob_path: str) -> str:
-    # Validate the blob_path format
-    if not blob_path.startswith("az://"):
-        raise ValueError(f"Invalid blob path: {blob_path}. Blob path should start with 'az://'")
-
+    # Normalize the path to internal format (supports both native and DACS path formats)
+    normalized_path = normalize_azure_path(blob_path)
+    
     # construct the path to blob as expected by interception lib,
     #       <intercept_base_path>/<account>.blob.core.windows.net/<container>/<blob>
-    # blob_path is of the form az://<account>.blob.core.windows.net/<container>/<blob>
+    # normalized_path is of the form az://<account>.blob.core.windows.net/<container>/<blob>
     # so we need to remove the az:// prefix and replace it with intercept_base_path
-    intercept_file_path = blob_path.replace("az://", "")
+    intercept_file_path = normalized_path.replace("az://", "")
     return os.path.join(intercept_base_path, intercept_file_path)
 
 
