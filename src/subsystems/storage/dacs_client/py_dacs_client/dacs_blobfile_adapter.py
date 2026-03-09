@@ -19,7 +19,7 @@ from collections import namedtuple
 from typing import Optional, Union, Iterator, List, Any, Tuple
 from enum import Enum
 
-from py_dacs_client.dacs_client import DACSCacheClient
+from py_dacs_client.dacs_client import DACSCacheClient, normalize_azure_path
 from py_dacs_client.dacs_utils import alloc_buffer, release_buffer, BoundedBufferManager, get_memory_limit
 from py_dacs_client.dacs_exceptions import (
     DACSError,
@@ -47,7 +47,7 @@ from py_dacs_client.dacs_exceptions import (
 
 # Re-export exceptions for backwards compatibility
 __all__ = [
-    "DACSAdapter",
+    "DACSBlobfileAdapter",
     "BlobFile",  # Alias for drop-in blobfile compatibility
     "WriteMode",
     "DACSError",
@@ -133,7 +133,7 @@ class _ClientManager:
 
 class WriteMode(Enum):
     """
-    Enumeration of write modes for DACSAdapter operations.
+    Enumeration of write modes for DACSBlobfileAdapter operations.
 
     WRITE_DISABLED: Disable write operations, read-only mode
     WRITE_CACHE_ONLY: Write to cache only, no blob storage
@@ -149,7 +149,7 @@ class WriteMode(Enum):
     WRITE_SYNC = "write_sync"
 
 
-class DACSAdapter:
+class DACSBlobfileAdapter:
     """
     Blobfile-compatible adapter that routes operations through DACS Client.
 
@@ -179,7 +179,10 @@ class DACSAdapter:
         Open a local or remote file for reading or writing.
 
         Args:
-            path: local or remote path
+            path: local or remote path. Supports multiple Azure path formats for API compatibility:
+                  - az://account/container/blob (native blobfile/boostedblob format)
+                  - az://account.blob.core.windows.net/container/blob (long form)
+                  - https://account.blob.core.windows.net/container/blob (https format)
             mode: one of "r", "rb", "w", "wb", "a", "ab"
             streaming: True for streaming I/O, False for download/upload on open/close
             buffer_size: number of bytes to buffer
@@ -189,7 +192,11 @@ class DACSAdapter:
                        Defaults to WRITE_SYNC if not provided.
 
         """
-        self._path = path
+        # Normalize Azure paths to internal format for API parity with native blobfile/boostedblob
+        if _is_azure_path(path):
+            self._path = normalize_azure_path(path)
+        else:
+            self._path = path
         self._mode = mode
         self._streaming = streaming
         self._buffer_size = buffer_size
@@ -290,7 +297,7 @@ class DACSAdapter:
         Example (zero-copy with user buffer):
             buffer = alloc_buffer(1024)
             try:
-                with DACSAdapter(path, "rb") as f:
+                with DACSBlobfileAdapter(path, "rb") as f:
                     mv = f.read(size=1024, buffer=buffer)
                     # Use memoryview here - buffer must stay alive
                     data = bytes(mv)  # Copy if needed after release
@@ -384,7 +391,7 @@ class DACSAdapter:
             - The user MUST keep the buffer alive until close() is called
             - The user MUST call release_buffer(buffer) AFTER close() to free memory
             - Releasing the buffer before close() causes undefined behavior
-            - DACSAdapter tracks the buffer but does NOT release it - user is responsible
+            - DACSBlobfileAdapter tracks the buffer but does NOT release it - user is responsible
 
             When NOT using a user-provided buffer (copy path):
             - An internal buffer is allocated and data is copied into it
@@ -400,14 +407,14 @@ class DACSAdapter:
             buffer = alloc_buffer(1024)
             ctypes.memmove(buffer, data, len(data))
             try:
-                with DACSAdapter(path, "wb") as f:
+                with DACSBlobfileAdapter(path, "wb") as f:
                     f.write(buffer=buffer, size=len(data))
                     # Buffer must stay alive until context manager exits (close)
             finally:
                 release_buffer(buffer)  # Safe to release AFTER close()
 
         Example (automatic memory management):
-            with DACSAdapter(path, "wb") as f:
+            with DACSBlobfileAdapter(path, "wb") as f:
                 f.write(data="Hello, World!")  # Internal buffer managed automatically
             # Internal buffer released automatically on close()
         """
@@ -697,7 +704,7 @@ def _copy_local_to_local(src: str, dst: str, return_md5: bool, overwrite: bool =
 def _copy_local_to_remote(src: str, dst: str, return_md5: bool) -> Optional[str]:
     """Copy local file to remote destination through cache layer.
     
-    Note: DACSAdapter only supports single-shot writes (no streaming/append),
+    Note: DACSBlobfileAdapter only supports single-shot writes (no streaming/append),
     so the entire file must be read into memory and written at once.
     """
     # Read entire file into memory (DACS doesn't support streaming writes)
@@ -715,7 +722,7 @@ def _copy_local_to_remote(src: str, dst: str, return_md5: bool) -> Optional[str]
     if return_md5:
         md5_hash = hashlib.md5(data).hexdigest()
 
-    with DACSAdapter(dst, "wb") as dst_adapter:
+    with DACSBlobfileAdapter(dst, "wb") as dst_adapter:
         dst_adapter.write(data=data)
 
     return md5_hash
@@ -734,7 +741,7 @@ def _copy_remote_to_local(src: str, dst: str, return_md5: bool, overwrite: bool 
 
     def write_fn(tmp_dst):
         buffer_manager = _ClientManager.get_buffer_manager()
-        with DACSAdapter(src, "rb") as src_adapter:
+        with DACSBlobfileAdapter(src, "rb") as src_adapter:
             with open(tmp_dst, "wb") as dst_file:
                 offset = 0
                 while offset < src_size:
@@ -779,10 +786,13 @@ def exists(path: str) -> bool:
         # Local file check
         return os.path.exists(path)
 
+    # Normalize path for remote blob check
+    normalized_path = normalize_azure_path(path)
+    
     # Remote blob check using DACSCacheClient
     try:
         client = _ClientManager.get_instance()
-        asyncio.run(client.get_file_stat(path))
+        asyncio.run(client.get_file_stat(normalized_path))
         return True
     except DACSNotFoundError:
         return False
@@ -819,11 +829,14 @@ def listdir(path: str) -> Iterator[str]:
         for item in os.listdir(path):
             yield item
     else:
+        # Normalize path for remote blob directory listing
+        normalized_path = normalize_azure_path(path)
+        
         # Remote blob directory listing using DACSCacheClient
         async def _listdir_async():
             result = []
             client = _ClientManager.get_instance()
-            async for entry in client.list_dir(path):
+            async for entry in client.list_dir(normalized_path):
                 # entry is a Dict[str, object] with 'd_name' field containing the filename
                 if "d_name" in entry:
                     name = entry["d_name"]
@@ -844,7 +857,11 @@ def scandir(path: str) -> Iterator[str]:
     """
     List contents of a directory (generator). Supported API.
     Returns DirEntry objects with path, name, is_dir, is_file, and stat fields.
+    
+    Args:
+        path: local or remote path. Supports multiple Azure path formats.
     """
+
     # Match blobfile's DirEntry namedtuple
     DirEntry = namedtuple(
         "DirEntry",
@@ -862,11 +879,14 @@ def scandir(path: str) -> Iterator[str]:
         for entry in os.scandir(path):
             yield entry.name
     else:
+        # Normalize path for remote blob directory listing
+        normalized_path = normalize_azure_path(path)
+        
         # Remote blob directory listing using DACSCacheClient
         async def _scandir_collect():
             result = []
             client = _ClientManager.get_instance()
-            async for entry in client.list_dir(path):
+            async for entry in client.list_dir(normalized_path):
                 # entry is a Dict[str, object] with 'd_name' field containing the filename
                 if "d_name" in entry:
                     name = entry["d_name"]
@@ -931,6 +951,9 @@ def stat(path: str) -> Any:
         # Local file statistics
         return os.stat(path)
 
+    # Normalize path for remote blob statistics
+    normalized_path = normalize_azure_path(path)
+    
     # Remote blob statistics using DACSCacheClient
     Stat = namedtuple(
         "Stat",
@@ -955,7 +978,7 @@ def stat(path: str) -> Any:
 
     client = _ClientManager.get_instance()
     try:
-        stat_result = asyncio.run(client.get_file_stat(path))
+        stat_result = asyncio.run(client.get_file_stat(normalized_path))
     except Exception as e:
         raise handle_native_error(e, operation="stat", path=path) from e
 
@@ -1014,7 +1037,6 @@ def md5(path: str) -> str:
 def set_mtime(path: str, mtime: float) -> None:
     """Set modification time of a file. Not supported by DACS Client."""
     raise OperationNotSupportedError("set_mtime() is not supported by DACS Client.")
-
 
 def configure(**kwargs) -> None:
     """
@@ -1101,4 +1123,4 @@ def shutdown() -> None:
 
 # Alias for drop-in blobfile compatibility
 # Users can do: from dacs_adapter import BlobFile
-BlobFile = DACSAdapter
+BlobFile = DACSBlobfileAdapter

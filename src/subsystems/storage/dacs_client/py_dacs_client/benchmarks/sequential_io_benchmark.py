@@ -35,7 +35,7 @@ except ImportError:
 
 # Try to import DACS client
 try:
-    from py_dacs_client.dacs_adapter import DACSAdapter, WriteMode, shutdown as dacs_shutdown
+    from py_dacs_client.dacs_blobfile_adapter import DACSBlobfileAdapter as DACSAdapter, WriteMode, shutdown as dacs_shutdown
     from py_dacs_client.dacs_utils import alloc_buffer, release_buffer
 
     DACS_AVAILABLE = True

@@ -18,7 +18,8 @@ from dacs_blobfile_patcher import (
     DACS_SUPPORTED_APIS,
 )
 from py_dacs_client.dacs_blobfile_exception_handler import normalize_exception
-from py_dacs_client.dacs_adapter import DACSAdapter, OperationNotSupportedError
+from py_dacs_client.dacs_blobfile_adapter import DACSBlobfileAdapter
+from py_dacs_client.dacs_exceptions import OperationNotSupportedError
 from py_dacs_client.dacs_exceptions import (
     DACSNotFoundError,
     DACSPermissionError,
@@ -39,7 +40,10 @@ from py_dacs_client.dacs_exceptions import (
 )
 
 # Import the unique session path from conftest.py
-from conftest import AZURE_BLOB_PATH
+from conftest import BASE_BLOB_PATH
+
+# Use adapter-specific sub-path to avoid collisions with other adapter tests
+AZURE_BLOB_PATH = f"{BASE_BLOB_PATH}/patcher"
 
 
 @pytest.fixture(autouse=True)
@@ -151,7 +155,7 @@ class TestEnvironmentVariable:
 
 # =============================================================================
 # CATEGORY 2: ROUTING TESTS
-# Tests: Azure paths (az://) route to DACSAdapter,
+# Tests: Azure paths (az://) route to DACSBlobfileAdapter,
 # non-Azure paths route to original blobfile implementation
 # =============================================================================
 
@@ -168,12 +172,12 @@ class TestPatcherRouting:
         
         # Test BlobFile write
         with bf.BlobFile(test_path, "w") as f:
-            assert hasattr(f, '_adapter') or isinstance(f, DACSAdapter), "BlobFile write should use DACSAdapter"
+            assert hasattr(f, '_adapter') or isinstance(f, DACSBlobfileAdapter), "BlobFile write should use DACSBlobfileAdapter"
             f.write(test_data)
         
         # Test BlobFile read
         with bf.BlobFile(test_path, "r") as f:
-            assert hasattr(f, '_adapter') or isinstance(f, DACSAdapter), "BlobFile read should use DACSAdapter"
+            assert hasattr(f, '_adapter') or isinstance(f, DACSBlobfileAdapter), "BlobFile read should use DACSBlobfileAdapter"
             content = f.read()
             assert content == test_data, "Content should match written data"
         
@@ -228,14 +232,14 @@ class TestPatcherRouting:
             test_path = os.path.join(temp_dir, f"patcher_test_{id(self)}.txt")
             test_data = "non-azure patcher routing test"
 
-            # Test BlobFile write - should NOT return DACSAdapter
+            # Test BlobFile write - should NOT return DACSBlobfileAdapter
             with bf.BlobFile(test_path, "w") as f:
-                assert not isinstance(f, DACSAdapter), "BlobFile write should NOT return DACSAdapter for non-Azure paths"
+                assert not isinstance(f, DACSBlobfileAdapter), "BlobFile write should NOT return DACSBlobfileAdapter for non-Azure paths"
                 f.write(test_data)
 
-            # Test BlobFile read - should NOT return DACSAdapter
+            # Test BlobFile read - should NOT return DACSBlobfileAdapter
             with bf.BlobFile(test_path, "r") as f:
-                assert not isinstance(f, DACSAdapter), "BlobFile read should NOT return DACSAdapter for non-Azure paths"
+                assert not isinstance(f, DACSBlobfileAdapter), "BlobFile read should NOT return DACSBlobfileAdapter for non-Azure paths"
                 content = f.read()
                 assert content == test_data, "Content should match written data"
 

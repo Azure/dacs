@@ -153,7 +153,7 @@ def run_write_process(
 
     if is_dacs:
         try:
-            from py_dacs_client.dacs_adapter import DACSAdapter, WriteMode, shutdown as dacs_shutdown
+            from py_dacs_client.dacs_adapter import DACSBlobfileAdapter, WriteMode, shutdown as dacs_shutdown
             from py_dacs_client.dacs_utils import alloc_buffer, release_buffer
         except ImportError as e:
             return ProcessResult(
@@ -198,7 +198,7 @@ def run_write_process(
         
         for path in paths:
             if is_dacs:
-                with DACSAdapter(path, "wb", write_mode=wm) as f:
+                with DACSBlobfileAdapter(path, "wb", write_mode=wm) as f:
                     if use_zero_copy:
                         f.write(buffer=buffer, size=blob_size)
                     else:
@@ -256,7 +256,7 @@ def run_read_process(
     
     if is_dacs:
         try:
-            from py_dacs_client.dacs_adapter import DACSAdapter, shutdown as dacs_shutdown
+            from py_dacs_client.dacs_adapter import DACSBlobfileAdapter, shutdown as dacs_shutdown
             from py_dacs_client.dacs_utils import alloc_buffer, release_buffer
         except ImportError as e:
             return ProcessResult(
@@ -294,7 +294,7 @@ def run_read_process(
                     read_path = f"az://{account}/{container_name}/{blob_path}"
             
             if is_dacs:
-                with DACSAdapter(path, "rb") as f:
+                with DACSBlobfileAdapter(path, "rb") as f:
                     if use_zero_copy:
                         f.read(size=blob_size, buffer=buffer)
                     else:

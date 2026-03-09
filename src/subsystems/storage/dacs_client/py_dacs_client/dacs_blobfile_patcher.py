@@ -13,7 +13,7 @@
 #     enable_dacs_backend()
 #
 #     with bf.BlobFile("az://myaccount/container/file.txt", "rb") as f:
-#         data = f.read()  # Uses DACSAdapter
+#         data = f.read()  # Uses DACSBlobfileAdapter
 #
 #     # Option B: Auto-enable via environment variable
 #     # export BLOBFILE_USE_DACS=1
@@ -42,10 +42,10 @@ DACS_SUPPORTED_APIS = {'BlobFile', 'copy', 'exists', 'listdir', 'scandir', 'stat
 
 def enable_dacs_backend():
     """
-    Enable DACSAdapter backend for blobfile Azure operations.
+    Enable DACSBlobfileAdapter backend for blobfile Azure operations.
 
     After calling this function:
-    - Supported APIs route az:// paths through DACSAdapter
+    - Supported APIs route az:// paths through DACSBlobfileAdapter
     - Supported APIs route non-Azure paths through original blobfile
     - Unsupported APIs raise OperationNotSupportedError
 
@@ -53,10 +53,10 @@ def enable_dacs_backend():
         import blobfile as bf
         from py_dacs_client.dacs_blobfile_patcher import enable_dacs_backend
 
-        # Enable DACSAdapter for Azure operations
+        # Enable DACSBlobfileAdapter for Azure operations
         enable_dacs_backend()
 
-        # Now all bf.* calls use DACSAdapter for Azure paths
+        # Now all bf.* calls use DACSBlobfileAdapter for Azure paths
         with bf.BlobFile("az://myaccount/container/file.txt", "rb") as f:
             data = f.read()
 
@@ -68,8 +68,8 @@ def enable_dacs_backend():
     if _BLOBFILE_PATCHED:
         return  # Already patched
 
-    from py_dacs_client.dacs_adapter import (
-        DACSAdapter,
+    from py_dacs_client.dacs_blobfile_adapter import (
+        DACSBlobfileAdapter,
         copy as dacs_copy,
         exists as dacs_exists,
         listdir as dacs_listdir,
@@ -96,7 +96,7 @@ def enable_dacs_backend():
     # --- Patched functions ---
 
     class _BlobFileWrapper:
-        """Wrapper that intercepts errors from DACSAdapter
+        """Wrapper that intercepts errors from DACSBlobfileAdapter
         and converts them to blobfile-compatible exceptions."""
 
         def __init__(self, adapter, original_path):
@@ -129,10 +129,10 @@ def enable_dacs_backend():
     def patched_BlobFile(path, mode="r", streaming=None, buffer_size=None,
                          cache_dir=None, file_size=None, **kwargs):
         if _is_azure_path(path):
-            # Filter kwargs to only those supported by DACSAdapter
+            # Filter kwargs to only those supported by DACSBlobfileAdapter
             dacs_kwargs = {k: v for k, v in kwargs.items() if k in ('write_mode',)}
             try:
-                adapter = DACSAdapter(
+                adapter = DACSBlobfileAdapter(
                     path=path, mode=mode, streaming=streaming,
                     buffer_size=buffer_size, cache_dir=cache_dir,
                     file_size=file_size, **dacs_kwargs
@@ -198,7 +198,7 @@ def enable_dacs_backend():
         if _is_azure_path(path):
             if shard_prefix_length != 0:
                 raise ValueError(
-                    "shard_prefix_length is not supported for Azure paths with DACSAdapter. "
+                    "shard_prefix_length is not supported for Azure paths with DACSBlobfileAdapter. "
                     "Got shard_prefix_length=%r"
                     % shard_prefix_length
                 )
@@ -212,7 +212,7 @@ def enable_dacs_backend():
         if _is_azure_path(path):
             if shard_prefix_length != 0:
                 raise ValueError(
-                    "shard_prefix_length is not supported for Azure paths with DACSAdapter. "
+                    "shard_prefix_length is not supported for Azure paths with DACSBlobfileAdapter. "
                     "Got shard_prefix_length=%r"
                     % shard_prefix_length
                 )
