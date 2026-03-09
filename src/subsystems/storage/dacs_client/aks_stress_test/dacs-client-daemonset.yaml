@@ -20,6 +20,12 @@ spec:
       - name: dacs-client
         image: dacs.azurecr.io/dacs-client:latest
         imagePullPolicy: Always
+        env:
+          # TODO: Update the CACHE_SERVER_LIST and CACHE_SERVER_PORT environment variables with the actual values for your cache servers
+          # - name: CACHE_SERVER_LIST
+          #   value: "cacheserver-0.cacheserver.cache-server.svc.cluster.local#cacheserver-1.cacheserver.cache-server.svc.cluster.local#cacheserver-2.cacheserver.cache-server.svc.cluster.local#cacheserver-3.cacheserver.cache-server.svc.cluster.local#cacheserver-4.cacheserver.cache-server.svc.cluster.local#cacheserver-5.cacheserver.cache-server.svc.cluster.local#cacheserver-6.cacheserver.cache-server.svc.cluster.local#cacheserver-7.cacheserver.cache-server.svc.cluster.local"
+          # - name: CACHE_SERVER_PORT
+          #   value: "9065"
         command:
           - /bin/bash
           - -c

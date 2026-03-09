@@ -144,13 +144,13 @@ def run_write_process(
     # Prepare data
     PATTERN_SIZE = min(1 * MB, blob_size)
     pattern = os.urandom(PATTERN_SIZE)
-    data_bytes = (pattern * (blob_size // PATTERN_SIZE + 1))[:blob_size]
-    
+
     # Import and setup client
     dacs_shutdown = None
     buffer = None
     release_buffer = None
-    
+    data_bytes = None
+
     if is_dacs:
         try:
             from py_dacs_client.dacs_adapter import DACSAdapter, WriteMode, shutdown as dacs_shutdown
@@ -171,8 +171,14 @@ def run_write_process(
         wm = mode_map.get(write_mode, WriteMode.WRITE_SYNC)
         
         if use_zero_copy:
+            # Fill native buffer directly in chunks to avoid double memory (5GB Python + 5GB native)
             buffer = alloc_buffer(blob_size)
-            ctypes.memmove(buffer, data_bytes, blob_size)
+            buf_addr = ctypes.cast(buffer, ctypes.c_void_p).value
+            for offset in range(0, blob_size, PATTERN_SIZE):
+                chunk_len = min(PATTERN_SIZE, blob_size - offset)
+                ctypes.memmove(buf_addr + offset, pattern, chunk_len)
+        else:
+            data_bytes = (pattern * (blob_size // PATTERN_SIZE + 1))[:blob_size]
     else:
         try:
             import blobfile as bf
@@ -182,6 +188,7 @@ def run_write_process(
                 bytes_transferred=0, duration_seconds=0, throughput_mbps=0, throughput_gbits=0,
                 success=False, paths=[], error=str(e),
             )
+        data_bytes = (pattern * (blob_size // PATTERN_SIZE + 1))[:blob_size]
     
     written_paths = []
     total_bytes = 0
@@ -463,6 +470,10 @@ def main():
                         help="Temp directory for blobfile staging (default: system temp). "
                              "Use a path with enough space for large files.")
     parser.add_argument("--output", help="Output file path for JSON results")
+    parser.add_argument("--paths-file",
+                        help="Path to JSON file for saving/loading blob paths between phases. "
+                             "Used with --skip-read (saves paths) or --skip-write (loads paths) "
+                             "to enable two-phase benchmarks with a global barrier between writes and reads.")
     
     args = parser.parse_args()
     
@@ -612,9 +623,21 @@ def main():
             print(f"  {write_throughput_mbps/1024:.2f} GB/s")
             print(f"  {write_throughput_gbits:.2f} Gbits/s")
             print(f"{'='*70}")
+            
+            # Save paths to file for two-phase benchmarks
+            if args.paths_file:
+                with open(args.paths_file, 'w', encoding='utf-8') as f:
+                    json.dump(all_written_paths, f)
+                print(f"Paths saved to {args.paths_file} ({sum(len(p) for p in all_written_paths)} blobs)")
         
         # ==================== READ PHASE ====================
         if not args.skip_read:
+            # Load paths from file if write phase was skipped (two-phase mode)
+            if args.skip_write and args.paths_file and os.path.exists(args.paths_file):
+                with open(args.paths_file, 'r', encoding='utf-8') as f:
+                    all_written_paths = json.load(f)
+                print(f"Paths loaded from {args.paths_file} ({sum(len(p) for p in all_written_paths)} blobs)")
+            
             # Flatten paths for reading
             flat_paths = [p for paths in all_written_paths for p in paths]
             
