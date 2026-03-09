@@ -46,19 +46,49 @@ logger.propagate = False  # Prevents duplicate logging if this module is importe
 def get_cpu_cores() -> int:
     # Note: On dacs partial node skus, os.cpu_count() does not return correct number of cpus,
     #       use DACS_CPU_CORES environment variable if set
-    cpu_cores = os.environ.get("DACS_CPU_CORES")
-    if cpu_cores is None:
-        cpu_cores = os.cpu_count()
-        logger.info(f"DACS_CPU_CORES is not set, using os.cpu_count(): {cpu_cores}")
-    else:
-        logger.info(f"Number of CPU cores: {cpu_cores}")
-    return int(cpu_cores)
+    cpu_cores_env = os.environ.get("DACS_CPU_CORES")
+    if cpu_cores_env is not None:
+        try:
+            cpu_cores = int(cpu_cores_env)
+            if cpu_cores <= 0:
+                raise ValueError("cpu cores must be > 0")
+            logger.info(f"Number of CPU cores from DACS_CPU_CORES: {cpu_cores}")
+            return cpu_cores
+        except (ValueError, TypeError):
+            logger.warning(
+                f"Invalid DACS_CPU_CORES='{cpu_cores_env}', falling back to os.cpu_count()"
+            )
+
+    detected_cores = os.cpu_count()
+    if detected_cores is None or detected_cores <= 0:
+        logger.warning("os.cpu_count() returned invalid value; using 1 core fallback")
+        return 1
+
+    logger.info(f"DACS_CPU_CORES is not set, using os.cpu_count(): {detected_cores}")
+    return int(detected_cores)
 
 
 def get_memory_limit() -> int:
-    # Note: use DACS_MEMORY_MB env var if set, else default to 2 GB
-    memory_limit_mb = int(os.environ.get("DACS_MEMORY_MB", 2048))
-    logger.info(f"Container memory limit: {memory_limit_mb} MB")
+    # Note: use DACS_MEMORY_MB env var if set.
+    #       Otherwise derive from CPU count: cores * 256 MB.
+    memory_limit_env = os.environ.get("DACS_MEMORY_MB")
+    if memory_limit_env is not None:
+        try:
+            memory_limit_mb = int(memory_limit_env)
+            if memory_limit_mb <= 0:
+                raise ValueError("memory limit must be > 0")
+            logger.info(f"Container memory limit from DACS_MEMORY_MB: {memory_limit_mb} MB")
+            return memory_limit_mb * 1024 * 1024
+        except (ValueError, TypeError):
+            logger.warning(
+                f"Invalid DACS_MEMORY_MB='{memory_limit_env}', falling back to core-based memory limit"
+            )
+
+    cpu_cores = get_cpu_cores()
+    memory_limit_mb = cpu_cores * 256
+    logger.info(
+        f"Container memory limit derived from CPU cores: {cpu_cores} * 256 MB = {memory_limit_mb} MB"
+    )
     return memory_limit_mb * 1024 * 1024
 
 
