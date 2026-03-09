@@ -44,17 +44,10 @@ Notes:
 ## Sample Output
 
 ```sh
-<<<<<<< HEAD
-mittas@sample-devbox:~/workspace/azure/DACS$ BUILD_NUMBER=latest DOCKER_REGISTRY=dacs.azurecr.io STORAGE_ACCOUNT=samplestorageacct make test-e2e TEST_FILTER="perf && dacsclients"
-
-GIT_COMMIT=e3f5968cd34e53cc1dd57efaf460f67e2e48fd7a GIT_BRANCH=sample/multicache-client PATH=/home/sampleuser/workspace/azure/DACS/.local/bin:$PATH /home/sampleuser/workspace/azure/DACS/.local/bin/ginkgo -v -r --timeout="60m" --label-filter="perf && (dacsclients)" --focus="" --no-color="false" "./test/perf" -- --junit-report=/home/sampleuser/workspace/azure/DACS/test.xml --summary-report=/home/sampleuser/workspace/azure/DACS/summary.md --support-bundle-dir=/home/sampleuser/workspace/azure/DACS/support-bundles
-  I0124 16:32:16.416184  264576 perf_suite_test.go:80] "Starting DACS Performance test suite"
-=======
  BUILD_NUMBER=latest DOCKER_REGISTRY=dacs.azurecr.io STORAGE_ACCOUNT=samplestorageacct LABEL_FILTER=dacsclients make test-perf EXTRA_TEST_ARGS="--client-image=dacs.azurecr.io/cache-test-client:latest --blob-count=20 --blob-size=536870912"
 Using system kubectl
 GIT_COMMIT=75661283f4ae11826f796ee4d1a13c390430d155 GIT_BRANCH=sample/perf-branch PATH=/home/sampleuser/workspace/azure/DACS/.local/bin:$PATH /home/sampleuser/workspace/azure/DACS/.local/bin/ginkgo -v -r --timeout="60m" --label-filter="perf && (dacsclients)" --focus="" --no-color="false" "./test/perf" -- --junit-report=/home/sampleuser/workspace/azure/DACS/test.xml --summary-report=/home/sampleuser/workspace/azure/DACS/summary.md --support-bundle-dir=/home/sampleuser/workspace/azure/DACS/support-bundles --client-image=dacs.azurecr.io/cache-test-client:latest --blob-count=20 --blob-size=536870912
   I0210 06:14:38.589093 1623035 perf_suite_test.go:80] "Starting DACS Performance test suite"
->>>>>>> 4c6fd8c1 (chore: move dacs client to run as MPI workers)
 Running Suite: perf suite - /home/sampleuser/workspace/azure/DACS/test/perf
 ==========================================================================
 Random Seed: 1770704074

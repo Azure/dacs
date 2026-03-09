@@ -77,8 +77,6 @@ async def fetch_blob_chunk(
 ) -> c_void_p:
 
     buffer = await read_buffer_manager.acquire_buffer(chunk_size)
-    if not buffer:
-        raise MemoryError("Failed to allocate buffer for reading blob chunk")
 
     logger.info(f"Started reading chunkIdx={chunkIdx} of blob {blob_name} at offset {offset} with size {chunk_size}")
     await dacs_client_instance.read_blob(blob_name, buffer, chunk_size, offset)
@@ -153,26 +151,38 @@ async def download_blob_to_local(
 
     loop = asyncio.get_event_loop()
     writeHandle = open(local_path, "wb")
-    if not writeHandle:
-        raise FileNotFoundError(f"Failed to open file {local_path} for writing")
     with writeHandle as f:
         chunkIdx = 0
         async for chunk in read_iter_blob_chunks(
             dacs_client_instance, blob_name, blob_size, chunk_size, buffer_manager
         ):
+            chunk_len = len(chunk)
             # Write the chunk to the file
-            logger.info(f"Writing chunkIdx={chunkIdx} with {len(chunk)} bytes to {local_path}")
+            logger.info(f"Writing chunkIdx={chunkIdx} with {chunk_len} bytes to {local_path}")
+            write_exception = None
             try:
                 await loop.run_in_executor(threadpool, f.write, memoryview(chunk))
             except Exception as e:
+                write_exception = e
                 logger.error(f"Error writing chunkIdx={chunkIdx} to {local_path}: {e}")
-                raise e
+            finally:
+                try:
+                    await buffer_manager.release_buffer(chunk)
+                except Exception as release_exc:
+                    if write_exception is not None:
+                        logger.error(
+                            f"Failed to release chunkIdx={chunkIdx} after write error for {local_path}: {release_exc}"
+                        )
+                    else:
+                        raise
+
+            if write_exception is not None:
+                raise write_exception
+
             logger.info(
-                f"Wrote chunkIdx={chunkIdx} with {len(chunk)} bytes to {local_path}, total size={blob_size} bytes"
+                f"Wrote chunkIdx={chunkIdx} with {chunk_len} bytes to {local_path}, total size={blob_size} bytes"
             )
 
-            # Release the buffer
-            await buffer_manager.release_buffer(chunk)
             chunkIdx += 1
 
     logger.info(f"Downloaded blob {blob_name} to {local_path} with size {blob_size} bytes")

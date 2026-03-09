@@ -24,7 +24,6 @@ import asyncio
 import logging
 import os
 import platform
-import requests
 import sys
 from ctypes import CDLL, c_char, c_size_t, c_void_p
 
@@ -160,51 +159,73 @@ class BoundedBufferManager:
     """
     A class to manage memory buffers with a bounded size limit.
     It allows acquiring and releasing buffers while ensuring that the total memory usage does not exceed the specified limit.
+
+    Uses an asyncio.Condition to correctly wake waiting acquirers when buffers are
+    released, avoiding the lost-wakeup problem inherent in bare Event objects.
     """
 
     def __init__(self, max_memory_limit: int = 1024 * 1024 * 1024):
+        if max_memory_limit <= 0:
+            raise ValueError(f"max_memory_limit must be > 0, got {max_memory_limit}")
+
         self.max_memory_limit = max_memory_limit
         self.current_memory_usage = 0
-        self.lock = asyncio.Lock()
-        self.buffer_released_event = asyncio.Event()
+        self._buffer_sizes: dict[int, int] = {}
+        self._lock = asyncio.Lock()
+        self._condition = asyncio.Condition(self._lock)
+
+    def _can_allocate(self, buf_size: int) -> bool:
+        """Check whether a buffer of *buf_size* bytes may be allocated now."""
+        # If the single request exceeds the cap, allow it anyway to avoid deadlock.
+        if buf_size > self.max_memory_limit:
+            return True
+        return self.current_memory_usage + buf_size <= self.max_memory_limit
 
     async def acquire_buffer(self, buf_size: int) -> c_void_p:
-        while True:
-            async with self.lock:
-                if (self.current_memory_usage + buf_size <= self.max_memory_limit) or (
-                    buf_size > self.max_memory_limit
-                ):
-                    buffer = alloc_buffer(buf_size)
-                    if not buffer:
-                        raise MemoryError("Failed to allocate buffer for reading blob chunk")
+        async with self._condition:
+            # Wait until there is room (or the request exceeds the cap entirely).
+            while not self._can_allocate(buf_size):
+                await self._condition.wait()
 
-                    self.current_memory_usage += buf_size
-                    usage_percent = (self.current_memory_usage / self.max_memory_limit) * 100
-                    logger.log(
-                        logging.INFO if usage_percent > 90 else logging.DEBUG,
-                        f"Buffer acquired. Current memory usage: {self.current_memory_usage} bytes ({usage_percent:.2f}%)",
-                    )
-                    return buffer
+            # Allocate the C buffer *before* updating accounting so that a
+            # malloc failure never leaves the counter inflated.
+            buffer = alloc_buffer(buf_size)
 
-            await self.buffer_released_event.wait()
-            self.buffer_released_event.clear()
+            self.current_memory_usage += buf_size
+            self._buffer_sizes[id(buffer)] = buf_size
+            usage_percent = (self.current_memory_usage / self.max_memory_limit) * 100
+            logger.log(
+                logging.INFO if usage_percent > 90 else logging.DEBUG,
+                f"Buffer acquired. Current memory usage: {self.current_memory_usage} bytes ({usage_percent:.2f}%)",
+            )
+            return buffer
 
     async def release_buffer(self, buffer: c_void_p) -> None:
-        async with self.lock:
-            buf_size = len(buffer)
-            if buffer is None:
-                logger.warning("Attempted to release a None buffer. Skipping.")
-                return
+        if buffer is None:
+            logger.warning("Attempted to release a None buffer. Skipping.")
+            return
+
+        async with self._condition:
+            buffer_key = id(buffer)
+            buf_size = self._buffer_sizes.pop(buffer_key, None)
+            if buf_size is None:
+                try:
+                    buf_size = len(buffer)
+                except Exception:
+                    buf_size = 0
+                    logger.warning("Buffer size unknown during release; skipping accounting decrement for this buffer")
+
             release_buffer(buffer)
 
-            self.current_memory_usage -= buf_size
+            self.current_memory_usage = max(0, self.current_memory_usage - buf_size)
             usage_percent = (self.current_memory_usage / self.max_memory_limit) * 100
             logger.log(
                 logging.INFO if usage_percent > 90 else logging.DEBUG,
                 f"Buffer released. Current memory usage: {self.current_memory_usage} bytes ({usage_percent:.2f}%)",
             )
 
-            self.buffer_released_event.set()
+            # Wake all waiters so they can re-check whether their request now fits.
+            self._condition.notify_all()
 
 
 def _initialize_dacs_client_config(intercept_path: str = None, write_mode=None) -> None:
