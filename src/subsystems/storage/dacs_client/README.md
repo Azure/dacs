@@ -278,7 +278,7 @@ from py_dacs_client.dacs_utils import alloc_buffer, release_buffer, BoundedBuffe
 | --- | --- |
 | `alloc_buffer(size) -> ctypes buffer` | Allocate a raw C buffer of the specified size (via `malloc`). Raises `MemoryError` on failure. |
 | `release_buffer(buffer)` | Release a previously allocated buffer (via `free`). |
-| `get_memory_limit() -> int` | Get the container memory limit in bytes. Reads `DACS_MEMORY_MB` env var (default: 2048 MB). |
+| `get_memory_limit() -> int` | Get the container memory limit in bytes. Uses `DACS_MEMORY_MB` when set; otherwise derives memory as `cpu_core_count * 256 MB` (using `DACS_CPU_CORES` or `os.cpu_count()`). |
 | `BoundedBufferManager(max_memory_limit)` | Async-safe buffer pool that enforces a total memory usage cap. See [BoundedBufferManager](#boundedbuffermanager). |
 
 > **Note:** For production workloads, prefer `BoundedBufferManager` over raw `alloc_buffer`/`release_buffer` to prevent unbounded memory growth when processing many blobs concurrently.
@@ -715,7 +715,7 @@ for name in bf.listdir("az://account.blob.core.windows.net/container/dir/"):
 | `CACHE_DISCOVERY_URL` | No | Cache server discovery endpoint URL. Enables dynamic cache server discovery when set with `CACHE_SERVER_PORT`. Takes precedence over `CACHE_SERVER_LIST`. |
 | `CACHE_SERVER_PORT` | No | Cache server port. Required for both static and discovery-based cache configurations. |
 | `BLOBFILE_USE_DACS` | No | Set to `"1"` to auto-enable blobfile monkey-patching on import. See [Blobfile Integration](#blobfile-integration-monkey-patching). |
-| `DACS_MEMORY_MB` | No | Container memory limit in MB. Used by `get_memory_limit()` and `BoundedBufferManager` to derive buffer pool size. Defaults to `2048` (2 GB). |
+| `DACS_MEMORY_MB` | No | Container memory limit in MB. Used by `get_memory_limit()` and `BoundedBufferManager` to derive buffer pool size. If unset/invalid, memory defaults to `cpu_core_count * 256 MB` (e.g., 8 cores → 2 GB, 128 cores → 32 GB). |
 | `DACS_PY_CACHE_CLIENT_THREADPOOL_SIZE` | No | Thread pool size for parallel downloads. Defaults to `min(cpu_count * 4, 48)`. |
 | `DACS_PY_CACHE_CLIENT_CHUNK_SIZE` | No | Chunk size in bytes for chunked blob downloads. Defaults to `268435456` (256 MB). |
 | `DACS_DATA_LOG_LEVEL` | No | Logging level (`DEBUG`, `INFO`, `WARNING`, etc.). Defaults to `INFO`. |
