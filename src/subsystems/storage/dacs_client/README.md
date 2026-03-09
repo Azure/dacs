@@ -287,6 +287,8 @@ from py_dacs_client.dacs_utils import alloc_buffer, release_buffer, BoundedBuffe
 
 An async-safe buffer pool that enforces a total memory usage cap across all concurrent operations. It prevents out-of-memory conditions by blocking `acquire_buffer()` calls when the memory limit would be exceeded, and automatically unblocking them when buffers are released.
 
+Internally, `BoundedBufferManager` uses `asyncio.Condition` (not a bare `Event`) so waiters re-check allocation predicates under lock. This avoids lost-wakeup races under high concurrency.
+
 ```python
 from py_dacs_client.dacs_utils import BoundedBufferManager, get_memory_limit
 ```
@@ -301,16 +303,27 @@ BoundedBufferManager(max_memory_limit: int = 1024 * 1024 * 1024)
 | --- | --- | --- | --- |
 | `max_memory_limit` | `int` | `1073741824` (1 GB) | Maximum total bytes that can be allocated across all buffers. A common pattern is to use 80% of the container memory limit via `get_memory_limit()`. |
 
+`max_memory_limit` must be greater than `0`; otherwise `ValueError` is raised.
+
 ##### Methods
 
 | Method | Description |
 | --- | --- |
 | `await acquire_buffer(buf_size) -> ctypes.c_void_p` | Allocate a buffer of the requested size. Blocks (async) if the allocation would exceed `max_memory_limit`, resuming automatically when other buffers are released. If `buf_size` exceeds `max_memory_limit`, the allocation proceeds anyway to avoid deadlock. Raises `MemoryError` on `malloc` failure. |
-| `await release_buffer(buffer) -> None` | Release a previously acquired buffer back to the pool (frees the underlying C memory via `free`). Signals any waiting `acquire_buffer()` calls that memory is available. Logs a warning and skips if `buffer` is `None`. |
+| `await release_buffer(buffer) -> None` | Release a previously acquired buffer back to the pool (frees the underlying C memory via `free`). Signals waiting `acquire_buffer()` calls that memory may be available. Logs a warning and skips if `buffer` is `None`. If the buffer size cannot be determined, memory is still freed and accounting decrement is skipped with a warning. |
 
 ##### Memory Pressure Logging
 
 `BoundedBufferManager` logs at `INFO` level when memory usage exceeds 90% of the limit, and at `DEBUG` level otherwise. This helps identify memory pressure without excessive log noise.
+
+##### Test Coverage
+
+Unit tests in `py_dacs_client/tests/test_bounded_buffer_manager.py` validate:
+- memory-pressure blocking/unblocking
+- multiple waiting acquirers under constrained memory
+- allocation-failure accounting correctness
+- `None`/unknown buffer release edge cases
+- constructor validation for invalid memory limits
 
 ##### Standalone Usage (async)
 

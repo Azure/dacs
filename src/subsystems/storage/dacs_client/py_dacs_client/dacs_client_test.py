@@ -64,8 +64,6 @@ def perf_test_read(nBlobs: int, azBlobDirPath: str, blobNamePattern: str, blobSi
         nonlocal total_bytes_read
         # Allocate buffer for reading via BoundedBufferManager
         buffer = await buffer_manager.acquire_buffer(blob_size)
-        if not buffer:
-            raise MemoryError("Failed to allocate buffer for reading blob")
         try:
             logger.info(f"Reading blob {blob_path} with size {blob_size} bytes")
             size_read = await dacs_client_instance.read_blob(blob_path, buffer, blob_size, 0)
