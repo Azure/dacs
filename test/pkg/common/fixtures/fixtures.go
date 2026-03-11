@@ -23,7 +23,10 @@ const DACSAdapterBenchmarkYAML = "dacs_adapter_benchmark_job.yaml"
 // DACSClientPodYAML is the path to the dacs client pod fixture.
 const DACSClientPodYAML = "dacs-client-pod.yaml"
 
-//go:embed iperf-server.yaml iperf-client.yaml perf-client.yaml dacs_cacheclient_job.yaml perf-client-serviceaccount.yaml mpi-job.yaml dacs_adapter_benchmark_job.yaml dacs-client-pod.yaml
+// ScenarioModelLoadingJobYAML is the path to the scenario model loading job fixture.
+const ScenarioModelLoadingJobYAML = "scenario_model_loading_job.yaml"
+
+//go:embed iperf-server.yaml iperf-client.yaml perf-client.yaml dacs_cacheclient_job.yaml perf-client-serviceaccount.yaml mpi-job.yaml dacs_adapter_benchmark_job.yaml dacs-client-pod.yaml scenario_model_loading_job.yaml
 var fs embed.FS
 
 // ReadIperfServer reads the iperf server pod fixture.
@@ -64,4 +67,9 @@ func ReadDACSAdapterBenchmarkJob() ([]byte, error) {
 // ReadDACSClientPod reads the dacs client pod fixture.
 func ReadDACSClientPod() ([]byte, error) {
 	return fs.ReadFile(DACSClientPodYAML)
+}
+
+// ReadScenarioModelLoadingJob reads the scenario model loading job fixture.
+func ReadScenarioModelLoadingJob() ([]byte, error) {
+	return fs.ReadFile(ScenarioModelLoadingJobYAML)
 }

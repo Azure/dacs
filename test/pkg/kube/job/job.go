@@ -25,6 +25,21 @@ func Delete(ctx context.Context, name, ns string) error {
 	return err
 }
 
+// WaitForDeletion polls until a job no longer exists or the timeout expires.
+func WaitForDeletion(ctx context.Context, name, ns string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		cmd := exec.CommandContext(ctx, "kubectl", "get", "job", name,
+			"-n", ns, "--ignore-not-found=true", "-o", "name")
+		output, err := utils.RunOutput(cmd)
+		if err == nil && strings.TrimSpace(output) == "" {
+			return nil
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return fmt.Errorf("timeout waiting for job %s to be deleted", name)
+}
+
 // WaitForCompletion waits for a job to complete or fail.
 func WaitForCompletion(ctx context.Context, name, ns string, timeout time.Duration) {
 	Eventually(func(g Gomega) {

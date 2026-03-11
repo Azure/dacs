@@ -13,6 +13,7 @@ COPY ./storage/cache-test/PerfClient /app/PerfClient
 # Copy py_dacs_client library
 COPY ./storage/py_dacs_client /app/py_dacs_client
 COPY ./storage/libStorageDirect.so /app/py_dacs_client/libStorageDirect.so
+COPY ./storage/libStorageIntercept.so /app/py_dacs_client/libStorageIntercept.so
 
 RUN chmod +x /app/CacheStorageClient
 RUN chmod +x /app/DeleteClient
