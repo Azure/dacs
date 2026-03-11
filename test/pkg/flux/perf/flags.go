@@ -40,6 +40,14 @@ type Options struct {
 	ClientCount uint
 	// NumProcesses is the number of parallel processes for adapter benchmark
 	NumProcesses int
+
+	// Scenario test flags
+	// ScenarioScale selects the model scale for scenario tests (1B, 7B, 13B, 70B)
+	ScenarioScale string
+	// ScenarioMethods is a comma-separated list of access methods to test
+	ScenarioMethods string
+	// ScenarioCacheModes is a comma-separated list of cache modes to test
+	ScenarioCacheModes string
 }
 
 // AddFlags adds performance test specific flags to the provided FlagSet
@@ -63,6 +71,11 @@ func AddFlags(fs *flag.FlagSet, opts *Options) error {
 	fs.StringVar(&opts.WriteMode, "write-mode", "write_sync", "Write mode (write_cache_only, write_blob_only, write_cache_blob_async, write_sync)")
 	fs.UintVar(&opts.ClientCount, "count", 0, "Number of cache clients (0 = auto-detect from nodes)")
 	fs.IntVar(&opts.NumProcesses, "num-processes", 1, "Number of parallel processes for adapter benchmark")
+
+	// Scenario test flags
+	fs.StringVar(&opts.ScenarioScale, "scenario-scale", "7B", "Model scale for scenario tests (1B, 7B, 13B, 70B)")
+	fs.StringVar(&opts.ScenarioMethods, "scenario-methods", "blobfile", "Comma-separated access methods (python_adapter,blobfile,interceptor,stream_client,hf_downloader,boosted_blob,runai_model_streamer)")
+	fs.StringVar(&opts.ScenarioCacheModes, "scenario-cache-modes", "no_cache", "Comma-separated cache modes (no_cache,cold_cache,warm_cache)")
 
 	return nil
 }

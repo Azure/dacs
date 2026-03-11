@@ -149,6 +149,20 @@ type DACSClientPerfResult struct {
 	ReadThroughputGbps   float64 `json:"ReadThroughputGbps"`
 }
 
+// ScenarioResult contains workload scenario performance results (dynamic column in Kusto).
+type ScenarioResult struct {
+	Scenario         string  `json:"Scenario"`
+	AccessMethod     string  `json:"AccessMethod"`
+	CacheMode        string  `json:"CacheMode"`
+	Scale            string  `json:"Scale"`
+	HFRepo           string  `json:"HFRepo"`
+	ShardCount       int     `json:"ShardCount"`
+	TotalSizeGB      float64 `json:"TotalSizeGB"`
+	TotalLoadTimeSec float64 `json:"TotalLoadTimeSec"`
+	ThroughputMbps   float64 `json:"ThroughputMbps"`
+	CacheHitRate     float64 `json:"CacheHitRate,omitempty"`
+}
+
 // SendPerfMetric sends a performance metric to EventHub for ingestion into Kusto.
 // Always prints the metric to stdout for visibility.
 // Only actually sends to EventHub if SEND_METRICS=true.
