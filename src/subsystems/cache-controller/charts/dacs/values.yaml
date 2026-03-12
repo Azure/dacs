@@ -115,7 +115,7 @@ cache:
     evictionMaintainFreeSpace: true
     lastAccessThreshold: "30d"
     passFrequency: "1h"
-    sizeTarget: "90"
+    sizeTarget: "80"
     sizeThreshold: "90"
 
   # Storage configuration

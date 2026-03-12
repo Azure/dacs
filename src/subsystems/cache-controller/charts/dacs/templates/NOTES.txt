@@ -15,11 +15,11 @@ WEBHOOKS:
   Admission webhooks are enabled for Cache CR defaulting and validation.
   
   Check webhook configurations:
-    kubectl get mutatingwebhookconfigurations dacs-mutating-webhook-configuration
-    kubectl get validatingwebhookconfigurations dacs-validating-webhook-configuration
+    kubectl get mutatingwebhookconfigurations {{ include "chart.fullname" . }}-mutating-webhook-configuration
+    kubectl get validatingwebhookconfigurations {{ include "chart.fullname" . }}-validating-webhook-configuration
 
   Check webhook certificate secret:
-    kubectl get secret dacs-webhook-server-cert -n {{ .Release.Namespace }}
+    kubectl get secret {{ include "chart.fullname" . }}-webhook-server-cert -n {{ .Release.Namespace }}
 {{- end }}
 
 {{- if .Values.cache.enabled }}

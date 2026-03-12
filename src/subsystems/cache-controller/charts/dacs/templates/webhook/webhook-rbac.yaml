@@ -59,7 +59,7 @@ rules:
     resources:
       - secrets
     resourceNames:
-      - dacs-webhook-server-cert
+      - {{ include "chart.fullname" . }}-webhook-server-cert
     verbs:
       - get
       - patch

@@ -19,6 +19,7 @@ spec:
                 kubectl.kubernetes.io/default-container: manager
             labels:
                 app.kubernetes.io/name: dacs
+                app.kubernetes.io/instance: dacs
                 control-plane: controller-manager
         spec:
             containers:
@@ -36,7 +37,10 @@ spec:
                     {{- if .Values.webhook.enable }}
                     - --enable-webhooks=true
                     - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
-                    - --cert-secret-name=dacs-webhook-server-cert
+                    - --cert-secret-name={{ include "chart.fullname" . }}-webhook-server-cert
+                    - --webhook-service-name={{ include "chart.fullname" . }}-webhook-service
+                    - --mutating-webhook-config-name={{ include "chart.fullname" . }}-mutating-webhook-configuration
+                    - --validating-webhook-config-name={{ include "chart.fullname" . }}-validating-webhook-configuration
                     {{- end }}
                   command:
                     - /manager
@@ -98,5 +102,5 @@ spec:
               - name: webhook-cert
                 secret:
                   defaultMode: 420
-                  secretName: dacs-webhook-server-cert
+                  secretName: {{ include "chart.fullname" . }}-webhook-server-cert
             {{- end }}

@@ -5,7 +5,7 @@ metadata:
   labels:
     {{- include "chart.labels" . | nindent 4 }}
     app.kubernetes.io/component: webhook
-  name: dacs-webhook-service
+  name: {{ include "chart.fullname" . }}-webhook-service
   namespace: {{ .Release.Namespace }}
 spec:
   ports:
