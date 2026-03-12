@@ -38,21 +38,38 @@ echo "image registry: $REGISTRY"
 
 # Check if base Dockerfiles changed
 base_dockerfile_changed() {
-    # Try to fetch origin/main for comparison
+    docker_image_name="$1"
+
+    # Strategy 1: PR builds - compare against origin/main
     git fetch origin main --depth=1 2>/dev/null || true
-    
-    # Compare against origin/main (for PR builds)
     if git diff --name-only origin/main...HEAD 2>/dev/null | grep -q "Docker/base/"; then
         echo "[DEBUG] Docker/base/ changed (vs origin/main)" >&2
         return 0
     fi
-    
-    # Compare against previous commit (for official builds on main)
-    if git diff --name-only HEAD~1 2>/dev/null | grep -q "Docker/base/"; then
-        echo "[DEBUG] Docker/base/ changed (vs HEAD~1)" >&2
+
+    # Strategy 2: Official builds - compare against commit SHA stored in ACR image label
+    local image="${REGISTRY}/${docker_image_name}:latest"
+    local last_built_sha
+
+    # Pull the image to inspect commit SHA label; if pull fails, assume image doesn't exist and needs build
+    docker pull "$image" > /dev/null 2>&1 || {
+        echo "[DEBUG] Failed to pull $image, assuming base image needs rebuild" >&2
+        return 0
+    }
+
+    last_built_sha=$(docker inspect "$image" --format '{{ index .Config.Labels "git-sha"}}' 2>/dev/null || true)
+    if [[ -z "$last_built_sha" ]]; then
+        echo "[DEBUG] No git-sha label found on $image, rebuilding to be safe" >&2
         return 0
     fi
-    
+
+    echo "[DEBUG] Last base image built at commit: $last_built_sha" >&2
+
+    if git diff --name-only "$last_built_sha"...HEAD 2>/dev/null | grep -q "Docker/base/"; then
+        echo "[DEBUG] Docker/base/ changed since $last_built_sha" >&2
+        return 0
+    fi
+
     echo "[DEBUG] No Docker/base/ changes detected" >&2
     return 1
 }
@@ -61,23 +78,35 @@ prepare_base_image() {
     local name="$1"
     local dockerfile="$2"
     local image="${REGISTRY}/${name}:latest"
+    local current_sha
+    current_sha=$(git rev-parse HEAD)
     
-    if base_dockerfile_changed; then
+    if base_dockerfile_changed "$name"; then
         echo "Building $name (Dockerfile changed)..."
-        docker build -f "$REPOSITORY_ROOT/$dockerfile" -t "$image" "$REPOSITORY_ROOT/Docker/base/"
+        docker build \
+            --label "git-sha=$current_sha" \
+            -f "$REPOSITORY_ROOT/$dockerfile" \
+            -t "$image" \
+            "$REPOSITORY_ROOT/Docker/base/"
     else
+        # Since image is already pulled via base_dockerfile_changed, it will be a no-op if it exists.
         echo "Attempting to pull base image: $image"
         if docker pull "$image"; then
             echo "Pulled $name from ACR"
         else
             echo "Pull failed for $image, building locally..."
-            docker build -f "$REPOSITORY_ROOT/$dockerfile" -t "$image" "$REPOSITORY_ROOT/Docker/base/"
+            docker build \
+                --label "git-sha=$current_sha" \
+                -f "$REPOSITORY_ROOT/$dockerfile" \
+                -t "$image" \
+                "$REPOSITORY_ROOT/Docker/base/"
         fi
     fi
 }
 
 prepare_base_image "cache-server-base" "Docker/base/CacheServer.base.Dockerfile"
 prepare_base_image "cache-client-base" "Docker/base/CacheClient.base.Dockerfile"
+
 
 # Build Docker images from Dockerfiles
 cd "$DOCKER_DIR"
