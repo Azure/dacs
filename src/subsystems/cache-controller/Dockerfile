@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM mcr.microsoft.com/oss/go/microsoft/golang:1.24 AS builder
+FROM mcr.microsoft.com/oss/go/microsoft/golang:1.25 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -28,7 +28,15 @@ COPY . .
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
 RUN --mount=type=cache,target=/mnt/go-mod-cache \
     --mount=type=cache,target=/mnt/go-cache \
-    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -o manager cmd/main.go
+    CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -o manager cmd/main.go
+
+FROM mcr.microsoft.com/azurelinux/base/core:3.0 AS dependency-install
+RUN tdnf install -y --releasever 3.0 --installroot /staging \
+    # ensure that libcrypto.so.X is available for dlopen for fips builds
+    openssl-libs \
+    && tdnf clean all \
+    && rm -rf /staging/run /staging/var/log /staging/var/cache/tdnf
+
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
@@ -36,6 +44,7 @@ FROM mcr.microsoft.com/azurelinux/distroless/minimal:3.0
 WORKDIR /
 COPY --from=builder /workspace/manager .
 COPY --from=builder /workspace/internal/config/cache-controller-config.yaml /cache-controller-config.yaml
+COPY --from=dependency-install /staging/ /
 USER 65532:65532
 
 ENTRYPOINT ["/manager"]

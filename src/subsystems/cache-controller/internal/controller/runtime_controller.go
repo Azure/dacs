@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -25,8 +26,8 @@ import (
 // RuntimeReconciler tracks nodes, cache pods, cache CRDs etc. and performs custom scheduling, autoscaling and other cache management operations.
 type RuntimeReconciler struct {
 	client.Client
-	Scheme    *runtime.Scheme
-	Tracker   management.Tracker
+	Scheme  *runtime.Scheme
+	Tracker management.Tracker
 }
 
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
@@ -98,7 +99,10 @@ func (r *RuntimeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// Disallow parallel reconcilles as tracking\scheduling\autoscaling logic is not thread safe
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
 		// Watch Nodes
-		Watches(&corev1.Node{}, &handler.EnqueueRequestForObject{}).
+		Watches(&corev1.Node{},
+			&handler.EnqueueRequestForObject{},
+			builder.WithPredicates(NodePredicate{}),
+		).
 		// Watch Pods with cacheserver label
 		Watches(&corev1.Pod{}, handler.EnqueueRequestsFromMapFunc(
 			func(ctx context.Context, obj client.Object) []reconcile.Request {

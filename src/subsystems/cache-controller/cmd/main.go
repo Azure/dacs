@@ -20,11 +20,15 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/sirupsen/logrus/hooks/writer"
 	"go.uber.org/zap/zapcore"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -35,6 +39,7 @@ import (
 	"github.com/Azure/dacs/cache-controller/internal/config"
 	"github.com/Azure/dacs/cache-controller/internal/controller"
 	"github.com/Azure/dacs/cache-controller/internal/management"
+	"github.com/Azure/dacs/cache-controller/internal/scaling"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -125,7 +130,8 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.BoolVar(&secureMetrics, "metrics-secure", true,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
-	flag.StringVar(&webhookCertPath, "webhook-cert-path", "/tmp/k8s-webhook-server/serving-certs", "The directory that contains the webhook certificate.")
+	flag.StringVar(&webhookCertPath, "webhook-cert-path", "/tmp/k8s-webhook-server/serving-certs",
+		"The directory that contains the webhook certificate.")
 	flag.StringVar(&webhookCertName, "webhook-cert-name", "tls.crt", "The name of the webhook certificate file.")
 	flag.StringVar(&webhookCertKey, "webhook-cert-key", "tls.key", "The name of the webhook key file.")
 	flag.StringVar(&metricsCertPath, "metrics-cert-path", "",
@@ -136,11 +142,18 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.BoolVar(&enableWebhooks, "enable-webhooks", false, "Enable admission webhooks for defaulting and validation.")
 	flag.IntVar(&webhookPort, "webhook-port", 9443, "The port the webhook server listens on.")
-	flag.StringVar(&namespace, "namespace", "cache-controller-system", "The namespace where the controller is deployed.")
-	flag.StringVar(&webhookServiceName, "webhook-service-name", "cache-controller-webhook-service", "The name of the webhook service.")
-	flag.StringVar(&certSecretName, "cert-secret-name", "webhook-server-cert", "The name of the secret containing the webhook certificates.")
-	flag.StringVar(&mutatingWebhookConfigName, "mutating-webhook-config-name", "cache-controller-mutating-webhook-configuration", "The name of the MutatingWebhookConfiguration.")
-	flag.StringVar(&validatingWebhookConfigName, "validating-webhook-config-name", "cache-controller-validating-webhook-configuration", "The name of the ValidatingWebhookConfiguration.")
+	flag.StringVar(&namespace, "namespace", "cache-controller-system",
+		"The namespace where the controller is deployed.")
+	flag.StringVar(&webhookServiceName, "webhook-service-name",
+		"cache-controller-webhook-service", "The name of the webhook service.")
+	flag.StringVar(&certSecretName, "cert-secret-name", "webhook-server-cert",
+		"The name of the secret containing the webhook certificates.")
+	flag.StringVar(&mutatingWebhookConfigName, "mutating-webhook-config-name",
+		"cache-controller-mutating-webhook-configuration",
+		"The name of the MutatingWebhookConfiguration.")
+	flag.StringVar(&validatingWebhookConfigName, "validating-webhook-config-name",
+		"cache-controller-validating-webhook-configuration",
+		"The name of the ValidatingWebhookConfiguration.")
 
 	opts := zap.Options{
 		Development: true,
@@ -229,6 +242,22 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "e7aa1f26.azure.com",
+		Cache: cache.Options{
+			ByObject: map[client.Object]cache.ByObject{
+				&corev1.Pod{}: {
+					Label: controller.CacheServerSelector,
+				},
+				&appsv1.StatefulSet{}: {
+					Label: controller.CacheServerSelector,
+				},
+				&corev1.Service{}: {
+					Label: controller.CacheServerSelector,
+				},
+				&corev1.ConfigMap{}: {
+					Label: controller.CacheServerSelector,
+				},
+			},
+		},
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -288,10 +317,16 @@ func main() {
 		close(certSetupFinished)
 	}
 
+	ctx := ctrl.SetupSignalHandler()
+
 	if err := (&controller.CacheReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+		Scaler: scaling.New(
+			mgr.GetClient(),
+			mgr.GetScheme(),
+		),
+	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Cache")
 		os.Exit(1)
 	}
@@ -311,9 +346,9 @@ func main() {
 	}
 
 	if err := (&controller.RuntimeReconciler{
-		Client:    mgr.GetClient(),
-		Scheme:    mgr.GetScheme(),
-		Tracker:   management.InitTracker(internalConfig),
+		Client:  mgr.GetClient(),
+		Scheme:  mgr.GetScheme(),
+		Tracker: management.InitTracker(internalConfig),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Runtime")
 		os.Exit(1)
@@ -344,7 +379,7 @@ func main() {
 	}
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
