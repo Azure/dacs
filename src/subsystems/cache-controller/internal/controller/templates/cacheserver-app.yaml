@@ -3,6 +3,9 @@ kind: StatefulSet
 metadata:
   name: cacheserver
   namespace: {{ .Namespace }}
+  labels:
+    app: cacheserver
+    dacs.azure.com/cache-name: {{ .Name }}
 spec:
   selector:
     matchLabels:

@@ -21,7 +21,6 @@ import (
 // test helper pointer constructors
 func int32Ptr(v int32) *int32 { return &v }
 func toBoolPtr(v bool) *bool  { return &v }
-func strPtr(s string) *string { return &s }
 
 // createTestCache creates a Cache CR with the given name and number of replicas
 func createTestCache(name, namespace string, numServers int32, useEphemeral bool) *storagev1.Cache {

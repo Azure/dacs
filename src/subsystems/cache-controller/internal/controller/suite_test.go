@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
+	"github.com/Azure/dacs/cache-controller/internal/scaling"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -101,11 +102,16 @@ var _ = BeforeSuite(func() {
 	err = (&storagev1.Cache{}).SetupWebhookWithManager(mgr)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Register the CacheReconciler with the manager
+	// Register the CacheReconciler with the manager (includes scaling)
+	scaler := scaling.New(
+		mgr.GetClient(),
+		mgr.GetScheme(),
+	)
 	err = (&CacheReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr)
+		Scaler: scaler,
+	}).SetupWithManager(ctx, mgr)
 	Expect(err).NotTo(HaveOccurred())
 
 	// Start the manager in a goroutine

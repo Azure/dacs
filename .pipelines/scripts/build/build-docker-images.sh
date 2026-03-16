@@ -31,7 +31,7 @@ echo "Cache Controller Image: $CACHECONTROLLER_IMAGE"
 # Note: DOCKER_REGISTRY already includes .azurecr.io suffix from pipeline
 REGISTRY="${DOCKER_REGISTRY}"
 if [[ -z "$REGISTRY" ]]; then
-    REGISTRY="dacs.acr.io"
+    REGISTRY="dacs.azurecr.io"
     echo "DOCKER_REGISTRY not set; defaulting to: $REGISTRY"
 fi
 echo "image registry: $REGISTRY"

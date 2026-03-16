@@ -12,21 +12,18 @@ import (
 	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 var durationRegex = regexp.MustCompile(`^(\d+d)?(\d+h)?(\d+m)?(\d+s)?$`)
 
 func (r *Cache) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
+	return ctrl.NewWebhookManagedBy(mgr, &Cache{}).
 		WithValidator(r).
 		WithDefaulter(r).
 		Complete()
@@ -34,14 +31,14 @@ func (r *Cache) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 // +kubebuilder:webhook:path=/mutate-storage-azure-com-v1-cache,mutating=true,failurePolicy=fail,sideEffects=None,groups=storage.azure.com,resources=caches,verbs=create;update,versions=v1,name=mutate.cache.storage.azure.com,admissionReviewVersions=v1
 
-var _ webhook.CustomDefaulter = &Cache{}
+var _ admission.Defaulter[*Cache] = &Cache{}
 
-func (r *Cache) Default(ctx context.Context, obj runtime.Object) error {
-	cache, ok := obj.(*Cache)
-	if !ok {
-		return fmt.Errorf("expected a Cache object but got %T", obj)
+func (r *Cache) Default(ctx context.Context, cache *Cache) error {
+	if cache == nil {
+		return fmt.Errorf("cache object is nil")
 	}
-	log := log.FromContext(ctx).WithName("Default").WithValues("name", cache.Name, "namespace", cache.Namespace)
+
+	log := logf.FromContext(ctx).WithName("Default").WithValues("name", cache.Name, "namespace", cache.Namespace)
 	log.V(2).Info("defaulting Cache")
 
 	if cache.Spec.Port == nil {
@@ -111,33 +108,31 @@ func (r *Cache) Default(ctx context.Context, obj runtime.Object) error {
 
 // +kubebuilder:webhook:path=/validate-storage-azure-com-v1-cache,mutating=false,failurePolicy=fail,sideEffects=None,groups=storage.azure.com,resources=caches,verbs=create;update,versions=v1,name=validate.cache.storage.azure.com,admissionReviewVersions=v1
 
-var _ webhook.CustomValidator = &Cache{}
+var _ admission.Validator[*Cache] = &Cache{}
 
-func (r *Cache) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	cache, ok := obj.(*Cache)
-	if !ok {
-		return nil, fmt.Errorf("expected a Cache object but got %T", obj)
+func (r *Cache) ValidateCreate(ctx context.Context, cache *Cache) (admission.Warnings, error) {
+	if cache == nil {
+		return nil, fmt.Errorf("cache object is nil")
 	}
-	log := log.FromContext(ctx).WithName("ValidateCreate").WithValues("name", cache.Name, "namespace", cache.Namespace)
+	log := logf.FromContext(ctx).WithName("ValidateCreate").WithValues("name", cache.Name, "namespace", cache.Namespace)
 	log.V(2).Info("validating Cache create")
 	return cache.validateCache()
 }
 
-func (r *Cache) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	cache, ok := newObj.(*Cache)
-	if !ok {
-		return nil, fmt.Errorf("expected a Cache object but got %T", newObj)
+func (r *Cache) ValidateUpdate(ctx context.Context, oldCache, newCache *Cache) (admission.Warnings, error) {
+	if newCache == nil {
+		return nil, fmt.Errorf("new cache object is nil")
 	}
-	log := log.FromContext(ctx).WithName("ValidateUpdate").WithValues("name", cache.Name, "namespace", cache.Namespace)
+	log := logf.FromContext(ctx).WithName("ValidateUpdate").WithValues("name", newCache.Name, "namespace", newCache.Namespace)
 	log.V(2).Info("validating Cache update")
-	return cache.validateCache()
+	return newCache.validateCache()
 }
 
-func (r *Cache) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (r *Cache) ValidateDelete(ctx context.Context, cache *Cache) (admission.Warnings, error) {
 	return nil, nil
 }
 
-func (r *Cache) validateCache() (admission.Warnings, error) {
+func (r *Cache) validateCache() (admission.Warnings, error) { //nolint:gocyclo
 	var allErrs field.ErrorList
 	var warnings admission.Warnings
 
