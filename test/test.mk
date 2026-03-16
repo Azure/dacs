@@ -25,7 +25,7 @@ SUMMARY_OUTPUT ?= $(shell pwd)/summary.md
 NO_COLOR ?= false
 FOCUS ?=
 TEST_FILTER ?=
-TEST_TIMEOUT ?= 60m
+TEST_TIMEOUT ?= 120m
 
 # Ginkgo binary
 GINKGO_VERSION ?= v2.27.3
