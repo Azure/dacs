@@ -34,7 +34,10 @@ type perfTestConfig struct {
 	colocate                bool                  // schedule on same node as cache server
 	clientType              perfclient.ClientType // cache or direct-blob
 	chunkSizeBytes          int                   // optional override for chunk size (0 = default)
+	jobTimeout              time.Duration         // per-job timeout (0 = defaultJobTimeout)
 }
+
+const defaultJobTimeout = 10 * time.Minute
 
 // newPerfConfig creates a fully configured perfclient.Config from this test configuration.
 func (c *perfTestConfig) newPerfConfig(mode perfclient.Mode, prefix string) *perfclient.Config {
@@ -119,7 +122,8 @@ var _ = Describe("PerfClient", Label("perf", "perfclient"), Ordered, func() {
 			name:           "direct blob storage - 64KiB chunk",
 			label:          Label("directblob", "aks", "small-chunk"),
 			clientType:     perfclient.ClientTypeDirectBlob,
-			chunkSizeBytes: 64 << 10, // 64 KiB
+			chunkSizeBytes: 64 << 10,        // 64 KiB
+			jobTimeout:     30 * time.Minute, // small chunks need more time due to higher round-trip count
 		},
 	}
 
@@ -134,7 +138,7 @@ var _ = Describe("PerfClient", Label("perf", "perfclient"), Ordered, func() {
 				// Upload phase
 				By(fmt.Sprintf("Running upload with %s (prefix: %s)", cfg.name, prefix))
 				uploadConfig := cfg.newPerfConfig(perfclient.ModeUpload, prefix)
-				uploadSummary := runPerfClientWithConfig(ctx, uploadConfig, cfg.colocate)
+				uploadSummary := runPerfClientWithConfig(ctx, uploadConfig, cfg.colocate, cfg.getJobTimeout())
 				Expect(uploadSummary).NotTo(BeNil(), "Failed to parse upload perf summary")
 				Expect(uploadSummary.Mode).To(Equal("upload"))
 				Expect(uploadSummary.TotalIndividualFailures).To(Equal(0), "Expected no upload failures")
@@ -145,7 +149,7 @@ var _ = Describe("PerfClient", Label("perf", "perfclient"), Ordered, func() {
 				// Download phase - uses same prefix to download what was uploaded
 				By(fmt.Sprintf("Running download with %s (prefix: %s)", cfg.name, prefix))
 				downloadConfig := cfg.newPerfConfig(perfclient.ModeDownload, prefix)
-				downloadSummary := runPerfClientWithConfig(ctx, downloadConfig, cfg.colocate)
+				downloadSummary := runPerfClientWithConfig(ctx, downloadConfig, cfg.colocate, cfg.getJobTimeout())
 				Expect(downloadSummary).NotTo(BeNil(), "Failed to parse download perf summary")
 				Expect(downloadSummary.Mode).To(Equal("download"))
 				Expect(downloadSummary.TotalIndividualFailures).To(Equal(0), "Expected no download failures")
@@ -173,9 +177,17 @@ var _ = Describe("PerfClient", Label("perf", "perfclient"), Ordered, func() {
 	})
 })
 
+// getJobTimeout returns the configured job timeout or the default.
+func (c *perfTestConfig) getJobTimeout() time.Duration {
+	if c.jobTimeout > 0 {
+		return c.jobTimeout
+	}
+	return defaultJobTimeout
+}
+
 // runPerfClientWithConfig runs the perf client job with the given config and waits for completion.
 // Returns the parsed perfsummary.Summary from the job logs.
-func runPerfClientWithConfig(ctx context.Context, config *perfclient.Config, colocate bool) *perfsummary.Summary {
+func runPerfClientWithConfig(ctx context.Context, config *perfclient.Config, colocate bool, timeout time.Duration) *perfsummary.Summary {
 	By(fmt.Sprintf("Creating %s perf client job (checksum calc=%t, validate=%t, colocate=%t, servers=%d)",
 		config.Mode, config.EnableCalculateChecksum, config.EnableValidateChecksum, config.ColocateWithServer, config.NumServers))
 
@@ -204,7 +216,7 @@ func runPerfClientWithConfig(ctx context.Context, config *perfclient.Config, col
 	Expect(err).NotTo(HaveOccurred(), "Failed to apply perf client job: %s", output)
 
 	By(fmt.Sprintf("Waiting for %s job to complete", config.Mode))
-	job.WaitForCompletion(ctx, k8sJob.Name, namespace, 10*time.Minute)
+	job.WaitForCompletion(ctx, k8sJob.Name, namespace, timeout)
 
 	By(fmt.Sprintf("Parsing %s job logs", config.Mode))
 	jobLogs, err := job.GetLogs(ctx, k8sJob.Name, namespace)

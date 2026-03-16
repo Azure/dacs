@@ -21,15 +21,11 @@ import (
 )
 
 func scenarioConfig() scenario.ModelLoadingConfig {
-	testImage := opts.ClientImage
-	if testImage == "" {
-		testImage = common.GetDefaultImage()
-	}
 	return scenario.ModelLoadingConfig{
 		Namespace:                namespace,
 		StorageAccount:           opts.StorageAccount,
 		StorageContainer:         opts.StorageContainer,
-		TestImage:                testImage,
+		TestImage:                common.GetDefaultImage(),
 		WorkloadIdentityClientID: opts.WorkloadIdentityClientID,
 		WorkloadIdentitySA:       opts.WorkloadIdentitySA,
 		CacheDiscoveryURL:        common.GetDiscoveryURL(namespace),
