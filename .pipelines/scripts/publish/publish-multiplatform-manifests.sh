@@ -22,7 +22,7 @@ BUILD_NUMBER="${BUILD_NUMBER:-latest}"
 BUILD_ARCHS="${BUILD_ARCHS:-amd64 arm64}"
 
 # Define images to process
-IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler")
+IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler" "cache-controller")
 BASE_IMAGES=("cache-server-base" "cache-client-base")
 
 echo "Creating multi-platform manifests..."
