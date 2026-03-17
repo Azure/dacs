@@ -218,7 +218,7 @@ class DACSBlobfileAdapter:
 
         # Track write buffers that must be kept alive until close()
         # Tuples of (buffer, is_user_provided) - user buffers are NOT released by us
-        self._write_buffers: List[Tuple[ctypes.c_void_p, bool]] = []
+        self._write_buffers: List[Tuple[Union[ctypes.c_void_p, ctypes.Array[ctypes.c_char]], bool]] = []
 
     def __enter__(self):
         """Context manager entry."""
@@ -367,15 +367,24 @@ class DACSBlobfileAdapter:
         return data
 
     def write(
-        self, data: Union[str, bytes, None] = None, size: Optional[int] = None, buffer: Optional[ctypes.c_void_p] = None
+        self, data: Union[str, bytes, bytearray, memoryview, None] = None,
+        size: Optional[int] = None, buffer: Optional[ctypes.c_void_p] = None
     ) -> int:
         """
         Write data to file. Supported API.
 
         Args:
-            data: Data to write (str or bytes). Required if buffer is not provided.
+            data: Data to write (str, bytes, bytearray, or memoryview).
+                  Required if buffer is not provided.  Writable buffers
+                  (bytearray, writable memoryview) use a zero-copy path;
+                  readonly data (bytes, str, readonly memoryview) is copied
+                  into an internally managed buffer.
+
+                  Warning: zero-copy buffers must not be mutated by the
+                  caller until close() is called, as the native layer may
+                  hold a reference to the underlying memory.
             size: Number of bytes to write from buffer. Required if buffer is provided.
-            buffer: Optional user-provided buffer containing data to write.
+            buffer: Optional user-provided ctypes buffer containing data to write.
                    If provided, data parameter is ignored and size must be specified.
 
         Returns:
@@ -452,21 +461,39 @@ class DACSBlobfileAdapter:
             if data is None:
                 raise ValueError("Either data or buffer must be provided.")
 
-            # Convert data to bytes if needed
+            # Build a ctypes-compatible buffer for the native pwrite call.
+            def _copy_to_managed_buffer(src, length):
+                """Acquire a BoundedBufferManager buffer, copy src into it, and track it."""
+                buf = asyncio.run(self._buffer_manager.acquire_buffer(length))
+                ctypes.memmove(buf, src, length)
+                self._write_buffers.append((buf, False))
+                return buf, length
+
             if isinstance(data, str):
                 data_bytes = data.encode("utf-8")
+                internal_buffer, data_len = _copy_to_managed_buffer(data_bytes, len(data_bytes))
+            elif isinstance(data, (memoryview, bytearray)) and not getattr(data, "readonly", False):
+                # Writable buffer — zero-copy via from_buffer.
+                data_len = data.nbytes if isinstance(data, memoryview) else len(data)
+                if isinstance(data, memoryview) and not data.contiguous:
+                    # Non-contiguous memoryview cannot use from_buffer; copy instead.
+                    data_bytes = bytes(data)
+                    internal_buffer, data_len = _copy_to_managed_buffer(data_bytes, len(data_bytes))
+                else:
+                    internal_buffer = (ctypes.c_char * data_len).from_buffer(data)
+                    self._write_buffers.append((internal_buffer, True))
+            elif isinstance(data, bytes):
+                internal_buffer, data_len = _copy_to_managed_buffer(data, len(data))
             else:
-                data_bytes = data
-
-            # Allocate buffer via BoundedBufferManager and copy data - DO NOT release until close()
-            internal_buffer = asyncio.run(self._buffer_manager.acquire_buffer(len(data_bytes)))
-            ctypes.memmove(internal_buffer, data_bytes, len(data_bytes))
-
-            # Track internal buffer for release on close()
-            self._write_buffers.append((internal_buffer, False))  # False = internal, release on close
+                # Readonly memoryview or other buffer-protocol objects:
+                # ctypes.memmove only accepts bytes, so convert first.
+                data_bytes = bytes(data)
+                internal_buffer, data_len = _copy_to_managed_buffer(data_bytes, len(data_bytes))
 
             try:
-                bytes_written = asyncio.run(self._file_handle.write(internal_buffer, len(data_bytes), 0))
+                bytes_written = asyncio.run(self._file_handle.write(internal_buffer, data_len, 0))
+            except DACSError:
+                raise
             except Exception as e:
                 raise handle_native_error(e, operation="write", path=self._path) from e
 
