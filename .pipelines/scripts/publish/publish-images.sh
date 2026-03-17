@@ -18,7 +18,7 @@ BUILD_NUMBER="${BUILD_NUMBER:-latest}"
 BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
 
 # Define images to process
-IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler")
+IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler" "cache-controller")
 BASE_IMAGES=("cache-server-base" "cache-client-base")
 
 echo "Publishing Docker images..."
@@ -127,6 +127,7 @@ cat > "$REPOSITORY_ROOT/docker-images.txt" << EOF
 CACHE_SERVER_IMAGE=${TARGET_IMAGES["cache-server"]}
 CACHE_CLIENT_IMAGE=${TARGET_IMAGES["cache-test-client"]}
 CACHE_SERVER_SCHEDULER_IMAGE=${TARGET_IMAGES["cacheserver-scheduler"]}
+CACHE_CONTROLLER_IMAGE=${TARGET_IMAGES["cache-controller"]}
 EOF
 
 echo ""
