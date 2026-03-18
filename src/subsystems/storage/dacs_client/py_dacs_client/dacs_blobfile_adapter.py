@@ -157,12 +157,18 @@ class DACSBlobfileAdapter:
     - open() for reading/writing files
     - read() for reading data
     - write() for writing data
+    - seek()/tell() for position management (read-mode only)
     - exists() for checking file existence
     - listdir()/scandir() for directory listing
     - stat() for file metadata
 
     For operations not supported by DACS Client, an OperationNotSupportedError
     is raised, similar to how blobfile handles unsupported operations.
+
+    Thread Safety:
+        Each thread should use its own adapter instance, same as
+        vanilla blobfile. Concurrent readers on the same blob are safe (pread with
+        per-instance offset).
     """
 
     def __init__(
@@ -219,6 +225,10 @@ class DACSBlobfileAdapter:
         # Track write buffers that must be kept alive until close()
         # Tuples of (buffer, is_user_provided) - user buffers are NOT released by us
         self._write_buffers: List[Tuple[Union[ctypes.c_void_p, ctypes.Array[ctypes.c_char]], bool]] = []
+
+        # Position tracking for seek/tell support.
+        # Each adapter instance maintains its own position independent of the shared native fd.
+        self._position = 0
 
     def __enter__(self):
         """Context manager entry."""
@@ -315,12 +325,18 @@ class DACSBlobfileAdapter:
             raise ValueError("File handle is not open. Use context manager (with statement) to open the file.")
 
         # Determine read size - wrap in try-except for native errors
-        try:
-            read_size = asyncio.run(self._client.get_file_size(self._path)) if (size == -1 or size is None) else size
-        except Exception as e:
-            raise handle_native_error(e, operation="get_file_size", path=self._path) from e
+        # When size=-1 (read all), compute remaining bytes from current position to EOF
+        # rather than reading the entire file, to avoid over-allocating buffers.
+        if size == -1 or size is None:
+            try:
+                file_size = asyncio.run(self._client.get_file_size(self._path))
+            except Exception as e:
+                raise handle_native_error(e, operation="get_file_size", path=self._path) from e
+            read_size = max(0, file_size - self._position)
+        else:
+            read_size = size
 
-        # Handle empty file case
+        # Handle empty read case
         if read_size == 0:
             if "b" not in self._mode:
                 return ""  # Text mode returns empty string
@@ -335,12 +351,15 @@ class DACSBlobfileAdapter:
             # Use the cached file handle's read method directly
             # Wrap in try-except to catch native library errors
             try:
-                bytes_read = asyncio.run(self._file_handle.read(buffer, read_size, 0))
+                bytes_read = asyncio.run(self._file_handle.read(buffer, read_size, self._position))
             except Exception as e:
                 raise handle_native_error(e, operation="read", path=self._path) from e
 
             # Check for error return value
             check_native_result(bytes_read, operation="read", path=self._path)
+
+            # Advance position by the number of bytes actually read
+            self._position += bytes_read
 
             if user_buffer_provided:
                 # Zero-copy: return memoryview into user's buffer
@@ -450,12 +469,13 @@ class DACSBlobfileAdapter:
             # Track user buffer - we don't release it, but need to document lifetime requirement
             self._write_buffers.append((buffer, True))  # True = user-provided, don't release
             try:
-                bytes_written = asyncio.run(self._file_handle.write(buffer, size, 0))
+                bytes_written = asyncio.run(self._file_handle.write(buffer, size, self._position))
             except Exception as e:
                 raise handle_native_error(e, operation="write", path=self._path) from e
 
             # Check for error return value
             check_native_result(bytes_written, operation="write", path=self._path)
+            self._position += bytes_written
             return bytes_written
         else:
             if data is None:
@@ -491,7 +511,7 @@ class DACSBlobfileAdapter:
                 internal_buffer, data_len = _copy_to_managed_buffer(data_bytes, len(data_bytes))
 
             try:
-                bytes_written = asyncio.run(self._file_handle.write(internal_buffer, data_len, 0))
+                bytes_written = asyncio.run(self._file_handle.write(internal_buffer, data_len, self._position))
             except DACSError:
                 raise
             except Exception as e:
@@ -499,6 +519,7 @@ class DACSBlobfileAdapter:
 
             # Check for error return value
             check_native_result(bytes_written, operation="write", path=self._path)
+            self._position += bytes_written
             return bytes_written
 
     def readline(self) -> Union[str, bytes]:
@@ -516,12 +537,56 @@ class DACSBlobfileAdapter:
         )
 
     def seek(self, offset: int, whence: int = 0) -> int:
-        """Seek to position in file. Not supported by DACS Client."""
-        raise OperationNotSupportedError("seek() is not supported by DACS Client.")
+        """Seek to a position in the file (read-mode only).
+
+        Args:
+            offset: Position offset (interpretation depends on whence).
+            whence: 0=SEEK_SET (absolute), 1=SEEK_CUR (relative), 2=SEEK_END (from end).
+
+        Returns:
+            The new absolute position.
+        """
+        if not _is_azure_path(self._path):
+            raise OperationNotSupportedError(
+                "seek() is not supported for local paths."
+            )
+
+        if "w" in self._mode:
+            raise OperationNotSupportedError(
+                "seek() is not supported in write mode. "
+                "The underlying storage does not support overwrite writes."
+            )
+
+        if whence == os.SEEK_SET:
+            new_position = offset
+        elif whence == os.SEEK_CUR:
+            new_position = self._position + offset
+        elif whence == os.SEEK_END:
+            try:
+                file_size = asyncio.run(self._client.get_file_size(self._path))
+            except Exception as e:
+                raise handle_native_error(e, operation="get_file_size", path=self._path) from e
+            new_position = file_size + offset
+        else:
+            raise ValueError(f"Invalid whence value: {whence}. Must be 0 (SEEK_SET), 1 (SEEK_CUR), or 2 (SEEK_END).")
+
+        if new_position < 0:
+            raise OSError(errno.EINVAL, "Seek would result in negative file position")
+
+        self._position = new_position
+        return self._position
 
     def tell(self) -> int:
-        """Get current file position. Not supported by DACS Client."""
-        raise OperationNotSupportedError("tell() is not supported by DACS Client.")
+        """Return the current file position."""
+        if not _is_azure_path(self._path):
+            raise OperationNotSupportedError(
+                "tell() is not supported for local paths."
+            )
+        return self._position
+
+    def seekable(self) -> bool:
+        """Return True if the file supports seeking (read-mode remote paths only)."""
+        return _is_azure_path(self._path) and "w" not in self._mode
 
     def flush(self) -> None:
         """Flush write buffers. Not supported by DACS Client."""
