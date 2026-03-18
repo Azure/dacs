@@ -13,6 +13,7 @@
 #include <queue>
 #include <string>
 #include <mutex>
+#include <condition_variable>
 #include <shared_mutex>
 #include <memory>
 #include <thread>
@@ -125,6 +126,8 @@ class ConnectionManager
         // Long running thread for refreshing cacheservers
         std::thread                                                                 m_cacheServerRefresherThread;
         std::atomic<bool>                                                           m_bStopCacheServerRefresher = false;
+        std::mutex                                                                  m_mtxStopCacheServerRefresher;
+        std::condition_variable                                                     m_cvStopCacheServerRefresher;
         std::unique_ptr<BaseHasher> m_hasher;
         const HashingStrategy m_hashingStrategy;
 

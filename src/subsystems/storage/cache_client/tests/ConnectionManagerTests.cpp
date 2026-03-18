@@ -211,6 +211,43 @@ TEST_F(ConnectionManagerTests, InitializationWithEmptyServersThrows)
     );
 }
 //---------------------------------------------------------------------------------------------------------------------
+// Test: ConnectionManager shutdown
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ConnectionManagerTests, DiscoveryThreadExitsPromptlyOnShutdown)
+{
+    // Verify that the discovery thread exits promptly when the ConnectionManager is
+    // destroyed, instead of blocking for the full discovery interval.
+    // Use a long discovery interval to make the test meaningful. If the thread is
+    // not woken by the condition variable, this test will take 60+ seconds.
+    auto connManager = std::make_unique<ConnectionManager>(
+        TEST_PORT,
+        false,                  // useLocalServer
+        std::vector<std::string>{LOCALHOST},
+        false,                  // bAuthEnabled
+        "",                     // strCacheAccountName
+        "",                     // strCacheAccountKey
+        10,                     // nMaxConnectionsReuseSize
+        true,                   // bReuseServerConnections
+        false,                  // bUseInfiniband
+        true,                   // bEnableCacheServerDiscovery
+        60,                     // nCacheServerDiscoveryIntervalInSeconds
+        LOCALHOST,              // cacheDiscoveryEndpoint
+        false                   // bEnableConsistentHashing
+    );
+
+    // Give the discovery thread time to enter the wait_for() call.
+    // Without this, a fast CPU can destroy the object before the thread waits,
+    // masking the bug (observed on amd64 CI where the test passed in 8ms).
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    auto start = std::chrono::steady_clock::now();
+    connManager.reset(); // triggers destructor → join
+    auto elapsed = std::chrono::steady_clock::now() - start;
+
+    // Destructor should complete in well under 5 seconds, not 60.
+    EXPECT_LT(std::chrono::duration_cast<std::chrono::seconds>(elapsed).count(), 5);
+}
+//---------------------------------------------------------------------------------------------------------------------
 // Test: GetCacheServerHostname
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(ConnectionManagerTests, GetCacheServerHostnameReturnsConsistentServer)

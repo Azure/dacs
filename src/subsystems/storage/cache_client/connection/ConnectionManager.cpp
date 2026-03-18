@@ -202,6 +202,7 @@ ConnectionManager::~ConnectionManager()
     m_ibDevice.context.reset(nullptr);
 
     m_bStopCacheServerRefresher.store(true);
+    m_cvStopCacheServerRefresher.notify_all();
     if (m_cacheServerRefresherThread.joinable()) {
         m_cacheServerRefresherThread.join();
         LOG_INFO("Cache server discovery thread joined");
@@ -877,7 +878,15 @@ void ConnectionManager::MonitorCacheServers()
 {
     while (!m_bStopCacheServerRefresher.load())
     {
-        std::this_thread::sleep_for(std::chrono::seconds(m_nCacheServerDiscoveryIntervalInSeconds));
+        // Wait for the discovery interval or until signaled to stop.
+        {
+            std::unique_lock<std::mutex> lock(m_mtxStopCacheServerRefresher);
+            m_cvStopCacheServerRefresher.wait_for(lock,
+                std::chrono::seconds(m_nCacheServerDiscoveryIntervalInSeconds),
+                [this] { return m_bStopCacheServerRefresher.load(); });
+        }
+        if (m_bStopCacheServerRefresher.load())
+            break;
 
         // Fetch the latest cache servers
         auto vecServersPtr = FetchLatestCacheServers();
