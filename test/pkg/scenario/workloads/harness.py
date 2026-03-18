@@ -30,6 +30,7 @@ import resource
 import sys
 import time
 import traceback
+import urllib.request
 
 # Add /app to path for py_dacs_client
 sys.path.insert(0, "/app")
@@ -59,10 +60,66 @@ def build_config():
         "hf_repo": get_env("HF_REPO"),
         "cache_discovery_url": get_env("CACHE_DISCOVERY_URL"),
         "buffer_size": int(get_env("READ_BUFFER_SIZE", str(8 * 1024 * 1024 * 1024))),
+        "cache_chunk_size": int(get_env("CACHE_CHUNK_SIZE", "0")),
     }
 
 
+def _wait_for_async_uploads(discovery_url, expected_chunks, timeout=120):
+    """Poll cache server Prometheus metrics until async uploads complete.
+
+    After reading with async upload enabled, chunks are uploaded in the background.
+    This waits until the cache servers report enough successful uploads before the
+    pod exits, preventing upload thread termination.
+    """
+    if not discovery_url or expected_chunks <= 0:
+        return
+
+    # Discovery URL format: svc-name.namespace.svc.cluster.local
+    # Individual pods: cacheserver-{i}.cacheserver.namespace.svc.cluster.local:9096
+    parts = discovery_url.split(".")
+    if len(parts) < 2:
+        return
+    namespace = parts[1]
+
+    def _scrape_upload_count():
+        total = 0
+        i = 0
+        consecutive_failures = 0
+        while consecutive_failures < 3:
+            url = f"http://cacheserver-{i}.cacheserver.{namespace}.svc.cluster.local:9096/metrics"
+            try:
+                resp = urllib.request.urlopen(url, timeout=2)
+                consecutive_failures = 0
+                for line in resp.read().decode().split("\n"):
+                    # Count both Success and InvalidTransition (already cached).
+                    # InvalidTransition means the chunk was already in cache from
+                    # a prior upload, so it's still a completed upload attempt.
+                    if ("cache_server_request_counter" in line
+                            and 'request_type="Upload"' in line
+                            and not line.startswith("#")
+                            and ('status="Success"' in line
+                                 or 'status="InvalidTransition"' in line)):
+                        total += int(float(line.split()[-1]))
+            except Exception:
+                consecutive_failures += 1
+            i += 1
+        return total
+
+    baseline = _scrape_upload_count()
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        uploads = _scrape_upload_count() - baseline
+        print(f"  Async uploads: {uploads}/{expected_chunks}", flush=True)
+        if uploads >= expected_chunks:
+            print(f"  All async uploads complete", flush=True)
+            return
+        time.sleep(2)
+    uploads = _scrape_upload_count() - baseline
+    print(f"  Upload wait timed out: {uploads}/{expected_chunks}", flush=True)
+
+
 def run_scenario():
+    scenario_start = time.monotonic()
     config = build_config()
 
     print("Model Loading Scenario", flush=True)
@@ -77,6 +134,7 @@ def run_scenario():
     # Load the method module
     method = load_method_module()
     print(f"  Method module: {method.__name__}", flush=True)
+    print(f"  [T+{time.monotonic()-scenario_start:.1f}s] Method loaded", flush=True)
 
     # Discover shards
     shards = method.discover_shards(config)
@@ -87,6 +145,7 @@ def run_scenario():
     for s in shards:
         name = s.split("/")[-1] if "/" in s else s
         print(f"    - {name}", flush=True)
+    print(f"  [T+{time.monotonic()-scenario_start:.1f}s] Discovery complete", flush=True)
 
     # Run the loading benchmark
     shard_results = []
@@ -137,6 +196,7 @@ def run_scenario():
     total_end = time.monotonic()
     total_duration = total_end - total_start
     peak_memory_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+    print(f"  [T+{time.monotonic()-scenario_start:.1f}s] Read complete ({total_duration:.1f}s)", flush=True)
 
     cache_discovery = config["cache_discovery_url"]
     cache_warm = os.environ.get("CACHE_WARM") == "true"
@@ -146,6 +206,17 @@ def run_scenario():
         cache_mode = "cold_cache"
     else:
         cache_mode = "no_cache"
+
+    # On cold_cache runs, wait for async cache uploads to complete before the pod
+    # exits. Without this, background upload threads are killed with the process.
+    if cache_mode == "cold_cache" and config["cache_chunk_size"] > 0:
+        chunk_count = sum(
+            (s["bytes"] + config["cache_chunk_size"] - 1) // config["cache_chunk_size"]
+            for s in shard_results
+        )
+        wait_start = time.monotonic()
+        _wait_for_async_uploads(cache_discovery, chunk_count)
+        print(f"  [T+{time.monotonic()-scenario_start:.1f}s] Upload wait done ({time.monotonic()-wait_start:.1f}s)", flush=True)
 
     result = {
         "Scenario": "model_loading",

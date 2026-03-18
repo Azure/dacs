@@ -45,11 +45,6 @@ func (s ScaleProfile) BlobPrefix() string {
 	return "scenario-models/" + s.HFRepo
 }
 
-// CacheGroupID returns the deterministic cache group ID for this scale profile.
-func (s ScaleProfile) CacheGroupID() string {
-	return "scenario:" + s.HFRepo
-}
-
 // Predefined scale profiles using public Hugging Face models.
 var (
 	Scale1B  = ScaleProfile{Name: "1B-3GB", HFRepo: "microsoft/phi-1_5"}

@@ -25,7 +25,7 @@ func scenarioConfig() scenario.ModelLoadingConfig {
 		Namespace:                namespace,
 		StorageAccount:           opts.StorageAccount,
 		StorageContainer:         opts.StorageContainer,
-		TestImage:                common.GetDefaultImage(),
+		TestImage:                getClientImage(),
 		WorkloadIdentityClientID: opts.WorkloadIdentityClientID,
 		WorkloadIdentitySA:       opts.WorkloadIdentitySA,
 		CacheDiscoveryURL:        common.GetDiscoveryURL(namespace),
@@ -36,28 +36,15 @@ func runModelLoadingTest(ctx context.Context, scale scenario.ScaleProfile, metho
 	config := scenarioConfig()
 	Expect(config.StorageAccount).NotTo(BeEmpty(), "Storage account is required (--storage-account)")
 
-	// Cache setup: evict previous data for cold/warm modes
-	if cache == scenario.ColdCache || cache == scenario.WarmCache {
-		By("Evicting cache group: " + scale.CacheGroupID())
-		err := scenario.EvictCacheGroup(ctx, config.CacheDiscoveryURL, scale.CacheGroupID())
-		Expect(err).NotTo(HaveOccurred(), "Failed to evict cache group")
-		// Brief pause for async eviction to complete
-		time.Sleep(5 * time.Second)
-	}
-
-	// Warm cache: run a cold load first to populate, discard results
-	if cache == scenario.WarmCache {
-		By("Pre-populating cache (cold load)")
-		warmupRunner := &scenario.ModelLoadingRunner{
-			Config:    config,
-			K8sClient: k8sClient,
-			Scale:     scale,
-			Method:    method,
-			Cache:     scenario.ColdCache,
+	// Cache setup: flush before cold_cache to guarantee a clean start.
+	// warm_cache relies on the preceding cold_cache run having populated the cache
+	// (test order is no_cache → cold_cache → warm_cache).
+	if cache == scenario.ColdCache {
+		By("Flushing all cache data")
+		if err := scenario.FlushCache(ctx, config.CacheDiscoveryURL); err != nil {
+			log.Info("FlushCache warning (non-fatal)", "error", err)
 		}
-		_, err := warmupRunner.Run(ctx)
-		Expect(err).NotTo(HaveOccurred(), "Cache warm-up (cold load) failed")
-		log.Info("Cache pre-populated, now running warm cache test")
+		time.Sleep(5 * time.Second)
 	}
 
 	runner := &scenario.ModelLoadingRunner{
