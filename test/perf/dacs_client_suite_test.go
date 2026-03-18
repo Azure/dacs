@@ -98,14 +98,6 @@ var _ = Describe("Multiple DACS Clients E2E Tests", Label("dacsclients", "perf",
 	})
 })
 
-// getClientImage returns the dacs client image from command-line flag, or falls back to default.
-func getClientImage() string {
-	if opts.ClientImage != "" {
-		return opts.ClientImage
-	}
-	return common.GetDefaultImage()
-}
-
 func validateWriteMode(mode string) error {
 	if _, exists := utils.WriteSupportModes[mode]; !exists {
 		return fmt.Errorf("unsupported write mode: %s", mode)

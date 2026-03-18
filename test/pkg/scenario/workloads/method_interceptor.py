@@ -44,9 +44,13 @@ def setup_config(config):
         f.write(f"maxConnsPerBlobClient 84\n")
         f.write(f"attributesCacheEnable true\n")
         f.write(f"enableWrite false\n")
-        # Cache config from env vars (set by runner.go for cache modes)
-        for key in ("cacheDiscoveryUrl", "cacheKeyExpirySeconds",
-                     "cacheIBEnabled", "cacheKeyGroupId"):
+        # Cache config from env vars (set by runner.go for cache modes).
+        # The interceptor uses cacheEnable + cacheServerDiscoveryEnabled/Endpoint.
+        for key in ("cacheEnable", "cacheEnableRemote", "cacheServerPort",
+                     "cacheServerDiscoveryEnabled",
+                     "cacheServerDiscoveryEndpoint",
+                     "cacheServerDiscoveryIntervalInSeconds",
+                     "cacheKeyExpirySeconds", "cacheIBEnabled"):
             val = os.environ.get(f"SI_{key}", "")
             if val:
                 f.write(f"{key} {val}\n")

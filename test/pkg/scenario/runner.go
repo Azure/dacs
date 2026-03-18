@@ -85,6 +85,9 @@ func (r *ModelLoadingRunner) Run(ctx context.Context) (*ModelLoadingResult, erro
 		log.Info("Warning: previous job cleanup timed out", "error", err)
 	}
 
+	// Snapshot cache server metrics before the test to measure cache hit/miss delta
+	metricsBefore := scrapeCacheServerMetrics(ctx, r.Config.Namespace)
+
 	// Create the job
 	if err := r.K8sClient.Create(ctx, j); err != nil {
 		return nil, fmt.Errorf("failed to create job: %w", err)
@@ -99,6 +102,20 @@ func (r *ModelLoadingRunner) Run(ctx context.Context) (*ModelLoadingResult, erro
 	result, err := r.extractResult(ctx, j)
 	if err != nil {
 		return nil, err
+	}
+
+	// Snapshot cache server metrics after the test and compute delta
+	metricsAfter := scrapeCacheServerMetrics(ctx, r.Config.Namespace)
+	hits, misses := computeCacheMetricsDelta(metricsBefore, metricsAfter)
+	if hits+misses > 0 {
+		result.CacheHitRate = float64(hits) / float64(hits+misses)
+		log.Info("Cache server metrics delta",
+			"downloadHits", hits, "downloadMisses", misses,
+			"total", hits+misses,
+			"hitRate", fmt.Sprintf("%.1f%%", result.CacheHitRate*100))
+	} else {
+		log.Info("Cache server metrics delta", "downloadHits", 0, "downloadMisses", 0,
+			"note", "no cache downloads detected (expected for no_cache mode)")
 	}
 
 	return result, nil
@@ -136,14 +153,20 @@ func (r *ModelLoadingRunner) buildJob(ctx context.Context, jobName string) (*bat
 	// before any intercepted filesystem call.
 	preCommand := ""
 	if r.Method == Interceptor {
-		// Build optional cache config lines for the interceptor config file
+		// Build optional cache config lines for the interceptor config file.
+		// The interceptor uses cacheEnable + cacheServerDiscoveryEnabled/Endpoint
+		// (NOT cacheDiscoveryUrl, which is not a valid interceptor config key).
 		cacheConfigLines := ""
 		if r.Cache != NoCache {
-			cacheConfigLines = fmt.Sprintf(`    f.write('cacheDiscoveryUrl %s\n')
+			cacheConfigLines = fmt.Sprintf(`    f.write('cacheEnable true\n')
+    f.write('cacheEnableRemote true\n')
+    f.write('cacheServerPort 9065\n')
+    f.write('cacheServerDiscoveryEnabled true\n')
+    f.write('cacheServerDiscoveryEndpoint %s\n')
+    f.write('cacheServerDiscoveryIntervalInSeconds 5\n')
     f.write('cacheKeyExpirySeconds 1200\n')
     f.write('cacheIBEnabled false\n')
-    f.write('cacheKeyGroupId %s\n')
-`, r.Config.CacheDiscoveryURL, r.Scale.CacheGroupID())
+`, r.Config.CacheDiscoveryURL)
 		}
 		preCommand = fmt.Sprintf(`python3 -c "
 from azure.identity import DefaultAzureCredential
@@ -214,25 +237,25 @@ python3 /tmp/harness.py`, preCommand, string(methodScript), string(harness))
 	if r.Method == Interceptor {
 		jc.WithEnv(0, "STORAGE_INTERCEPT_CONFIG_FILEPATH", "/tmp/storageIntercept.config")
 		if r.Cache != NoCache {
-			jc.WithEnv(0, "SI_cacheDiscoveryUrl", cacheDiscovery)
+			jc.WithEnv(0, "SI_cacheEnable", "true")
+			jc.WithEnv(0, "SI_cacheEnableRemote", "true")
+			jc.WithEnv(0, "SI_cacheServerPort", "9065")
+			jc.WithEnv(0, "SI_cacheServerDiscoveryEnabled", "true")
+			jc.WithEnv(0, "SI_cacheServerDiscoveryEndpoint", cacheDiscovery)
+			jc.WithEnv(0, "SI_cacheServerDiscoveryIntervalInSeconds", "5")
 			jc.WithEnv(0, "SI_cacheKeyExpirySeconds", "1200")
 			jc.WithEnv(0, "SI_cacheIBEnabled", "false")
-			jc.WithEnv(0, "SI_cacheKeyGroupId", r.Scale.CacheGroupID())
+			// Interceptor default streamingChunkSize is 4MB
+			jc.WithEnv(0, "CACHE_CHUNK_SIZE", "4194304")
 		}
 	}
 
-	// Python adapter needs CACHE_SERVER_LIST + CACHE_SERVER_PORT for cache integration
-	if r.Method == PythonAdapter && r.Cache != NoCache {
-		jc.WithEnv(0, "CACHE_SERVER_LIST", r.Config.CacheDiscoveryURL)
+	// DACSCacheClient-based methods need CACHE_DISCOVERY_URL + CACHE_SERVER_PORT for cache integration.
+	if (r.Method == PythonAdapter || r.Method == Blobfile || r.Method == BoostedBlob) && r.Cache != NoCache {
+		jc.WithEnv(0, "CACHE_DISCOVERY_URL", r.Config.CacheDiscoveryURL)
 		jc.WithEnv(0, "CACHE_SERVER_PORT", "9065")
-		jc.WithEnv(0, "SI_cacheKeyGroupId", r.Scale.CacheGroupID())
-	}
-
-	// Blobfile patcher uses the same DACSAdapter env vars for cache integration
-	if r.Method == Blobfile && r.Cache != NoCache {
-		jc.WithEnv(0, "CACHE_SERVER_LIST", r.Config.CacheDiscoveryURL)
-		jc.WithEnv(0, "CACHE_SERVER_PORT", "9065")
-		jc.WithEnv(0, "SI_cacheKeyGroupId", r.Scale.CacheGroupID())
+		// DACSCacheClient default ChunkSize is 32MB
+		jc.WithEnv(0, "CACHE_CHUNK_SIZE", "33554432")
 	}
 
 	// Configure credentials

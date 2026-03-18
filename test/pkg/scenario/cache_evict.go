@@ -1,7 +1,7 @@
 /*
 --------------------------------------------------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
-# Cache eviction by group ID using the native cache server protobuf protocol
+# Cache management using the native cache server protobuf protocol
 # --------------------------------------------------------------------------------------------------------------------
 */
 // Regenerate cachepb/cache.pb.go after changes to src/subsystems/storage/common/proto/cache.proto
@@ -28,136 +28,6 @@ const (
 	connectTimeout  = 10 * time.Second
 	readTimeout     = 30 * time.Second
 )
-
-// EvictCacheGroup evicts all cached files belonging to the given group ID from
-// all cache servers discovered via the discovery service.
-// It uses kubectl port-forward to reach the in-cluster discovery service.
-func EvictCacheGroup(ctx context.Context, discoveryURL string, groupID string) error {
-	if discoveryURL == "" {
-		return fmt.Errorf("discovery URL is empty")
-	}
-	if groupID == "" {
-		return fmt.Errorf("group ID is empty")
-	}
-
-	// Use kubectl port-forward to reach the discovery service
-	log.Info("Setting up port-forward to discovery service", "discoveryURL", discoveryURL)
-
-	// Parse namespace from discoveryURL (format: svc-name.namespace.svc.cluster.local)
-	parts := strings.Split(discoveryURL, ".")
-	if len(parts) < 2 {
-		return fmt.Errorf("invalid discovery URL format: %s", discoveryURL)
-	}
-	svcName := parts[0]
-	namespace := parts[1]
-
-	// Find a free local port
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return fmt.Errorf("find free port: %w", err)
-	}
-	localPort := listener.Addr().(*net.TCPAddr).Port
-	listener.Close()
-
-	// Start port-forward
-	pfCtx, pfCancel := context.WithCancel(ctx)
-	defer pfCancel()
-
-	var pfStderr strings.Builder
-	cmd := exec.CommandContext(pfCtx, "kubectl", "port-forward",
-		fmt.Sprintf("svc/%s", svcName),
-		fmt.Sprintf("%d:%s", localPort, cacheServerPort),
-		"-n", namespace)
-	cmd.Stdout = io.Discard
-	cmd.Stderr = &pfStderr
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start port-forward: %w", err)
-	}
-	defer func() {
-		pfCancel()
-		cmd.Wait()
-		if errOutput := pfStderr.String(); errOutput != "" {
-			log.Info("Port-forward stderr (discovery)", "output", errOutput)
-		}
-	}()
-
-	// Wait for port-forward to be ready by polling the local port
-	localAddr := fmt.Sprintf("127.0.0.1:%d", localPort)
-	if err := waitForPort(localAddr, 10*time.Second); err != nil {
-		return fmt.Errorf("port-forward not ready: %w", err)
-	}
-	log.Info("Discovering cache servers via port-forward", "localAddr", localAddr)
-
-	servers, err := discoverCacheServers(localAddr)
-	if err != nil {
-		return fmt.Errorf("failed to discover cache servers: %w", err)
-	}
-	if len(servers) == 0 {
-		return fmt.Errorf("no cache servers found via discovery service")
-	}
-	log.Info("Found cache servers", "count", len(servers), "servers", servers)
-
-	// The returned server addresses are internal K8s hostnames.
-	// Port-forward to each cache server to send delete requests.
-	var errs []error
-	for _, server := range servers {
-		if err := evictViaPortForward(ctx, server, namespace, groupID); err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	if len(errs) > 0 {
-		return fmt.Errorf("eviction errors: %v", errs)
-	}
-	return nil
-}
-
-// evictViaPortForward sets up a port-forward to a specific cache server pod and sends
-// the delete request.
-func evictViaPortForward(ctx context.Context, serverAddr string, namespace string, groupID string) error {
-	// serverAddr is like "cacheserver-0.cacheserver.cache-server.svc.cluster.local"
-	// Extract pod name (first component)
-	parts := strings.Split(serverAddr, ".")
-	podName := parts[0]
-
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return fmt.Errorf("find free port: %w", err)
-	}
-	localPort := listener.Addr().(*net.TCPAddr).Port
-	listener.Close()
-
-	pfCtx, pfCancel := context.WithCancel(ctx)
-	defer pfCancel()
-
-	var pfStderr strings.Builder
-	cmd := exec.CommandContext(pfCtx, "kubectl", "port-forward",
-		fmt.Sprintf("pod/%s", podName),
-		fmt.Sprintf("%d:%s", localPort, cacheServerPort),
-		"-n", namespace)
-	cmd.Stdout = io.Discard
-	cmd.Stderr = &pfStderr
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start port-forward to %s: %w", podName, err)
-	}
-	defer func() {
-		pfCancel()
-		cmd.Wait()
-		if errOutput := pfStderr.String(); errOutput != "" {
-			log.Info("Port-forward stderr", "pod", podName, "output", errOutput)
-		}
-	}()
-
-	localAddr := fmt.Sprintf("127.0.0.1:%d", localPort)
-	if err := waitForPort(localAddr, 10*time.Second); err != nil {
-		return fmt.Errorf("port-forward to %s not ready: %w", podName, err)
-	}
-	if err := sendDeleteByGroupID(localAddr, groupID); err != nil {
-		return fmt.Errorf("evict from %s: %w", podName, err)
-	}
-	log.Info("Evicted cache group", "server", podName, "groupID", groupID)
-	return nil
-}
 
 // discoverCacheServers connects to the discovery service and returns the list
 // of cache server addresses. addr should be host:port.
@@ -199,8 +69,9 @@ func discoverCacheServers(addr string) ([]string, error) {
 	return resp.GetServeraddresses(), nil
 }
 
-// sendDeleteByGroupID sends a DeleteRequest with groupid to a cache server.
-func sendDeleteByGroupID(addr string, groupID string) error {
+// sendDeleteByLastAccessTime sends a DeleteRequest with lastaccesstime to flush all data
+// older than the given time from a cache server.
+func sendDeleteByLastAccessTime(addr string, timestamp string) error {
 	conn, err := net.DialTimeout("tcp", addr, connectTimeout)
 	if err != nil {
 		return fmt.Errorf("connect: %w", err)
@@ -211,9 +82,9 @@ func sendDeleteByGroupID(addr string, groupID string) error {
 	req := &cachepb.Request{
 		Type: &cachepb.Request_Deleterequest{
 			Deleterequest: &cachepb.DeleteRequest{
-				Requestid: "scenario-evict-" + groupID,
-				Type: &cachepb.DeleteRequest_Groupid{
-					Groupid: []byte(groupID),
+				Requestid: "scenario-flush-" + timestamp,
+				Type: &cachepb.DeleteRequest_Lastaccesstime{
+					Lastaccesstime: []byte(timestamp),
 				},
 			},
 		},
@@ -237,6 +108,108 @@ func sendDeleteByGroupID(addr string, groupID string) error {
 		return fmt.Errorf("delete returned %s", resp.GetResult().String())
 	}
 
+	return nil
+}
+
+// FlushCache evicts ALL cached data from all cache servers by sending a
+// lastaccesstime delete with a far-future timestamp.
+func FlushCache(ctx context.Context, discoveryURL string) error {
+	if discoveryURL == "" {
+		return fmt.Errorf("discovery URL is empty")
+	}
+
+	log.Info("Flushing all cache data", "discoveryURL", discoveryURL)
+
+	parts := strings.Split(discoveryURL, ".")
+	if len(parts) < 2 {
+		return fmt.Errorf("invalid discovery URL format: %s", discoveryURL)
+	}
+	svcName := parts[0]
+	namespace := parts[1]
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return fmt.Errorf("find free port: %w", err)
+	}
+	localPort := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+
+	pfCtx, pfCancel := context.WithCancel(ctx)
+	defer pfCancel()
+
+	var pfStderr strings.Builder
+	cmd := exec.CommandContext(pfCtx, "kubectl", "port-forward",
+		fmt.Sprintf("svc/%s", svcName),
+		fmt.Sprintf("%d:%s", localPort, cacheServerPort),
+		"-n", namespace)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = &pfStderr
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start port-forward: %w", err)
+	}
+	defer func() {
+		pfCancel()
+		cmd.Wait()
+	}()
+
+	localAddr := fmt.Sprintf("127.0.0.1:%d", localPort)
+	if err := waitForPort(localAddr, 10*time.Second); err != nil {
+		return fmt.Errorf("port-forward not ready: %w", err)
+	}
+
+	servers, err := discoverCacheServers(localAddr)
+	if err != nil {
+		return fmt.Errorf("failed to discover cache servers: %w", err)
+	}
+	log.Info("Flushing cache servers", "count", len(servers))
+
+	// Use a far-future timestamp to evict everything
+	futureTime := "2099-12-31T23:59:59"
+	var errs []error
+	for _, server := range servers {
+		serverParts := strings.Split(server, ".")
+		podName := serverParts[0]
+
+		pfListener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			errs = append(errs, fmt.Errorf("find free port for %s: %w", podName, err))
+			continue
+		}
+		podPort := pfListener.Addr().(*net.TCPAddr).Port
+		pfListener.Close()
+
+		podPfCtx, podPfCancel := context.WithCancel(ctx)
+		podCmd := exec.CommandContext(podPfCtx, "kubectl", "port-forward",
+			fmt.Sprintf("pod/%s", podName),
+			fmt.Sprintf("%d:%s", podPort, cacheServerPort),
+			"-n", namespace)
+		podCmd.Stdout = io.Discard
+		podCmd.Stderr = io.Discard
+		if err := podCmd.Start(); err != nil {
+			podPfCancel()
+			errs = append(errs, fmt.Errorf("start port-forward to %s: %w", podName, err))
+			continue
+		}
+
+		podAddr := fmt.Sprintf("127.0.0.1:%d", podPort)
+		if err := waitForPort(podAddr, 10*time.Second); err != nil {
+			podPfCancel()
+			podCmd.Wait()
+			errs = append(errs, fmt.Errorf("port-forward to %s not ready: %w", podName, err))
+			continue
+		}
+		if err := sendDeleteByLastAccessTime(podAddr, futureTime); err != nil {
+			errs = append(errs, fmt.Errorf("flush %s: %w", podName, err))
+		} else {
+			log.Info("Flushed cache server", "server", podName)
+		}
+		podPfCancel()
+		podCmd.Wait()
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("flush errors: %v", errs)
+	}
 	return nil
 }
 
