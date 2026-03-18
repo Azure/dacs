@@ -392,39 +392,51 @@ class TestRemoteBlobWrite:
         finally:
             asyncio.run(_test_buffer_manager.release_buffer(user_buffer))
 
-    def test_write_multiple_times_to_remote_blob(self):
-        """Test that multiple write operations are not supported (limitation).
+    def test_write_sequential_chunks_at_different_offsets(self):
+        """Test that sequential writes use monotonically increasing offsets and concatenate.
 
         Note: This test may be skipped if the first write fails due to permission
         or configuration issues in the test environment.
         """
         data_parts = ["Part 1 ", "Part 2 ", "Part 3"]
-        blob_path = f"{AZURE_BLOB_PATH}/test_write_multi_{id(self)}.txt"
+        blob_path = f"{AZURE_BLOB_PATH}/test_write_diff_offset_{id(self)}.txt"
 
         try:
-            # First write should succeed
             with bf.DACSBlobfileAdapter(blob_path, "w") as f:
-                bytes_written = f.write(data_parts[0])
+                total = 0
+                for part in data_parts:
+                    bytes_written = f.write(part)
+                    if bytes_written <= 0:
+                        pytest.skip("Write not supported in this environment")
+                    assert bytes_written == len(part)
+                    total += bytes_written
+                assert f.tell() == total
 
-                # If first write fails (returns <=0 or raises), skip the rest
-                if bytes_written <= 0:
-                    pytest.skip("Write not supported in this environment (first write returned non-positive)")
-
-                assert bytes_written == len(data_parts[0])
-
-                # Second write fails silently or raises error - overwrite/append not supported
-                # The storage intercept library logs error but may return -1 or raise exception
-                try:
-                    bytes_written_2 = f.write(data_parts[1])
-                    # If it doesn't raise, it should return error indicator (negative or 0)
-                    assert (
-                        bytes_written_2 <= 0
-                    ), "Second write should fail or return error indicator (overwrite not supported)"
-                except (OSError, IOError, DACSStorageError):
-                    # Exception is also acceptable for unsupported operation
-                    pass
+            # Read back and verify concatenated content
+            with bf.DACSBlobfileAdapter(blob_path, "r") as f:
+                content = f.read()
+            assert content == "".join(data_parts)
         except DACSStorageError as e:
-            # If write fails entirely due to environment issues, skip the test
+            pytest.skip(f"Write not supported in this environment: {e}")
+
+    def test_write_at_same_offset_rejected(self):
+        """Test that writing at the same offset twice is rejected by the native layer.
+            Note: This test may be skipped if the first write fails due to permission.
+        """
+        blob_path = f"{AZURE_BLOB_PATH}/test_write_same_offset_{id(self)}.txt"
+
+        try:
+            with bf.DACSBlobfileAdapter(blob_path, "wb") as f:
+                # First write at offset 0
+                bytes_written = f.write(b"first")
+                if bytes_written <= 0:
+                    pytest.skip("Write not supported in this environment")
+
+                # Reset position to 0 so the next write() targets offset 0 again
+                f._position = 0
+                with pytest.raises((OSError, DACSStorageError)):
+                    f.write(b"second")
+        except DACSStorageError as e:
             pytest.skip(f"Write not supported in this environment: {e}")
 
     def test_write_internal_buffers_tracked_until_close(self):
@@ -980,27 +992,13 @@ class TestUnsupportedOperations:
             with pytest.raises(bf.OperationNotSupportedError, match="writelines"):
                 f.writelines(["line1", "line2"])
 
-    def test_seek_not_supported(self):
-        """Test that seek() raises OperationNotSupportedError."""
-        blob_path = f"{AZURE_BLOB_PATH}/test_seek_{id(self)}.txt"
+    def test_seek_write_mode_not_supported(self):
+        """Test that seek() raises OperationNotSupportedError in write mode."""
+        blob_path = f"{AZURE_BLOB_PATH}/test_seek_write_{id(self)}.txt"
 
         with bf.DACSBlobfileAdapter(blob_path, "w") as f:
-            f.write("test")
-
-        with bf.DACSBlobfileAdapter(blob_path, "r") as f:
             with pytest.raises(bf.OperationNotSupportedError, match="seek"):
                 f.seek(0)
-
-    def test_tell_not_supported(self):
-        """Test that tell() raises OperationNotSupportedError."""
-        blob_path = f"{AZURE_BLOB_PATH}/test_tell_{id(self)}.txt"
-
-        with bf.DACSBlobfileAdapter(blob_path, "w") as f:
-            f.write("test")
-
-        with bf.DACSBlobfileAdapter(blob_path, "r") as f:
-            with pytest.raises(bf.OperationNotSupportedError, match="tell"):
-                f.tell()
 
     def test_flush_not_supported(self):
         """Test that flush() raises OperationNotSupportedError."""
@@ -1126,6 +1124,84 @@ class TestUnsupportedOperations:
         # Should not raise
         bf.configure(log_callback=my_log_callback)
         bf.configure(log_callback=None)
+
+
+class TestSeekTell:
+    """Test seek(), tell(), and seekable() for read-mode position management."""
+
+    def test_seek_tell_and_read(self):
+        """Test all seek whence modes, tell tracking, and read-after-seek in one session.
+
+        Validates SEEK_SET, SEEK_CUR, SEEK_END, tell() tracking, and
+        read-all-from-middle using a single blob and a single read handle.
+        """
+        test_data = "ABCDEFGHIJ"  # 10 bytes
+        blob_path = f"{AZURE_BLOB_PATH}/test_seek_tell_{id(self)}.txt"
+        with bf.DACSBlobfileAdapter(blob_path, "w") as f:
+            f.write(test_data)
+
+        with bf.DACSBlobfileAdapter(blob_path, "rb") as f:
+            # tell() starts at 0 and advances after read()
+            assert f.tell() == 0
+            f.read(5)
+            assert f.tell() == 5
+            f.read(3)
+            assert f.tell() == 8
+
+            # SEEK_SET — absolute position, then read
+            f.seek(5)
+            assert f.tell() == 5
+            assert f.read(3) == b"FGH"
+            assert f.tell() == 8
+
+            # SEEK_CUR — relative to current position (8), then read
+            f.seek(0, 1)  # no-op, stay at 8
+            assert f.tell() == 8
+            assert f.read(2) == b"IJ"
+            assert f.tell() == 10
+
+            # Reset and test SEEK_CUR forward from middle
+            f.seek(5)
+            f.seek(3, 1)  # SEEK_CUR → 8
+            assert f.tell() == 8
+
+            # SEEK_END — relative to file end (10)
+            f.seek(-5, 2)  # → position 5
+            assert f.tell() == 5
+            assert f.read(5) == b"FGHIJ"
+            assert f.tell() == 10
+
+            # read() with no size from a seeked position → only remaining bytes
+            f.seek(7)
+            assert f.read() == b"HIJ"
+            assert f.tell() == 10
+
+    def test_seek_edge_cases_and_seekable(self):
+        """Test seek past EOF, negative seek, and seekable() in one session.
+
+        Validates POSIX-compliant seek-past-EOF behaviour, negative position
+        rejection, and seekable() for both write and read modes.
+        """
+        test_data = "ABCDE"  # 5 bytes
+        blob_path = f"{AZURE_BLOB_PATH}/test_seek_edge_{id(self)}.txt"
+
+        # seekable() returns False in write mode
+        with bf.DACSBlobfileAdapter(blob_path, "w") as f:
+            assert f.seekable() is False
+            f.write(test_data)
+
+        with bf.DACSBlobfileAdapter(blob_path, "rb") as f:
+            # seekable() returns True in read mode
+            assert f.seekable() is True
+
+            # Seek past EOF — legal per POSIX, read returns empty
+            pos = f.seek(100)
+            assert pos == 100
+            assert f.read() == b""
+
+            # Seek to negative position — raises OSError(EINVAL)
+            with pytest.raises(OSError):
+                f.seek(-1, 0)
 
 
 class TestContextManagerAndErrorHandling:
