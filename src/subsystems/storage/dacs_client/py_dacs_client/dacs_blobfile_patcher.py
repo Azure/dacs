@@ -37,7 +37,7 @@ _BLOBFILE_ORIGINAL_MODULE_CLASS = None
 
 # Supported APIs - only these get patched with routing logic
 # Everything else raises OperationNotSupportedError
-DACS_SUPPORTED_APIS = {'BlobFile', 'copy', 'exists', 'listdir', 'scandir', 'stat'}
+DACS_SUPPORTED_APIS = {'BlobFile', 'copy', 'exists', 'isdir', 'join', 'listdir', 'scandir', 'stat'}
 
 
 def enable_dacs_backend():
@@ -72,6 +72,7 @@ def enable_dacs_backend():
         DACSBlobfileAdapter,
         copy as dacs_copy,
         exists as dacs_exists,
+        isdir as dacs_isdir,
         listdir as dacs_listdir,
         scandir as dacs_scandir,
         stat as dacs_stat,
@@ -83,6 +84,8 @@ def enable_dacs_backend():
         'BlobFile': bf.BlobFile,
         'copy': bf.copy,
         'exists': bf.exists,
+        'isdir': bf.isdir,
+        'join': bf.join,
         'listdir': bf.listdir,
         'scandir': bf.scandir,
         'stat': bf.stat,
@@ -230,10 +233,23 @@ def enable_dacs_backend():
                 convert_and_raise(e, original_path=path)
         return _BLOBFILE_ORIGINAL_FUNCTIONS['stat'](path)
 
+    def patched_isdir(path):
+        if _is_azure_path(path):
+            try:
+                return dacs_isdir(path)
+            except Exception as e:
+                convert_and_raise(e, original_path=path)
+        return _BLOBFILE_ORIGINAL_FUNCTIONS['isdir'](path)
+
+    # join: passthrough to native blobfile — pure string manipulation, no I/O
+    patched_join = _BLOBFILE_ORIGINAL_FUNCTIONS['join']
+
     # Apply patches to supported APIs
     bf.BlobFile = patched_BlobFile
     bf.copy = patched_copy
     bf.exists = patched_exists
+    bf.isdir = patched_isdir
+    bf.join = patched_join
     bf.listdir = patched_listdir
     bf.scandir = patched_scandir
     bf.stat = patched_stat

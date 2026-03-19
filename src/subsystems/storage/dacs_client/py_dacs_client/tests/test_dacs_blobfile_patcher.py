@@ -130,7 +130,7 @@ class TestEnvironmentVariable:
     def test_supported_apis_constant_matches_patched_functions(self):
         """Test that DACS_SUPPORTED_APIS matches actual patched functions."""
         # Verify the constant contains expected APIs
-        expected = {'BlobFile', 'copy', 'exists', 'listdir', 'scandir', 'stat'}
+        expected = {'BlobFile', 'copy', 'exists', 'isdir', 'join', 'listdir', 'scandir', 'stat'}
         assert DACS_SUPPORTED_APIS == expected
 
     def test_auto_enable_via_env_var(self):
@@ -554,3 +554,27 @@ class TestExceptionConversion:
         # bf.Error (= OSError) should catch FileNotFoundError since it's a subclass
         with pytest.raises(bf.Error):
             bf.stat(nonexistent_path)
+
+
+class TestJoinRouting:
+    """Test that bf.join works correctly when patcher is enabled."""
+
+    def test_join_azure_and_local(self):
+        """Test join() with az:// paths, '..' resolution, absolute resets, and local paths."""
+        enable_dacs_backend()
+
+        # Multi-component az:// join
+        assert bf.join("az://account/container", "path", "file.txt") == "az://account/container/path/file.txt"
+
+        # Simple az:// join
+        assert bf.join("az://account/container", "file.txt") == "az://account/container/file.txt"
+
+        # '..' resolves within blob path
+        assert bf.join("az://account/container/a/b", "..", "c.txt") == "az://account/container/a/c.txt"
+
+        # Absolute component resets blob path
+        assert bf.join("az://account/container/old", "/new/file.txt") == "az://account/container/new/file.txt"
+
+        # Local paths
+        expected_local = os.path.join("/home/user", "dir", "file.txt")
+        assert bf.join("/home/user", "dir", "file.txt") == expected_local

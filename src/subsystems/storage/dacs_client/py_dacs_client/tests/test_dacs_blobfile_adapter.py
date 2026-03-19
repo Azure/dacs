@@ -1040,11 +1040,6 @@ class TestUnsupportedOperations:
         with pytest.raises(bf.OperationNotSupportedError, match="scanglob"):
             list(bf.scanglob("*.txt"))
 
-    def test_isdir_not_supported(self):
-        """Test that isdir() raises OperationNotSupportedError."""
-        with pytest.raises(bf.OperationNotSupportedError, match="isdir"):
-            bf.isdir("az://test/path")
-
     def test_rmdir_not_supported(self):
         """Test that rmdir() raises OperationNotSupportedError."""
         with pytest.raises(bf.OperationNotSupportedError, match="rmdir"):
@@ -1918,3 +1913,30 @@ class TestEdgeCases:
             content = f.read()
 
         assert content == "deep content", "Long paths should work correctly"
+
+
+class TestIsDir:
+    """Test isdir() for remote Azure blobs and directories."""
+
+    def test_isdir_remote_and_local(self):
+        """Test isdir() for directories, files, non-existent paths, and local paths."""
+        # Remote directory — create a child so the prefix exists
+        blob_path = f"{AZURE_BLOB_PATH}/test_isdir_{id(self)}/child.txt"
+        with bf.DACSBlobfileAdapter(blob_path, "w") as f:
+            f.write("data")
+
+        dir_path = f"{AZURE_BLOB_PATH}/test_isdir_{id(self)}"
+        assert bf.isdir(dir_path) is True
+
+        # Remote regular file → False
+        file_path = f"{AZURE_BLOB_PATH}/test_isdir_file_{id(self)}.txt"
+        with bf.DACSBlobfileAdapter(file_path, "w") as f:
+            f.write("data")
+        assert bf.isdir(file_path) is False
+
+        # Non-existent remote path → False
+        assert bf.isdir(f"{AZURE_BLOB_PATH}/does_not_exist_{id(self)}") is False
+
+        # Local paths
+        assert bf.isdir("/tmp") is True
+        assert bf.isdir("/tmp/nonexistent_dir_abc123") is False
