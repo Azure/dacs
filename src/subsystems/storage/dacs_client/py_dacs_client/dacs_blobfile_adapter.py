@@ -910,8 +910,19 @@ def scanglob(pattern: str) -> Iterator[str]:
 
 
 def isdir(path: str) -> bool:
-    """Check if path is a directory. Not supported by DACS Client."""
-    raise OperationNotSupportedError("isdir() is not supported by DACS Client. " "Use stat() instead.")
+    """Check if path is a directory.
+
+    Uses stat() + S_ISDIR to determine if the path is a directory.
+    Returns False if the path does not exist.
+    """
+    if not _is_azure_path(path):
+        return os.path.isdir(path)
+
+    try:
+        result = stat(path)
+        return stat_module.S_ISDIR(result.st_mode)
+    except DACSNotFoundError:
+        return False
 
 
 def listdir(path: str) -> Iterator[str]:
