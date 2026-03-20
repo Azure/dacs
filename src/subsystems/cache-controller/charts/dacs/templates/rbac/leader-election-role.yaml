@@ -3,8 +3,8 @@ kind: Role
 metadata:
     labels:
         app.kubernetes.io/managed-by: {{ .Release.Service }}
-        app.kubernetes.io/name: dacs
-    name: dacs-leader-election-role
+        app.kubernetes.io/name: {{ include "chart.name" . }}
+    name: {{ include "chart.fullname" . }}-leader-election-role
     namespace: {{ .Release.Namespace }}
 rules:
     - apiGroups:

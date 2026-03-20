@@ -1,3 +1,6 @@
+# Name prefix for all resources (e.g., dacs-manager, dacs-webhook)
+namePrefix: dacs
+
 # Configure the controller manager deployment
 manager:
   replicas: 1
@@ -9,9 +12,8 @@ manager:
     tag: local
     pullPolicy: IfNotPresent
 
-  # Arguments
-  args:
-    - --leader-elect
+  # Extra arguments to pass to the controller
+  extraArgs: []
 
   # Environment variables
   env:
@@ -87,7 +89,7 @@ prometheus:
 cache:
   enabled: false  # Set to true to deploy a sample Cache instance with the chart 
   name: cache-sample
-  namespace: "cache-server"  # Namespace for Cache CR (empty = Release.Namespace)
+  namespace: ""  # Namespace for Cache CR (empty = Release.Namespace)
   
   # Scaling configuration (use either static or dynamic, not both)
   scaling:
@@ -123,3 +125,12 @@ cache:
     ephemeral: false
     hostPath: 
       nodeCacheFolderPath: /var/lib/ssd/cacheserver
+
+  # InfiniBand resource configuration (optional)
+  # Set count > 0 to enable IB resources on cache server pods
+  infinibandResourceLimitCount: 0
+  infinibandResourceLimitName: "rdma/hca_rdma_infiniband"
+
+  # Image pull policy for cache server pods (optional)
+  # Controller defaults to Never if not specified; set to IfNotPresent for production
+  # imagePullPolicy: IfNotPresent

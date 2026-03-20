@@ -161,6 +161,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		NodeSelectorLabelKey         string
 		NodeSelectorValue            []string
 		Image                        string
+		ImagePullPolicy              string
 		ServerThreads                int32
 		Port                         int
 		MetricsPort                  int
@@ -170,8 +171,8 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		EvictionPassFrequency        string
 		EvictionMaintainFreeSpace    bool
 		EvictionSizeTarget           string
-		InfinibandResourceLimitCount *int32
-		InfinibandResourceLimitName  *string
+		InfinibandResourceLimitCount int32
+		InfinibandResourceLimitName  string
 		MemoryLimitMB                *int32
 		CpuLimit                     *int32
 		MountSsdPath                 string
@@ -218,6 +219,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		NodeSelectorLabelKey:         *cache.Spec.NodeSelectorKey,
 		NodeSelectorValue:            []string{*cache.Spec.NodeSelectorValue},
 		Image:                        cfg.CacheServerImage,
+		ImagePullPolicy:              string(cfg.ImagePullPolicy),
 		ServerThreads:                cache.Spec.ServerThreads,
 		Port:                         int(*cache.Spec.Port),
 		MetricsPort:                  int(*cache.Spec.MetricsPort),
@@ -227,8 +229,8 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		EvictionPassFrequency:        *cache.Spec.Eviction.PassFrequency,
 		EvictionMaintainFreeSpace:    *cache.Spec.Eviction.EvictionMaintainFreeSpace,
 		EvictionSizeTarget:           *cache.Spec.Eviction.SizeTarget,
-		InfinibandResourceLimitCount: cache.Spec.InfinibandResourceLimitCount,
-		InfinibandResourceLimitName:  cache.Spec.InfinibandResourceLimitName,
+		InfinibandResourceLimitCount: *cache.Spec.InfinibandResourceLimitCount,
+		InfinibandResourceLimitName:  *cache.Spec.InfinibandResourceLimitName,
 		MemoryLimitMB:                cache.Spec.MemoryLimitMB,
 		CpuLimit:                     cache.Spec.CpuLimit,
 		MountSsdPath:                 nodeCachePath,

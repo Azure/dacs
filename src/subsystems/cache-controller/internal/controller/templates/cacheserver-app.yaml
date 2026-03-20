@@ -48,7 +48,7 @@ spec:
       containers:
       - name: cacheserver
         image: {{ .Image }}
-        imagePullPolicy: Never  #TODO: Change to Always for Prod
+        imagePullPolicy: {{ .ImagePullPolicy }}
         env:
         - name: CACHESERVER_THREADPOOL_SIZE
           value: "{{ .ServerThreads }}"
@@ -72,8 +72,8 @@ spec:
           requests:
             memory: "100Mi"
             cpu: "0.25"
-            {{- if and .InfinibandResourceLimitCount .InfinibandResourceLimitName }}
-            "{{ .InfinibandResourceLimitName }}": "{{ .InfinibandResourceLimitCount }}"
+            {{- if and .InfinibandResourceLimitName (gt .InfinibandResourceLimitCount 0) }}
+            {{ .InfinibandResourceLimitName }}: {{ .InfinibandResourceLimitCount }}
             {{- end }}
           limits:
             {{- if .MemoryLimitMB }}
@@ -82,8 +82,8 @@ spec:
             {{- if .CpuLimit }}
             cpu: "{{ .CpuLimit }}"
             {{- end }}
-            {{- if and .InfinibandResourceLimitCount .InfinibandResourceLimitName }}
-            "{{ .InfinibandResourceLimitName }}": "{{ .InfinibandResourceLimitCount }}"
+            {{- if and .InfinibandResourceLimitName (gt .InfinibandResourceLimitCount 0) }}
+            {{ .InfinibandResourceLimitName }}: {{ .InfinibandResourceLimitCount }}
             {{- end }}
         ports:
         - containerPort: {{ .Port }}

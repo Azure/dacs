@@ -3,29 +3,15 @@ Chart name based on project name.
 Truncated to 63 characters for Kubernetes compatibility.
 */}}
 {{- define "chart.name" -}}
-{{- if .Chart }}
-  {{- if .Chart.Name }}
-    {{- .Chart.Name | trunc 63 | trimSuffix "-" }}
-  {{- else }}
-    dacs
-  {{- end }}
-{{- else }}
-  dacs
-{{- end }}
+{{- .Values.namePrefix | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
-Full name of the chart (with release name prefix).
-Combines release name with chart name.
+Full name for resources. Uses namePrefix directly for simplicity.
 Truncated to 63 characters for Kubernetes compatibility.
 */}}
 {{- define "chart.fullname" -}}
-{{- $name := include "chart.name" . }}
-{{- if contains $name .Release.Name }}
-{{- .Release.Name | trunc 63 | trimSuffix "-" }}
-{{- else }}
-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
-{{- end }}
+{{- .Values.namePrefix | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
@@ -75,4 +61,12 @@ Only includes name and instance for consistent selection.
 {{- define "chart.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "chart.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{/*
+ServiceAccount name for the controller manager.
+Uses fullname + "-controller-manager" suffix for umbrella chart compatibility.
+*/}}
+{{- define "chart.serviceAccountName" -}}
+{{- include "chart.fullname" . }}-controller-manager
 {{- end }}

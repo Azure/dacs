@@ -2,13 +2,13 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-    name: dacs-metrics-auth-rolebinding
+    name: {{ include "chart.fullname" . }}-metrics-auth-rolebinding
 roleRef:
     apiGroup: rbac.authorization.k8s.io
     kind: ClusterRole
-    name: dacs-metrics-auth-role
+    name: {{ include "chart.fullname" . }}-metrics-auth-role
 subjects:
     - kind: ServiceAccount
-      name: dacs-manager
+      name: {{ include "chart.serviceAccountName" . }}
       namespace: {{ .Release.Namespace }}
 {{- end }}

@@ -3,14 +3,14 @@ kind: RoleBinding
 metadata:
     labels:
         app.kubernetes.io/managed-by: {{ .Release.Service }}
-        app.kubernetes.io/name: dacs
-    name: dacs-leader-election-rolebinding
+        app.kubernetes.io/name: {{ include "chart.name" . }}
+    name: {{ include "chart.fullname" . }}-leader-election-rolebinding
     namespace: {{ .Release.Namespace }}
 roleRef:
     apiGroup: rbac.authorization.k8s.io
     kind: Role
-    name: dacs-leader-election-role
+    name: {{ include "chart.fullname" . }}-leader-election-role
 subjects:
     - kind: ServiceAccount
-      name: dacs-manager
+      name: {{ include "chart.serviceAccountName" . }}
       namespace: {{ .Release.Namespace }}

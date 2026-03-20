@@ -5,7 +5,7 @@ metadata:
   labels:
     {{- include "chart.labels" . | nindent 4 }}
     control-plane: controller-manager
-  name: dacs-manager-metrics-monitor
+  name: {{ include "chart.fullname" . }}-manager-metrics-monitor
   namespace: {{ .Release.Namespace }}
 spec:
   endpoints:
@@ -13,10 +13,9 @@ spec:
       port: https
       scheme: https
       bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
-      # TODO: Update TLS config when PR #1937491 lands (adds TLS without cert-manager)
       tlsConfig:
         {{- if .Values.certManager.enable }}
-        serverName: dacs-manager-metrics-service.{{ .Release.Namespace }}.svc
+        serverName: {{ include "chart.fullname" . }}-manager-metrics-service.{{ .Release.Namespace }}.svc
         # Apply secure TLS configuration with cert-manager
         insecureSkipVerify: false
         ca:
