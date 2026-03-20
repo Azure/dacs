@@ -16,6 +16,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	corev1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -24,9 +25,10 @@ const (
 )
 
 type Config struct {
-	LogLevel                  string        `yaml:"logLevel" mapstructure:"logLevel"`
-	CacheServerImage          string        `yaml:"cacheServerImage" mapstructure:"cacheServerImage"`
-	PodStuckThresholdDuration time.Duration `yaml:"podStuckThresholdDuration" mapstructure:"podStuckThresholdDuration"`
+	LogLevel                  string            `yaml:"logLevel" mapstructure:"logLevel"`
+	CacheServerImage          string            `yaml:"cacheServerImage" mapstructure:"cacheServerImage"`
+	ImagePullPolicy           corev1.PullPolicy `yaml:"imagePullPolicy" mapstructure:"imagePullPolicy"`
+	PodStuckThresholdDuration time.Duration     `yaml:"podStuckThresholdDuration" mapstructure:"podStuckThresholdDuration"`
 }
 
 var (

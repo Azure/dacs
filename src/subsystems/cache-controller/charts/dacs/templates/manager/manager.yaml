@@ -3,23 +3,23 @@ kind: Deployment
 metadata:
     labels:
         app.kubernetes.io/managed-by: {{ .Release.Service }}
-        app.kubernetes.io/name: dacs
+        app.kubernetes.io/name: {{ include "chart.name" . }}
         control-plane: controller-manager
-    name: dacs-manager
+    name: {{ include "chart.fullname" . }}-manager
     namespace: {{ .Release.Namespace }}
 spec:
     replicas: 1
     selector:
         matchLabels:
-            app.kubernetes.io/name: dacs
+            app.kubernetes.io/name: {{ include "chart.name" . }}
             control-plane: controller-manager
     template:
         metadata:
             annotations:
                 kubectl.kubernetes.io/default-container: manager
             labels:
-                app.kubernetes.io/name: dacs
-                app.kubernetes.io/instance: dacs
+                app.kubernetes.io/name: {{ include "chart.name" . }}
+                app.kubernetes.io/instance: {{ .Release.Name }}
                 control-plane: controller-manager
         spec:
             containers:
@@ -31,7 +31,9 @@ spec:
                     - --metrics-bind-address=0
                     {{- end }}
                     - --health-probe-bind-address=:8081
-                    {{- range .Values.manager.args }}
+                    - --leader-elect
+                    - --namespace={{ .Release.Namespace }}
+                    {{- range .Values.manager.extraArgs }}
                     - {{ . }}
                     {{- end }}
                     {{- if .Values.webhook.enable }}
@@ -95,7 +97,7 @@ spec:
               {{- else }}
               {}
               {{- end }}
-            serviceAccountName: dacs-manager
+            serviceAccountName: {{ include "chart.serviceAccountName" . }}
             terminationGracePeriodSeconds: 10
             {{- if .Values.webhook.enable }}
             volumes:

@@ -1,3 +1,4 @@
 logLevel: info
 cacheServerImage: "cache-server:local"
+imagePullPolicy: "IfNotPresent"
 podStuckThresholdDuration: 5m # Duration after which a cache pod is considered stuck or healthy after state change

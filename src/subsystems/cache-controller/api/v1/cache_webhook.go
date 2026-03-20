@@ -103,6 +103,7 @@ func (r *Cache) Default(ctx context.Context, cache *Cache) error {
 			cache.Spec.Storage.HostPath.NodeCacheFolderPath = DefaultNodeCacheFolderPath
 		}
 	}
+
 	return nil
 }
 

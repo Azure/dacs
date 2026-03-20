@@ -26,14 +26,20 @@ type ScalingType struct {
 type DynamicScaleConfig struct {
 	// Percentage of available nodes to use for cache servers
 	// +required
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100
 	PercentageOfNodesToUse int32 `json:"percentageOfNodesToUse"`
 
 	// Minimum number of cache servers to maintain
 	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=99
 	MinServers *int32 `json:"minServers,omitempty"`
 
 	// Maximum number of cache servers to maintain
 	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=99
 	MaxServers *int32 `json:"maxServers,omitempty"`
 }
 
@@ -42,6 +48,7 @@ type DynamicScaleConfig struct {
 type StaticScaleConfig struct {
 	// Number of cache server replicas to maintain
 	// +required
+	// +kubebuilder:validation:Minimum=1
 	NumServers int32 `json:"numServers"`
 }
 
@@ -49,26 +56,32 @@ type StaticScaleConfig struct {
 type EvictionConfig struct {
 	// Enable accessTime based eviction
 	// +optional
+	// +kubebuilder:default=true
 	EnableAccessTimeEviction *bool `json:"enableAccessTimeEviction,omitempty"`
 
 	// Keep a portion of cache space always free even if all data is within access time window
 	// +optional
+	// +kubebuilder:default=true
 	EvictionMaintainFreeSpace *bool `json:"evictionMaintainFreeSpace,omitempty"`
 
 	// Last Access threshold for cache eviction, example "30d12h41m29s"
 	// +optional
+	// +kubebuilder:default="30d"
 	LastAccessThreshold *string `json:"lastAccessThreshold,omitempty"`
 
 	// Size threshold for triggering cache eviction in percentage (0-100)
 	// +optional
+	// +kubebuilder:default="90"
 	SizeThreshold *string `json:"sizeThreshold,omitempty"`
 
 	// Frequency of running eviction pass, example "1h30m"
 	// +optional
+	// +kubebuilder:default="1h"
 	PassFrequency *string `json:"passFrequency,omitempty"`
 
 	// Target cache utilization percentage after eviction (0-100)
-	// +optionals
+	// +optional
+	// +kubebuilder:default="90"
 	SizeTarget *string `json:"sizeTarget,omitempty"`
 }
 
@@ -99,46 +112,62 @@ type CacheSpec struct {
 
 	// Node selector label key for cache server pods
 	// +optional
+	// +kubebuilder:default="dacs.azure.com/processing-unit"
 	NodeSelectorKey *string `json:"nodeSelectorKey,omitempty"`
 
 	// Node selector label value for cache server pods
 	// +optional
+	// +kubebuilder:default="gpu"
 	NodeSelectorValue *string `json:"nodeSelectorValue,omitempty"`
 
 	// Max allowed cache size in GB per cache server
 	// +required
+	// +kubebuilder:validation:Minimum=1
 	ServerSizeInGB int32 `json:"serverSizeInGB"`
 
 	// Number of threads per cache server
 	// +required
+	// +kubebuilder:validation:Minimum=4
 	ServerThreads int32 `json:"serverThreads"`
 
 	// CPU limit per cache server pod (recommended when running cache on non-dedicated nodes)
 	// +optional
+	// +kubebuilder:validation:Minimum=1
 	CpuLimit *int32 `json:"cpuLimit,omitempty"`
 
 	// Memory limit in MB per cache server pod (recommended when running cache on non-dedicated nodes)
 	// +optional
+	// +kubebuilder:validation:Minimum=1024
 	MemoryLimitMB *int32 `json:"memoryLimitMB,omitempty"`
 
 	// Egress Bandwidth limit in Gbps (recommended when running cache on non-dedicated nodes)
 	// +optional
+	// +kubebuilder:validation:Minimum=1
 	EgressBandwidthLimitGbps *int32 `json:"egressBandwidthLimitGbps,omitempty"`
 
 	// Infiniband resource limit name
 	// +optional
+	// +kubebuilder:default="rdma/hca_rdma_infiniband"
 	InfinibandResourceLimitName *string `json:"infinibandResourceLimitName,omitempty"`
 
 	// Infiniband resource limit count (set to 0 to disable infiniband)
 	// +optional
+	// +kubebuilder:default=0
+	// +kubebuilder:validation:Minimum=0
 	InfinibandResourceLimitCount *int32 `json:"infinibandResourceLimitCount,omitempty"`
 
 	// Port for cache server pods
 	// +optional
+	// +kubebuilder:default=9065
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
 	Port *int32 `json:"port,omitempty"`
 
 	// Metrics port for cache server pods
 	// +optional
+	// +kubebuilder:default=9096
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
 	MetricsPort *int32 `json:"metricsPort,omitempty"`
 
 	// Eviction settings

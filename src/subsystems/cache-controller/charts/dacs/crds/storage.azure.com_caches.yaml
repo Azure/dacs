@@ -88,6 +88,7 @@ spec:
                 description: Infiniband resource limit count (set to 0 to disable
                   infiniband)
                 format: int32
+                minimum: 0
                 type: integer
               infinibandResourceLimitName:
                 default: rdma/hca_rdma_infiniband
@@ -103,6 +104,8 @@ spec:
                 default: 9096
                 description: Metrics port for cache server pods
                 format: int32
+                maximum: 65535
+                minimum: 1
                 type: integer
               nodeSelectorKey:
                 default: dacs.azure.com/processing-unit
@@ -116,6 +119,8 @@ spec:
                 default: 9065
                 description: Port for cache server pods
                 format: int32
+                maximum: 65535
+                minimum: 1
                 type: integer
               scaling:
                 description: |-

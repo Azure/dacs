@@ -64,4 +64,13 @@ spec:
     hostPath:
       nodeCacheFolderPath: {{ .Values.cache.storage.hostPath.nodeCacheFolderPath | quote }}
     {{- end }}
+  {{- /* InfiniBand resource configuration - only include when count > 0 */}}
+  {{- if and .Values.cache.infinibandResourceLimitName (gt (int (.Values.cache.infinibandResourceLimitCount | default 0)) 0) }}
+  infinibandResourceLimitCount: {{ .Values.cache.infinibandResourceLimitCount | int }}
+  infinibandResourceLimitName: {{ .Values.cache.infinibandResourceLimitName | quote }}
+  {{- end }}
+  {{- /* Image pull policy for cache server pods */}}
+  {{- with .Values.cache.imagePullPolicy }}
+  imagePullPolicy: {{ . | quote }}
+  {{- end }}
 {{- end }}
