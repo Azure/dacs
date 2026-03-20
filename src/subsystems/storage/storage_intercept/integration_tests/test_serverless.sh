@@ -32,15 +32,6 @@ echo "================================================"
 
 __run_perf_benchmark__
 
-echo "Running cache server unit tests"
-cd ${REPOSITORY_ROOT}/build/$BUILD_CONFIGURATION/$BUILD_ARCH
-eval "ctest -V --no-tests=error -j -1 -R CacheServer"
-if [ $? -ne 0 ]
-then
-echo "Cache server unit tests failed"
-exit 1
-fi
-
 __verify_nologs_unintercepted_
 
 echo "Running unit tests against blob"

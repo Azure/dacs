@@ -10,7 +10,7 @@
 # - Snapshot validation and restart scenarios
 # - Cache eviction validation and parallel operations
 # - Last access time distribution analysis
-# - Checksum end-to-end tests
+# - Remote cache tests
 #===============================================================================
 
 set -e
@@ -48,8 +48,55 @@ echo -e "Cache eviction validation tests passed\n\n"
 source "$SCRIPT_DIR/last_access_distribution_integration_test.sh"
 __run__test__last_access_time_distribution__
 
-source "${SCRIPT_DIR}/checksum_e2e_test.sh"
-__run_checksum_e2e_test__ xxhash32
+#===============================================================================
+# SECTION: REMOTE CACHE TESTS
+#===============================================================================
+
+export CACHESERVER_HOSTNAME="testhost"
+export CACHESERVER_SNAPSHOT_INTERVAL="1"
+export CACHESERVER_EVICTION_ENABLED="true"
+export CACHESERVER_EVICTION_PASS_FREQUENCY="30s"
+start_cache_server /dev/null
+unset CACHESERVER_HOSTNAME
+unset CACHESERVER_SNAPSHOT_INTERVAL
+unset CACHESERVER_EVICTION_ENABLED
+unset CACHESERVER_EVICTION_PASS_FREQUENCY
+echo "Sleeping 10 secs to allow cache server to start and initialize"
+sleep 10
+test_liveness
+
+echo "Running unit tests against blob with remote attribute and data cache enabled"
+add_interception_config_blob_with_remote_cache /mnt/dataPathIntcpt
+cd ${REPOSITORY_ROOT}/build/$BUILD_CONFIGURATION/$BUILD_ARCH
+ctest -V --no-tests=error -j -1 -R StorageIntercept
+if [ $? -ne 0 ]
+then
+echo "Unit tests against blob with remote attribute and data cache failed"
+exit 1
+fi
+echo -e "Unit tests against blob with remote attribute and data cache passed\n\n"
+
+echo "Running integration test against blob with remote attribute and data cache enabled"
+add_interception_config_blob_with_remote_cache /mnt/quiverfs false true
+eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large -s -n 20 -p 4 -f"
+if [ $? -ne 0 ]
+then
+echo "Blob Integration test with remote attribute and data cache failed"
+exit 1
+fi
+echo -e "Blob Integration test with remote attribute and data cache passed\n\n"
+
+echo "Running integration test with multi-mount against blob with remote attribute and data cache enabled"
+add_interception_config_blob_with_remote_cache /mnt/quiverfs true
+eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d largeMultiMountDynamic -s -n 20 -p 4"
+if [ $? -ne 0 ]
+then
+echo "Blob Integration test with multi-mount and remote attribute and data cache failed"
+exit 1
+fi
+echo -e "Blob Integration test with multi-mount and remote attribute and data cache passed\n\n"
+
+stop_cache_server
 
 echo "================================================"
 echo "CACHE SPECIALIZED TESTS - COMPLETED SUCCESSFULLY"

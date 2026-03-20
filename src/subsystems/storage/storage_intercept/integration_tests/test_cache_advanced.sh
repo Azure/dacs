@@ -13,9 +13,6 @@
 # - Integration tests with cache
 # - Cache discovery tests
 # - Encryption tests
-# - Remote cache tests
-# - Multi-mount cache tests
-# - Local SSD cache tests
 #===============================================================================
 
 set -e
@@ -104,61 +101,6 @@ exit 1
 fi
 echo -e "Running integration test against blob with cache and encryption passed\n\n"
 
-echo "Running unit tests against blob with remote attribute and data cache enabled"
-add_interception_config_blob_with_remote_cache /mnt/dataPathIntcpt
-cd ${REPOSITORY_ROOT}/build/$BUILD_CONFIGURATION/$BUILD_ARCH
-ctest -V --no-tests=error -j -1 -R StorageIntercept
-if [ $? -ne 0 ]
-then
-echo "Unit tests against blob with remote attribute and data cache failed"
-exit 1
-fi
-echo -e "Unit tests against blob with remote attribute and data cache passed\n\n"
-
-echo "Running integration test against blob with remote attribute and data cache enabled"
-add_interception_config_blob_with_remote_cache /mnt/quiverfs false true
-eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large -s -n 20 -p 4 -f"
-if [ $? -ne 0 ]
-then
-echo "Blob Integration test with remote attribute and data cache failed"
-exit 1
-fi
-echo -e "Blob Integration test with remote attribute and data cache passed\n\n"
-
-echo "Running integration test with multi-mount against blob with remote attribute and data cache enabled"
-add_interception_config_blob_with_remote_cache /mnt/quiverfs true
-eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d largeMultiMountDynamic -s -n 20 -p 4"
-if [ $? -ne 0 ]
-then
-echo "Blob Integration test with multi-mount and remote attribute and data cache failed"
-exit 1
-fi
-echo -e "Blob Integration test with multi-mount and remote attribute and data cache passed\n\n"
-
-echo "Running unit tests against blob with local ssd cache"
-reset_local_ssd_cache
-add_interception_config_blob_with_localssdcache /mnt/dataPathIntcpt
-cd ${REPOSITORY_ROOT}/build/$BUILD_CONFIGURATION/$BUILD_ARCH
-eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
-if [ $? -ne 0 ]
-then
-echo "Unit tests against blob with local ssd cache failed"
-exit 1
-fi
-echo -e "Unit tests against blob with local ssd cache passed\n\n"
-
-echo "Running integration test against blob with local ssd cache"
-reset_local_ssd_cache
-add_interception_config_blob_with_localssdcache /mnt/quiverfs
-eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large -s -n 20 -p 4"
-if [ $? -ne 0 ]
-then
-echo "Blob Integration test with local ssd cache failed"
-exit 1
-fi
-echo -e "Blob Integration test with local ssd cache passed\n\n"
-
-reset_local_ssd_cache
 stop_cache_server
 
 echo "================================================"

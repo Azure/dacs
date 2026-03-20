@@ -14,6 +14,7 @@
 # - Last access distribution client tests
 # - Cache client library tests
 # - Rust cache client integration tests
+# - Local SSD cache tests
 #===============================================================================
 
 set -e
@@ -133,6 +134,49 @@ stop_cache_server
 unset CACHESERVER_AUTH_ENABLED
 unset CACHESERVER_AUTH_ACCOUNTNAME
 unset CACHESERVER_AUTH_ACCOUNTKEY
+
+#===============================================================================
+# SECTION: LOCAL SSD CACHE TESTS
+#===============================================================================
+
+export CACHESERVER_HOSTNAME="testhost"
+export CACHESERVER_SNAPSHOT_INTERVAL="1"
+export CACHESERVER_EVICTION_ENABLED="true"
+export CACHESERVER_EVICTION_PASS_FREQUENCY="30s"
+start_cache_server /dev/null
+unset CACHESERVER_HOSTNAME
+unset CACHESERVER_SNAPSHOT_INTERVAL
+unset CACHESERVER_EVICTION_ENABLED
+unset CACHESERVER_EVICTION_PASS_FREQUENCY
+echo "Sleeping 10 secs to allow cache server to start and initialize"
+sleep 10
+test_liveness
+
+echo "Running unit tests against blob with local ssd cache"
+reset_local_ssd_cache
+add_interception_config_blob_with_localssdcache /mnt/dataPathIntcpt
+cd ${REPOSITORY_ROOT}/build/$BUILD_CONFIGURATION/$BUILD_ARCH
+eval "ctest -V --no-tests=error -j -1 -R StorageIntercept"
+if [ $? -ne 0 ]
+then
+echo "Unit tests against blob with local ssd cache failed"
+exit 1
+fi
+echo -e "Unit tests against blob with local ssd cache passed\n\n"
+
+echo "Running integration test against blob with local ssd cache"
+reset_local_ssd_cache
+add_interception_config_blob_with_localssdcache /mnt/quiverfs
+eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d large -s -n 20 -p 4"
+if [ $? -ne 0 ]
+then
+echo "Blob Integration test with local ssd cache failed"
+exit 1
+fi
+echo -e "Blob Integration test with local ssd cache passed\n\n"
+
+reset_local_ssd_cache
+stop_cache_server
 
 echo "================================================"
 echo "CACHE BASIC INTEGRATION TESTS - Completed Successfully"

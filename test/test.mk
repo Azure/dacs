@@ -28,12 +28,12 @@ TEST_FILTER ?=
 TEST_TIMEOUT ?= 120m
 
 # Ginkgo binary
+# NOTE: Version is also in the CI setup script - keep in sync
 GINKGO_VERSION ?= v2.27.3
-GINKGO ?= $(LOCALBIN)/ginkgo
+GINKGO ?= $(shell command -v ginkgo 2>/dev/null || echo $(LOCALBIN)/ginkgo)
 
-# Kubectl binary (use system kubectl if available, otherwise download)
-SYSTEM_KUBECTL := $(shell command -v kubectl 2>/dev/null)
-KUBECTL ?= $(if $(SYSTEM_KUBECTL),$(SYSTEM_KUBECTL),$(LOCALBIN)/kubectl)
+# Kubectl binary (downloads latest stable version)
+KUBECTL ?= $(shell command -v kubectl 2>/dev/null || echo $(LOCALBIN)/kubectl)
 
 # Architecture detection
 TEST_ARCH := $(shell uname -m)
@@ -96,9 +96,6 @@ $(GINKGO): $(LOCALBIN)
 .PHONY: kubectl
 kubectl: $(KUBECTL) ## Download kubectl locally if necessary.
 $(KUBECTL): $(LOCALBIN)
-ifneq ($(SYSTEM_KUBECTL),)
-	@echo "Using system kubectl: $(SYSTEM_KUBECTL)"
-else
 	@[ -f "$(KUBECTL)" ] || { \
 	K8S_VERSION=$$(curl -L -s https://dl.k8s.io/release/stable.txt); \
 	echo "Downloading latest stable kubectl for $${K8S_VERSION} $(TEST_ARCH) ($(TEST_ARCH_SUFFIX))..."; \
@@ -107,7 +104,6 @@ else
 	mkdir -p $(LOCALBIN); \
 	mv kubectl $(KUBECTL); \
 	}
-endif
 
 .PHONY: get-support-bundle
 get-support-bundle: support-bundle ## Collect support bundle from the cluster.
@@ -122,8 +118,9 @@ get-support-bundle: support-bundle ## Collect support bundle from the cluster.
 	@rm -f $(if $(SUPPORT_BUNDLE_OUTPUT),$(SUPPORT_BUNDLE_OUTPUT),$(SUPPORT_BUNDLE_OUTPUT_DIR)/support-bundle.tar.gz)
 
 # Support bundle CLI version
+# NOTE: Version is also in the CI setup script - keep in sync
 SUPPORT_BUNDLE_VERSION ?= v0.123.16
-SUPPORT_BUNDLE ?= $(LOCALBIN)/support-bundle
+SUPPORT_BUNDLE ?= $(shell command -v support-bundle 2>/dev/null || echo $(LOCALBIN)/support-bundle)
 
 .PHONY: support-bundle
 support-bundle: $(SUPPORT_BUNDLE) ## Download support-bundle CLI locally if necessary.

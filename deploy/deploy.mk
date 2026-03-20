@@ -73,7 +73,7 @@ $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
 BICEP ?= $(LOCALBIN)/bicep
-HELM_BIN ?= $(LOCALBIN)/helm
+HELM_BIN ?= $(shell command -v helm 2>/dev/null || echo $(LOCALBIN)/helm)
 
 ##@ Cluster Provisioning
 
