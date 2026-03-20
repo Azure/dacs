@@ -65,11 +65,13 @@ for i in $(seq 2 $NUM_NODES); do
   minikube node add --worker=true -v=1
   
   echo "Node $i added successfully, waiting for stabilization..."
-  sleep 15
+  # Brief sleep to let the new node register with the API server, then wait for all nodes Ready
+  sleep 5
+  kubectl wait --for=condition=Ready node --all --timeout=60s 2>/dev/null || true
 done
 
 echo "All nodes added, waiting for final stabilization..."
-sleep 15
+kubectl wait --for=condition=Ready node --all --timeout=60s
 
 echo "Cluster created successfully!"
 

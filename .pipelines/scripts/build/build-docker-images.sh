@@ -110,12 +110,25 @@ prepare_base_image "cache-client-base" "Docker/base/CacheClient.base.Dockerfile"
 
 # Build Docker images from Dockerfiles
 cd "$DOCKER_DIR"
-docker build --build-arg DOCKER_REGISTRY="$REGISTRY" -f CacheServer.Dockerfile -t "$CACHESERVER_IMAGE" .
-docker build --build-arg DOCKER_REGISTRY="$REGISTRY" -f CacheClient.Dockerfile -t "$CACHECLIENT_IMAGE" .
-docker build -f CacheServerScheduler.Dockerfile -t "$CACHESERVER_SCHEDULER_IMAGE" "$REPOSITORY_ROOT/src/subsystems/storage/cache_server_scheduler"
+
+# Build C++ images in parallel
+docker build --build-arg DOCKER_REGISTRY="$REGISTRY" -f CacheServer.Dockerfile -t "$CACHESERVER_IMAGE" . &
+PID_SERVER=$!
+docker build --build-arg DOCKER_REGISTRY="$REGISTRY" -f CacheClient.Dockerfile -t "$CACHECLIENT_IMAGE" . &
+PID_CLIENT=$!
+
+# Build Go images in parallel 
+docker build -f CacheServerScheduler.Dockerfile -t "$CACHESERVER_SCHEDULER_IMAGE" "$REPOSITORY_ROOT/src/subsystems/storage/cache_server_scheduler" &
+PID_SCHEDULER=$!
 
 cd "$CACHE_CONTROLLER_DIR"
-IMG="$CACHECONTROLLER_IMAGE" make docker-build
+IMG="$CACHECONTROLLER_IMAGE" make docker-build &
+PID_CONTROLLER=$!
+
+wait $PID_SERVER || { echo "CacheServer build failed"; exit 1; }
+wait $PID_CLIENT || { echo "CacheClient build failed"; exit 1; }
+wait $PID_SCHEDULER || { echo "CacheServerScheduler build failed"; exit 1; }
+wait $PID_CONTROLLER || { echo "CacheController build failed"; exit 1; }
 
 echo ""
 echo "Images built successfully"
