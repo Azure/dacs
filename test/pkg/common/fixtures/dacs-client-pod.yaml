@@ -41,7 +41,7 @@ spec:
     # Kubelet identity client ID for IMDS auth
     - name: AZURE_CLIENT_ID
       value: ""  # Set by DACSAdapterTestConfig
-    # Enable azure-identity for native blobfile
+    # Enable azure-identity for native blobfile/boostedblob
     - name: AZURE_USE_IDENTITY
       value: "1"
     # Cache enabled flag for tests to check

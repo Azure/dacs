@@ -26,7 +26,8 @@ import (
 type TestType string
 
 const (
-	TestTypeBlobFile TestType = "adapter"
+	TestTypeBlobFile    TestType = "blobfile_adapter"
+	TestTypeBoostedBlob TestType = "boostedblob_adapter"
 
 	dacsPodName                = "dacs-python-client"
 	adapterE2EContainerNamePrefix = "adapter-e2e-"

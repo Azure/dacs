@@ -25,7 +25,12 @@ var adapterConfigs = []PytestAdapterConfig{
 	{
 		AdapterName: "BlobFile",
 		TestType:    TestTypeBlobFile,
-		Labels:      []string{"aks", "adapter"},
+		Labels:      []string{"aks", "adapter", "blobfile"},
+	},
+	{
+		AdapterName: "BoostedBlob",
+		TestType:    TestTypeBoostedBlob,
+		Labels:      []string{"aks", "adapter", "boostedblob"},
 	},
 }
 
