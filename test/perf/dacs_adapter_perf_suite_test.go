@@ -20,9 +20,12 @@ import (
 const (
 	GB                            = 1024 * 1024 * 1024
 	adapterBenchmarkContainerName = "adapter-benchmark-"
+	// Client lists for each adapter family
+	blobfileClients    = "blobfile,dacs_blobfile,dacs_blobfile_zero_copy"
+	boostedblobClients = "boostedblob,dacs_boostedblob,dacs_boostedblob_zero_copy"
 )
 
-var testAdapterBenchmark = func(ctx context.Context) {
+var testAdapterBenchmark = func(ctx context.Context, clients string) {
 	Expect(opts.StorageAccount).NotTo(BeEmpty(), "Storage account is required (--storage-account)")
 
 	opts.ResolveDefaults(ctx)
@@ -72,7 +75,7 @@ var testAdapterBenchmark = func(ctx context.Context) {
 		storageAccountName:       opts.StorageAccount,
 		containerName:            opts.StorageContainer,
 		testImage:                testImage,
-		clients:                  "blobfile,dacs,dacs_zero_copy",
+		clients:                  clients,
 		blobSizeGB:               blobSizeGB,
 		numBlobs:                 numBlobs,
 		numProcesses:             numProcesses,
@@ -109,8 +112,20 @@ var testAdapterBenchmark = func(ctx context.Context) {
 	Expect(len(result.Results)).To(BeNumerically(">", 0), "No benchmark results")
 }
 
+var testBlobfileAdapterBenchmark = func(ctx context.Context) {
+	testAdapterBenchmark(ctx, blobfileClients)
+}
+
+var testBoostedBlobAdapterBenchmark = func(ctx context.Context) {
+	testAdapterBenchmark(ctx, boostedblobClients)
+}
+
 var _ = Describe("Adapter Benchmark", Label("perf", "aks", "adapter"), Ordered, func() {
-	Context("DACS Adapter Throughput Benchmark", Label("adapter"), func() {
-		It("should run adapter throughput benchmark", testAdapterBenchmark)
+	Context("Blobfile Adapter Benchmark", Label("adapter-benchmark-blobfile"), func() {
+		It("should run blobfile adapter throughput benchmark", testBlobfileAdapterBenchmark)
+	})
+
+	Context("Boostedblob Adapter Benchmark", Label("adapter-benchmark-boostedblob"), func() {
+		It("should run boostedblob adapter throughput benchmark", testBoostedBlobAdapterBenchmark)
 	})
 })

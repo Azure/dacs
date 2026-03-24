@@ -108,6 +108,94 @@ class ProcessResult:
     error: Optional[str] = None
 
 
+# Client classification constants
+BLOBFILE_CLIENTS = {"blobfile", "dacs_blobfile", "dacs_blobfile_zero_copy"}
+BOOSTEDBLOB_CLIENTS = {"boostedblob", "dacs_boostedblob", "dacs_boostedblob_zero_copy"}
+DACS_BLOBFILE_CLIENTS = {"dacs_blobfile", "dacs_blobfile_zero_copy"}
+DACS_BOOSTEDBLOB_CLIENTS = {"dacs_boostedblob", "dacs_boostedblob_zero_copy"}
+ZERO_COPY_CLIENTS = {"dacs_blobfile_zero_copy", "dacs_boostedblob_zero_copy"}
+ALL_VALID_CLIENTS = BLOBFILE_CLIENTS | BOOSTEDBLOB_CLIENTS
+
+
+def is_dacs_client(client: str) -> bool:
+    """Check if client uses a dacs adapter."""
+    return client in DACS_BLOBFILE_CLIENTS or client in DACS_BOOSTEDBLOB_CLIENTS
+
+
+def is_blobfile_family(client: str) -> bool:
+    """Check if client belongs to the blobfile family."""
+    return client in BLOBFILE_CLIENTS
+
+
+def is_boostedblob_family(client: str) -> bool:
+    """Check if client belongs to the boostedblob family."""
+    return client in BOOSTEDBLOB_CLIENTS
+
+
+def is_zero_copy(client: str) -> bool:
+    """Check if client uses zero-copy mode."""
+    return client in ZERO_COPY_CLIENTS
+
+
+def normalize_path_for_client(path: str, client: str) -> str:
+    """
+    Normalize a blob path for the given client.
+    
+    - blobfile and boostedblob use short form: az://{account}/{container}/{blob}
+    - dacs adapters use long form: az://{account}.blob.core.windows.net/{container}/{blob}
+    
+    Args:
+        path: The input path (may be short or long form)
+        client: The target client name
+        
+    Returns:
+        Path in the appropriate format for the client
+    """
+    if is_dacs_client(client):
+        # DACS adapters need long form
+        if ".blob.core.windows.net" not in path:
+            # Convert short form to long form
+            parts = path.replace("az://", "").split("/", 2)
+            if len(parts) >= 2:
+                account = parts[0]
+                container_name = parts[1]
+                blob_path = parts[2] if len(parts) > 2 else ""
+                return f"az://{account}.blob.core.windows.net/{container_name}/{blob_path}"
+        return path
+    else:
+        # blobfile and boostedblob use short form
+        if ".blob.core.windows.net" in path:
+            # Convert long form to short form
+            parts = path.replace("az://", "").split("/", 2)
+            if len(parts) >= 2:
+                account = parts[0].replace(".blob.core.windows.net", "")
+                container_name = parts[1]
+                blob_path = parts[2] if len(parts) > 2 else ""
+                return f"az://{account}/{container_name}/{blob_path}"
+        return path
+
+
+def generate_blob_path(storage_account: str, container: str, blob_name: str, client: str) -> str:
+    """
+    Generate a blob path in the appropriate format for the given client.
+    
+    Args:
+        storage_account: Azure storage account name
+        container: Container name
+        blob_name: Blob path within the container
+        client: The target client name
+        
+    Returns:
+        Path in the appropriate format for the client
+    """
+    if is_dacs_client(client):
+        # DACS adapters use long form
+        return f"az://{storage_account}.blob.core.windows.net/{container}/{blob_name}"
+    else:
+        # blobfile and boostedblob use short form
+        return f"az://{storage_account}/{container}/{blob_name}"
+
+
 def run_write_process(
     process_id: int,
     storage_account: str,
@@ -116,44 +204,56 @@ def run_write_process(
     num_blobs: int,
     write_mode: str,
     prefix: str,
-    client: str = "dacs_zero_copy",
+    client: str = "dacs_blobfile_zero_copy",
 ) -> ProcessResult:
     """Run write benchmark in a subprocess.
     
     Args:
-        client: "blobfile", "dacs" (memcpy), or "dacs_zero_copy"
+        client: One of:
+            - "blobfile": baseline blobfile library
+            - "dacs_blobfile": dacs blobfile adapter with memcpy
+            - "dacs_blobfile_zero_copy": dacs blobfile adapter with zero-copy
+            - "boostedblob": baseline boostedblob library
+            - "dacs_boostedblob": dacs boostedblob adapter with memcpy
+            - "dacs_boostedblob_zero_copy": dacs boostedblob adapter with zero-copy
         write_mode: DACS write mode (only for dacs clients)
     """
+    import asyncio
     import ctypes
     import uuid
     
-    use_zero_copy = client == "dacs_zero_copy"
-    is_dacs = client in ("dacs", "dacs_zero_copy")
     blob_size = int(blob_size_gb * GB)
     
-    # Generate paths
+    # Generate paths using the helper function
     paths = []
     for i in range(num_blobs):
         unique_id = uuid.uuid4().hex[:8]
         blob_name = f"{prefix}/proc_{process_id:02d}/blob_{i:04d}_{unique_id}.bin"
-        if client == "blobfile":
-            paths.append(f"az://{storage_account}/{container}/{blob_name}")
-        else:
-            paths.append(f"az://{storage_account}.blob.core.windows.net/{container}/{blob_name}")
+        paths.append(generate_blob_path(storage_account, container, blob_name, client))
     
-    # Prepare data
+    # Prepare data - generate a random pattern for filling blobs.
+    # For zero-copy clients the pattern is copied directly into a native buffer,
+    # so we defer the full data_bytes expansion to avoid a redundant allocation.
     PATTERN_SIZE = min(1 * MB, blob_size)
     pattern = os.urandom(PATTERN_SIZE)
-
-    # Import and setup client
-    dacs_shutdown = None
+    data_bytes = None
+    
+    def get_data_bytes():
+        nonlocal data_bytes
+        if data_bytes is None:
+            data_bytes = (pattern * (blob_size // PATTERN_SIZE + 1))[:blob_size]
+        return data_bytes
+    
+    # Import and setup client based on type
+    dacs_blobfile_shutdown = None
+    dacs_boostedblob_shutdown = None
     buffer = None
     release_buffer = None
-    data_bytes = None
-
-    if is_dacs:
+    write_fn = None  # Will hold the write function for this client
+    
+    if is_dacs_client(client) and is_blobfile_family(client):
         try:
-            from py_dacs_client.dacs_adapter import DACSBlobfileAdapter, WriteMode, shutdown as dacs_shutdown
+            from py_dacs_client.dacs_blobfile_adapter import DACSBlobfileAdapter as DACSAdapter, WriteMode, shutdown as dacs_blobfile_shutdown
             from py_dacs_client.dacs_utils import alloc_buffer, release_buffer
         except ImportError as e:
             return ProcessResult(
@@ -170,16 +270,47 @@ def run_write_process(
         }
         wm = mode_map.get(write_mode, WriteMode.WRITE_SYNC)
         
-        if use_zero_copy:
+        if is_zero_copy(client):
             # Fill native buffer directly in chunks to avoid double memory (5GB Python + 5GB native)
             buffer = alloc_buffer(blob_size)
             buf_addr = ctypes.cast(buffer, ctypes.c_void_p).value
             for offset in range(0, blob_size, PATTERN_SIZE):
                 chunk_len = min(PATTERN_SIZE, blob_size - offset)
                 ctypes.memmove(buf_addr + offset, pattern, chunk_len)
+            def write_fn(path):
+                with DACSAdapter(path, "wb", write_mode=wm) as f:
+                    f.write(buffer=buffer, size=blob_size)
         else:
-            data_bytes = (pattern * (blob_size // PATTERN_SIZE + 1))[:blob_size]
-    else:
+            def write_fn(path):
+                with DACSAdapter(path, "wb", write_mode=wm) as f:
+                    f.write(get_data_bytes())
+    
+    elif is_dacs_client(client) and is_boostedblob_family(client):
+        try:
+            from py_dacs_client import dacs_boostedblob_adapter as tbb
+            from py_dacs_client.dacs_utils import alloc_buffer, release_buffer
+            dacs_boostedblob_shutdown = tbb.shutdown
+        except ImportError as e:
+            return ProcessResult(
+                process_id=process_id, operation="write", client=client,
+                bytes_transferred=0, duration_seconds=0, throughput_mbps=0, throughput_gbits=0,
+                success=False, paths=[], error=str(e),
+            )
+        
+        if is_zero_copy(client):
+            # Fill native buffer directly in chunks to avoid double memory (5GB Python + 5GB native)
+            buffer = alloc_buffer(blob_size)
+            buf_addr = ctypes.cast(buffer, ctypes.c_void_p).value
+            for offset in range(0, blob_size, PATTERN_SIZE):
+                chunk_len = min(PATTERN_SIZE, blob_size - offset)
+                ctypes.memmove(buf_addr + offset, pattern, chunk_len)
+            def write_fn(path):
+                asyncio.run(tbb.write.write_single(path, buffer=buffer, size=blob_size))
+        else:
+            def write_fn(path):
+                asyncio.run(tbb.write.write_single(path, get_data_bytes()))
+    
+    elif is_blobfile_family(client):  # baseline blobfile
         try:
             import blobfile as bf
         except ImportError as e:
@@ -188,7 +319,23 @@ def run_write_process(
                 bytes_transferred=0, duration_seconds=0, throughput_mbps=0, throughput_gbits=0,
                 success=False, paths=[], error=str(e),
             )
-        data_bytes = (pattern * (blob_size // PATTERN_SIZE + 1))[:blob_size]
+        
+        def write_fn(path):
+            with bf.BlobFile(path, "wb") as f:
+                f.write(get_data_bytes())
+    
+    elif is_boostedblob_family(client):  # baseline boostedblob
+        try:
+            import boostedblob as bbb
+        except ImportError as e:
+            return ProcessResult(
+                process_id=process_id, operation="write", client=client,
+                bytes_transferred=0, duration_seconds=0, throughput_mbps=0, throughput_gbits=0,
+                success=False, paths=[], error=str(e),
+            )
+        
+        def write_fn(path):
+            asyncio.run(bbb.write.write_single(path, get_data_bytes()))
     
     written_paths = []
     total_bytes = 0
@@ -197,15 +344,7 @@ def run_write_process(
         start = time.perf_counter()
         
         for path in paths:
-            if is_dacs:
-                with DACSBlobfileAdapter(path, "wb", write_mode=wm) as f:
-                    if use_zero_copy:
-                        f.write(buffer=buffer, size=blob_size)
-                    else:
-                        f.write(data_bytes)
-            else:
-                with bf.BlobFile(path, "wb") as f:
-                    f.write(data_bytes)
+            write_fn(path)
             written_paths.append(path)
             total_bytes += blob_size
         
@@ -228,35 +367,47 @@ def run_write_process(
     finally:
         if buffer is not None and release_buffer is not None:
             release_buffer(buffer)
-        if dacs_shutdown is not None:
+        if dacs_blobfile_shutdown is not None:
             try:
-                dacs_shutdown()
+                dacs_blobfile_shutdown()
             except Exception as e:
-                print(f"[Process {process_id}] Warning: dacs_shutdown() failed: {e}", file=sys.stderr)
+                print(f"[Process {process_id}] Warning: dacs_blobfile_shutdown() failed: {e}", file=sys.stderr)
+        if dacs_boostedblob_shutdown is not None:
+            try:
+                asyncio.run(dacs_boostedblob_shutdown())
+            except Exception as e:
+                print(f"[Process {process_id}] Warning: dacs_boostedblob_shutdown() failed: {e}", file=sys.stderr)
 
 
 def run_read_process(
     process_id: int,
     paths: List[str],
     blob_size: int,
-    client: str = "dacs_zero_copy",
+    client: str = "dacs_blobfile_zero_copy",
 ) -> ProcessResult:
     """Run read benchmark in a subprocess.
     
     Args:
-        client: "blobfile", "dacs" (memcpy), or "dacs_zero_copy"
+        client: One of:
+            - "blobfile": baseline blobfile library
+            - "dacs_blobfile": dacs blobfile adapter with memcpy
+            - "dacs_blobfile_zero_copy": dacs blobfile adapter with zero-copy
+            - "boostedblob": baseline boostedblob library
+            - "dacs_boostedblob": dacs boostedblob adapter with memcpy
+            - "dacs_boostedblob_zero_copy": dacs boostedblob adapter with zero-copy
     """
-    use_zero_copy = client == "dacs_zero_copy"
-    is_dacs = client in ("dacs", "dacs_zero_copy")
+    import asyncio
     
-    # Import and setup client
-    dacs_shutdown = None
+    # Import and setup client based on type
+    dacs_blobfile_shutdown = None
+    dacs_boostedblob_shutdown = None
     buffer = None
     release_buffer = None
+    read_fn = None  # Will hold the read function for this client
     
-    if is_dacs:
+    if is_dacs_client(client) and is_blobfile_family(client):
         try:
-            from py_dacs_client.dacs_adapter import DACSBlobfileAdapter, shutdown as dacs_shutdown
+            from py_dacs_client.dacs_blobfile_adapter import DACSBlobfileAdapter as DACSAdapter, shutdown as dacs_blobfile_shutdown
             from py_dacs_client.dacs_utils import alloc_buffer, release_buffer
         except ImportError as e:
             return ProcessResult(
@@ -265,9 +416,37 @@ def run_read_process(
                 success=False, error=str(e),
             )
         
-        if use_zero_copy:
+        if is_zero_copy(client):
             buffer = alloc_buffer(blob_size)
-    else:
+            def read_fn(path):
+                with DACSAdapter(path, "rb") as f:
+                    f.read(size=blob_size, buffer=buffer)
+        else:
+            def read_fn(path):
+                with DACSAdapter(path, "rb") as f:
+                    f.read(size=blob_size)
+    
+    elif is_dacs_client(client) and is_boostedblob_family(client):
+        try:
+            from py_dacs_client import dacs_boostedblob_adapter as tbb
+            from py_dacs_client.dacs_utils import alloc_buffer, release_buffer
+            dacs_boostedblob_shutdown = tbb.shutdown
+        except ImportError as e:
+            return ProcessResult(
+                process_id=process_id, operation="read", client=client,
+                bytes_transferred=0, duration_seconds=0, throughput_mbps=0, throughput_gbits=0,
+                success=False, error=str(e),
+            )
+        
+        if is_zero_copy(client):
+            buffer = alloc_buffer(blob_size)
+            def read_fn(path):
+                asyncio.run(tbb.read.read_single(path, buffer=buffer, size=blob_size))
+        else:
+            def read_fn(path):
+                asyncio.run(tbb.read.read_single(path))
+    
+    elif is_blobfile_family(client):  # baseline blobfile
         try:
             import blobfile as bf
         except ImportError as e:
@@ -276,6 +455,23 @@ def run_read_process(
                 bytes_transferred=0, duration_seconds=0, throughput_mbps=0, throughput_gbits=0,
                 success=False, error=str(e),
             )
+        
+        def read_fn(path):
+            with bf.BlobFile(path, "rb") as f:
+                f.read()
+    
+    elif is_boostedblob_family(client):  # baseline boostedblob
+        try:
+            import boostedblob as bbb
+        except ImportError as e:
+            return ProcessResult(
+                process_id=process_id, operation="read", client=client,
+                bytes_transferred=0, duration_seconds=0, throughput_mbps=0, throughput_gbits=0,
+                success=False, error=str(e),
+            )
+        
+        def read_fn(path):
+            asyncio.run(bbb.read.read_single(path))
     
     total_bytes = 0
     
@@ -283,25 +479,8 @@ def run_read_process(
         start = time.perf_counter()
         
         for path in paths:
-            # Convert dacs path to blobfile path if needed
-            read_path = path
-            if not is_dacs and ".blob.core.windows.net" in path:
-                parts = path.replace("az://", "").split("/", 2)
-                if len(parts) >= 2:
-                    account = parts[0].replace(".blob.core.windows.net", "")
-                    container_name = parts[1]
-                    blob_path = parts[2] if len(parts) > 2 else ""
-                    read_path = f"az://{account}/{container_name}/{blob_path}"
-            
-            if is_dacs:
-                with DACSBlobfileAdapter(path, "rb") as f:
-                    if use_zero_copy:
-                        f.read(size=blob_size, buffer=buffer)
-                    else:
-                        f.read(size=blob_size)
-            else:
-                with bf.BlobFile(read_path, "rb") as f:
-                    f.read()
+            read_path = normalize_path_for_client(path, client)
+            read_fn(read_path)
             total_bytes += blob_size
         
         duration = time.perf_counter() - start
@@ -323,11 +502,16 @@ def run_read_process(
     finally:
         if buffer is not None and release_buffer is not None:
             release_buffer(buffer)
-        if dacs_shutdown is not None:
+        if dacs_blobfile_shutdown is not None:
             try:
-                dacs_shutdown()
+                dacs_blobfile_shutdown()
             except Exception as e:
-                print(f"[Process {process_id}] Warning: dacs_shutdown() failed: {e}", file=sys.stderr)
+                print(f"[Process {process_id}] Warning: dacs_blobfile_shutdown() failed: {e}", file=sys.stderr)
+        if dacs_boostedblob_shutdown is not None:
+            try:
+                asyncio.run(dacs_boostedblob_shutdown())
+            except Exception as e:
+                print(f"[Process {process_id}] Warning: dacs_boostedblob_shutdown() failed: {e}", file=sys.stderr)
 
 
 def cleanup_paths(all_paths: List[str]):
@@ -463,8 +647,10 @@ def main():
     parser.add_argument("--node-id", default=None, 
                         help="Unique node identifier to avoid path clashes in multi-node runs. "
                              "If not provided, uses hostname.")
-    parser.add_argument("--clients", default="dacs_zero_copy",
-                        help="Comma-separated list of clients to benchmark: blobfile, dacs, dacs_zero_copy")
+    parser.add_argument("--clients", default="dacs_blobfile_zero_copy",
+                        help="Comma-separated list of clients to benchmark: "
+                             "blobfile, dacs_blobfile, dacs_blobfile_zero_copy, "
+                             "boostedblob, dacs_boostedblob, dacs_boostedblob_zero_copy")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     parser.add_argument("--temp-dir",
                         help="Temp directory for blobfile staging (default: system temp). "
@@ -478,11 +664,10 @@ def main():
     args = parser.parse_args()
     
     # Parse clients list
-    valid_clients = {"blobfile", "dacs", "dacs_zero_copy"}
     clients = [c.strip() for c in args.clients.split(",")]
     for client in clients:
-        if client not in valid_clients:
-            parser.error(f"Invalid client '{client}'. Must be one of: {', '.join(valid_clients)}")
+        if client not in ALL_VALID_CLIENTS:
+            parser.error(f"Invalid client '{client}'. Must be one of: {', '.join(sorted(ALL_VALID_CLIENTS))}")
     
     # Set up logging
     logging.basicConfig(
