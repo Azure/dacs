@@ -49,6 +49,8 @@ type Pod struct {
 	SchedulerBypassed bool `json:"schedulerBypassed"`
 	// Does it use ephemeral storage
 	UseEphemeralStorage bool `json:"allowEphemeralStorage"`
+	// Resource requested by the pod
+	Requests v1.ResourceList `json:"requests"`
 }
 
 // Cacheserver node definition
@@ -59,4 +61,6 @@ type Node struct {
 	Schedulable bool `json:"schedulable"`
 	// List of node labels (key value pair)
 	NodeLabels map[string]string `json:"nodeLabels"`
+	// Allocatable resources of the node
+	Allocatable v1.ResourceList `json:"allocatable"`
 }
