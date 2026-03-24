@@ -10,6 +10,7 @@ import (
 	"gotest.tools/v3/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -711,4 +712,80 @@ func TestNoExcessPodsWhenDesiredMatches(t *testing.T) {
 	}
 
 	assert.Equal(t, deleteCount, 0, "Expected no pods to be deleted when desired matches actual")
+}
+
+// TestStickinessRespectsResources verifies that resource constraints take
+// precedence over pod stickiness. When a pod restarts with increased resource
+// requirements, it should be scheduled to a node with sufficient resources
+// rather than sticking to its previous node that lacks capacity.
+func TestStickinessRespectsResources(t *testing.T) {
+	resetTracker()
+
+	// Create a mock StatefulSet
+	statefulset := createMockStatefulSet("cacheserver", "azureml", 3)
+	k8sClient = ctrlfake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(statefulset).Build()
+	mockLazyInit(k8sClient)
+
+	// Setup: 3 Nodes
+	// Node-0: 0 IB (Small capacity)
+	// Node-1: 1 IB (Large capacity, will be occupied)
+	// Node-2: 1 IB (Large capacity, will be free)
+	nodes := CreateMockGpuNodeList(3)
+	nodes[0].Allocatable["rdma/hca_rdma_infiniband"] = resource.MustParse("0")
+
+	// Initial setup: All pods running
+	// Pod-0 running on node-0 (has no IB requirement yet)
+	// Pod-1 running on node-1
+	// Pod-2 running on node-2
+	pods := []Pod{
+		CreateMockPod("azureml", 0, "node-0", PodStatusRunning, true),
+		CreateMockPod("azureml", 1, "node-1", PodStatusRunning, true),
+		CreateMockPod("azureml", 2, "node-2", PodStatusRunning, true),
+	}
+
+	// Run scheduler to register pods in tracker
+	schedulerInstructions := getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 0)
+
+	// Now pod-0 restarts with IB requirement, pod-2 finishes
+	pods[0] = CreateMockPod("azureml", 0, "", PodStatusPending, true)
+	pods[0].Requests["rdma/hca_rdma_infiniband"] = resource.MustParse("1")
+	pods = pods[:2] // Remove pod-2, node-2 is now free
+
+	// Run Scheduler - should schedule to node-2 (has IB), NOT node-0 (lacks IB despite stickiness)
+	schedulerInstructions = getSchedulerInstructions(pods, nodes)
+	assertPodScheduledToNode(t, schedulerInstructions, "azureml", "cacheserver-0", "node-2", "Scheduling pod on healthy node")
+}
+
+// TestStickinessWorksWhenResourcesSufficient verifies that stickiness still works
+// when the previous node has sufficient resources for the restarting pod.
+func TestStickinessWorksWhenResourcesSufficient(t *testing.T) {
+	resetTracker()
+
+	// Create a mock StatefulSet
+	statefulset := createMockStatefulSet("cacheserver", "azureml", 2)
+	k8sClient = ctrlfake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(statefulset).Build()
+	mockLazyInit(k8sClient)
+
+	// Setup: 2 Nodes with equal capacity
+	nodes := CreateMockGpuNodeList(2)
+
+	// Initial setup: Both pods running
+	pods := []Pod{
+		CreateMockPod("azureml", 0, "node-0", PodStatusRunning, true),
+		CreateMockPod("azureml", 1, "node-1", PodStatusRunning, true),
+	}
+
+	// Run scheduler to register pods in tracker
+	schedulerInstructions := getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 0)
+
+	// Now pod-0 restarts, pod-1 finishes - both nodes are free
+	pods[0] = CreateMockPod("azureml", 0, "", PodStatusPending, true)
+	pods = pods[:1] // Remove pod-1
+
+	// Run Scheduler - should stick to node-0 since resources are sufficient
+	schedulerInstructions = getSchedulerInstructions(pods, nodes)
+	assertPodScheduledToNode(t, schedulerInstructions, "azureml", "cacheserver-0", "node-0",
+		"Rescheduling pod on the node it was previously running on")
 }

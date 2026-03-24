@@ -3,10 +3,12 @@ package management
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
+	v1 "k8s.io/api/core/v1"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -42,6 +44,7 @@ func findNodeToSchedule(tracker Tracker, podToSchedule Pod, occupiedNodes nodeLi
 		"state":             podToSchedule.State,
 		"nodeSelectorKey":   podToSchedule.NodeSelectorKey,
 		"nodeSelectorValue": podToSchedule.NodeSelectorValue,
+		"requests":          formatResourceList(podToSchedule.Requests),
 	}).Infof("Looking for a node to schedule pod %s", podToSchedule.PodName)
 
 	// Build list of schedulable free nodes matching pod affinity
@@ -52,6 +55,11 @@ func findNodeToSchedule(tracker Tracker, podToSchedule Pod, occupiedNodes nodeLi
 	for _, node := range nodesMatchingAffinity {
 		isOccupied := occupiedNodes[node.NodeName]
 		if !isOccupied {
+			if !hasSufficientResources(&node, &podToSchedule) {
+				log.Infof("Node %s does not have sufficient resources for pod %s. NodeAllocatable=%s PodRequests=%s",
+					node.NodeName, podToSchedule.PodName, formatResourceList(node.Allocatable), formatResourceList(podToSchedule.Requests))
+				continue
+			}
 			schedulableFreeNodesMatchingAffinity.add(node.NodeName)
 			if !tracker.DoesNodeHavePodErrors(node.NodeName) {
 				schedulableFreeNodesMatchingAffinityWithoutPodError.add(node.NodeName)
@@ -69,7 +77,8 @@ func findNodeToSchedule(tracker Tracker, podToSchedule Pod, occupiedNodes nodeLi
 				podToSchedule.PodName, podToSchedule.Namespace, lastNodeRunningPod)
 			return lastNodeRunningPod, "Rescheduling pod on the node it was previously running on"
 		} else {
-			log.Infof("Pod %s(%s) was previously running on node %s, but node is no longer free, schedulable and without recent cacheserver errors",
+			log.Infof("Pod %s(%s) was previously running on node %s, "+
+				"but node is no longer free, schedulable, has sufficient resources, and without recent cacheserver errors",
 				podToSchedule.PodName, podToSchedule.Namespace, lastNodeRunningPod)
 		}
 	} else {
@@ -231,4 +240,28 @@ func extractPodIndexFromName(podName string) int {
 	}
 
 	return index
+}
+
+// Helper function to check if node has sufficient resources for the pod
+func hasSufficientResources(nodeInfo *Node, pod *Pod) bool {
+	for requestedResourceName, requestedResourceQuantity := range pod.Requests {
+		if requestedResourceQuantity.IsZero() {
+			continue
+		}
+		allocatableQuantity, found := nodeInfo.Allocatable[requestedResourceName]
+		if !found || allocatableQuantity.Cmp(requestedResourceQuantity) < 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// Helper function to format resource list for logging
+func formatResourceList(resourceList v1.ResourceList) string {
+	parts := []string{}
+	for k, v := range resourceList {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, v.String()))
+	}
+	sort.Strings(parts)
+	return fmt.Sprintf("[%s]", strings.Join(parts, ", "))
 }

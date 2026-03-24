@@ -192,6 +192,7 @@ func GetNodesFromK8s() ([]Node, error) {
 			Schedulable:    !node.Spec.Unschedulable,
 			ProcessingUnit: node.Labels[GetConfig().ProcessingUnitLabelKey],
 			Agentpool:      node.Labels[AgentpoolLabelKey],
+			Allocatable:    node.Status.Allocatable,
 		}
 		nodeList = append(nodeList, nodeObj)
 	}
@@ -243,6 +244,7 @@ func GetPodsFromK8s() ([]Pod, error) {
 			AllowedProcessingUnits: getPodAllowedProcessingUnits(pod),
 			AllowedAgentpools:      getPodAllowedAgentpools(pod),
 			UseEphemeralStorage:    pod.Spec.Volumes[0].EmptyDir != nil,
+			Requests:               pod.Spec.Containers[0].Resources.Requests,
 		}
 		podList = append(podList, podObj)
 	}

@@ -32,6 +32,7 @@ func buildNodeListFromK8sNodes(nodes []v1.Node) []Node {
 			NodeName:    node.Name,
 			Schedulable: !node.Spec.Unschedulable,
 			NodeLabels:  node.Labels,
+			Allocatable: node.Status.Allocatable,
 		}
 		nodeList = append(nodeList, nodeObj)
 	}
@@ -57,6 +58,7 @@ func buildPodListFromK8sPods(pods []v1.Pod) []Pod {
 			NodeSelectorKey:     "",
 			NodeSelectorValue:   "",
 			UseEphemeralStorage: usesEphemeralStorage(pod),
+			Requests:            pod.Spec.Containers[0].Resources.Requests,
 		}
 
 		if pod.Spec.Affinity != nil && pod.Spec.Affinity.NodeAffinity != nil &&

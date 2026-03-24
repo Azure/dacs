@@ -47,6 +47,8 @@ type Pod struct {
 	AllowedAgentpools []string `json:"allowedAgentpools"`
 	// Does it use ephemeral storage
 	UseEphemeralStorage bool `json:"allowEphemeralStorage"`
+	// Resource requested by the pod
+	Requests v1.ResourceList `json:"requests"`
 }
 
 // Cacheserver node definition
@@ -59,4 +61,6 @@ type Node struct {
 	ProcessingUnit string `json:"processingUnit"`
 	// Agentpool label value
 	Agentpool string `json:"agentpool"`
+	// Allocatable resources of the node
+	Allocatable v1.ResourceList `json:"allocatable"`
 }

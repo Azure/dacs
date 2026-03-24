@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -28,12 +29,21 @@ func init() {
 // helper to create mock node list
 func createMockNodeList(nodeCount int) []Node {
 	nodes := []Node{}
+
 	for i := 0; i < nodeCount; i++ {
+		allocatable := v1.ResourceList{
+			v1.ResourceCPU:             resource.MustParse("4"),
+			v1.ResourceMemory:          resource.MustParse("16Gi"),
+			"nvidia.com/gpu":           resource.MustParse("1"),
+			"rdma/hca_rdma_infiniband": resource.MustParse("1"),
+		}
+
 		nodes = append(nodes, Node{
 			NodeName:       fmt.Sprintf("node-%d", i),
 			Schedulable:    true,
 			ProcessingUnit: "cpu",
 			Agentpool:      "",
+			Allocatable:    allocatable,
 		})
 	}
 	return nodes
@@ -47,6 +57,10 @@ func createMockPod(podIdx int, nodeName string, state PodStatus, runOnCpu bool) 
 		allowedProcessingUnits = []string{"gpu"}
 	}
 
+	requests := v1.ResourceList{
+		v1.ResourceCPU: resource.MustParse("100m"),
+	}
+
 	return Pod{
 		PodName:                fmt.Sprintf("cacheserver-%d", podIdx),
 		NodeName:               nodeName,
@@ -55,6 +69,7 @@ func createMockPod(podIdx int, nodeName string, state PodStatus, runOnCpu bool) 
 		AllowedProcessingUnits: allowedProcessingUnits,
 		AllowedAgentpools:      []string{},
 		UseEphemeralStorage:    false,
+		Requests:               requests,
 	}
 }
 
@@ -805,4 +820,102 @@ func TestNoExcessPodsWhenDesiredMatches(t *testing.T) {
 	}
 
 	assert.Equal(t, deleteCount, 0, "Expected no pods to be deleted when desired matches actual")
+}
+
+// TestStickinessRespectsResources verifies that resource constraints take
+// precedence over pod stickiness. When a pod restarts with increased resource
+// requirements, it should be scheduled to a node with sufficient resources
+// rather than sticking to its previous node that lacks capacity.
+func TestStickinessRespectsResources(t *testing.T) {
+	resetSchedulerState()
+	mockLazyInit(fake.NewSimpleClientset())
+
+	// Setup: 3 Nodes
+	// Node-0: 0 IB (Small capacity)
+	// Node-1: 1 IB (Large capacity, will be occupied)
+	// Node-2: 1 IB (Large capacity, will be free)
+	nodes := createMockNodeList(3)
+	nodes[0].Allocatable["rdma/hca_rdma_infiniband"] = resource.MustParse("0")
+	nodes[1].Allocatable["rdma/hca_rdma_infiniband"] = resource.MustParse("1")
+	nodes[2].Allocatable["rdma/hca_rdma_infiniband"] = resource.MustParse("1")
+
+	// --- Phase 1: Pod starts with NO IB request ---
+	// Occupy node-1 and node-2 with other pods to force pod-0 to node-0
+	pod1 := createMockPod(1, "node-1", PodStatusRunning, true)
+	pod2 := createMockPod(2, "node-2", PodStatusRunning, true)
+	pod := createMockPod(0, "", PodStatusPending, true)
+	pods := []Pod{pod1, pod2, pod}
+
+	// Run Scheduler - should schedule to node-0 (only free node)
+	instructions := SchedulerPeriodicStep(pods, nodes, false, "")
+	assert.Equal(t, len(instructions), 1)
+	assertPodScheduledToNode(t, instructions, pod.PodName, "node-0", "Scheduling pod on healthy node")
+
+	// Simulate pod running on node-0
+	pod.markPodAsRunning("node-0")
+	pods = []Pod{pod1, pod2, pod}
+
+	// Run scheduler again to establish stickiness in state
+	instructions = SchedulerPeriodicStep(pods, nodes, false, "")
+	assert.Equal(t, len(instructions), 0) // No new instructions when pod is running
+
+	// Free up node-2 by removing pod-2
+	pods = []Pod{pod1, pod}
+
+	// --- Phase 2: Pod restarts with IB request ---
+	// Pod now Pending (crashed/recreated) and requests 1 IB.
+	pod.markPodAsPending()
+	pod.Requests["rdma/hca_rdma_infiniband"] = resource.MustParse("1")
+	pods = []Pod{pod1, pod}
+
+	// Run Scheduler again - should schedule to node-2 (resources trump stickiness)
+	instructions = SchedulerPeriodicStep(pods, nodes, false, "")
+	assert.Equal(t, len(instructions), 1)
+
+	// MUST be Node-2 (not node-0 due to stickiness).
+	assertPodScheduledToNode(t, instructions, pod.PodName, "node-2", "Scheduling pod on healthy node")
+}
+
+// TestStickinessWorksWhenResourcesSufficient verifies that pod stickiness
+// functions correctly when the previous node has sufficient resources even
+// after the pod's resource requirements increase. This is the positive test
+// case confirming stickiness works when resources are adequate.
+func TestStickinessWorksWhenResourcesSufficient(t *testing.T) {
+	resetSchedulerState()
+	mockLazyInit(fake.NewSimpleClientset())
+
+	// Setup: 2 Nodes both with 1 IB
+	nodes := createMockNodeList(2)
+	nodes[0].Allocatable["rdma/hca_rdma_infiniband"] = resource.MustParse("1")
+	nodes[1].Allocatable["rdma/hca_rdma_infiniband"] = resource.MustParse("1")
+
+	// --- Phase 1: Pod starts with NO IB request ---
+	// Occupy node-1 to force pod-0 to node-0
+	pod1 := createMockPod(1, "node-1", PodStatusRunning, true)
+	pod := createMockPod(0, "", PodStatusPending, true)
+	pods := []Pod{pod1, pod}
+
+	// Run Scheduler - should schedule to node-0
+	instructions := SchedulerPeriodicStep(pods, nodes, false, "")
+	assert.Equal(t, len(instructions), 1)
+	assertPodScheduledToNode(t, instructions, pod.PodName, "node-0", "Scheduling pod on healthy node")
+
+	// Simulate pod running on node-0
+	pod.markPodAsRunning("node-0")
+	pods = []Pod{pod1, pod}
+
+	// Run scheduler to establish stickiness
+	instructions = SchedulerPeriodicStep(pods, nodes, false, "")
+	assert.Equal(t, len(instructions), 0)
+
+	// --- Phase 2: Pod restarts with 1 IB request ---
+	// Pod now requests 1 IB, but node-0 has 1 IB available
+	pod.markPodAsPending()
+	pod.Requests["rdma/hca_rdma_infiniband"] = resource.MustParse("1")
+	pods = []Pod{pod1, pod}
+
+	instructions = SchedulerPeriodicStep(pods, nodes, false, "")
+	assert.Equal(t, len(instructions), 1)
+	// Should stick to node-0 since it has sufficient resources (1 IB)
+	assertPodScheduledToNode(t, instructions, pod.PodName, "node-0", "Rescheduling pod on the node it was previously running on")
 }
