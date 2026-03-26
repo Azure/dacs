@@ -1236,6 +1236,68 @@ class TestContextManagerAndErrorHandling:
         assert f._closed == True
         assert len(f._write_buffers) == 0
 
+    def test_close_releases_file_handle_without_exit(self):
+        """Test that close() closes the file handle even when __exit__ is not called.
+        
+        This verifies that calling close() directly (without using context manager exit)
+        properly releases the file handle, triggering the native storage intercept close.
+        """
+        test_data = "Data for close without exit test"
+        blob_path = f"{AZURE_BLOB_PATH}/test_close_without_exit_{id(self)}.txt"
+
+        # Create adapter and manually call __enter__ instead of using 'with' statement
+        f = bf.DACSBlobfileAdapter(blob_path, "wb")
+        f.__enter__()
+
+        # Verify file handle is open
+        assert f._file_handle is not None, "File handle should be open after __enter__"
+        assert f._closed == False, "File should not be marked as closed"
+
+        # Write some data
+        bytes_written = f.write(test_data.encode("utf-8"))
+
+        # Call close() directly WITHOUT calling __exit__
+        f.close()
+
+        # Verify file handle is closed and state is updated
+        assert f._file_handle is None, "File handle should be None after close()"
+        assert f._closed == True, "File should be marked as closed after close()"
+        assert len(f._write_buffers) == 0, "Write buffers should be cleared after close()"
+
+        # Verify the data was actually written (close triggered the native write)
+        if bytes_written > 0:
+            with bf.DACSBlobfileAdapter(blob_path, "rb") as rf:
+                content = rf.read()
+            assert content == test_data.encode("utf-8"), "Data should be written correctly"
+
+    def test_close_without_context_manager_read_mode(self):
+        """Test that close() works correctly for read mode without context manager."""
+        test_data = "Read mode close test"
+        blob_path = f"{AZURE_BLOB_PATH}/test_close_read_no_ctx_{id(self)}.txt"
+
+        # First create the file
+        with bf.DACSBlobfileAdapter(blob_path, "w") as f:
+            f.write(test_data)
+
+        # Open for reading without context manager
+        f = bf.DACSBlobfileAdapter(blob_path, "rb")
+        f.__enter__()
+
+        # Verify file handle is open
+        assert f._file_handle is not None, "File handle should be open"
+        assert f._closed == False
+
+        # Read data
+        content = f.read()
+        assert content == test_data.encode("utf-8")
+
+        # Close directly without __exit__
+        f.close()
+
+        # Verify cleanup
+        assert f._file_handle is None, "File handle should be None after close()"
+        assert f._closed == True, "File should be marked as closed"
+
 
 class TestTextAndBinaryModes:
     """Test text and binary mode handling."""

@@ -265,16 +265,6 @@ class DACSBlobfileAdapter:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
-        # For remote paths, release the cached file handle
-        if self._file_handle is not None:
-            try:
-                asyncio.run(self._client.release_file_handle(self._file_handle))
-            except Exception as e:
-                # Log but don't raise - we're in cleanup
-                logger.warning(f"Error releasing file handle for '{self._path}': {e}")
-            finally:
-                self._file_handle = None
-
         self.close()
 
     def read(self, size: int = -1, buffer: Optional[ctypes.c_void_p] = None) -> Union[str, bytes, memoryview]:
@@ -595,6 +585,16 @@ class DACSBlobfileAdapter:
     def close(self) -> None:
         """Close the file and release all internally-allocated write buffers."""
         if not self._closed:
+            # Close the file handle to trigger close in storage intercept lib which actually writes the file to cache and/or blob.
+            if self._file_handle is not None:
+                try:
+                    asyncio.run(self._client.release_file_handle(self._file_handle))
+                except Exception as e:
+                    logger.error(f"Error closing file handle for '{self._path}': {e}")
+                    raise handle_native_error(e, operation="close", path=self._path) from e
+                finally:
+                    self._file_handle = None
+
             # Release all internally-allocated write buffers via BoundedBufferManager
             # User-provided buffers are NOT released - caller is responsible
             for buffer, is_user_provided in self._write_buffers:
