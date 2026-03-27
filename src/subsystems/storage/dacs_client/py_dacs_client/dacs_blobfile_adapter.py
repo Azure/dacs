@@ -223,8 +223,11 @@ class DACSBlobfileAdapter:
         self._file_handle = None
 
         # Track write buffers that must be kept alive until close()
-        # Tuples of (buffer, is_user_provided) - user buffers are NOT released by us
-        self._write_buffers: List[Tuple[Union[ctypes.c_void_p, ctypes.Array[ctypes.c_char]], bool]] = []
+        # Tuples of (buffer, is_user_provided, source_data_ref) where:
+        # - buffer: the ctypes buffer passed to native code
+        # - is_user_provided: True if user-provided (don't release), False if internally allocated
+        # - source_data_ref: optional reference to source data that must stay alive (for zero-copy paths)
+        self._write_buffers: List[Tuple[Union[ctypes.c_void_p, ctypes.Array[ctypes.c_char]], bool, Any]] = []
 
         # Position tracking for seek/tell support.
         # Each adapter instance maintains its own position independent of the shared native fd.
@@ -457,7 +460,7 @@ class DACSBlobfileAdapter:
             if size is None:
                 raise ValueError("size must be specified when using user-provided buffer.")
             # Track user buffer - we don't release it, but need to document lifetime requirement
-            self._write_buffers.append((buffer, True))  # True = user-provided, don't release
+            self._write_buffers.append((buffer, True, None))  # True = user-provided, don't release
             try:
                 bytes_written = asyncio.run(self._file_handle.write(buffer, size, self._position))
             except Exception as e:
@@ -476,7 +479,7 @@ class DACSBlobfileAdapter:
                 """Acquire a BoundedBufferManager buffer, copy src into it, and track it."""
                 buf = asyncio.run(self._buffer_manager.acquire_buffer(length))
                 ctypes.memmove(buf, src, length)
-                self._write_buffers.append((buf, False))
+                self._write_buffers.append((buf, False, None))  # Data copied, no source ref needed
                 return buf, length
 
             if isinstance(data, str):
@@ -491,7 +494,10 @@ class DACSBlobfileAdapter:
                     internal_buffer, data_len = _copy_to_managed_buffer(data_bytes, len(data_bytes))
                 else:
                     internal_buffer = (ctypes.c_char * data_len).from_buffer(data)
-                    self._write_buffers.append((internal_buffer, True))
+                    # CRITICAL: Keep reference to 'data' to prevent GC before close()
+                    # from_buffer() creates a view into data's memory - if data is GC'd,
+                    # the buffer becomes invalid and causes use-after-free crashes
+                    self._write_buffers.append((internal_buffer, True, data))
             elif isinstance(data, bytes):
                 internal_buffer, data_len = _copy_to_managed_buffer(data, len(data))
             else:
@@ -597,9 +603,11 @@ class DACSBlobfileAdapter:
 
             # Release all internally-allocated write buffers via BoundedBufferManager
             # User-provided buffers are NOT released - caller is responsible
-            for buffer, is_user_provided in self._write_buffers:
+            # source_data_ref is kept alive until this loop completes (after native close)
+            for buffer, is_user_provided, source_data_ref in self._write_buffers:
                 if not is_user_provided:
                     asyncio.run(self._buffer_manager.release_buffer(buffer))
+                # source_data_ref is released when tuple is cleared below
             self._write_buffers.clear()
             self._closed = True
 
