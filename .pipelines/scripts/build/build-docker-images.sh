@@ -58,12 +58,20 @@ base_dockerfile_changed() {
     }
 
     last_built_sha=$(docker inspect "$image" --format '{{ index .Config.Labels "git-sha"}}' 2>/dev/null || true)
-    if [[ -z "$last_built_sha" ]]; then
+    if [[ -z "$last_built_sha" || "$last_built_sha" == "<no value>" ]]; then
         echo "[DEBUG] No git-sha label found on $image, rebuilding to be safe" >&2
         return 0
     fi
 
     echo "[DEBUG] Last base image built at commit: $last_built_sha" >&2
+
+    # Ensure the SHA exists locally -- if not, deepen the fetch to find it, but if it still doesn't exist, assume we need to rebuild
+    git fetch --unshallow 2>/dev/null || git fetch origin --deepen=100 2>/dev/null || true
+
+    if ! git rev-parse --quiet --verify "$last_built_sha" >/dev/null 2>&1; then
+        echo "[DEBUG] Last built SHA $last_built_sha still not found, assuming base image needs rebuild" >&2
+        return 0
+    fi
 
     if git diff --name-only "$last_built_sha"...HEAD 2>/dev/null | grep -q "Docker/base/"; then
         echo "[DEBUG] Docker/base/ changed since $last_built_sha" >&2
