@@ -36,7 +36,8 @@ var log = logger.New()
 // methodScriptFile maps access methods to their Python module filenames.
 var methodScriptFile = map[AccessMethod]string{
 	Blobfile:      "workloads/method_blobfile.py",
-	PythonAdapter: "workloads/method_python_adapter.py",
+	BoostedBlob:   "workloads/method_boostedblob.py",
+	PythonClient: "workloads/method_python_client.py",
 	Interceptor:   "workloads/method_interceptor.py",
 	HFDownloader:  "workloads/method_hf_downloader.py",
 }
@@ -132,10 +133,15 @@ func (r *ModelLoadingRunner) buildJob(ctx context.Context, jobName string) (*bat
 		return nil, fmt.Errorf("failed to unmarshal fixture: %w", err)
 	}
 
-	// Load harness and method scripts
+	// Load harness, shared auth, and method scripts
 	harness, err := workloadScripts.ReadFile("workloads/harness.py")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read harness.py: %w", err)
+	}
+
+	authScript, err := workloadScripts.ReadFile("workloads/auth.py")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read auth.py: %w", err)
 	}
 
 	methodFile, ok := methodScriptFile[r.Method]
@@ -188,13 +194,16 @@ export LD_PRELOAD=/app/py_dacs_client/libStorageIntercept.so
 `, r.Config.StorageAccount, r.Config.StorageAccount, r.Config.StorageContainer, cacheConfigLines)
 	}
 
-	scriptArg := fmt.Sprintf(`%scat > /tmp/method.py << 'METHOD_SCRIPT_EOF'
+	scriptArg := fmt.Sprintf(`%scat > /tmp/auth.py << 'AUTH_SCRIPT_EOF'
+%s
+AUTH_SCRIPT_EOF
+cat > /tmp/method.py << 'METHOD_SCRIPT_EOF'
 %s
 METHOD_SCRIPT_EOF
 cat > /tmp/harness.py << 'HARNESS_SCRIPT_EOF'
 %s
 HARNESS_SCRIPT_EOF
-python3 /tmp/harness.py`, preCommand, string(methodScript), string(harness))
+python3 /tmp/harness.py`, preCommand, string(authScript), string(methodScript), string(harness))
 
 	cacheDiscovery := ""
 	if r.Cache != NoCache {
@@ -212,8 +221,8 @@ python3 /tmp/harness.py`, preCommand, string(methodScript), string(harness))
 		WithParallelism(1).
 		WithCompletions(1).
 		WithMatchLabels(map[string]string{
-			"app":                           jobName,
-			"dacs.azure.com/test-pod":    "true",
+			"app":                        jobName,
+			"dacs.azure.com/test-pod": "true",
 		}).
 		WithRestartPolicy(corev1.RestartPolicyNever).
 		WithImage(r.Config.TestImage).
@@ -251,11 +260,12 @@ python3 /tmp/harness.py`, preCommand, string(methodScript), string(harness))
 	}
 
 	// DACSCacheClient-based methods need CACHE_DISCOVERY_URL + CACHE_SERVER_PORT for cache integration.
-	if (r.Method == PythonAdapter || r.Method == Blobfile || r.Method == BoostedBlob) && r.Cache != NoCache {
+	if (r.Method == PythonClient || r.Method == Blobfile || r.Method == BoostedBlob) && r.Cache != NoCache {
 		jc.WithEnv(0, "CACHE_DISCOVERY_URL", r.Config.CacheDiscoveryURL)
 		jc.WithEnv(0, "CACHE_SERVER_PORT", "9065")
 		// DACSCacheClient default ChunkSize is 32MB
 		jc.WithEnv(0, "CACHE_CHUNK_SIZE", "33554432")
+		jc.WithEnv(0, "SI_cacheKeyGroupId", r.Scale.CacheGroupID())
 	}
 
 	// Configure credentials

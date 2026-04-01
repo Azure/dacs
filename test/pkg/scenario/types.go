@@ -23,13 +23,13 @@ const (
 type AccessMethod string
 
 const (
-	PythonAdapter AccessMethod = "python_adapter"      // py_dacs_client
+	PythonClient  AccessMethod = "python"                // py_dacs_client
 	Blobfile      AccessMethod = "blobfile"             // Azure blobfile SDK
-	BoostedBlob   AccessMethod = "boosted_blob"         // (Placeholder)
+	BoostedBlob   AccessMethod = "boostedblob"          // Boostedblob-compatible async API via DACSCacheClient
 	Interceptor   AccessMethod = "interceptor"          // LD_PRELOAD storage_intercept
-	RunAIStreamer  AccessMethod = "runai_model_streamer" // Run:AI Model Streamer
-	HFDownloader  AccessMethod = "hf_downloader"        // Hugging Face hub download API
-	StreamClient  AccessMethod = "stream_client"         // Native C++ DACS stream client
+	RunAIStreamer AccessMethod = "runai_model_streamer" // Run:AI Model Streamer
+	HFDownloader  AccessMethod = "huggingface"           // Hugging Face hub download API
+	StreamClient  AccessMethod = "stream_client"        // Native C++ DACS stream client
 )
 
 // ScaleProfile defines a model scale for testing, referencing a real HF model.
@@ -43,6 +43,11 @@ type ScaleProfile struct {
 // BlobPrefix returns the blob storage path prefix, derived from the HF repo ID.
 func (s ScaleProfile) BlobPrefix() string {
 	return "scenario-models/" + s.HFRepo
+}
+
+// CacheGroupID returns the deterministic cache group ID for this scale profile.
+func (s ScaleProfile) CacheGroupID() string {
+	return "scenario:" + s.HFRepo
 }
 
 // Predefined scale profiles using public Hugging Face models.
@@ -73,7 +78,7 @@ func ScaleByName(name string) (ScaleProfile, error) {
 type ModelLoadingResult struct {
 	// Scenario identification
 	Scenario     string `json:"Scenario"`     // "model_loading"
-	AccessMethod string `json:"AccessMethod"` // e.g., "python_adapter"
+	AccessMethod string `json:"AccessMethod"` // e.g., "python"
 	CacheMode    string `json:"CacheMode"`    // "no_cache", "cold_cache", "warm_cache"
 	Scale        string `json:"Scale"`        // e.g., "7B-14GB"
 
