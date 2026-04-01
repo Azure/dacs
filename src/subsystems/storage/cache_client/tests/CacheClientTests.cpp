@@ -157,13 +157,24 @@ void CacheClientTests::SetCacheServerCount(int count) const {
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool CacheClientTests::WaitForServerCount(int expectedCount, int timeoutSeconds) const {
-    for (int i = 0; i < timeoutSeconds; i++) {
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeoutSeconds);
+    size_t lastObservedCount = 0;
+    while (std::chrono::steady_clock::now() < deadline) {
         auto servers = m_cacheClientImpl.m_spConnectionManager->GetAllCacheServerHostnames();
-        if (servers.size() == expectedCount) {
+        lastObservedCount = servers.size();
+        if (lastObservedCount == static_cast<size_t>(expectedCount)) {
             return true;
         }
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
+    // Final check to catch updates that occurred during the last sleep
+    auto servers = m_cacheClientImpl.m_spConnectionManager->GetAllCacheServerHostnames();
+    lastObservedCount = servers.size();
+    if (lastObservedCount == static_cast<size_t>(expectedCount)) {
+        return true;
+    }
+    LOG_ERROR("WaitForServerCount timed out after {}s: expected={}, actual={}",
+              timeoutSeconds, expectedCount, lastObservedCount);
     return false;
 }
 //---------------------------------------------------------------------------------------------------------------------
