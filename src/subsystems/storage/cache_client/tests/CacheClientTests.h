@@ -29,8 +29,9 @@ class CacheClientTests : public ::testing::TestWithParam<bool>
 
     // Test constants
     static constexpr const char* UNREACHABLE_ENDPOINT = "192.0.2.1";  // RFC5737 test address
-    static constexpr int DEFAULT_DISCOVERY_TIMEOUT = 3;
-    static constexpr int EXTENDED_DISCOVERY_TIMEOUT = 10;
+    // Timeout must comfortably exceed the discovery interval to avoid races.
+    static constexpr int DEFAULT_DISCOVERY_TIMEOUT = 8;
+    static constexpr int EXTENDED_DISCOVERY_TIMEOUT = 15;
 
     CacheClientImpl m_cacheClientImpl;
     CacheClientImpl m_cacheClientImplCRC;
