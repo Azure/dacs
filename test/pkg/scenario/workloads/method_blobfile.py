@@ -19,6 +19,8 @@ sys.path.insert(0, "/app")
 
 import blobfile
 
+from auth import ensure_auth
+
 _patcher_enabled = False
 
 
@@ -49,12 +51,7 @@ def _maybe_enable_patcher(config):
         ctypes.string_at = _large_string_at
 
         # Auth workaround: inject access token before native lib init
-        if not os.environ.get("SI_azBlobAccessToken"):
-            from azure.identity import DefaultAzureCredential
-            cred = DefaultAzureCredential()
-            token = cred.get_token("https://storage.azure.com/.default")
-            os.environ["SI_azBlobAccessToken"] = token.token
-            print(f"  Injected Azure AD access token for blobfile patcher", flush=True)
+        ensure_auth()
 
         # Endpoint workaround: set FQDN so native lib constructs correct URL
         account = config["storage_account"]

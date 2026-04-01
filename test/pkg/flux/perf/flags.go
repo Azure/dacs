@@ -74,7 +74,7 @@ func AddFlags(fs *flag.FlagSet, opts *Options) error {
 
 	// Scenario test flags
 	fs.StringVar(&opts.ScenarioScale, "scenario-scale", "7B", "Model scale for scenario tests (1B, 7B, 13B, 70B)")
-	fs.StringVar(&opts.ScenarioMethods, "scenario-methods", "blobfile", "Comma-separated access methods (python_adapter,blobfile,interceptor,stream_client,hf_downloader,boosted_blob,runai_model_streamer)")
+	fs.StringVar(&opts.ScenarioMethods, "scenario-methods", "blobfile", "Comma-separated access methods (python,blobfile,boostedblob,interceptor,stream_client,huggingface,runai_model_streamer)")
 	fs.StringVar(&opts.ScenarioCacheModes, "scenario-cache-modes", "no_cache", "Comma-separated cache modes (no_cache,cold_cache,warm_cache)")
 
 	return nil

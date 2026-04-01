@@ -185,19 +185,8 @@ func isValidCombination(method scenario.AccessMethod, cache scenario.CacheMode) 
 	case scenario.HFDownloader:
 		// HF downloader only supports no_cache (downloads from HF directly)
 		return cache == scenario.NoCache
-	case scenario.Blobfile:
-		// Plain blobfile for no_cache; dacs_blobfile_patcher for cache modes
-		return true
-	case scenario.PythonAdapter:
-		// Workarounds: FQDN account name for endpoint, SI_azBlobAccessToken for auth,
-		// explicit offset reads. Supports no_cache (remote blob) and cache modes.
-		return cache == scenario.NoCache || cache == scenario.ColdCache || cache == scenario.WarmCache
-	case scenario.Interceptor:
-		// Uses libStorageIntercept.so (LD_PRELOAD) with non-dynamic config,
-		// explicit azBlobStorageEndpoint, and access token auth.
-		return cache == scenario.NoCache || cache == scenario.ColdCache || cache == scenario.WarmCache
-	case scenario.StreamClient:
-		// Stream client supports all cache modes
+	case scenario.Blobfile, scenario.BoostedBlob, scenario.PythonClient, scenario.Interceptor, scenario.StreamClient:
+		// These methods support all cache modes (no_cache, cold_cache, warm_cache)
 		return true
 	default:
 		return cache == scenario.NoCache

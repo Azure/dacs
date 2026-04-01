@@ -17,7 +17,7 @@ test/pkg/scenario/
   workloads/
     harness.py              ← Common entry point: shard discovery, timing, JSON output
     method_blobfile.py      ← Azure blobfile SDK (no_cache: direct blob; cache modes: dacs_blobfile_patcher)
-    method_python_adapter.py← DACSCacheClient (direct async API)
+    method_python_client.py ← DACSCacheClient (direct async API)
     method_interceptor.py   ← LD_PRELOAD storage_intercept (transparent interception)
     method_hf_downloader.py ← Hugging Face hub download API
     provision.py            ← Python provisioning: HF snapshot → blob upload
@@ -27,7 +27,7 @@ test/pkg/scenario/
 
 1. **Provisioning** — A K8s job runs `provision.py` which downloads the model from
    Hugging Face (if not already in blob) and uploads safetensor shards to Azure Blob Storage.
-   Most access methods read from this blob data. The exception is `hf_downloader`, which
+   Most access methods read from this blob data. The exception is `huggingface`, which
    reads directly from Hugging Face Hub as a baseline comparison.
 
 2. **Test execution** — For each `(method, cache_mode)` combination, the Go runner creates
@@ -46,10 +46,10 @@ test/pkg/scenario/
 | Method | Status | Cache Support | Description |
 |--------|--------|---------------|-------------|
 | `blobfile` | ✅ Implemented | all modes | Azure `blobfile` SDK; cache modes use `dacs_blobfile_patcher` |
-| `python_adapter` | ✅ Implemented | all modes | `DACSCacheClient` — DACS Python client (direct async API) |
+| `boostedblob` | ✅ Implemented | all modes | `dacs_boostedblob_adapter` — boostedblob-compatible async API |
+| `python` | ✅ Implemented | all modes | `DACSCacheClient` — DACS Python client (direct async API) |
 | `interceptor` | ✅ Implemented | all modes | `libStorageIntercept.so` via LD_PRELOAD |
-| `hf_downloader` | ✅ Implemented | no_cache only | Hugging Face `huggingface_hub` download API |
-| `boosted_blob` | ⏳ Placeholder | — | Boosted blob access (pending) |
+| `huggingface` | ✅ Implemented | no_cache only | Hugging Face `huggingface_hub` download API |
 | `runai_model_streamer` | ⏳ Placeholder | — | Run:AI Model Streamer (pending) |
 | `stream_client` | ⏳ Placeholder | — | Native C++ DACS stream client (pending) |
 
@@ -119,7 +119,7 @@ ginkgo -v -r --timeout=120m \
   ./test/perf -- \
   --storage-account=<ACCOUNT> \
   --scenario-scale=7B \
-  --scenario-methods=blobfile,python_adapter,interceptor,hf_downloader \
+  --scenario-methods=blobfile,python,interceptor,huggingface \
   --scenario-cache-modes=no_cache,cold_cache,warm_cache
 ```
 
