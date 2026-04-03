@@ -55,8 +55,12 @@ type Config struct {
 	Namespace string
 	// Image is the full container image (registry/repo:tag)
 	Image string
-	// ServerHostname is the cache server hostname(s), separated by #
+	// ServerHostname is the cache server hostname(s), separated by #.
+	// When empty and DiscoveryEnabled is true, servers are discovered automatically.
 	ServerHostname string
+	// DiscoveryEnabled enables the cache server discovery endpoint (default: true).
+	// When enabled, the client discovers available servers via the discovery API.
+	DiscoveryEnabled bool
 	// NumServers is the number of cache servers (for metrics reporting)
 	NumServers int
 	// NumThreads is the number of threads
@@ -77,6 +81,8 @@ type Config struct {
 	ChecksumAlgorithm ChecksumAlgorithm
 	// ColocateWithServer schedules the perf client on the same node as the cache server
 	ColocateWithServer bool
+	// ConnectionPoolSize overrides the connection pool size (required when discovery is enabled)
+	ConnectionPoolSize int
 
 	// Direct blob client options (used when ClientType is ClientTypeDirectBlob)
 	// StorageAccount is the Azure storage account name
@@ -96,7 +102,7 @@ func NewConfig() *Config {
 		Mode:                    ModeUpload,
 		Namespace:               "cache-server",
 		Image:                   common.GetDefaultImage(),
-		ServerHostname:          "cacheserver-0.cacheserver.cache-server.svc.cluster.local",
+		DiscoveryEnabled:        true,
 		NumThreads:              1,
 		DataSizeGiB:             1,
 		NumIterations:           1,
@@ -133,8 +139,23 @@ func (c *Config) WithImage(image string) *Config {
 }
 
 // WithServerHostname sets the cache server hostname(s).
+// When set, these hostnames are passed to PerfClient as the initial server list.
 func (c *Config) WithServerHostname(hostname string) *Config {
 	c.ServerHostname = hostname
+	return c
+}
+
+// WithDiscoveryEnabled enables or disables the cache server discovery endpoint.
+// When enabled (the default), PerfClient discovers available servers automatically.
+func (c *Config) WithDiscoveryEnabled(enabled bool) *Config {
+	c.DiscoveryEnabled = enabled
+	return c
+}
+
+// WithConnectionPoolSize sets the connection pool size.
+// Required when discovery is enabled since server count is unknown at startup.
+func (c *Config) WithConnectionPoolSize(size int) *Config {
+	c.ConnectionPoolSize = size
 	return c
 }
 
@@ -248,6 +269,18 @@ func (c *Config) LoadJob() (*batchv1.Job, error) {
 		}
 	}
 
+	// Validate cache client requirements
+	if c.ClientType == ClientTypeCache && !c.DiscoveryEnabled && c.ServerHostname == "" {
+		return nil, fmt.Errorf("ServerHostname must be set when discovery is disabled (use WithServerHostname or enable discovery)")
+	}
+	// Auto-calculate connection pool size from NumServers * NumThreads if not explicitly set
+	if c.ClientType == ClientTypeCache && c.ConnectionPoolSize == 0 && c.NumServers > 0 {
+		c.ConnectionPoolSize = c.NumServers * c.NumThreads
+	}
+	if c.ClientType == ClientTypeCache && c.DiscoveryEnabled && c.ConnectionPoolSize == 0 {
+		return nil, fmt.Errorf("ConnectionPoolSize must be set when discovery is enabled (use WithConnectionPoolSize or WithNumServers)")
+	}
+
 	data, err := fixtures.ReadPerfClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read perf client fixture: %w", err)
@@ -351,8 +384,24 @@ func (c *Config) LoadJob() (*batchv1.Job, error) {
 		case ClientTypeCache:
 			container.Args = []string{
 				"--server-port", "9065",
-				"--server-hostname", c.ServerHostname,
 				"--ib-enabled", "false",
+				"--is-discovery-enabled", fmt.Sprintf("%t", c.DiscoveryEnabled),
+			}
+			if c.DiscoveryEnabled {
+				discoveryEndpoint := fmt.Sprintf("cacheserver-discovery.%s.svc.cluster.local", c.Namespace)
+				container.Args = append(container.Args,
+					"--discovery-endpoint", discoveryEndpoint,
+				)
+			}
+			if c.ConnectionPoolSize > 0 {
+				container.Args = append(container.Args,
+					"--connection-pool-size", fmt.Sprintf("%d", c.ConnectionPoolSize),
+				)
+			}
+			if c.ServerHostname != "" {
+				container.Args = append(container.Args,
+					"--server-hostname", c.ServerHostname,
+				)
 			}
 			if c.EnableCalculateChecksum || c.EnableValidateChecksum {
 				container.Args = append(container.Args,

@@ -71,9 +71,15 @@ func (c *perfTestConfig) newPerfConfig(mode perfclient.Mode, prefix string) *per
 			WithStorageContainer(opts.StorageContainer).
 			WithWorkloadIdentity(opts.WorkloadIdentityClientID, opts.WorkloadIdentitySA)
 	} else {
-		config.WithServerHostname(buildServerHostname(namespace, serverCount)).
-			WithNumServers(serverCount).
+		config.WithNumServers(serverCount).
 			WithChecksumAlgorithm(perfclient.ChecksumAlgorithm(opts.ChecksumAlgorithm))
+
+		if c.colocate {
+			// Colocated tests target specific servers — disable discovery and use explicit hostnames
+			config.WithServerHostname(buildServerHostname(namespace, serverCount)).
+				WithDiscoveryEnabled(false)
+		}
+		// Otherwise, discovery is enabled by default — no need to specify hostnames
 	}
 
 	return config

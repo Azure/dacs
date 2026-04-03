@@ -53,8 +53,14 @@ spec:
         args:
         - '--server-port'
         - '9065'
-        - '--server-hostname'
-        - 'cacheserver-0.cacheserver.dacs.svc.cluster.local'
+        - '--ib-enabled'
+        - 'false'
+        - '--is-discovery-enabled'
+        - 'true'
+        - '--discovery-endpoint'
+        - 'cacheserver-discovery'
+        - '--connection-pool-size'
+        - '1'
         - '--num-threads'
         - '1'
         - '--data-size-GiB'
@@ -65,6 +71,4 @@ spec:
         - 'upload'
         - '--num-iterations'
         - '1'
-        - '--ib-enabled'
-        - 'false'
       restartPolicy: Never

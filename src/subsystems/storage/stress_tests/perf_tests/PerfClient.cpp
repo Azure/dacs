@@ -24,6 +24,7 @@
 #include <string>
 #include <thread>
 #include <unistd.h>
+#include <unordered_map>
 #include <vector>
 #include <iomanip>
 #include <ctime>
@@ -478,13 +479,14 @@ po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
         add_common_perf_options(description);
         description.add_options()
             ("server-port", po::value<int>(), "Port to connect to the cache servers")
-            ("server-hostname", po::value<std::string>(), "Hostname(s) of cache server, '#' separated")
+            ("server-hostname", po::value<std::string>(), "Hostname(s) of cache server, '#' separated (optional when discovery is enabled)")
             ("ib-enabled", po::value<bool>()->default_value(false), "Enable Infiniband")
-            ("is-discovery-enabled", po::value<bool>()->default_value(false), "Enable discovery endpoint")
+            ("is-discovery-enabled", po::value<bool>()->default_value(false), "Enable discovery endpoint (default: false)")
+            ("discovery-endpoint", po::value<std::string>()->default_value("cacheserver-discovery"), "Discovery endpoint hostname (default: cacheserver-discovery)")
             ("enable-calculate-checksum", po::value<bool>()->default_value(false), "Enable checksum calculation on upload")
             ("enable-validate-checksum", po::value<bool>()->default_value(false), "Enable checksum validation on download")
-            ("checksum-algorithm", po::value<std::string>()->default_value("xxhash32"), "Checksum algorithm to use ('xxhash32' or 'crc32')");
-
+            ("checksum-algorithm", po::value<std::string>()->default_value("xxhash32"), "Checksum algorithm to use ('xxhash32' or 'crc32')")
+            ("connection-pool-size", po::value<uint32_t>(), "Connection pool size (default: num-threads * num-servers; required when discovery is enabled)");
         po::variables_map vm;
         po::store(po::command_line_parser(argc, argv).options(description).allow_unregistered().run(), vm);
         po::notify(vm);
@@ -495,9 +497,28 @@ po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
             exit(0);
         }
 
-        if(!(has_common_perf_options(vm) && vm.count("server-port") > 0 &&
-             vm.count("server-hostname") > 0 && vm.count("ib-enabled") > 0))
+        bool bHasHostname = vm.count("server-hostname") > 0;
+        bool bDiscoveryEnabled = vm["is-discovery-enabled"].as<bool>();
+
+        if(!has_common_perf_options(vm) || vm.count("server-port") == 0)
         {
+            std::cout << description << std::endl;
+            exit(1);
+        }
+
+        // server-hostname is required when discovery is disabled
+        if(!bDiscoveryEnabled && !bHasHostname)
+        {
+            LOG_CRITICAL("--server-hostname is required when discovery is disabled");
+            std::cout << description << std::endl;
+            exit(1);
+        }
+
+        // connection-pool-size is required when discovery is enabled (server count unknown at startup)
+        if(bDiscoveryEnabled && vm.count("connection-pool-size") == 0)
+        {
+            LOG_CRITICAL("--connection-pool-size is required when discovery is enabled "
+                         "(server count is not known at startup)");
             std::cout << description << std::endl;
             exit(1);
         }
@@ -647,9 +668,14 @@ po::variables_map parse_last_access_dist_args(/*[in]*/ int argc, /*[in]*/ char* 
 int PerfClient(int argc, char *argv[])
 {
     auto args = parse_perf_args(argc, argv);
-    auto strHostnames = args["server-hostname"].as<std::string>();
+
     std::vector<std::string> vecHostnames;
-    boost::split(vecHostnames, strHostnames, boost::is_any_of("#"));
+    if (args.count("server-hostname") > 0)
+    {
+        auto strHostnames = args["server-hostname"].as<std::string>();
+        boost::split(vecHostnames, strHostnames, boost::is_any_of("#"));
+    }
+
     uint16_t nPort = args["server-port"].as<int>();
     std::size_t nNumThreads = args["num-threads"].as<int>();
     std::size_t nDataSizeGiB = args["data-size-GiB"].as<int>();
@@ -658,6 +684,7 @@ int PerfClient(int argc, char *argv[])
     std::size_t nNumIterations = args["num-iterations"].as<int>();
     bool bIsIBEnabled = args["ib-enabled"].as<bool>();
     bool bIsDiscoveryEnabled = args["is-discovery-enabled"].as<bool>();
+    std::string strDiscoveryEndpoint = args["discovery-endpoint"].as<std::string>();
     bool bEnableCalculateChecksum = args["enable-calculate-checksum"].as<bool>();
     bool bEnableValidateChecksum = args["enable-validate-checksum"].as<bool>();
     std::string strChecksumAlgo = args["checksum-algorithm"].as<std::string>();
@@ -667,6 +694,15 @@ int PerfClient(int argc, char *argv[])
     uint64_t nRetryMaxDelayMs = args["cache-retry-max-delay-ms"].as<uint64_t>();
     std::size_t nChunkSizeBytes = args["chunk-size-bytes"].as<std::size_t>();
     LOG_INFO("Chunk size set to {} bytes", nChunkSizeBytes);
+
+    if (bIsDiscoveryEnabled)
+    {
+        LOG_INFO("Discovery enabled, endpoint: {}", strDiscoveryEndpoint);
+    }
+    else
+    {
+        LOG_INFO("Server hostnames provided: {}", fmt::join(vecHostnames, ", "));
+    }
 
     if (!is_valid_mode(strMode))
     {
@@ -682,14 +718,26 @@ int PerfClient(int argc, char *argv[])
 
     CacheClientImpl client;
     const CacheClientRetryConfig retryConfig{nRetryMaxAttempts, nRetryBaseDelayMs, nRetryMaxDelayMs};
-    CacheClientStatus initStatus = client.Initialize(vecCstrHostnames.data(),
+    // When hostnames provided, size pool for all server*thread combos; otherwise let CacheClient use its default
+    uint32_t nConnectionPoolSize = vecCstrHostnames.empty() ? 0 : nNumThreads * vecCstrHostnames.size();
+    if (args.count("connection-pool-size") > 0)
+    {
+        nConnectionPoolSize = args["connection-pool-size"].as<uint32_t>();
+        LOG_INFO("Using user-specified connection pool size: {}", nConnectionPoolSize);
+    }
+    if (nConnectionPoolSize == 0)
+    {
+        LOG_CRITICAL("Connection pool size must be greater than 0");
+        return 1;
+    }
+    CacheClientStatus initStatus = client.Initialize(vecCstrHostnames.empty() ? nullptr : vecCstrHostnames.data(),
                                                      vecCstrHostnames.size(),
                                                      nPort,                        /*nCacheServerPort*/
                                                      bIsIBEnabled,                 /*bEnableIB*/
                                                      bEnableCalculateChecksum,     /*bEnableCalculateChecksum*/
                                                      bEnableValidateChecksum,      /*bEnableValidateChecksum*/
                                                      strChecksumAlgo.c_str(),      /*strChecksumAlgorithm*/
-                                                     nNumThreads * vecCstrHostnames.size(),  /*nConnectionPoolSize*/
+                                                     nConnectionPoolSize,           /*nConnectionPoolSize*/
                                                      false,                        /*bEnableAuth*/
                                                      nullptr,                      /*strAccountName*/
                                                      nullptr,                      /*strAccountKey*/
@@ -697,7 +745,7 @@ int PerfClient(int argc, char *argv[])
                                                      true,                         /*bReuseConnections*/
                                                      bIsDiscoveryEnabled,          /*bIsCacheServerDiscoveryEnabled*/
                                                      5,                            /*nCacheServerDiscoveryIntervalInSeconds*/
-                                                     LOCALHOST,                    /*nCacheServerDiscoveryEndpoint*/
+                                                     strDiscoveryEndpoint.c_str(), /*nCacheServerDiscoveryEndpoint*/
                                                      false,                        /*bEnableConsistentHashing*/
                                                      retryConfig,
                                                      nChunkSizeBytes);              /*nMaxBufferSizeBytes*/
@@ -980,6 +1028,20 @@ int LastAccessTimeDistributionClient(int argc, char* argv[])
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
+enum class ClientMode
+{
+    PerfClient,
+    EvictionClient,
+    LastAccessTimeDistribution,
+    DirectBlobClient
+};
+
+const std::unordered_map<std::string, ClientMode> kClientModeFlags = {
+    {"--eviction-client", ClientMode::EvictionClient},
+    {"--last-access-time-distribution-client", ClientMode::LastAccessTimeDistribution},
+    {"--direct-blob-client", ClientMode::DirectBlobClient},
+};
+//---------------------------------------------------------------------------------------------------------------------
 int main(int argc, char* argv[])
 {
     LoggingApi::Init();
@@ -987,28 +1049,38 @@ int main(int argc, char* argv[])
 
     if (argc < 2)
     {
-        LOG_ERROR("Atleast one argument is required");
+        LOG_ERROR("At least one argument is required");
         return 1;
     }
 
-    // Defaults to perf client, unless first argument specifies another client
-    if (std::string(argv[1]) == std::string("--eviction-client"))
+    // Scan all arguments for client mode flags (can appear in any position)
+    ClientMode mode = ClientMode::PerfClient;
+    std::string selectedFlag;
+    for (int i = 1; i < argc; i++)
     {
-        return EvictionClient(argc, argv);
-    }
-    else if (std::string(argv[1]) == std::string("--last-access-time-distribution-client"))
-    {
-        return LastAccessTimeDistributionClient(argc, argv);
-    }
-    else if (std::string(argv[1]) == std::string("--direct-blob-client"))
-    {
-        return PerfDirectBlobClient(argc, argv);
-    }
-    else
-    {
-        return PerfClient(argc, argv);
+        auto it = kClientModeFlags.find(argv[i]);
+        if (it != kClientModeFlags.end())
+        {
+            if (!selectedFlag.empty())
+            {
+                LOG_CRITICAL("Multiple client mode flags specified: '{}' and '{}'. Only one is allowed.", selectedFlag, argv[i]);
+                return 1;
+            }
+            selectedFlag = argv[i];
+            mode = it->second;
+        }
     }
 
-    return 0;
+    switch (mode)
+    {
+        case ClientMode::EvictionClient:
+            return EvictionClient(argc, argv);
+        case ClientMode::LastAccessTimeDistribution:
+            return LastAccessTimeDistributionClient(argc, argv);
+        case ClientMode::DirectBlobClient:
+            return PerfDirectBlobClient(argc, argv);
+        case ClientMode::PerfClient:
+            return PerfClient(argc, argv);
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
