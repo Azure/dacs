@@ -82,6 +82,11 @@ class ConnectionManager
         std::unique_ptr<IConnection> CreateSocketAndConnect(const std::string& hostname, uint16_t port) const;
         std::unique_ptr<IConnection> InitFreshConnection(/*[in]*/ const std::string& cacheserver);
 
+        // Waits up to timeoutMs for sockfd to become writable (i.e. non-blocking connect
+        // completed). Uses poll() so it is safe for fd numbers >= FD_SETSIZE.
+        // Returns true if the socket is writable within the timeout, false otherwise.
+        static bool WaitForSocketWritable(int sockfd, int timeoutMs);
+
         bool InitInfiniband();
         std::unique_ptr<IConnection> SetupIBConnections(std::unique_ptr<IConnection> socketConnection, const std::string& cacheserver);
         bool PerformIBHandshake(IConnection* connection, const std::string& cacheserver);
@@ -139,5 +144,6 @@ class ConnectionManager
     FRIEND_TEST(CacheClientTests, RefreshCacheServersWithDiscoveryEndpoint);
     FRIEND_TEST(ConsistentHashingTests, ScaleUpDown);
     FRIEND_TEST(ConsistentHashingTests, DistributionAnalysis);
+    FRIEND_TEST(ConnectionManagerTests, WaitForSocketWritableWorksAboveFdSetSize);
 };
 //---------------------------------------------------------------------------------------------------------------------

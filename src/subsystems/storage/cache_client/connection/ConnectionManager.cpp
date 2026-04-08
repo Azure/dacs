@@ -20,6 +20,7 @@
 #include <netinet/tcp.h>
 #include <sys/types.h>
 #include <netdb.h>
+#include <poll.h>
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_set>
@@ -584,31 +585,9 @@ std::unique_ptr<IConnection> ConnectionManager::CreateSocketAndConnect(const std
             return nullptr;
         }
 
-        fd_set writefds;
-        struct timeval tv;
-        int selRet;
-        uint32_t selectAttempts = 0;
-        do {
-            FD_ZERO(&writefds);
-            FD_SET(sockfd, &writefds);
-            tv.tv_sec = 5; // 5 seconds timeout
-            tv.tv_usec = 0;
-            selRet = select(sockfd + 1, NULL, &writefds, NULL, &tv);
-            selectAttempts++;
-        } while (selRet < 0 && errno == EINTR && selectAttempts < 3);
-
-        if (selRet <= 0)
+        if (!WaitForSocketWritable(sockfd, 5000))
         {
-            LOG_WARN("Connection timed out or select error for hostname={} attempts={} errno={} error={}",
-                hostname, selectAttempts, errno, strerror(errno));
-            close(sockfd);
-            freeaddrinfo(res);
-            return nullptr;
-        }
-
-        if (!FD_ISSET(sockfd, &writefds))
-        {
-            LOG_WARN("Socket not ready after select for hostname={}", hostname);
+            LOG_WARN("Connection timed out or socket not writable for hostname={}", hostname);
             close(sockfd);
             freeaddrinfo(res);
             return nullptr;
@@ -674,6 +653,42 @@ std::unique_ptr<IConnection> ConnectionManager::CreateSocketAndConnect(const std
 
     LOG_DEBUG("Successfully connected to hostname={} on port={}", hostname, port);
     return std::make_unique<SocketConnection>(sockfd);
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Uses poll() so it is safe for fd numbers >= FD_SETSIZE.
+// The old select()+FD_SET/FD_ISSET approach had undefined behaviour for fd >= FD_SETSIZE (1024):
+// FD_SET silently writes past the end of the fd_set bitmap, and FD_ISSET subsequently returns
+// false, causing the connection attempt to be incorrectly treated as failed.
+bool ConnectionManager::WaitForSocketWritable(int sockfd, int timeoutMs)
+{
+    struct pollfd pfd;
+    int pollRet;
+    uint32_t attempts = 0;
+    do {
+        pfd.fd = sockfd;
+        pfd.events = POLLOUT;
+        pfd.revents = 0;
+        pollRet = poll(&pfd, 1, timeoutMs);
+        attempts++;
+    } while (pollRet < 0 && errno == EINTR && attempts < 3);
+
+    if (pollRet == 0)
+    {
+        LOG_WARN("poll() timed out for fd={} attempts={}", sockfd, attempts);
+        return false;
+    }
+    if (pollRet < 0)
+    {
+        LOG_WARN("poll() failed for fd={} attempts={} errno={} error={}",
+            sockfd, attempts, errno, strerror(errno));
+        return false;
+    }
+    if (!(pfd.revents & POLLOUT) || (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)))
+    {
+        LOG_WARN("Socket fd={} not writable or in error state after poll(), revents={}", sockfd, pfd.revents);
+        return false;
+    }
+    return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::unique_ptr<IConnection> ConnectionManager::InitFreshConnection(const std::string& cacheserver)

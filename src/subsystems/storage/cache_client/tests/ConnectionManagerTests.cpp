@@ -546,6 +546,131 @@ TEST_F(ConnectionManagerTests, ConnectionToInvalidHostnameFails)
     EXPECT_EQ(connection, nullptr);
 }
 //---------------------------------------------------------------------------------------------------------------------
+// Test: WaitForSocketWritable uses poll(), which works for fd >= FD_SETSIZE
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ConnectionManagerTests, WaitForSocketWritableWorksAboveFdSetSize)
+{
+    // Regression test for the select() → poll() fix to handle high FD numbers in CreateSocketAndConnect.
+    //
+    // select() + FD_SET/FD_ISSET have undefined behaviour for fd >= FD_SETSIZE (1024):
+    // FD_SET silently writes past the fd_set bitmap, so FD_ISSET returns false and
+    // the connection attempt is wrongly treated as failed.
+    // poll() stores the fd directly in struct pollfd — no FD_SETSIZE limit.
+    //
+    // To bypass the connect() fast-path (loopback connect() always returns 0
+    // synchronously, never EINPROGRESS), we test WaitForSocketWritable() directly
+    // with a socketpair() whose fd has been pushed above FD_SETSIZE.
+    // A socketpair is already connected so it is immediately writable: poll(POLLOUT)
+    // returns it as ready, but the old FD_ISSET may return false for fd >= FD_SETSIZE.
+
+    // Open /dev/null dummies to exhaust fd numbers up to FD_SETSIZE.
+    std::vector<int> dummyFds;
+    for (;;)
+    {
+        int fd = open("/dev/null", O_RDONLY);
+        if (fd < 0)
+            break;
+        dummyFds.push_back(fd);
+        if (fd >= FD_SETSIZE)
+            break;
+    }
+
+    const bool aboveFdSetSize = !dummyFds.empty() && dummyFds.back() >= FD_SETSIZE;
+
+    // Create a connected socket pair so the first fd is writable immediately.
+    int spFds[2] = {-1, -1};
+    const bool pairOk = (socketpair(AF_UNIX, SOCK_STREAM, 0, spFds) == 0);
+
+    // Release dummies now so they don't starve the rest of the process.
+    for (int fd : dummyFds)
+        close(fd);
+
+    if (!aboveFdSetSize)
+    {
+        if (pairOk) { close(spFds[0]); close(spFds[1]); }
+        GTEST_SKIP() << "Could not push an fd to >= FD_SETSIZE; cannot test high-fd path";
+    }
+
+    ASSERT_TRUE(pairOk) << "socketpair() failed: " << strerror(errno);
+
+    // spFds[0] was allocated after dummyFds, so it should be >= FD_SETSIZE.
+    const int highFd = spFds[0];
+    ASSERT_GE(highFd, FD_SETSIZE)
+        << "socketpair fd " << highFd << " is below FD_SETSIZE; test setup failed";
+
+    // Note: we do NOT assert FD_ISSET behaviour here. For fd >= FD_SETSIZE, FD_SET
+    // writes past the end of the fd_set bitmap — this is undefined behaviour. The
+    // result of FD_ISSET is unpredictable (it may return true or false depending on
+    // what happens to be in that memory). The only safe fix is to not use select()
+    // at all for arbitrary fd numbers, which is what WaitForSocketWritable does.
+
+    // WaitForSocketWritable (poll-based) must correctly report the socket as writable.
+    EXPECT_TRUE(ConnectionManager::WaitForSocketWritable(highFd, 1000))
+        << "poll()-based WaitForSocketWritable must return true for fd=" << highFd
+        << " >= FD_SETSIZE; the old select() code returned false here";
+
+    close(spFds[0]);
+    close(spFds[1]);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ConnectionManagerTests, ConnectionSucceedsWithHighFdNumber)
+{
+    // Regression test for the select() → poll() fix to handle high FD numbers in CreateSocketAndConnect.
+    //
+    // select() + FD_SET/FD_ISSET have undefined behaviour for fd >= FD_SETSIZE (1024).
+    // poll() has no such limit.
+    //
+    // Strategy: exhaust fd numbers up to FD_SETSIZE by opening /dev/null dummies so
+    // that the next socket() call returns an fd >= FD_SETSIZE, then verify the
+    // connection still succeeds.
+
+    int serverFd = StartMockServer(TEST_PORT);
+    ASSERT_GE(serverFd, 0) << "Failed to start mock server";
+
+    // Open dummy fds until (at least) the next allocation would be >= FD_SETSIZE.
+    std::vector<int> dummyFds;
+    for (;;)
+    {
+        int fd = open("/dev/null", O_RDONLY);
+        if (fd < 0)
+            break; // hit the process fd limit before FD_SETSIZE — see skip below
+        dummyFds.push_back(fd);
+        if (fd >= FD_SETSIZE + 5) // give some buffer above FD_SETSIZE to be sure
+            break;
+    }
+
+    bool aboveFdSetSize = !dummyFds.empty() && dummyFds.back() >= FD_SETSIZE;
+
+    auto acceptHelper = StartAcceptThread(serverFd, 500);
+
+    std::vector<std::string> servers = {LOCALHOST};
+    auto connManager = CreateConnectionManager(servers);
+    auto connection = connManager->GetConnection(LOCALHOST);
+
+    // Release dummy fds before asserting so we don't starve subsequent tests.
+    for (int fd : dummyFds)
+        close(fd);
+
+    if (!aboveFdSetSize)
+    {
+        acceptHelper->Stop();
+        GTEST_SKIP() << "Process fd limit reached before FD_SETSIZE; cannot test high-fd path";
+    }
+
+    EXPECT_NE(connection, nullptr)
+        << "poll()-based connect must work with fd >= FD_SETSIZE; "
+           "the old select() code would invoke undefined behaviour above fd 1024";
+    if (connection)
+    {
+        // IsValidConnection() does recv(MSG_PEEK|MSG_DONTWAIT) which returns 0 (EOF)
+        // once the server closes the socket. Must check before stopping the accept helper.
+        EXPECT_TRUE(connection->IsValidConnection());
+        EXPECT_GE(connection->GetId(), FD_SETSIZE) << "Connection fd should be above FD_SETSIZE";
+    }
+
+    acceptHelper->Stop();
+}
+//---------------------------------------------------------------------------------------------------------------------
 // Test: Connection pool size limits
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(ConnectionManagerTests, ConnectionPoolSizeLimit)
