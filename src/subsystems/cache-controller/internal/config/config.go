@@ -22,6 +22,11 @@ import (
 const (
 	ConfEnvPrefix         = "CACHE_CONTROLLER"
 	DefaultConfigFilePath = "./cache-controller-config.yaml"
+
+	DefaultScaleUpStabilizationWindow   = 15 * time.Minute
+	DefaultScaleDownStabilizationWindow = 15 * time.Minute
+	DefaultScaleUpTolerancePercent      = int32(10)
+	DefaultScaleDownTolerancePercent    = int32(10)
 )
 
 type Config struct {
@@ -29,6 +34,19 @@ type Config struct {
 	CacheServerImage          string            `yaml:"cacheServerImage" mapstructure:"cacheServerImage"`
 	ImagePullPolicy           corev1.PullPolicy `yaml:"imagePullPolicy" mapstructure:"imagePullPolicy"`
 	PodStuckThresholdDuration time.Duration     `yaml:"podStuckThresholdDuration" mapstructure:"podStuckThresholdDuration"`
+
+	// ScaleUpStabilizationWindow is the duration the normalizer requires
+	// desired > current continuously before allowing a scale-up.
+	ScaleUpStabilizationWindow time.Duration `yaml:"scaleUpStabilizationWindow" mapstructure:"scaleUpStabilizationWindow"`
+	// ScaleDownStabilizationWindow is the duration the normalizer requires
+	// desired < current continuously before allowing a scale-down.
+	ScaleDownStabilizationWindow time.Duration `yaml:"scaleDownStabilizationWindow" mapstructure:"scaleDownStabilizationWindow"`
+	// ScaleUpTolerancePercent is the percentage change threshold below which
+	// scale-up is suppressed (0-100).
+	ScaleUpTolerancePercent int32 `yaml:"scaleUpTolerancePercent" mapstructure:"scaleUpTolerancePercent"`
+	// ScaleDownTolerancePercent is the percentage change threshold below which
+	// scale-down is suppressed (0-100).
+	ScaleDownTolerancePercent int32 `yaml:"scaleDownTolerancePercent" mapstructure:"scaleDownTolerancePercent"`
 }
 
 var (
@@ -93,6 +111,12 @@ func loadConfigInternal(cfgPath string) (*Config, error) {
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
+	// Set scaling config defaults
+	viper.SetDefault("scaleUpStabilizationWindow", DefaultScaleUpStabilizationWindow)
+	viper.SetDefault("scaleDownStabilizationWindow", DefaultScaleDownStabilizationWindow)
+	viper.SetDefault("scaleUpTolerancePercent", DefaultScaleUpTolerancePercent)
+	viper.SetDefault("scaleDownTolerancePercent", DefaultScaleDownTolerancePercent)
+
 	// If a config file path is provided, try to read it; tolerate not-found
 	if strings.TrimSpace(cfgPath) != "" {
 		viper.SetConfigFile(cfgPath)
@@ -126,6 +150,19 @@ func (c *Config) validate() error {
 
 	if len(missingFields) > 0 {
 		return fmt.Errorf("missing required configuration fields: %s", strings.Join(missingFields, ", "))
+	}
+
+	if c.ScaleUpStabilizationWindow < 0 {
+		return fmt.Errorf("scaleUpStabilizationWindow must not be negative, got %s", c.ScaleUpStabilizationWindow)
+	}
+	if c.ScaleDownStabilizationWindow < 0 {
+		return fmt.Errorf("scaleDownStabilizationWindow must not be negative, got %s", c.ScaleDownStabilizationWindow)
+	}
+	if c.ScaleUpTolerancePercent < 0 || c.ScaleUpTolerancePercent > 100 {
+		return fmt.Errorf("scaleUpTolerancePercent must be between 0 and 100, got %d", c.ScaleUpTolerancePercent)
+	}
+	if c.ScaleDownTolerancePercent < 0 || c.ScaleDownTolerancePercent > 100 {
+		return fmt.Errorf("scaleDownTolerancePercent must be between 0 and 100, got %d", c.ScaleDownTolerancePercent)
 	}
 
 	return nil

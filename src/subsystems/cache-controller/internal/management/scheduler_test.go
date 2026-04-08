@@ -2,38 +2,19 @@ package management
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"testing"
 	"time"
 
 	"gotest.tools/v3/assert"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
 	config "github.com/Azure/dacs/cache-controller/internal/config"
 )
 
-var k8sClient ctrlclient.Client
-var tracker Tracker
-
-func newTestScheme() *runtime.Scheme {
-	s := runtime.NewScheme()
-	_ = clientgoscheme.AddToScheme(s)
-	_ = storagev1.AddToScheme(s)
-	return s
-}
+var tracker *Tracker
 
 func init() {
-	k8sClient = ctrlfake.NewClientBuilder().WithScheme(newTestScheme()).Build()
-	mockLazyInit(k8sClient)
+	resetTracker()
 }
 
 func getSchedulerInstructionForPod(schedulerInstructions []SchedulerInstruction, namespace string, podName string) *SchedulerInstruction {
@@ -113,50 +94,15 @@ func (pod *Pod) markPodAsRunning(nodeName string) {
 }
 
 func resetTracker() {
-	config := &config.Config{
+	cfg := &config.Config{
 		PodStuckThresholdDuration: 5 * time.Minute,
 	}
-	newTracker := InitTracker(config)
+	newTracker := InitTracker(context.Background(), cfg)
 	tracker = newTracker
 }
 
-// mockLazyInit sets the k8sClient to the provided fake client.
-func mockLazyInit(fakeClient ctrlclient.Client) {
-	k8sClient = fakeClient
-}
-
-// Helper function to create a mock Kubernetes StatefulSet
-func createMockStatefulSet(name string, namespace string, replicas int32) *appsv1.StatefulSet {
-	return &appsv1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			// No labels on the StatefulSet itself - verifies we fetch by name, not label
-		},
-		Spec: appsv1.StatefulSetSpec{
-			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app": "cacheserver",
-				},
-			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app": "cacheserver",
-					},
-				},
-			},
-		},
-	}
-}
-
 func getSchedulerInstructions(pods []Pod, nodes []Node) []SchedulerInstruction {
-	// Update tracker
-	tracker.UpdateTracker(nodes, pods, []storagev1.Cache{})
-
-	// Get scheduler instructions
-	return Schedule(context.TODO(), tracker, k8sClient)
+	return tracker.UpdateAndSchedule(context.TODO(), "test-ns/test-cache", nodes, pods)
 }
 
 func TestPodSticksToNode(t *testing.T) {
@@ -593,138 +539,12 @@ func TestMultiSchedulerMultiNamespace(t *testing.T) {
 		"No eligible node found to schedule pod cacheserver-2. totalNodes=5, schedulableNodesMatchingAffinity=5, schedulableFreeNodesMatchingAffinity=0, occupiedNodes=5")
 }
 
-// TestExcessPodsCleanup tests the scenario
-// where 10 pods were running (cacheserver-0,1,2,3,4,6,8,9,16,22)
-// but only 6 were desired.
-// This caused a deadlock where cacheserver-5 was pending and couldn't be scheduled.
-// Also tests that excess pods are deleted regardless of their state.
-func TestExcessPodsCleanup(t *testing.T) {
-	resetTracker()
-
-	// Create a mock StatefulSet with 6 desired replicas
-	statefulset := createMockStatefulSet("cacheserver", "azureml", 6)
-	k8sClient = ctrlfake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(statefulset).Build()
-	mockLazyInit(k8sClient)
-
-	// Create 10 nodes (enough for the desired 6 pods)
-	nodes := CreateMockGpuNodeList(10)
-
-	// Simulate the real-world scenario: 10 pods with various states but only 6 desired
-	// Running pods: cacheserver-0, 1, 2, 3, 4 (desired, all running)
-	// Excess pods in different states:
-	// cacheserver-6 (Running), 8 (Terminating), 9 (NotReady), 16 (Failed), 22 (Running)
-	pods := []Pod{}
-	pods = append(pods, CreateMockPod("azureml", 0, "node-0", PodStatusRunning, true))
-	pods = append(pods, CreateMockPod("azureml", 1, "node-1", PodStatusRunning, true))
-	pods = append(pods, CreateMockPod("azureml", 2, "node-2", PodStatusRunning, true))
-	pods = append(pods, CreateMockPod("azureml", 3, "node-3", PodStatusRunning, true))
-	pods = append(pods, CreateMockPod("azureml", 4, "node-4", PodStatusRunning, true))
-	// Excess pods in various states
-	pod6 := CreateMockPod("azureml", 6, "node-5", PodStatusRunning, true)
-	pod6.PodName = "cacheserver-6"
-	pods = append(pods, pod6)
-
-	pod8 := CreateMockPod("azureml", 8, "node-6", PodStatusTerminating, true)
-	pod8.PodName = "cacheserver-8"
-	pods = append(pods, pod8)
-
-	pod9 := CreateMockPod("azureml", 9, "node-7", PodStatusNotReady, true)
-	pod9.PodName = "cacheserver-9"
-	pods = append(pods, pod9)
-
-	pod16 := CreateMockPod("azureml", 16, "node-8", PodStatusFailed, true)
-	pod16.PodName = "cacheserver-16"
-	pods = append(pods, pod16)
-
-	pod22 := CreateMockPod("azureml", 22, "node-9", PodStatusRunning, true)
-	pod22.PodName = "cacheserver-22"
-	pods = append(pods, pod22)
-
-	// cacheserver-5 is pending (can't find a free node)
-	pendingPod := CreateMockPod("azureml", 5, "", PodStatusPending, true)
-	pendingPod.PodName = "cacheserver-5"
-	pods = append(pods, pendingPod)
-
-	// Run scheduler - should identify excess pods and issue delete instructions
-	schedulerInstructions := getSchedulerInstructions(pods, nodes)
-
-	// Verify the correct pods are being deleted with proper reason
-	assertPodDeleted(t, schedulerInstructions, "azureml", "cacheserver-6",
-		"Pod cacheserver-6(azureml) has index >= desired replica count, cleaning up excess pod")
-	assertPodDeleted(t, schedulerInstructions, "azureml", "cacheserver-8",
-		"Pod cacheserver-8(azureml) has index >= desired replica count, cleaning up excess pod")
-	assertPodDeleted(t, schedulerInstructions, "azureml", "cacheserver-9",
-		"Pod cacheserver-9(azureml) has index >= desired replica count, cleaning up excess pod")
-	assertPodDeleted(t, schedulerInstructions, "azureml", "cacheserver-16",
-		"Pod cacheserver-16(azureml) has index >= desired replica count, cleaning up excess pod")
-	assertPodDeleted(t, schedulerInstructions, "azureml", "cacheserver-22",
-		"Pod cacheserver-22(azureml) has index >= desired replica count, cleaning up excess pod")
-	// Verify cacheserver-5 is pending and cannot be scheduled due to no available nodes
-	pod5Instruction := getSchedulerInstructionForPod(schedulerInstructions, "azureml", "cacheserver-5")
-	assert.Assert(t, pod5Instruction != nil, "Expected bind instruction for cacheserver-5")
-	assert.Equal(t, pod5Instruction.Type, BindInstruction)
-	assert.Equal(t, pod5Instruction.DestinationNode, "", "cacheserver-5 should not have a destination node in first cycle")
-	assert.Assert(t, strings.Contains(pod5Instruction.Reason, "No eligible node found"), "Expected 'No eligible node found' reason for cacheserver-5")
-
-	// Simulate deletion of excess pods by removing them from the pod list
-	podsAfterDeletion := []Pod{}
-	for _, pod := range pods {
-		index := extractPodIndexFromName(pod.PodName)
-		if index >= 0 && index < 6 {
-			podsAfterDeletion = append(podsAfterDeletion, pod)
-		}
-	}
-
-	// Run scheduler again - now cacheserver-5 should be schedulable to one of the freed nodes
-	schedulerInstructions = getSchedulerInstructions(podsAfterDeletion, nodes)
-	freeNodes := nodeList{"node-5": true, "node-6": true, "node-7": true, "node-8": true, "node-9": true}
-	assertPodScheduledToOneOfNodes(t, schedulerInstructions, "azureml", "cacheserver-5", freeNodes, "Scheduling pod on healthy node")
-}
-
-// TestNoExcessPodsWhenDesiredMatches tests that no pods are deleted when
-// the desired replica count matches the running pod count and indices
-func TestNoExcessPodsWhenDesiredMatches(t *testing.T) {
-	resetTracker()
-
-	// Create a mock StatefulSet with 4 desired replicas
-	statefulset := createMockStatefulSet("cacheserver", "azureml", 4)
-	k8sClient = ctrlfake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(statefulset).Build()
-	mockLazyInit(k8sClient)
-
-	nodes := CreateMockGpuNodeList(4)
-
-	// Running pods: cacheserver-0, 1, 2, 3 (desired configuration)
-	pods := []Pod{}
-	for i := 0; i < 4; i++ {
-		pod := CreateMockPod("azureml", i, fmt.Sprintf("node-%d", i), PodStatusRunning, true)
-		pods = append(pods, pod)
-	}
-
-	// Run scheduler
-	schedulerInstructions := getSchedulerInstructions(pods, nodes)
-
-	// Should NOT issue any delete instructions
-	deleteCount := 0
-	for _, instruction := range schedulerInstructions {
-		if instruction.Type == DeleteInstruction {
-			deleteCount++
-		}
-	}
-
-	assert.Equal(t, deleteCount, 0, "Expected no pods to be deleted when desired matches actual")
-}
-
 // TestStickinessRespectsResources verifies that resource constraints take
 // precedence over pod stickiness. When a pod restarts with increased resource
 // requirements, it should be scheduled to a node with sufficient resources
 // rather than sticking to its previous node that lacks capacity.
 func TestStickinessRespectsResources(t *testing.T) {
 	resetTracker()
-
-	// Create a mock StatefulSet
-	statefulset := createMockStatefulSet("cacheserver", "azureml", 3)
-	k8sClient = ctrlfake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(statefulset).Build()
-	mockLazyInit(k8sClient)
 
 	// Setup: 3 Nodes
 	// Node-0: 0 IB (Small capacity)
@@ -761,11 +581,6 @@ func TestStickinessRespectsResources(t *testing.T) {
 // when the previous node has sufficient resources for the restarting pod.
 func TestStickinessWorksWhenResourcesSufficient(t *testing.T) {
 	resetTracker()
-
-	// Create a mock StatefulSet
-	statefulset := createMockStatefulSet("cacheserver", "azureml", 2)
-	k8sClient = ctrlfake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(statefulset).Build()
-	mockLazyInit(k8sClient)
 
 	// Setup: 2 Nodes with equal capacity
 	nodes := CreateMockGpuNodeList(2)

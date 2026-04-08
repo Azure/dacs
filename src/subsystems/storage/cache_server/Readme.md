@@ -49,7 +49,8 @@ Default is set to 90
 ### CACHESERVER_EVICTION_SIZE_TARGET
 Values: Target cache utilization percentage after eviction (0-100)
 When eviction triggers, cache will be reduced to around this percentage.
-Default is set to 90% of the Eviction Size Threshold
+Default is 80 when deployed via Helm/Kubernetes. If the environment variable is missing or
+invalid, the cache server falls back to 90% of the Eviction Size Threshold.
 
 ### CACHESERVER_EVICTION_PASS_FREQUENCY
 Values: Frequency of running eviction pass, example "1h30m"

@@ -229,6 +229,97 @@ func TestCacheWebhook_ValidateCreate(t *testing.T) {
 			},
 			expectedErr: "required when infinibandResourceLimitCount > 0",
 		},
+		// Boundary tests for resource limits
+		{
+			name: "rejects serverSizeInGB = 0",
+			mutate: func(c *Cache) {
+				c.Spec.ServerSizeInGB = 0
+			},
+			expectedErr: "must be at least 1",
+		},
+		{
+			name: "accepts serverSizeInGB = 1",
+			mutate: func(c *Cache) {
+				c.Spec.ServerSizeInGB = 1
+			},
+		},
+		{
+			name: "rejects serverThreads = 3",
+			mutate: func(c *Cache) {
+				c.Spec.ServerThreads = 3
+			},
+			expectedErr: "must be at least 4",
+		},
+		{
+			name: "accepts serverThreads = 4",
+			mutate: func(c *Cache) {
+				c.Spec.ServerThreads = 4
+			},
+		},
+		{
+			name: "rejects cpuLimit = 0",
+			mutate: func(c *Cache) {
+				c.Spec.CpuLimit = ptr.To(int32(0))
+			},
+			expectedErr: "must be at least 1",
+		},
+		{
+			name: "accepts cpuLimit = 1",
+			mutate: func(c *Cache) {
+				c.Spec.CpuLimit = ptr.To(int32(1))
+			},
+		},
+		{
+			name: "rejects memoryLimitMB = 1023",
+			mutate: func(c *Cache) {
+				c.Spec.MemoryLimitMB = ptr.To(int32(1023))
+			},
+			expectedErr: "must be at least 1024",
+		},
+		{
+			name: "accepts memoryLimitMB = 1024",
+			mutate: func(c *Cache) {
+				c.Spec.MemoryLimitMB = ptr.To(int32(1024))
+			},
+		},
+		{
+			name: "rejects egressBandwidthLimitGbps = 0",
+			mutate: func(c *Cache) {
+				c.Spec.EgressBandwidthLimitGbps = ptr.To(int32(0))
+			},
+			expectedErr: "must be at least 1",
+		},
+		{
+			name: "accepts egressBandwidthLimitGbps = 1",
+			mutate: func(c *Cache) {
+				c.Spec.EgressBandwidthLimitGbps = ptr.To(int32(1))
+			},
+		},
+		{
+			name: "rejects percentageOfNodesToUse = 0",
+			mutate: func(c *Cache) {
+				c.Spec.Scaling.Dynamic = &DynamicScaleConfig{
+					PercentageOfNodesToUse: 0,
+				}
+			},
+			expectedErr: "must be between 1 and 100",
+		},
+		{
+			name: "rejects percentageOfNodesToUse = 101",
+			mutate: func(c *Cache) {
+				c.Spec.Scaling.Dynamic = &DynamicScaleConfig{
+					PercentageOfNodesToUse: 101,
+				}
+			},
+			expectedErr: "must be between 1 and 100",
+		},
+		{
+			name: "rejects static numServers = 0",
+			mutate: func(c *Cache) {
+				c.Spec.Scaling.Static = &StaticScaleConfig{NumServers: 0}
+			},
+			expectedErr: "must be at least 1",
+		},
 	}
 
 	for _, tt := range tests {
@@ -258,5 +349,90 @@ func TestCacheWebhook_ValidateCreate(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCacheWebhook_ValidateUpdate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		mutateOld   func(*Cache)
+		mutateNew   func(*Cache)
+		expectedErr string
+	}{
+		{
+			name: "valid update with no changes",
+		},
+		{
+			name: "valid update changing serverSizeInGB",
+			mutateNew: func(c *Cache) {
+				c.Spec.ServerSizeInGB = 200
+			},
+		},
+		{
+			name: "rejects invalid serverThreads on update",
+			mutateNew: func(c *Cache) {
+				c.Spec.ServerThreads = 2
+			},
+			expectedErr: "must be at least 4",
+		},
+		{
+			name: "rejects invalid memoryLimitMB on update",
+			mutateNew: func(c *Cache) {
+				c.Spec.MemoryLimitMB = ptr.To(int32(512))
+			},
+			expectedErr: "must be at least 1024",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			oldCache := &Cache{Spec: CacheSpec{ServerSizeInGB: 100, ServerThreads: 8}}
+			if tt.mutateOld != nil {
+				tt.mutateOld(oldCache)
+			}
+			if err := oldCache.Default(context.Background(), oldCache); err != nil {
+				t.Fatalf("Default() old error: %v", err)
+			}
+
+			newCache := &Cache{Spec: CacheSpec{ServerSizeInGB: 100, ServerThreads: 8}}
+			if tt.mutateNew != nil {
+				tt.mutateNew(newCache)
+			}
+			if err := newCache.Default(context.Background(), newCache); err != nil {
+				t.Fatalf("Default() new error: %v", err)
+			}
+
+			_, err := newCache.ValidateUpdate(context.Background(), oldCache, newCache)
+
+			if tt.expectedErr == "" {
+				if err != nil {
+					t.Errorf("expected no error, got: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Errorf("expected error containing %q, got nil", tt.expectedErr)
+				} else if !strings.Contains(err.Error(), tt.expectedErr) {
+					t.Errorf("expected error containing %q, got: %v", tt.expectedErr, err)
+				}
+			}
+		})
+	}
+}
+
+func TestCacheWebhook_ValidateDelete(t *testing.T) {
+	t.Parallel()
+
+	cache := &Cache{Spec: CacheSpec{ServerSizeInGB: 100, ServerThreads: 8}}
+	if err := cache.Default(context.Background(), cache); err != nil {
+		t.Fatalf("Default() error: %v", err)
+	}
+
+	_, err := cache.ValidateDelete(context.Background(), cache)
+	if err != nil {
+		t.Errorf("ValidateDelete should accept deletion, got: %v", err)
 	}
 }

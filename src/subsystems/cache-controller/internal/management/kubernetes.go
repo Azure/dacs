@@ -22,6 +22,10 @@ const (
 	PodLabelSelectorKey   = "app"
 	PodLabelSelectorValue = "cacheserver"
 	StatefulSetName       = "cacheserver"
+
+	// CacheNameLabelKey is the label key added to StatefulSets and pods to
+	// identify the owning Cache CR by name.
+	CacheNameLabelKey = "dacs.azure.com/cache-name"
 )
 
 func buildNodeListFromK8sNodes(nodes []v1.Node) []Node {
@@ -70,6 +74,11 @@ func buildPodListFromK8sPods(pods []v1.Pod) []Pod {
 	}
 
 	return podList
+}
+
+// BuildPodList converts raw Kubernetes pods into the internal Pod representation.
+func BuildPodList(pods []v1.Pod) []Pod {
+	return buildPodListFromK8sPods(pods)
 }
 
 func getCacheDataVolume(pod *v1.Pod) *v1.Volume {

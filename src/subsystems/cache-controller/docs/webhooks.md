@@ -59,10 +59,6 @@ The mutating webhook applies default values to Cache resources when they are cre
 | `spec.eviction.sizeTarget` | `80` | Evict down to 80% full |
 | `spec.eviction.passFrequency` | `1h` | Run eviction check hourly |
 
-### Behavior
-
-- Defaults are only applied if the field is not set in CR
-
 ## Validating Webhook (Validator)
 
 **Path:** `/validate-storage-azure-com-v1-cache`

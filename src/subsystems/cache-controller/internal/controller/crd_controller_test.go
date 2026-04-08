@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
@@ -21,6 +22,7 @@ import (
 // test helper pointer constructors
 func int32Ptr(v int32) *int32 { return &v }
 func toBoolPtr(v bool) *bool  { return &v }
+func strPtr(s string) *string { return &s }
 
 // createTestCache creates a Cache CR with the given name and number of replicas
 func createTestCache(name, namespace string, numServers int32, useEphemeral bool) *storagev1.Cache {
@@ -51,76 +53,6 @@ func createTestCache(name, namespace string, numServers int32, useEphemeral bool
 }
 
 var _ = Describe("Cache Controller", func() {
-	Describe("Helper Functions", func() {
-		Describe("setStatusCondition", func() {
-			var status *storagev1.CacheStatus
-
-			BeforeEach(func() {
-				status = &storagev1.CacheStatus{
-					Conditions: []metav1.Condition{},
-				}
-			})
-
-			It("should add new condition when none exists", func() {
-				condition := metav1.Condition{
-					Type:    "Ready",
-					Status:  metav1.ConditionTrue,
-					Reason:  "TestReason",
-					Message: "Test message",
-				}
-				setStatusCondition(status, condition)
-
-				Expect(status.Conditions).To(HaveLen(1))
-				Expect(status.Conditions[0].Type).To(Equal("Ready"))
-				Expect(status.Conditions[0].Status).To(Equal(metav1.ConditionTrue))
-			})
-
-			It("should update existing condition with same type", func() {
-				initial := metav1.Condition{
-					Type:    "Ready",
-					Status:  metav1.ConditionFalse,
-					Reason:  "InitialReason",
-					Message: "Initial message",
-				}
-				setStatusCondition(status, initial)
-
-				updated := metav1.Condition{
-					Type:    "Ready",
-					Status:  metav1.ConditionTrue,
-					Reason:  "UpdatedReason",
-					Message: "Updated message",
-				}
-				setStatusCondition(status, updated)
-
-				Expect(status.Conditions).To(HaveLen(1))
-				Expect(status.Conditions[0].Status).To(Equal(metav1.ConditionTrue))
-				Expect(status.Conditions[0].Reason).To(Equal("UpdatedReason"))
-			})
-
-			It("should preserve LastTransitionTime when status unchanged", func() {
-				initial := metav1.Condition{
-					Type:               "Ready",
-					Status:             metav1.ConditionTrue,
-					Reason:             "InitialReason",
-					Message:            "Initial message",
-					LastTransitionTime: metav1.Now(),
-				}
-				setStatusCondition(status, initial)
-				originalTime := status.Conditions[0].LastTransitionTime
-
-				updated := metav1.Condition{
-					Type:    "Ready",
-					Status:  metav1.ConditionTrue,
-					Reason:  "SameStatus",
-					Message: "Status unchanged",
-				}
-				setStatusCondition(status, updated)
-
-				Expect(status.Conditions[0].LastTransitionTime).To(Equal(originalTime))
-			})
-		})
-	})
-
 	Context("When reconciling a resource", Ordered, func() {
 		const resourceNamespace = "azureml"
 		ctx := context.Background()
@@ -287,6 +219,14 @@ var _ = Describe("Cache Controller", func() {
 				return false
 			}, timeout, pollInterval).Should(BeTrue())
 
+			By("verifying the Cache status has all expected conditions")
+			Eventually(func(g Gomega) {
+				cache := &storagev1.Cache{}
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cacheName, Namespace: resourceNamespace}, cache)).To(Succeed())
+				g.Expect(meta.FindStatusCondition(cache.Status.Conditions, "ReplicasReady")).NotTo(BeNil())
+				g.Expect(meta.IsStatusConditionTrue(cache.Status.Conditions, "PodsScheduled")).To(BeTrue())
+			}, timeout, pollInterval).Should(Succeed())
+
 			By("updating Cache CR to 4 replicas (scaling up)")
 			Eventually(func() error { return updateCacheReplicas(cacheName, 4) }).Should(Succeed())
 
@@ -334,6 +274,18 @@ var _ = Describe("Cache Controller", func() {
 
 			By("verifying the CacheServer Discovery ConfigMap is created with correct server count")
 			Eventually(getConfigMapServerCount, timeout, pollInterval).Should(Equal("3"))
+
+			By("verifying status conditions")
+			Eventually(func(g Gomega) {
+				cache := &storagev1.Cache{}
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cacheName, Namespace: resourceNamespace}, cache)).To(Succeed())
+				g.Expect(meta.FindStatusCondition(cache.Status.Conditions, "Ready")).NotTo(BeNil())
+				g.Expect(meta.FindStatusCondition(cache.Status.Conditions, "ReplicasReady")).NotTo(BeNil())
+				// Persistent pods use schedulerName: cache-controller. In envtest
+				// there is no STS controller creating pods, so the scheduling
+				// reconciler sees zero pods and reports all scheduled.
+				g.Expect(meta.IsStatusConditionTrue(cache.Status.Conditions, "PodsScheduled")).To(BeTrue())
+			}, timeout, pollInterval).Should(Succeed())
 		})
 	})
 })

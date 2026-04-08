@@ -66,7 +66,7 @@ vet: ## Run go vet against code.
 .PHONY: test
 test: manifests generate fmt vet setup-envtest ## Run tests.
 	CACHE_CONTROLLER_CONFIG_PATH=$(abspath $(CONFIG_SRC)) GOFLAGS=-buildvcs=false KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)"  -p path)" \
-	go test $$(GOFLAGS=-buildvcs=false go list ./... | grep -v /e2e) -coverprofile cover.out
+	go test -race $$(GOFLAGS=-buildvcs=false go list ./... | grep -v /e2e) -coverprofile cover.out
 
 # TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.

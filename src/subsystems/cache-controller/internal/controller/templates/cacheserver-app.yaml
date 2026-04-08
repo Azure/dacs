@@ -16,6 +16,7 @@ spec:
     metadata:
       labels:
         app: cacheserver
+        dacs.azure.com/cache-name: {{ .Name }}
         kubernetes.azure.com/managedby: {{ .ManagedById }}
 {{- if .EgressBandwidthInGb }}
       annotations:

@@ -5,9 +5,10 @@ Copyright (c) Microsoft Corporation. All rights reserved.
 package management
 
 import (
+	"context"
+	"sync"
 	"time"
 
-	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
 	config "github.com/Azure/dacs/cache-controller/internal/config"
 	log "github.com/sirupsen/logrus"
 )
@@ -118,15 +119,13 @@ func getRecentPodStuckEventCount(nodeInfo *trackerNodeInfo) int {
 type nodeList map[string]bool
 
 // helper to add node to nodeList
-func (nl nodeList) add(nodeName string) nodeList {
+func (nl nodeList) add(nodeName string) {
 	nl[nodeName] = true
-	return nl
 }
 
 // helper to remove node from nodeList
-func (nl nodeList) remove(nodeName string) nodeList {
+func (nl nodeList) remove(nodeName string) {
 	delete(nl, nodeName)
-	return nl
 }
 
 // helper to get get first element node from nodeList.
@@ -139,15 +138,6 @@ func (nl nodeList) getFirstElement() string {
 	return ""
 }
 
-func contains(arr []string, val string) bool {
-	for _, v := range arr {
-		if v == val {
-			return true
-		}
-	}
-	return false
-}
-
 // Internal state of the tracker
 type trackerInternalState struct {
 	// Map of current nodes on cluster. key is the node name and value is the node information
@@ -156,16 +146,35 @@ type trackerInternalState struct {
 	// Map of namespaced-pods scheduled on cluster currently or in the past.
 	// Key is namespace, value is cacheserver pods in that namespace
 	PodMap map[string]trackerPodCollection `json:"podMap"`
-	// Current pods on cluster
-	CurrentPods []Pod `json:"currentPods"`
 
-	// List pf current cache CRDs created on this cluster
-	CurrentCaches []storagev1.Cache `json:"currentCaches"`
+	// PodsByCacheKey maps each Cache CR (namespace/name) to its current pods.
+	// This allows GetNodesWithPods to return a global view across all CRs
+	// while per-CR helpers operate on the active CR's pods only.
+	PodsByCacheKey map[string][]Pod `json:"podsByCacheKey"`
 }
 
 type Tracker struct {
+	mu sync.RWMutex
+
 	Config TrackerConfig
 	State  trackerInternalState
+}
+
+// RemoveCacheKey removes a Cache CR's pod entries from the tracker.
+// Call this when a Cache CR is deleted so that its nodes are freed for
+// scheduling by other Cache CRs.
+func (t *Tracker) RemoveCacheKey(cacheKey string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, pod := range t.State.PodsByCacheKey[cacheKey] {
+		if ns, ok := t.State.PodMap[pod.Namespace]; ok {
+			delete(ns, pod.PodName)
+			if len(ns) == 0 {
+				delete(t.State.PodMap, pod.Namespace)
+			}
+		}
+	}
+	delete(t.State.PodsByCacheKey, cacheKey)
 }
 
 // helper function to update tracker state with current nodes
@@ -242,9 +251,9 @@ func (t *Tracker) updatePodMapEntry(podInfo trackerPodInfo) {
 }
 
 // Helper function to update tracker state with current pods
-func (t *Tracker) updatePodMap(pods []Pod) {
+func (t *Tracker) updatePodMap(cacheKey string, pods []Pod) {
 	now := time.Now()
-	t.State.CurrentPods = pods
+	t.State.PodsByCacheKey[cacheKey] = pods
 	for _, pod := range pods {
 		if pod.NodeName != "" {
 			podState, existingPodStateFound := t.lookupPodMap(pod.Namespace, pod.PodName)
@@ -305,7 +314,7 @@ func (t *Tracker) updatePodMap(pods []Pod) {
 }
 
 // Get all eligible nodes for scheduling cache pods.
-func (t *Tracker) GetAllEligibleNodes() (eligibleNodes []Node) {
+func (t *Tracker) getAllEligibleNodes() (eligibleNodes []Node) {
 	eligibleNodes = []Node{}
 
 	// Loop through current nodes
@@ -327,8 +336,8 @@ func matchesAffinity(node Node, nodeSelectorKey string, nodeSelectorValue string
 }
 
 // Get eligible nodes matching affinity
-func (t *Tracker) GetEligibleNodesMatchingAffinity(nodeSelectorKey string, nodeSelectorValue string) (eligibleNodes []Node) {
-	allEligibleNodes := t.GetAllEligibleNodes()
+func (t *Tracker) getEligibleNodesMatchingAffinity(nodeSelectorKey string, nodeSelectorValue string) (eligibleNodes []Node) {
+	allEligibleNodes := t.getAllEligibleNodes()
 	eligibleNodes = []Node{}
 
 	// Filter eligible nodes based on affinity
@@ -341,29 +350,28 @@ func (t *Tracker) GetEligibleNodesMatchingAffinity(nodeSelectorKey string, nodeS
 	return eligibleNodes
 }
 
-func (t *Tracker) GetTotalNodeCount() (nodeCount int) {
+func (t *Tracker) getTotalNodeCount() (nodeCount int) {
 	nodeCount = len(t.State.CurrentNodes)
 	return nodeCount
 }
 
-// Get the list of nodes which currently have pods scheduled on them
-func (t *Tracker) GetNodesWithPods() (nodesWithPods nodeList) {
+// getNodesWithPods returns the set of nodes that currently have cache server
+// pods scheduled on them across ALL Cache CRs. This prevents different CRs
+// from scheduling pods onto the same node.
+func (t *Tracker) getNodesWithPods() (nodesWithPods nodeList) {
 	nodesWithPods = nodeList{}
-	for _, pod := range t.State.CurrentPods {
-		if pod.NodeName != "" {
-			nodesWithPods.add(pod.NodeName)
+	for _, pods := range t.State.PodsByCacheKey {
+		for _, pod := range pods {
+			if pod.NodeName != "" {
+				nodesWithPods.add(pod.NodeName)
+			}
 		}
 	}
 	return nodesWithPods
 }
 
-func (t *Tracker) GetNodeInfo(nodeName string) (Node, bool) {
-	trackerNodeInfo, found := t.State.CurrentNodes[nodeName]
-	return trackerNodeInfo.NodeInfo, found
-}
-
 // Helper function to check if cache pods have consistently gotten stuck on a node recently
-func (t *Tracker) DoesNodeHavePodErrors(nodeName string) bool {
+func (t *Tracker) doesNodeHavePodErrors(nodeName string) bool {
 	trackerNodeInfo, found := t.State.CurrentNodes[nodeName]
 	if !found {
 		return false
@@ -373,10 +381,12 @@ func (t *Tracker) DoesNodeHavePodErrors(nodeName string) bool {
 	return recentPodStuckEventCount >= SuccessivePodStuckEventThreshold
 }
 
-func (t *Tracker) GetCurrentPods() (scheduledPods []Pod, pendingPods []Pod) {
+// getCurrentPods splits a Cache CR's pods into scheduled (have a node
+// assignment) and pending (no node yet) lists.
+func (t *Tracker) getCurrentPods(cacheKey string) (scheduledPods []Pod, pendingPods []Pod) {
 	scheduledPods = []Pod{}
 	pendingPods = []Pod{}
-	for _, pod := range t.State.CurrentPods {
+	for _, pod := range t.State.PodsByCacheKey[cacheKey] {
 		if pod.NodeName != "" {
 			scheduledPods = append(scheduledPods, pod)
 		} else {
@@ -387,9 +397,9 @@ func (t *Tracker) GetCurrentPods() (scheduledPods []Pod, pendingPods []Pod) {
 }
 
 // Get the list of pods which are considered stuck based on their state and duration they have been in that state.
-func (t *Tracker) GetStuckPods() []Pod {
+func (t *Tracker) getStuckPods(cacheKey string) []Pod {
 	var stuckPods []Pod
-	for _, pod := range t.State.CurrentPods {
+	for _, pod := range t.State.PodsByCacheKey[cacheKey] {
 		if pod.NodeName == "" {
 			continue // Unscheduled pods should not be considered as stuck
 		}
@@ -403,9 +413,11 @@ func (t *Tracker) GetStuckPods() []Pod {
 
 // Get the count of pods which are in a state which is considered for stuck evaluation (e.g. Failed, Unknown, NotReady etc).
 // This includes pods which have not considered stuck yet as they have not crossed the stuck threshold duration.
-func (t *Tracker) GetPodCountInStuckStates() int {
+func (t *Tracker) GetPodCountInStuckStates(cacheKey string) int {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 	count := 0
-	for _, pod := range t.State.CurrentPods {
+	for _, pod := range t.State.PodsByCacheKey[cacheKey] {
 		for _, stuckState := range podStuckStates {
 			if pod.State == stuckState {
 				count++
@@ -416,7 +428,7 @@ func (t *Tracker) GetPodCountInStuckStates() int {
 	return count
 }
 
-func (t *Tracker) GetLastRunningNodeForPod(namespace string, podName string) (string, bool) {
+func (t *Tracker) getLastRunningNodeForPod(namespace string, podName string) (string, bool) {
 	trackerPodInfo, found := t.lookupPodMap(namespace, podName)
 	if !found || trackerPodInfo.NodeName == "" {
 		return "", false
@@ -425,27 +437,25 @@ func (t *Tracker) GetLastRunningNodeForPod(namespace string, podName string) (st
 	return trackerPodInfo.NodeName, true
 }
 
-func InitTracker(config *config.Config) Tracker {
+func InitTracker(ctx context.Context, cfg *config.Config) *Tracker {
 	tracker := Tracker{
 		Config: TrackerConfig{
-			PodStuckThresholdDuration: config.PodStuckThresholdDuration,
+			PodStuckThresholdDuration: cfg.PodStuckThresholdDuration,
 		},
 		State: trackerInternalState{
-			CurrentNodes:  map[string]trackerNodeInfo{},
-			PodMap:        map[string]trackerPodCollection{},
-			CurrentPods:   []Pod{},
-			CurrentCaches: []storagev1.Cache{},
+			CurrentNodes:   map[string]trackerNodeInfo{},
+			PodMap:         map[string]trackerPodCollection{},
+			PodsByCacheKey: map[string][]Pod{},
 		},
 	}
 	log.Infof("Initialized tracker with config: %+v", tracker.Config)
-	return tracker
+	return &tracker
 }
 
-func (t *Tracker) UpdateTracker(nodes []Node, pods []Pod, caches []storagev1.Cache) {
-	log.Infof("Updating tracker with %d nodes and %d pods", len(nodes), len(pods))
+func (t *Tracker) updateTracker(ctx context.Context, cacheKey string, nodes []Node, pods []Pod) {
+	log.Infof("Updating tracker cacheKey=%s with %d nodes and %d pods", cacheKey, len(nodes), len(pods))
 	t.updateNodeMap(nodes)
-	t.updatePodMap(pods)
-	t.State.CurrentCaches = caches
+	t.updatePodMap(cacheKey, pods)
 
 	log.Infof("Tracker update complete")
 }
