@@ -52,7 +52,9 @@ CacheClientStatus CacheClientImpl::Initialize(
     /*[in]*/ const char* nCacheServerDiscoveryEndpoint,
     /*[in]*/ const bool bEnableConsistentHashing,
     /*[in]*/ CacheClientRetryConfig retryConfig,
-    /*[inopt]*/ std::size_t nMaxBufferSizeBytes)
+    /*[inopt]*/ std::size_t nMaxBufferSizeBytes,
+    /*[inopt]*/ const int nSocketSndbufSize,
+    /*[inopt]*/ const int nSocketRcvbufSize)
 {
     std::lock_guard<std::mutex> lock(m_mtxInitialization);
 
@@ -143,7 +145,9 @@ CacheClientStatus CacheClientImpl::Initialize(
                                                                 bIsCacheServerDiscoveryEnabled,
                                                                 nCacheServerDiscoveryIntervalInSeconds,
                                                                 nCacheServerDiscoveryEndpoint,
-                                                                bEnableConsistentHashing);
+                                                                bEnableConsistentHashing,
+                                                                nSocketSndbufSize,
+                                                                nSocketRcvbufSize);
     
     m_bInitialized = true;
     LOG_INFO("CacheClientImpl initialized. Enable Calculate checksum = {}, Enable Validate checksum = {}, Checksum algorithm = {}, Retry max attempts = {}, Retry base delay ms = {}, Retry max delay ms = {}",

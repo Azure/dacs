@@ -3,6 +3,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "ConnectionManagerTests.h"
 #include "gtest/gtest.h"
+#include "CacheClient.h"
 #include <chrono>
 #include <thread>
 #include <cstring>
@@ -122,7 +123,9 @@ std::unique_ptr<ConnectionManager> ConnectionManagerTests::CreateConnectionManag
         enableDiscovery,        // bEnableCacheServerDiscovery
         2,                      // nCacheServerDiscoveryIntervalInSeconds
         "",                     // cacheDiscoveryEndpoint
-        false                   // bEnableConsistentHashing
+        false,                  // bEnableConsistentHashing
+        DEFAULT_SOCKET_BUF_SIZE,// nSocketSndbufSize
+        DEFAULT_SOCKET_BUF_SIZE // nSocketRcvbufSize
     );
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -232,7 +235,9 @@ TEST_F(ConnectionManagerTests, DiscoveryThreadExitsPromptlyOnShutdown)
         true,                   // bEnableCacheServerDiscovery
         60,                     // nCacheServerDiscoveryIntervalInSeconds
         LOCALHOST,              // cacheDiscoveryEndpoint
-        false                   // bEnableConsistentHashing
+        false,                  // bEnableConsistentHashing
+        DEFAULT_SOCKET_BUF_SIZE,// nSocketSndbufSize
+        DEFAULT_SOCKET_BUF_SIZE // nSocketRcvbufSize
     );
 
     // Give the discovery thread time to enter the wait_for() call.
@@ -297,7 +302,8 @@ TEST_F(ConnectionManagerTests, ConnectionToNonListeningPortFails)
         59999,  // Port with no server
         false,
         servers,
-        false, "", "", 10, true, false, false, 2, "", false
+        false, "", "", 10, true, false, false, 2, "", false,
+        DEFAULT_SOCKET_BUF_SIZE, DEFAULT_SOCKET_BUF_SIZE
     );
     
     auto connection = connManager->GetConnection(LOCALHOST);

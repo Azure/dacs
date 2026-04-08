@@ -129,6 +129,20 @@ void StartServer(int port)
         threadPoolSize = std::stoi(threadPoolSizeStr);
     }
 
+    int socketSndbufSize = DEFAULT_SOCKET_BUF_SIZE;
+    char* socketSndbufSizeStr = std::getenv("CACHESERVER_SOCKET_SNDBUF_SIZE");
+    if (socketSndbufSizeStr != nullptr)
+    {
+        socketSndbufSize = std::stoi(socketSndbufSizeStr);
+    }
+
+    int socketRcvbufSize = DEFAULT_SOCKET_BUF_SIZE;
+    char* socketRcvbufSizeStr = std::getenv("CACHESERVER_SOCKET_RCVBUF_SIZE");
+    if (socketRcvbufSizeStr != nullptr)
+    {
+        socketRcvbufSize = std::stoi(socketRcvbufSizeStr);
+    }
+
     int server_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket_fd < 0)
     {
@@ -203,6 +217,33 @@ void StartServer(int port)
             LOG_ERROR("Error setting TCP_NODELAY on client socket, errno: {}:{}", errno, strerror(errno));
             close(clientFd);
             continue;
+        }
+
+        if (socketSndbufSize > 0)
+        {
+            if (setsockopt(clientFd, SOL_SOCKET, SO_SNDBUF, &socketSndbufSize, sizeof(socketSndbufSize)) != 0)
+            {
+                LOG_WARN("Failed to set SO_SNDBUF={} on client socket, errno: {}:{}", socketSndbufSize, errno, strerror(errno));
+            }
+        }
+        if (socketRcvbufSize > 0)
+        {
+            if (setsockopt(clientFd, SOL_SOCKET, SO_RCVBUF, &socketRcvbufSize, sizeof(socketRcvbufSize)) != 0)
+            {
+                LOG_WARN("Failed to set SO_RCVBUF={} on client socket, errno: {}:{}", socketRcvbufSize, errno, strerror(errno));
+            }
+        }
+
+        if (socketSndbufSize > 0 || socketRcvbufSize > 0)
+        {
+            int actualSndbuf = 0, actualRcvbuf = 0;
+            socklen_t optlen = sizeof(actualSndbuf);
+            if (getsockopt(clientFd, SOL_SOCKET, SO_SNDBUF, &actualSndbuf, &optlen) == 0 &&
+                getsockopt(clientFd, SOL_SOCKET, SO_RCVBUF, &actualRcvbuf, &optlen) == 0)
+            {
+                LOG_INFO("Socket buffer sizes for clientFd={}: SO_SNDBUF requested={} actual={}, SO_RCVBUF requested={} actual={}",
+                    clientFd, socketSndbufSize, actualSndbuf, socketRcvbufSize, actualRcvbuf);
+            }
         }
 
         // insert client fd to worker epoll list

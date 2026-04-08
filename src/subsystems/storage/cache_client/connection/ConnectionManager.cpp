@@ -97,7 +97,9 @@ ConnectionManager::ConnectionManager(
     /*[in]*/ const bool bEnableCacheServerDiscovery,
     /*[in]*/ const uint32_t nCacheServerDiscoveryIntervalInSeconds,
     /*[in]*/ const std::string& cacheDiscoveryEndpoint,
-    /*[in]*/ const bool bEnableConsistentHashing)
+    /*[in]*/ const bool bEnableConsistentHashing,
+    /*[in]*/ const int nSocketSndbufSize,
+    /*[in]*/ const int nSocketRcvbufSize)
     :  m_ServerPort(serverPort)
     ,  m_bAuthEnabled(bAuthEnabled)
     ,  m_strCacheAccountName(strCacheAccountName)
@@ -109,6 +111,8 @@ ConnectionManager::ConnectionManager(
     ,  m_bEnableCacheServerDiscovery(bEnableCacheServerDiscovery)
     ,  m_nCacheServerDiscoveryIntervalInSeconds(nCacheServerDiscoveryIntervalInSeconds)
     ,  m_cacheDiscoveryEndpoint(cacheDiscoveryEndpoint)
+    ,  m_nSocketSndbufSize(nSocketSndbufSize)
+    ,  m_nSocketRcvbufSize(nSocketRcvbufSize)
     ,  m_hashingStrategy(bEnableConsistentHashing 
         ? HashingStrategy::ConsistentHashing
         : HashingStrategy::StaticModuloHashing)
@@ -639,6 +643,33 @@ std::unique_ptr<IConnection> ConnectionManager::CreateSocketAndConnect(const std
         LOG_WARN("Failed to set TCP_NODELAY for hostname={} error={}", hostname, strerror(errno));
         close(sockfd);
         return nullptr;
+    }
+
+    if (m_nSocketSndbufSize > 0)
+    {
+        if (setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &m_nSocketSndbufSize, sizeof(m_nSocketSndbufSize)) != 0)
+        {
+            LOG_WARN("Failed to set SO_SNDBUF={} for hostname={} error={}", m_nSocketSndbufSize, hostname, strerror(errno));
+        }
+    }
+    if (m_nSocketRcvbufSize > 0)
+    {
+        if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &m_nSocketRcvbufSize, sizeof(m_nSocketRcvbufSize)) != 0)
+        {
+            LOG_WARN("Failed to set SO_RCVBUF={} for hostname={} error={}", m_nSocketRcvbufSize, hostname, strerror(errno));
+        }
+    }
+
+    if (m_nSocketSndbufSize > 0 || m_nSocketRcvbufSize > 0)
+    {
+        int actualSndbuf = 0, actualRcvbuf = 0;
+        socklen_t optlen = sizeof(actualSndbuf);
+        if (getsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &actualSndbuf, &optlen) == 0 &&
+            getsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &actualRcvbuf, &optlen) == 0)
+        {
+            LOG_INFO("Socket buffer sizes for hostname={}: SO_SNDBUF requested={} actual={}, SO_RCVBUF requested={} actual={}",
+                hostname, m_nSocketSndbufSize, actualSndbuf, m_nSocketRcvbufSize, actualRcvbuf);
+        }
     }
 
     LOG_DEBUG("Successfully connected to hostname={} on port={}", hostname, port);

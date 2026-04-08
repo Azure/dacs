@@ -40,7 +40,9 @@ class CacheClientImpl
         /*[in]*/ const char* nCacheServerDiscoveryEndpoint,
         /*[in]*/ const bool bEnableConsistentHashing,
         /*[in]*/ CacheClientRetryConfig retryConfig,
-        /*[inopt]*/ const std::size_t nMaxBufferSizeBytes = MAX_BUFFER_SIZE_BYTES);
+        /*[inopt]*/ const std::size_t nMaxBufferSizeBytes = MAX_BUFFER_SIZE_BYTES,
+        /*[inopt]*/ const int nSocketSndbufSize = DEFAULT_SOCKET_BUF_SIZE,
+        /*[inopt]*/ const int nSocketRcvbufSize = DEFAULT_SOCKET_BUF_SIZE);
 
     CacheClientStatus Upload(
         /*[in]*/ const char* strCacheKey,
