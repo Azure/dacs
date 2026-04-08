@@ -35,13 +35,20 @@ export CACHESERVER_HOSTNAME="testhost"
 export CACHESERVER_SNAPSHOT_INTERVAL="1"
 export CACHESERVER_EVICTION_ENABLED="true"
 export CACHESERVER_EVICTION_PASS_FREQUENCY="30s"
-start_cache_server /dev/null
+start_cache_server /tmp/cacheserver_advanced.log
 unset CACHESERVER_HOSTNAME
 unset CACHESERVER_SNAPSHOT_INTERVAL
 unset CACHESERVER_EVICTION_ENABLED
 unset CACHESERVER_EVICTION_PASS_FREQUENCY
 echo "Sleeping 10 secs to allow cache server to start and initialize"
 sleep 10
+
+# Check if cache server is still running
+if ! kill -0 ${CACHE_SERVER_PID} 2>/dev/null; then
+  echo "ERROR: CacheServer (pid: ${CACHE_SERVER_PID}) died during startup. Logs:"
+  cat /tmp/cacheserver_advanced.log || true
+  exit 1
+fi
 
 # Test liveness of the cache server
 test_liveness

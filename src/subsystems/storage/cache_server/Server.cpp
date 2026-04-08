@@ -136,7 +136,7 @@ void StartServer(int port)
         exit(-1);
     }
 
-    int enable;
+    int enable = 1;
     if (setsockopt(server_socket_fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)) != 0)
     {
         LOG_CRITICAL("Failed to set SO_REUSEADDR, errno: {}:{}", errno, strerror(errno));
