@@ -40,7 +40,9 @@ LocalAttributesCache::LocalAttributesCache()
                                                            false, // local server doesn't need discovery endpoint enabled
                                                            300,
                                                            "127.0.0.1",
-                                                           bEnableConsistentHashing);
+                                                           bEnableConsistentHashing,
+                                                           0,  // sndbuf: use kernel default, attribute payloads are small
+                                                           0); // rcvbuf: use kernel default, attribute payloads are small
 
     // start worker thread
     m_uploadThread = make_unique<thread>([this]() {

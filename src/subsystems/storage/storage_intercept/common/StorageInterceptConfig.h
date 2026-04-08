@@ -72,6 +72,8 @@ class StorageInterceptConfig
         uint32_t GetCacheRetryMaxAttempts();
         uint64_t GetCacheRetryBaseDelayMillis();
         uint64_t GetCacheRetryMaxDelayMillis();
+        int GetCacheSocketSndbufSize();
+        int GetCacheSocketRcvbufSize();
 
         // Getters for attribute cache
         bool GetAttributesCacheEnable(const std::string& mountName);

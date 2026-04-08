@@ -69,6 +69,8 @@ namespace StorageInterceptConstants
     const char* const ConfigNameCacheRetryMaxAttempts = "cacheRetryMaxAttempts";
     const char* const ConfigNameCacheRetryBaseDelayMillis = "cacheRetryBaseDelayMillis";
     const char* const ConfigNameCacheRetryMaxDelayMillis = "cacheRetryMaxDelayMillis";
+    const char* const ConfigNameCacheSocketSndbufSize = "cacheSocketSndbufSize";
+    const char* const ConfigNameCacheSocketRcvbufSize = "cacheSocketRcvbufSize";
 
     // Config for Attributes cache
     const char* const ConfigNameAttributesCacheEnable = "attributesCacheEnable";

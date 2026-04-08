@@ -40,7 +40,9 @@ class ConnectionManager
             /*[in]*/ const bool bEnableCacheServerDiscovery,
             /*[in]*/ const uint32_t nCacheServerDiscoveryIntervalInSeconds,
             /*[in]*/ const std::string& cacheDiscoveryEndpoint,
-            /*[in]*/ const bool bEnableConsistentHashing
+            /*[in]*/ const bool bEnableConsistentHashing,
+            /*[in]*/ const int nSocketSndbufSize,
+            /*[in]*/ const int nSocketRcvbufSize
         );
         ~ConnectionManager();
 
@@ -103,6 +105,8 @@ class ConnectionManager
         const bool                                                                  m_bEnableCacheServerDiscovery;
         const uint32_t                                                              m_nCacheServerDiscoveryIntervalInSeconds;
         const std::string                                                           m_cacheDiscoveryEndpoint;
+        const int                                                                   m_nSocketSndbufSize;
+        const int                                                                   m_nSocketRcvbufSize;
 
         // Use infiniband if IB ports are available on local device.
         bool                                                                        m_bUseInfiniband;

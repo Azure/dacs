@@ -54,3 +54,13 @@ Default is set to 90% of the Eviction Size Threshold
 ### CACHESERVER_EVICTION_PASS_FREQUENCY
 Values: Frequency of running eviction pass, example "1h30m"
 Default is set to 1 hour
+
+### CACHESERVER_SOCKET_SNDBUF_SIZE
+Values: Send buffer size in bytes (e.g., 4194304 for 4 MiB)
+Configures SO_SNDBUF on accepted client sockets. Default is 4194304 (4 MiB).
+Set to 0 to use kernel defaults.
+
+### CACHESERVER_SOCKET_RCVBUF_SIZE
+Values: Receive buffer size in bytes (e.g., 4194304 for 4 MiB)
+Configures SO_RCVBUF on accepted client sockets. Default is 4194304 (4 MiB).
+Set to 0 to use kernel defaults.

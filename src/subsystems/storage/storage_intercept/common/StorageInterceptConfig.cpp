@@ -5,6 +5,7 @@
 #include "StorageInterceptConstants.h"
 #include "StorageInterceptLogger.h"
 #include "StorageLibcApiWrapper.h"
+#include "CacheClient.h"
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -756,6 +757,22 @@ uint64_t StorageInterceptConfig::GetCacheRetryMaxDelayMillis()
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameCacheRetryMaxDelayMillis,
         5000);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageInterceptConfig::GetCacheSocketSndbufSize()
+{
+    return StorageInterceptConfig::GetOptionalConfigInteger(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheSocketSndbufSize,
+        DEFAULT_SOCKET_BUF_SIZE);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageInterceptConfig::GetCacheSocketRcvbufSize()
+{
+    return StorageInterceptConfig::GetOptionalConfigInteger(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheSocketRcvbufSize,
+        DEFAULT_SOCKET_BUF_SIZE);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::IsRemoteDownloadOnlyWhenLockHeldEnabled()
