@@ -137,8 +137,50 @@ func (r *Cache) validateCache() (admission.Warnings, error) { //nolint:gocyclo
 	var allErrs field.ErrorList
 	var warnings admission.Warnings
 
-	// Validate required fields
 	specPath := field.NewPath("spec")
+
+	// Required fields (set by the defaulter, but validated here to reject
+	// any object that somehow bypasses defaulting).
+	if r.Spec.Port == nil {
+		allErrs = append(allErrs, field.Required(specPath.Child("port"), "must be set"))
+	}
+	if r.Spec.MetricsPort == nil {
+		allErrs = append(allErrs, field.Required(specPath.Child("metricsPort"), "must be set"))
+	}
+	if r.Spec.NodeSelectorKey == nil {
+		allErrs = append(allErrs, field.Required(specPath.Child("nodeSelectorKey"), "must be set"))
+	}
+	if r.Spec.NodeSelectorValue == nil {
+		allErrs = append(allErrs, field.Required(specPath.Child("nodeSelectorValue"), "must be set"))
+	}
+	if r.Spec.Storage == nil {
+		allErrs = append(allErrs, field.Required(specPath.Child("storage"), "must be set"))
+	}
+	if r.Spec.Eviction == nil {
+		allErrs = append(allErrs, field.Required(specPath.Child("eviction"), "must be set"))
+	} else {
+		evictionPath := specPath.Child("eviction")
+		if r.Spec.Eviction.EnableAccessTimeEviction == nil {
+			allErrs = append(allErrs, field.Required(evictionPath.Child("enableAccessTimeEviction"), "must be set"))
+		}
+		if r.Spec.Eviction.EvictionMaintainFreeSpace == nil {
+			allErrs = append(allErrs, field.Required(evictionPath.Child("evictionMaintainFreeSpace"), "must be set"))
+		}
+		if r.Spec.Eviction.LastAccessThreshold == nil {
+			allErrs = append(allErrs, field.Required(evictionPath.Child("lastAccessThreshold"), "must be set"))
+		}
+		if r.Spec.Eviction.SizeThreshold == nil {
+			allErrs = append(allErrs, field.Required(evictionPath.Child("sizeThreshold"), "must be set"))
+		}
+		if r.Spec.Eviction.PassFrequency == nil {
+			allErrs = append(allErrs, field.Required(evictionPath.Child("passFrequency"), "must be set"))
+		}
+		if r.Spec.Eviction.SizeTarget == nil {
+			allErrs = append(allErrs, field.Required(evictionPath.Child("sizeTarget"), "must be set"))
+		}
+	}
+
+	// Value-range validation
 	if r.Spec.ServerSizeInGB < 1 {
 		allErrs = append(allErrs, field.Invalid(specPath.Child("serverSizeInGB"), r.Spec.ServerSizeInGB, "must be at least 1"))
 	}

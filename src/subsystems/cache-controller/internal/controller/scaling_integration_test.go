@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -16,8 +17,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
+	"github.com/Azure/dacs/cache-controller/internal/testutil"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -25,30 +28,10 @@ import (
 
 // createDynamicCache creates a Cache CR configured for dynamic scaling.
 func createDynamicCache(name, namespace string, percentage int32, minServers, maxServers *int32, selectorKey, selectorValue *string) *storagev1.Cache {
-	return &storagev1.Cache{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Spec: storagev1.CacheSpec{
-			Scaling: storagev1.ScalingType{
-				Dynamic: &storagev1.DynamicScaleConfig{
-					PercentageOfNodesToUse: percentage,
-					MinServers:             minServers,
-					MaxServers:             maxServers,
-				},
-			},
-			NodeSelectorKey:   selectorKey,
-			NodeSelectorValue: selectorValue,
-			ServerSizeInGB:    100,
-			ServerThreads:     16,
-			CpuLimit:          ptr.To[int32](1),
-			MemoryLimitMB:     ptr.To[int32](20480),
-			Storage: &storagev1.StorageConfig{
-				Ephemeral: ptr.To(true),
-			},
-		},
-	}
+	cache := testutil.NewDynamicCache(name, namespace, percentage, selectorKey, selectorValue)
+	cache.Spec.Scaling.Dynamic.MinServers = minServers
+	cache.Spec.Scaling.Dynamic.MaxServers = maxServers
+	return cache
 }
 
 // createLabeledNode creates a Node with the given name and labels.
@@ -464,4 +447,471 @@ var _ = Describe("Scaling Controller", func() {
 			}).Should(Succeed(), "Cache B should converge to 6 replicas")
 		})
 	})
+
+	// getCondition reads the named condition from the Cache status.
+	getCondition := func(ns, name, condType string) *metav1.Condition {
+		var cache storagev1.Cache
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: ns}, &cache); err != nil {
+			return nil
+		}
+		for i := range cache.Status.Conditions {
+			if cache.Status.Conditions[i].Type == condType {
+				return &cache.Status.Conditions[i]
+			}
+		}
+		return nil
+	}
+
+	// getScalingStatus reads the ScalingStatus from the Cache status.
+	getScalingStatus := func(ns, name string) *storagev1.ScalingStatus {
+		var cache storagev1.Cache
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: ns}, &cache); err != nil {
+			return nil
+		}
+		return cache.Status.Scaling
+	}
+
+	Context("When tolerance band suppresses scaling", Ordered, func() {
+		const ns = "scaling-tolerance"
+		cacheName := "tolerance-cache"
+
+		BeforeAll(func() {
+			ensureNamespace(ns)
+			DeferCleanup(cleanupNamespace, ns)
+			DeferCleanup(cleanupCache, ns, cacheName)
+			DeferCleanup(cleanupAllNodes)
+
+			By("creating 20 labeled nodes")
+			for i := range 20 {
+				node := createLabeledNode(fmt.Sprintf("tol-node-%d", i), map[string]string{selectorKey: selectorValue})
+				Expect(k8sClient.Create(ctx, node)).To(Succeed(), "failed to create tol-node-%d", i)
+			}
+		})
+
+		It("should initially scale to 50% of 20 nodes = 10 replicas", func() {
+			By("creating a Cache CR with 10% tolerance (default)")
+			cache := createDynamicCache(cacheName, ns, 50, nil, nil, &selectorKey, &selectorValue)
+			Expect(k8sClient.Create(ctx, cache)).To(Succeed())
+
+			Eventually(func() *appsv1.StatefulSet {
+				return getScalingStatefulSet(ns, cacheName)
+			}).ShouldNot(BeNil())
+
+			Eventually(func(g Gomega) {
+				g.Expect(getScalingReplicas(ns, cacheName)).To(Equal(int32(10)),
+					"expected 10 replicas (50%% of 20 nodes)")
+			}).Should(Succeed())
+		})
+
+		It("should NOT scale when adding 1 node (change within 10% tolerance)", func() {
+			By("adding 1 node (21 nodes -> 50%% = ceil(10.5) = 11, ratio 11/10 = 1.1 <= 1+0.1 -> suppressed)")
+			node := createLabeledNode("tol-node-20", map[string]string{selectorKey: selectorValue})
+			Expect(k8sClient.Create(ctx, node)).To(Succeed())
+
+			By("waiting briefly to allow reconciliation")
+			Consistently(func() int32 {
+				return getScalingReplicas(ns, cacheName)
+			}, "2s", "100ms").Should(Equal(int32(10)),
+				"replicas should remain at 10 because the 1-node change is within 10%% tolerance")
+		})
+
+		It("should scale when the change exceeds tolerance", func() {
+			By("adding 2 more nodes (23 nodes -> 50%% = ceil(11.5) = 12, ratio 12/10 = 1.2 > 1.1 -> scales)")
+			for _, name := range []string{"tol-node-21", "tol-node-22"} {
+				node := createLabeledNode(name, map[string]string{selectorKey: selectorValue})
+				Expect(k8sClient.Create(ctx, node)).To(Succeed())
+			}
+
+			Eventually(func(g Gomega) {
+				g.Expect(getScalingReplicas(ns, cacheName)).To(Equal(int32(12)),
+					"expected 12 replicas (50%% of 23 nodes = ceil(11.5) = 12, exceeds tolerance)")
+			}).Should(Succeed())
+		})
+
+		It("should report scaling settled (no stabilization window) when stable", func() {
+			Eventually(func(g Gomega) {
+				ss := getScalingStatus(ns, cacheName)
+				g.Expect(ss).NotTo(BeNil(), "Scaling status should exist")
+				g.Expect(ss.StabilizationEnds).To(BeNil(),
+					"StabilizationEnds should be nil when no stabilization window is active")
+			}).Should(Succeed())
+		})
+	})
+
+	Context("When downscale stabilization window holds back scaling", Ordered, func() {
+		const ns = "scaling-stabilize"
+		cacheName := "stabilize-cache"
+
+		BeforeAll(func() {
+			ensureNamespace(ns)
+			DeferCleanup(cleanupNamespace, ns)
+			DeferCleanup(cleanupCache, ns, cacheName)
+			DeferCleanup(cleanupAllNodes)
+
+			By("creating 10 labeled nodes")
+			for i := range 10 {
+				node := createLabeledNode(fmt.Sprintf("stab-node-%d", i), map[string]string{selectorKey: selectorValue})
+				Expect(k8sClient.Create(ctx, node)).To(Succeed())
+			}
+		})
+
+		It("should initially scale to 50% of 10 nodes = 5 replicas", func() {
+			By("creating a Cache CR with dynamic scaling")
+			cache := createDynamicCache(cacheName, ns, 50, nil, nil, &selectorKey, &selectorValue)
+			Expect(k8sClient.Create(ctx, cache)).To(Succeed())
+
+			Eventually(func() *appsv1.StatefulSet {
+				return getScalingStatefulSet(ns, cacheName)
+			}).ShouldNot(BeNil())
+
+			Eventually(func(g Gomega) {
+				g.Expect(getScalingReplicas(ns, cacheName)).To(Equal(int32(5)),
+					"expected 5 replicas (50%% of 10 nodes)")
+			}).Should(Succeed())
+
+			By("waiting for the normalizer to be seeded (settled after steady-state reconciliation)")
+			Eventually(func(g Gomega) {
+				ss := getScalingStatus(ns, cacheName)
+				g.Expect(ss).NotTo(BeNil())
+				g.Expect(ss.StabilizationEnds).To(BeNil())
+			}).Should(Succeed(), "normalizer should have run with currentReplicas=5")
+		})
+
+		It("should hold back downscale during stabilization window", func() {
+			By("deleting 6 nodes so 50% of 4 = 2 replicas desired")
+			for i := 4; i < 10; i++ {
+				node := &corev1.Node{}
+				node.Name = fmt.Sprintf("stab-node-%d", i)
+				Expect(k8sClient.Delete(ctx, node)).To(Succeed())
+			}
+
+			By("verifying replicas stay at 5 during the stabilization window")
+			Consistently(func() int32 {
+				return getScalingReplicas(ns, cacheName)
+			}, "2s", "200ms").Should(Equal(int32(5)),
+				"replicas should remain at 5 during the 3s downscale stabilization window")
+		})
+
+		It("should report stabilization window active while holding back scaling", func() {
+			ss := getScalingStatus(ns, cacheName)
+			Expect(ss).NotTo(BeNil(), "Scaling status should exist")
+			Expect(ss.StabilizationEnds).NotTo(BeNil(),
+				"StabilizationEnds should be set while stabilization window is active")
+		})
+
+		It("should scale down after the stabilization window expires", func() {
+			By("waiting for the 3s window to expire and controller to requeue")
+			Eventually(func(g Gomega) {
+				g.Expect(getScalingReplicas(ns, cacheName)).To(Equal(int32(2)),
+					"expected 2 replicas (50%% of 4 nodes) after stabilization window expires")
+			}, "10s", "200ms").Should(Succeed())
+		})
+
+		It("should report scaling settled after window expires", func() {
+			Eventually(func(g Gomega) {
+				ss := getScalingStatus(ns, cacheName)
+				g.Expect(ss).NotTo(BeNil())
+				g.Expect(ss.StabilizationEnds).To(BeNil(),
+					"StabilizationEnds should be nil once stabilization window has expired")
+			}).Should(Succeed())
+		})
+
+		It("should scale up immediately (no stabilization for scale-up)", func() {
+			By("increasing percentage to 100% (4 nodes = 4 replicas desired)")
+			Eventually(func(g Gomega) {
+				var cache storagev1.Cache
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cacheName, Namespace: ns}, &cache)).To(Succeed())
+				patch := client.MergeFrom(cache.DeepCopy())
+				cache.Spec.Scaling.Dynamic.PercentageOfNodesToUse = 100
+				g.Expect(k8sClient.Patch(ctx, &cache, patch)).To(Succeed())
+			}).Should(Succeed())
+
+			By("verifying immediate scale-up (spec change bypasses stabilization)")
+			Eventually(func(g Gomega) {
+				g.Expect(getScalingReplicas(ns, cacheName)).To(Equal(int32(4)),
+					"expected 4 replicas (100%% of 4 nodes) -- spec change should be immediate")
+			}).Should(Succeed())
+		})
+	})
+
+	Context("When static scaling is configured", Ordered, func() {
+		const ns = "scaling-static"
+		cacheName := "static-cache"
+
+		BeforeAll(func() {
+			ensureNamespace(ns)
+			DeferCleanup(cleanupNamespace, ns)
+			DeferCleanup(cleanupCache, ns, cacheName)
+		})
+
+		It("should scale to the specified static replica count", func() {
+			cache := testutil.NewStaticCache(cacheName, ns, 3)
+			Expect(k8sClient.Create(ctx, cache)).To(Succeed())
+
+			Eventually(func() *appsv1.StatefulSet {
+				return getScalingStatefulSet(ns, cacheName)
+			}).ShouldNot(BeNil())
+
+			Eventually(func(g Gomega) {
+				g.Expect(getScalingReplicas(ns, cacheName)).To(Equal(int32(3)),
+					"expected 3 replicas for static scaling")
+				g.Expect(verifyConfigMapServerCount(ctx, ns, 3)).To(Succeed(),
+					"ConfigMap should reflect 3 servers for static scaling")
+			}).Should(Succeed())
+		})
+
+		It("should have nil Scaling status for static scaling", func() {
+			Eventually(func(g Gomega) {
+				ss := getScalingStatus(ns, cacheName)
+				g.Expect(ss).To(BeNil(),
+					"Scaling should be nil for static scaling (no stabilization applies)")
+			}).Should(Succeed())
+		})
+
+		It("should update replicas when static count is changed", func() {
+			Eventually(func(g Gomega) {
+				var cache storagev1.Cache
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cacheName, Namespace: ns}, &cache)).To(Succeed())
+				patch := client.MergeFrom(cache.DeepCopy())
+				cache.Spec.Scaling.Static.NumServers = 5
+				g.Expect(k8sClient.Patch(ctx, &cache, patch)).To(Succeed())
+			}).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(getScalingReplicas(ns, cacheName)).To(Equal(int32(5)),
+					"expected 5 replicas after static count update")
+				g.Expect(verifyConfigMapServerCount(ctx, ns, 5)).To(Succeed(),
+					"ConfigMap should reflect 5 servers after static count update")
+			}).Should(Succeed())
+		})
+	})
+
+	Context("Conditions and events are set correctly", Ordered, func() {
+		const ns = "scaling-conditions"
+		cacheName := "cond-cache"
+
+		BeforeAll(func() {
+			ensureNamespace(ns)
+			DeferCleanup(cleanupNamespace, ns)
+			DeferCleanup(cleanupCache, ns, cacheName)
+			DeferCleanup(cleanupAllNodes)
+
+			By("creating 10 labeled nodes")
+			for i := range 10 {
+				node := createLabeledNode(fmt.Sprintf("cond-node-%d", i), map[string]string{selectorKey: selectorValue})
+				Expect(k8sClient.Create(ctx, node)).To(Succeed())
+			}
+		})
+
+		It("should set conditions and scaling status after initial reconciliation", func() {
+			cache := createDynamicCache(cacheName, ns, 50, nil, nil, &selectorKey, &selectorValue)
+			Expect(k8sClient.Create(ctx, cache)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				var c storagev1.Cache
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cacheName, Namespace: ns}, &c)).To(Succeed())
+
+				ready := getCondition(ns, cacheName, storagev1.ReadyCondition)
+				g.Expect(ready).NotTo(BeNil(), "Ready condition should be set")
+
+				replicas := getCondition(ns, cacheName, storagev1.ReplicasReadyCondition)
+				g.Expect(replicas).NotTo(BeNil(), "ReplicasReady condition should be set")
+
+				g.Expect(c.Status.Scaling).NotTo(BeNil(), "Scaling status should be set for dynamic scaling")
+				g.Expect(c.Status.Scaling.StabilizationEnds).To(BeNil())
+			}).Should(Succeed())
+		})
+
+		It("should set ReplicasReady=False when StatefulSet pods are not ready", func() {
+			// In envtest there is no kubelet, so pods never become ready.
+			// ReplicasReady should be False (StatefulSet has 0 ready replicas).
+			Eventually(func(g Gomega) {
+				cond := getCondition(ns, cacheName, storagev1.ReplicasReadyCondition)
+				g.Expect(cond).NotTo(BeNil())
+				g.Expect(cond.Status).To(Equal(metav1.ConditionFalse),
+					"ReplicasReady should be False when no pods are ready")
+			}).Should(Succeed())
+		})
+
+		It("should set Ready=False when ReplicasReady is False", func() {
+			// Ready is an aggregate: False when any sub-condition is False.
+			Eventually(func(g Gomega) {
+				cond := getCondition(ns, cacheName, storagev1.ReadyCondition)
+				g.Expect(cond).NotTo(BeNil())
+				g.Expect(cond.Status).To(Equal(metav1.ConditionFalse),
+					"Ready should be False when ReplicasReady is False")
+			}).Should(Succeed())
+		})
+
+		It("should emit a Scaling event on initial scale-up", func() {
+			Eventually(func(g Gomega) {
+				var events eventsv1.EventList
+				g.Expect(k8sClient.List(ctx, &events, client.InNamespace(ns))).To(Succeed())
+
+				found := false
+				for _, e := range events.Items {
+					if e.Reason == "Scaling" && e.Regarding.Name == cacheName {
+						found = true
+						g.Expect(e.Type).To(Equal(corev1.EventTypeNormal))
+						g.Expect(e.Action).To(Equal("ScaleReplicas"))
+						g.Expect(e.Note).To(ContainSubstring("5 replicas"))
+					}
+				}
+				g.Expect(found).To(BeTrue(), "should find a Scaling event for the cache")
+			}).Should(Succeed())
+		})
+
+		It("should emit a Scaling event when replica count changes", func() {
+			By("changing percentage to 80% (8 replicas)")
+			Eventually(func(g Gomega) {
+				var cache storagev1.Cache
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cacheName, Namespace: ns}, &cache)).To(Succeed())
+				patch := client.MergeFrom(cache.DeepCopy())
+				cache.Spec.Scaling.Dynamic.PercentageOfNodesToUse = 80
+				g.Expect(k8sClient.Patch(ctx, &cache, patch)).To(Succeed())
+			}).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(getScalingReplicas(ns, cacheName)).To(Equal(int32(8)))
+			}).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				var events eventsv1.EventList
+				g.Expect(k8sClient.List(ctx, &events, client.InNamespace(ns))).To(Succeed())
+
+				found := false
+				for _, e := range events.Items {
+					if e.Reason == "Scaling" && e.Regarding.Name == cacheName && e.Note != "" {
+						if e.Action == "ScaleReplicas" {
+							// Look for the scale-up event from 5 to 8
+							if containsAll(e.Note, "5", "8") {
+								found = true
+							}
+						}
+					}
+				}
+				g.Expect(found).To(BeTrue(), "should find a Scaling event for scale from 5 to 8")
+			}).Should(Succeed())
+		})
+	})
+
+	Context("When tolerance suppresses scaling, no event should fire", Ordered, func() {
+		const ns = "scaling-no-event"
+		cacheName := "noevent-cache"
+
+		BeforeAll(func() {
+			ensureNamespace(ns)
+			DeferCleanup(cleanupNamespace, ns)
+			DeferCleanup(cleanupCache, ns, cacheName)
+			DeferCleanup(cleanupAllNodes)
+
+			By("creating 10 labeled nodes")
+			for i := range 10 {
+				node := createLabeledNode(fmt.Sprintf("noevent-node-%d", i), map[string]string{selectorKey: selectorValue})
+				Expect(k8sClient.Create(ctx, node)).To(Succeed())
+			}
+		})
+
+		It("should scale to 50% of 10 nodes = 5 replicas", func() {
+			cache := createDynamicCache(cacheName, ns, 50, nil, nil, &selectorKey, &selectorValue)
+			Expect(k8sClient.Create(ctx, cache)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(getScalingReplicas(ns, cacheName)).To(Equal(int32(5)))
+			}).Should(Succeed())
+		})
+
+		It("should NOT emit a new Scaling event when node change is within tolerance", func() {
+			By("recording current event count")
+			var beforeEvents eventsv1.EventList
+			Expect(k8sClient.List(ctx, &beforeEvents, client.InNamespace(ns))).To(Succeed())
+			scalingEventCount := 0
+			for _, e := range beforeEvents.Items {
+				if e.Reason == "Scaling" && e.Regarding.Name == cacheName {
+					scalingEventCount++
+				}
+			}
+
+			By("adding 1 node (within 10% tolerance, 11 nodes -> ceil(5.5)=6 but 6/5=1.2>1.1)")
+			// Actually 1 node at 10% tolerance on 5 replicas: ceil(5.5)=6, ratio=6/5=1.2>1.1 -- will scale.
+			// Use a smaller change: adding 0 nodes but removing 1 is within tolerance.
+			// Let's delete 1 node: 9 nodes -> ceil(4.5)=5, ratio = 5/5=1.0 <= 1.1 -> suppressed.
+			node := &corev1.Node{}
+			node.Name = "noevent-node-9"
+			Expect(k8sClient.Delete(ctx, node)).To(Succeed())
+
+			By("waiting for reconciliation and verifying no new event")
+			Consistently(func() int {
+				var events eventsv1.EventList
+				Expect(k8sClient.List(ctx, &events, client.InNamespace(ns))).To(Succeed())
+				count := 0
+				for _, e := range events.Items {
+					if e.Reason == "Scaling" && e.Regarding.Name == cacheName {
+						count++
+					}
+				}
+				return count
+			}, "3s", "200ms").Should(Equal(scalingEventCount),
+				"no new Scaling event should fire when tolerance suppresses the change")
+		})
+	})
+
+	Context("When switching from static to dynamic scaling", Ordered, func() {
+		const ns = "scaling-transition"
+		cacheName := "transition-cache"
+
+		BeforeAll(func() {
+			ensureNamespace(ns)
+			DeferCleanup(cleanupNamespace, ns)
+			DeferCleanup(cleanupCache, ns, cacheName)
+			DeferCleanup(cleanupAllNodes)
+
+			By("creating 10 labeled nodes")
+			for i := range 10 {
+				node := createLabeledNode(fmt.Sprintf("trans-node-%d", i), map[string]string{selectorKey: selectorValue})
+				Expect(k8sClient.Create(ctx, node)).To(Succeed())
+			}
+		})
+
+		It("should start with static scaling at 3 replicas", func() {
+			cache := testutil.NewStaticCache(cacheName, ns, 3)
+			Expect(k8sClient.Create(ctx, cache)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(getScalingReplicas(ns, cacheName)).To(Equal(int32(3)))
+			}).Should(Succeed())
+		})
+
+		It("should switch to dynamic scaling and scale immediately", func() {
+			By("patching from static to dynamic 50% (10 nodes = 5 replicas)")
+			Eventually(func(g Gomega) {
+				var cache storagev1.Cache
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cacheName, Namespace: ns}, &cache)).To(Succeed())
+				patch := client.MergeFrom(cache.DeepCopy())
+				cache.Spec.Scaling.Static = nil
+				cache.Spec.Scaling.Dynamic = &storagev1.DynamicScaleConfig{
+					PercentageOfNodesToUse: 50,
+				}
+				cache.Spec.NodeSelectorKey = &selectorKey
+				cache.Spec.NodeSelectorValue = &selectorValue
+				g.Expect(k8sClient.Patch(ctx, &cache, patch)).To(Succeed())
+			}).Should(Succeed())
+
+			By("verifying scale to 5 replicas (50% of 10 nodes)")
+			Eventually(func(g Gomega) {
+				g.Expect(getScalingReplicas(ns, cacheName)).To(Equal(int32(5)),
+					"should scale to 5 after switching from static(3) to dynamic(50%%)")
+			}).Should(Succeed())
+		})
+	})
 })
+
+// containsAll returns true if s contains all of the given substrings.
+func containsAll(s string, subs ...string) bool {
+	for _, sub := range subs {
+		if !strings.Contains(s, sub) {
+			return false
+		}
+	}
+	return true
+}

@@ -73,14 +73,17 @@ spec:
                     description: Frequency of running eviction pass, example "1h30m"
                     type: string
                   sizeTarget:
-                    default: "90"
-                    description: Target cache utilization percentage after eviction
-                      (0-100)
+                    default: "80"
+                    description: |-
+                      Target cache utilization percentage after eviction (0-100).
+                      Eviction runs until cache utilization drops to this level.
+                      Must be less than SizeThreshold to avoid continuous eviction cycles.
                     type: string
                   sizeThreshold:
                     default: "90"
-                    description: Size threshold for triggering cache eviction in percentage
-                      (0-100)
+                    description: |-
+                      Size threshold for triggering cache eviction in percentage (0-100).
+                      Eviction starts when cache utilization exceeds this value.
                     type: string
                 type: object
               infinibandResourceLimitCount:
@@ -206,10 +209,15 @@ spec:
                   conditions represent the current state of the Cache resource.
                   Each condition has a unique type and reflects the status of a specific aspect of the resource.
 
-                  Standard condition types include:
-                  - "Available": the resource is fully functional
-                  - "Progressing": the resource is being created or updated
-                  - "Degraded": the resource failed to reach or maintain its desired state
+                  All conditions use positive polarity (True = good/healthy). This aligns with the
+                  kstatus convention so that tooling such as `kubectl wait --for=condition=Ready` works
+                  out of the box. See https://github.com/kubernetes-sigs/cli-utils/blob/master/pkg/kstatus/README.md
+
+                  Condition types:
+                  - "Ready": overall readiness derived from all other conditions
+                  - "ReplicasReady": whether the desired number of StatefulSet replicas are running and ready
+                  - "PodsScheduled": whether all cache server pods have been successfully scheduled.
+                    False when pods are stuck pending or scheduling errors occurred.
 
                   The status of each condition is one of True, False, or Unknown.
                 items:
@@ -278,6 +286,30 @@ spec:
                 description: Desired number of cache server pods
                 format: int32
                 type: integer
+              scaling:
+                description: |-
+                  Scaling reports the state of the scaling normalizer's stabilization
+                  window. Nil when static scaling is configured or when the scaling
+                  calculation could not be performed.
+                properties:
+                  message:
+                    description: Human-readable summary of the current scaling state.
+                    type: string
+                  stabilizationEnds:
+                    description: |-
+                      When the current stabilization window expires. Nil when
+                      scaling has settled.
+                    format: date-time
+                    type: string
+                  targetServers:
+                    description: |-
+                      The server count the scaling algorithm computed. When a
+                      stabilization window is active this is the count the system
+                      would apply once the window expires. Nil on error paths where
+                      the target could not be determined.
+                    format: int32
+                    type: integer
+                type: object
             type: object
         required:
         - spec

@@ -2,3 +2,7 @@ logLevel: info
 cacheServerImage: "cache-server:local"
 imagePullPolicy: "IfNotPresent"
 podStuckThresholdDuration: 5m # Duration after which a cache pod is considered stuck or healthy after state change
+scaleUpStabilizationWindow: 15m # Window over which scale-up recommendations are stabilized
+scaleDownStabilizationWindow: 15m # Window over which scale-down recommendations are stabilized
+scaleUpTolerancePercent: 10 # Percentage tolerance before triggering a scale-up
+scaleDownTolerancePercent: 10 # Percentage tolerance before triggering a scale-down

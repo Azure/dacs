@@ -9,6 +9,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"text/template"
 
@@ -19,25 +20,62 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/yaml"
 
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
 	"github.com/Azure/dacs/cache-controller/internal/config"
 	"github.com/Azure/dacs/cache-controller/internal/scaling"
+	"github.com/Azure/dacs/cache-controller/internal/scheduling"
+	"github.com/Azure/dacs/cache-controller/internal/statushelper"
+	"k8s.io/client-go/tools/events"
 )
 
 // CacheReconciler reconciles a Cache object
 type CacheReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Scaler *scaling.Reconciler
+	Scheme    *runtime.Scheme
+	Scaler    *scaling.Reconciler
+	Scheduler *scheduling.Reconciler
+	Recorder  events.EventRecorder
 }
+
+// NewCacheReconciler creates a CacheReconciler, returning an error if any
+// required dependency is nil.
+func NewCacheReconciler(c client.Client, scheme *runtime.Scheme, recorder events.EventRecorder, scaler *scaling.Reconciler, scheduler *scheduling.Reconciler) (*CacheReconciler, error) {
+	if c == nil {
+		return nil, fmt.Errorf("client must not be nil")
+	}
+	if scheme == nil {
+		return nil, fmt.Errorf("scheme must not be nil")
+	}
+	if recorder == nil {
+		return nil, fmt.Errorf("recorder must not be nil")
+	}
+	if scaler == nil {
+		return nil, fmt.Errorf("scaler must not be nil")
+	}
+	if scheduler == nil {
+		return nil, fmt.Errorf("scheduler must not be nil")
+	}
+	return &CacheReconciler{
+		Client:    c,
+		Scheme:    scheme,
+		Scaler:    scaler,
+		Scheduler: scheduler,
+		Recorder:  recorder,
+	}, nil
+}
+
+const cacheFinalizerName = "storage.azure.com/finalizer"
 
 // Default RBAC rules added by kubebuilder
 // +kubebuilder:rbac:groups=storage.azure.com,resources=caches,verbs=get;list;watch;create;update;patch;delete
@@ -55,6 +93,8 @@ type CacheReconciler struct {
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,resourceNames=cacheserver,verbs=get;update;patch;delete
 //
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
+//
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 //
 // +kubebuilder:rbac:groups="",resources=services,verbs=create;list;watch
 // +kubebuilder:rbac:groups="",resources=services,resourceNames=cacheserver;cacheserver-discovery,verbs=get;update;patch;delete
@@ -74,78 +114,160 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	var cache storagev1.Cache
 	if err := r.Get(ctx, req.NamespacedName, &cache); err != nil {
 		if apierrors.IsNotFound(err) {
-			// If the custom resource is not found then it usually means that it was deleted or not created
-			// In this way, we will stop the reconciliation
-			log.Info("Cache resource not found. Ignoring since object must be deleted")
+			log.Info("Cache resource not found, nothing to reconcile")
 			return ctrl.Result{}, nil
 		}
-		// Error reading the object - requeue the request.
 		log.Error(err, "Failed to get Cache")
 		return ctrl.Result{}, err
 	}
 
+	// Handle deletion: clean up tracker state so nodes are freed for
+	// other Cache CRs, then remove the finalizer to let the API server
+	// complete the delete.
+	if !cache.DeletionTimestamp.IsZero() {
+		if controllerutil.ContainsFinalizer(&cache, cacheFinalizerName) {
+			cacheKey := req.Namespace + "/" + req.Name
+			log.Info("Cache being deleted, cleaning up tracker", "cacheKey", cacheKey)
+			r.Scaler.Deleted(req.NamespacedName)
+			r.Scheduler.Tracker.RemoveCacheKey(cacheKey)
+
+			patch := client.MergeFrom(cache.DeepCopy())
+			controllerutil.RemoveFinalizer(&cache, cacheFinalizerName)
+			if err := r.Patch(ctx, &cache, patch); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+		return ctrl.Result{}, nil
+	}
+
+	// Ensure finalizer is registered so tracker cleanup runs on deletion.
+	if !controllerutil.ContainsFinalizer(&cache, cacheFinalizerName) {
+		patch := client.MergeFrom(cache.DeepCopy())
+		controllerutil.AddFinalizer(&cache, cacheFinalizerName)
+		if err := r.Patch(ctx, &cache, patch); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	log.V(1).Info("Reconciling Cache resource")
 
-	// Validate required fields are set
-	if err := validateCacheSpec(&cache); err != nil {
-		return ctrl.Result{}, fmt.Errorf("cache spec validation failed: %w", err)
+	// Patchhelper accumulates conditions and requeue timing.
+	// Sub-conditions are initialized to Unknown by the statushelper;
+	// each sub-reconciler overwrites with the actual state as it runs.
+	h, err := statushelper.New(&cache, r.Client)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("creating status helper: %w", err)
 	}
 
-	numServers, err := r.resolveNumServers(ctx, &cache)
-	if err != nil {
+	reconcileErr := r.reconcileCache(ctx, &cache, h)
+	if err := r.patchStatus(ctx, h, &cache, reconcileErr); err != nil {
 		return ctrl.Result{}, err
 	}
+	return h.ToCtrlResult(), nil
+}
 
-	log.Info("Starting reconciliation",
-		"desiredServers", numServers)
+// reconcileCache runs all sub-reconcilers (scaling, StatefulSet, Services,
+// ConfigMap, scheduling). It returns the first error encountered.
+func (r *CacheReconciler) reconcileCache(ctx context.Context, cache *storagev1.Cache, h *statushelper.Helper) error {
+	log := logf.FromContext(ctx)
+
+	desired, err := r.resolveNumServers(ctx, cache, h)
+	if err != nil {
+		return err
+	}
+	h.SetDesiredReplicas(desired)
+
+	log.Info("Starting reconciliation", "desiredServers", desired)
 
 	// Reconcile StatefulSet
 	log.V(1).Info("Reconciling StatefulSet")
-	if err := r.reconcileStatefulSet(ctx, &cache, numServers); err != nil {
+	if err := r.reconcileStatefulSet(ctx, cache, desired); err != nil {
 		log.Error(err, "Failed to reconcile StatefulSet")
-		return ctrl.Result{}, fmt.Errorf("failed to reconcile StatefulSet: %w", err)
+		return fmt.Errorf("failed to reconcile StatefulSet: %w", err)
 	}
 
 	// Reconcile Services
 	log.V(1).Info("Reconciling Services")
-	if err := r.reconcileServices(ctx, &cache); err != nil {
+	if err := r.reconcileServices(ctx, cache); err != nil {
 		log.Error(err, "Failed to reconcile Services")
-		return ctrl.Result{}, err
+		return fmt.Errorf("failed to reconcile Services: %w", err)
 	}
 
 	// Reconcile ConfigMap
 	log.V(1).Info("Reconciling ConfigMap")
-	if err := r.reconcileConfigMap(ctx, &cache, numServers); err != nil {
+	if err := r.reconcileConfigMap(ctx, cache, desired); err != nil {
 		log.Error(err, "Failed to reconcile ConfigMap")
-		return ctrl.Result{}, err
+		return fmt.Errorf("failed to reconcile ConfigMap: %w", err)
 	}
 
-	// Update status after successful reconciliation
-	log.V(1).Info("Updating Cache status")
-	if err := r.updateCacheStatus(ctx, &cache, numServers); err != nil {
-		log.Error(err, "Failed to update Cache status")
-		return ctrl.Result{}, err
+	// Schedule pods (custom scheduling, stuck-pod cleanup, excess-pod removal)
+	if err := r.Scheduler.Reconcile(ctx, cache, h); err != nil {
+		log.Error(err, "Failed to schedule pods")
+		return err
 	}
 
-	log.Info("Reconciliation completed successfully")
-
-	return ctrl.Result{}, nil
+	log.V(1).Info("Reconciliation completed successfully")
+	return nil
 }
 
-// resolveNumServers determines the desired number of cache servers based on the scaling configuration.
-func (r *CacheReconciler) resolveNumServers(ctx context.Context, cache *storagev1.Cache) (int32, error) {
-	switch {
-	case cache.Spec.Scaling.Static != nil:
-		return cache.Spec.Scaling.Static.NumServers, nil
-	case cache.Spec.Scaling.Dynamic != nil:
-		numServers, err := r.Scaler.DesiredReplicas(ctx, cache)
-		if err != nil {
-			return 0, fmt.Errorf("failed to compute desired replicas: %w", err)
-		}
-		return numServers, nil
-	default:
-		return 0, fmt.Errorf("cache %s/%s does not have scaling configuration", cache.Namespace, cache.Name)
+// patchStatus patches the Cache status with final conditions. It is always
+// called after reconcileCache, regardless of whether reconciliation
+// succeeded or failed. Returns reconcileErr joined with any patch error.
+func (r *CacheReconciler) patchStatus(ctx context.Context, h *statushelper.Helper, cache *storagev1.Cache, reconcileErr error) error {
+	log := logf.FromContext(ctx)
+
+	r.setFinalConditions(ctx, h, cache)
+	log.V(1).Info("Patching Cache status")
+	if statusErr := h.Patch(ctx); statusErr != nil {
+		log.Error(statusErr, "Failed to patch Cache status")
+		return errors.Join(reconcileErr, statusErr)
 	}
+	return reconcileErr
+}
+
+// resolveNumServers determines the desired number of cache servers by
+// delegating to the scaler, which handles both static and dynamic scaling.
+func (r *CacheReconciler) resolveNumServers(ctx context.Context, cache *storagev1.Cache, h *statushelper.Helper) (int32, error) {
+	log := logf.FromContext(ctx)
+
+	currentReplicas, err := r.getCurrentReplicas(ctx, cache)
+	if err != nil {
+		return 0, err
+	}
+
+	// Capture whether stabilization was previously active so we can emit
+	// events only on transitions, not on every reconciliation.
+	desired, err := r.Scaler.DesiredReplicas(ctx, cache, currentReplicas, h)
+	if err != nil {
+		return 0, err
+	}
+
+	if desired != currentReplicas && currentReplicas > 0 {
+		log.Info("Scaling cache servers", "from", currentReplicas, "to", desired)
+		r.Recorder.Eventf(cache, nil, corev1.EventTypeNormal, "Scaling", "ScaleReplicas", "Scaling cache servers from %d to %d replicas", currentReplicas, desired)
+	} else if desired != currentReplicas && currentReplicas == 0 {
+		log.Info("Initial scaling", "desired", desired)
+		r.Recorder.Eventf(cache, nil, corev1.EventTypeNormal, "Scaling", "ScaleReplicas", "Initial scale to %d replicas", desired)
+	}
+
+	return desired, nil
+}
+
+// getCurrentReplicas reads the current spec.replicas from the owned StatefulSet.
+// Returns 0 if the StatefulSet doesn't exist yet (not-found). Returns an error
+// for unexpected failures so the caller can distinguish "no STS" from "can't read STS".
+func (r *CacheReconciler) getCurrentReplicas(ctx context.Context, cache *storagev1.Cache) (int32, error) {
+	var sts appsv1.StatefulSet
+	if err := r.Get(ctx, types.NamespacedName{Name: "cacheserver", Namespace: cache.Namespace}, &sts); err != nil {
+		if apierrors.IsNotFound(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to get StatefulSet for current replicas: %w", err)
+	}
+	if sts.Spec.Replicas == nil {
+		return 0, nil
+	}
+	return *sts.Spec.Replicas, nil
 }
 
 func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *storagev1.Cache, numServers int32) error {
@@ -184,7 +306,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 
 	// Extract values from CRD spec
 	// Defaults are applied by the mutating webhook at admission time.
-	// Validation is done by validateCacheSpec called in Reconcile.
+	// Validation and defaults are applied by the admission webhook.
 
 	// Storage configuration
 	useEphemeral := false
@@ -246,7 +368,10 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 			"image", values.Image)
 		return err
 	}
-	// Create or Update StatefulSet
+	// Create or Update StatefulSet. The template uses a fixed name
+	// ("cacheserver"), so exactly one StatefulSet -- and therefore one
+	// Cache CR -- is supported per namespace.
+	// TODO(jlong): support multiple Cache CRs per namespace.
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      desired.Name,
@@ -422,164 +547,77 @@ func renderTemplateInto(path string, values interface{}, out interface{}) error 
 // logResourceOperation logs the result of a CreateOrUpdate operation in a consistent way
 func logResourceOperation(log logr.Logger, result controllerutil.OperationResult, resourceType, name string, extraFields ...interface{}) {
 	baseFields := []interface{}{"resourceName", name}
-	if result == controllerutil.OperationResultCreated {
+	switch result {
+	case controllerutil.OperationResultCreated:
 		log.Info("Created "+resourceType, append(baseFields, extraFields...)...)
-	} else if result == controllerutil.OperationResultUpdated {
+	case controllerutil.OperationResultUpdated:
 		log.Info("Updated "+resourceType, append(baseFields, extraFields...)...)
-	} else {
+	default:
 		log.V(1).Info(resourceType+" unchanged", baseFields...)
 	}
 }
 
-// updateCacheStatus updates the Cache status with current state and conditions.
-// Uses a merge-patch so unchanged status is a no-op (no resourceVersion bump).
-func (r *CacheReconciler) updateCacheStatus(ctx context.Context, cache *storagev1.Cache, desired int32) error {
+// setFinalConditions sets ReplicasReady, server counts, and the aggregate
+// Ready condition. Any condition left unset by sub-reconcilers is marked
+// Unknown. Ready is True only when all sub-conditions are True; otherwise
+// False. Scaling state is reported separately via status.scaling.
+func (r *CacheReconciler) setFinalConditions(ctx context.Context, h *statushelper.Helper, cache *storagev1.Cache) {
 	log := logf.FromContext(ctx)
 
-	// Snapshot before mutations so MergeFrom can compute a minimal diff.
-	patch := client.MergeFrom(cache.DeepCopy())
+	desired := h.DesiredReplicas()
+	readyReplicas := r.setReplicasReady(ctx, h, cache)
+	if desired != nil {
+		cache.Status.DesiredServers = desired
+		cache.Status.CurrentServers = &readyReplicas
+		log.V(1).Info("Cache status set", "desiredServers", *desired, "readyReplicas", readyReplicas)
+	}
+
+	// Ready is True only when all sub-conditions are True; otherwise False.
+	h.SetReady()
+}
+
+// setReplicasReady fetches the StatefulSet, sets the ReplicasReady condition
+// on the statushelper, and returns the number of ready replicas.
+func (r *CacheReconciler) setReplicasReady(ctx context.Context, h *statushelper.Helper, cache *storagev1.Cache) int32 {
+	log := logf.FromContext(ctx)
+
+	desired := h.DesiredReplicas()
+	if desired == nil {
+		h.MarkUnknown(storagev1.ReplicasReadyCondition, storagev1.ReasonDesiredCountUnknown, "Desired server count has not been resolved yet")
+		return 0
+	}
 
 	var sts appsv1.StatefulSet
-	current := int32(0)
-
 	err := r.Get(ctx, types.NamespacedName{Name: "cacheserver", Namespace: cache.Namespace}, &sts)
-	if err == nil {
-		current = sts.Status.ReadyReplicas
 
-		// Log all replica counts for debugging:
-		// - readyReplicas: Pods that are healthy and serving traffic
-		// - desiredReplicas: Target count from Cache spec
-		// - updatedReplicas: Pods running the latest template/image
-		// - currentReplicas: Total pods that exist (running, pending, or failing)
-		log.V(1).Info("StatefulSet status check",
-			"readyReplicas", current,
-			"desiredReplicas", desired,
-			"updatedReplicas", sts.Status.UpdatedReplicas,
-			"currentReplicas", sts.Status.CurrentReplicas)
-
-		// Set Ready condition based on replicas
-		if current == desired {
-			setStatusCondition(&cache.Status, metav1.Condition{
-				Type:    "Ready",
-				Status:  metav1.ConditionTrue,
-				Reason:  "AllReplicasReady",
-				Message: fmt.Sprintf("All %d cache servers are ready", desired),
-			})
-			log.V(1).Info("Cache is ready",
-				"readyReplicas", current)
-		} else if current > 0 {
-			setStatusCondition(&cache.Status, metav1.Condition{
-				Type:    "Ready",
-				Status:  metav1.ConditionFalse,
-				Reason:  "ReplicasNotReady",
-				Message: fmt.Sprintf("%d/%d cache servers are ready", current, desired),
-			})
-			log.V(1).Info("Cache partially ready",
-				"readyReplicas", current,
-				"desiredReplicas", desired)
-		} else {
-			setStatusCondition(&cache.Status, metav1.Condition{
-				Type:    "Ready",
-				Status:  metav1.ConditionFalse,
-				Reason:  "NoReplicasReady",
-				Message: "No cache servers are ready yet",
-			})
-			log.V(1).Info("Cache not ready yet",
-				"desiredReplicas", desired)
-		}
-	} else if apierrors.IsNotFound(err) {
-		setStatusCondition(&cache.Status, metav1.Condition{
-			Type:    "Ready",
-			Status:  metav1.ConditionFalse,
-			Reason:  "StatefulSetNotFound",
-			Message: "Cache server StatefulSet does not exist yet",
-		})
+	if apierrors.IsNotFound(err) {
 		log.V(1).Info("StatefulSet not found, will be created")
-	} else {
-		setStatusCondition(&cache.Status, metav1.Condition{
-			Type:    "Ready",
-			Status:  metav1.ConditionUnknown,
-			Reason:  "StatefulSetError",
-			Message: fmt.Sprintf("Failed to get StatefulSet: %v", err),
-		})
-		log.Error(err, "Failed to get StatefulSet for status update",
-			"statefulSetName", "cacheserver")
+		h.MarkFalse(storagev1.ReplicasReadyCondition, storagev1.ReasonStatefulSetNotFound, "Cache server StatefulSet does not exist yet")
+		return 0
+	}
+	if err != nil {
+		log.Error(err, "Failed to get StatefulSet for status update", "statefulSetName", "cacheserver")
+		h.MarkUnknown(storagev1.ReplicasReadyCondition, storagev1.ReasonStatefulSetGetError, "Failed to get StatefulSet: %v", err)
+		return 0
 	}
 
-	cache.Status.DesiredServers = &desired
-	cache.Status.CurrentServers = &current
-	log.V(1).Info("Updating Cache status",
-		"desiredServers", desired,
-		"currentServers", current)
-	return r.Status().Patch(ctx, cache, patch)
-}
+	ready := sts.Status.ReadyReplicas
+	log.V(1).Info("StatefulSet status",
+		"readyReplicas", ready,
+		"desiredReplicas", *desired,
+		"updatedReplicas", sts.Status.UpdatedReplicas,
+		"currentReplicas", sts.Status.CurrentReplicas)
 
-// setStatusCondition sets or updates a condition in the Cache status.
-func setStatusCondition(status *storagev1.CacheStatus, condition metav1.Condition) {
-	condition.LastTransitionTime = metav1.Now()
-
-	// Find existing condition of same type
-	for i, existing := range status.Conditions {
-		if existing.Type == condition.Type {
-			// Only update LastTransitionTime if status changed
-			if existing.Status != condition.Status {
-				status.Conditions[i] = condition
-			} else {
-				// Keep old transition time if status unchanged
-				condition.LastTransitionTime = existing.LastTransitionTime
-				status.Conditions[i] = condition
-			}
-			return
-		}
+	switch {
+	case ready == *desired:
+		h.MarkTrue(storagev1.ReplicasReadyCondition, storagev1.ReasonAllReplicasReady, "All %d cache servers are ready", *desired)
+	case ready > 0:
+		h.MarkFalse(storagev1.ReplicasReadyCondition, storagev1.ReasonSomeReplicasNotReady, "%d/%d cache servers are ready", ready, *desired)
+	default:
+		h.MarkFalse(storagev1.ReplicasReadyCondition, storagev1.ReasonNoReplicasReady, "No cache servers are ready yet")
 	}
 
-	// Condition doesn't exist, add it
-	status.Conditions = append(status.Conditions, condition)
-}
-
-// validateCacheSpec validates that all required fields in the Cache spec are set.
-// Defaults are applied by the mutating webhook at admission time.
-func validateCacheSpec(cache *storagev1.Cache) error {
-	if cache == nil {
-		return fmt.Errorf("cache is nil")
-	}
-	if cache.Spec.Port == nil {
-		return fmt.Errorf("spec.port is nil")
-	}
-	if cache.Spec.MetricsPort == nil {
-		return fmt.Errorf("spec.metricsPort is nil")
-	}
-	if cache.Spec.Storage == nil {
-		return fmt.Errorf("spec.storage is nil")
-	}
-	if cache.Spec.NodeSelectorKey == nil {
-		return fmt.Errorf("spec.nodeSelectorKey is nil")
-	}
-	if cache.Spec.NodeSelectorValue == nil {
-		return fmt.Errorf("spec.nodeSelectorValue is nil")
-	}
-	if cache.Spec.Eviction == nil {
-		return fmt.Errorf("spec.eviction is nil")
-	}
-	if cache.Spec.Eviction.EnableAccessTimeEviction == nil {
-		return fmt.Errorf("spec.eviction.enableAccessTimeEviction is nil")
-	}
-	if cache.Spec.Eviction.EvictionMaintainFreeSpace == nil {
-		return fmt.Errorf("spec.eviction.evictionMaintainFreeSpace is nil")
-	}
-	if cache.Spec.Eviction.LastAccessThreshold == nil {
-		return fmt.Errorf("spec.eviction.lastAccessThreshold is nil")
-	}
-	if cache.Spec.Eviction.SizeThreshold == nil {
-		return fmt.Errorf("spec.eviction.sizeThreshold is nil")
-	}
-	if cache.Spec.Eviction.PassFrequency == nil {
-		return fmt.Errorf("spec.eviction.passFrequency is nil")
-	}
-	if cache.Spec.Eviction.SizeTarget == nil {
-		return fmt.Errorf("spec.eviction.sizeTarget is nil")
-	}
-	return nil
+	return ready
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -590,13 +628,40 @@ func (r *CacheReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&storagev1.Cache{}).
-		Owns(&appsv1.StatefulSet{}).
-		Owns(&corev1.Service{}).
-		Owns(&corev1.ConfigMap{}).
+		WithOptions(controller.Options{
+			RecoverPanic: ptr.To(true),
+		}).
+		For(&storagev1.Cache{},
+			builder.WithPredicates(
+				predicate.GenerationChangedPredicate{},
+			),
+		).
+		Owns(&appsv1.StatefulSet{},
+			builder.WithPredicates(predicate.Or(
+				predicate.GenerationChangedPredicate{},
+				predicate.LabelChangedPredicate{},
+				stsStatusChangedPredicate{},
+			)),
+		).
+		Owns(&corev1.Service{},
+			builder.WithPredicates(predicate.Or(
+				predicate.GenerationChangedPredicate{},
+				predicate.LabelChangedPredicate{},
+			)),
+		).
+		Owns(&corev1.ConfigMap{},
+			builder.WithPredicates(predicate.Or(
+				predicate.GenerationChangedPredicate{},
+				predicate.LabelChangedPredicate{},
+			)),
+		).
 		Watches(&corev1.Node{},
 			handler.EnqueueRequestsFromMapFunc(r.Scaler.MapNodeToCaches),
 			builder.WithPredicates(NodePredicate{}),
+		).
+		Watches(&corev1.Pod{},
+			handler.EnqueueRequestsFromMapFunc(r.Scheduler.MapPodToCaches),
+			builder.WithPredicates(cacheserverPodPredicate{}),
 		).
 		Named("cache").
 		Complete(r)

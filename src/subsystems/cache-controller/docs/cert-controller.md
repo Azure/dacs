@@ -38,7 +38,7 @@ The rotator writes certificates here so the controller-runtime webhook server ca
 
 ## How It Works
 
-1. Controller starts → cert rotator initializes
+1. Controller starts -> cert rotator initializes
 2. Rotator generates self-signed CA + server certificate
 3. Certificates stored in Secret and written to filesystem
 4. CA bundle injected into webhook configurations

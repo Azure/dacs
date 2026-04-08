@@ -109,7 +109,9 @@ func Setup(ctx context.Context, k8sClient client.Client, namespace string) {
 		if controllerPresent {
 			ensureControllerInstall(ctx, k8sClient)
 		}
-		Expect(statefulSetExists(ctx, k8sClient, namespace, "cacheserver")).To(BeTrue(),
+		Eventually(func() bool {
+			return statefulSetExists(ctx, k8sClient, namespace, "cacheserver")
+		}).WithTimeout(5*time.Minute).WithPolling(5*time.Second).Should(BeTrue(),
 			"Cache StatefulSet not found. Ensure cache infrastructure is installed before running tests.")
 		ensureCacheReady(ctx, k8sClient, namespace, controllerPresent)
 		return

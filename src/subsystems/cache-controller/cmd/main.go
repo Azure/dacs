@@ -40,6 +40,7 @@ import (
 	"github.com/Azure/dacs/cache-controller/internal/controller"
 	"github.com/Azure/dacs/cache-controller/internal/management"
 	"github.com/Azure/dacs/cache-controller/internal/scaling"
+	"github.com/Azure/dacs/cache-controller/internal/scheduling"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -319,14 +320,28 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 
-	if err := (&controller.CacheReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-		Scaler: scaling.New(
+	tracker := management.InitTracker(ctx, internalConfig)
+	scheduler, err := scheduling.NewReconciler(mgr.GetClient(), tracker)
+	if err != nil {
+		setupLog.Error(err, "unable to create scheduler reconciler")
+		os.Exit(1)
+	}
+	reconciler, err := controller.NewCacheReconciler(
+		mgr.GetClient(),
+		mgr.GetScheme(),
+		mgr.GetEventRecorder("cache-controller"),
+		scaling.New(
 			mgr.GetClient(),
 			mgr.GetScheme(),
+			internalConfig,
 		),
-	}).SetupWithManager(ctx, mgr); err != nil {
+		scheduler,
+	)
+	if err != nil {
+		setupLog.Error(err, "unable to create reconciler", "controller", "Cache")
+		os.Exit(1)
+	}
+	if err := reconciler.SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Cache")
 		os.Exit(1)
 	}
@@ -343,15 +358,6 @@ func main() {
 			}
 			setupLog.Info("Webhooks registered successfully")
 		}()
-	}
-
-	if err := (&controller.RuntimeReconciler{
-		Client:  mgr.GetClient(),
-		Scheme:  mgr.GetScheme(),
-		Tracker: management.InitTracker(internalConfig),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Runtime")
-		os.Exit(1)
 	}
 
 	// +kubebuilder:scaffold:builder

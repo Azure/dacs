@@ -28,7 +28,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
+	"github.com/Azure/dacs/cache-controller/internal/config"
+	"github.com/Azure/dacs/cache-controller/internal/management"
 	"github.com/Azure/dacs/cache-controller/internal/scaling"
+	"github.com/Azure/dacs/cache-controller/internal/scheduling"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -52,9 +55,16 @@ func TestControllers(t *testing.T) {
 var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
+	// Provide required config for the reconciler (normally loaded from a config file).
+	configFile, err := os.CreateTemp("", "cache-controller-config-*.yaml")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = configFile.WriteString("cacheServerImage: test-cache-server:latest\n")
+	Expect(err).NotTo(HaveOccurred())
+	Expect(configFile.Close()).To(Succeed())
+	config.InitConfig(configFile.Name())
+
 	ctx, cancel = context.WithCancel(context.TODO())
 
-	var err error
 	err = storagev1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
@@ -102,16 +112,31 @@ var _ = BeforeSuite(func() {
 	err = (&storagev1.Cache{}).SetupWebhookWithManager(mgr)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Register the CacheReconciler with the manager (includes scaling)
+	// Register the CacheReconciler with the manager (includes scaling + scheduling)
 	scaler := scaling.New(
 		mgr.GetClient(),
 		mgr.GetScheme(),
+		&config.Config{
+			ScaleUpStabilizationWindow:   3 * time.Second,
+			ScaleDownStabilizationWindow: 3 * time.Second,
+			ScaleUpTolerancePercent:      config.DefaultScaleUpTolerancePercent,
+			ScaleDownTolerancePercent:    config.DefaultScaleDownTolerancePercent,
+		},
 	)
-	err = (&CacheReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-		Scaler: scaler,
-	}).SetupWithManager(ctx, mgr)
+	tracker := management.InitTracker(ctx, &config.Config{
+		PodStuckThresholdDuration: 5 * time.Minute,
+	})
+	scheduler, err := scheduling.NewReconciler(mgr.GetClient(), tracker)
+	Expect(err).NotTo(HaveOccurred())
+	reconciler, err := NewCacheReconciler(
+		mgr.GetClient(),
+		mgr.GetScheme(),
+		mgr.GetEventRecorder("cache-controller"),
+		scaler,
+		scheduler,
+	)
+	Expect(err).NotTo(HaveOccurred())
+	err = reconciler.SetupWithManager(ctx, mgr)
 	Expect(err).NotTo(HaveOccurred())
 
 	// Start the manager in a goroutine

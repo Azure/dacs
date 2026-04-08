@@ -85,6 +85,22 @@ prometheus:
   enable: false
 
 
+# Pre-delete cleanup job that deletes Cache CRs before chart uninstall.
+# Ensures finalizers run and pods are cleaned up gracefully.
+cleanup:
+  image:
+    repository: mcr.microsoft.com/oss/v2/kubernetes/kubectl
+    tag: v1.35.1
+    pullPolicy: IfNotPresent
+  timeoutSeconds: 300
+  resources:
+    limits:
+      cpu: 100m
+      memory: 64Mi
+    requests:
+      cpu: 50m
+      memory: 32Mi
+
 # Cache Custom Resource configuration
 cache:
   enabled: false  # Set to true to deploy a sample Cache instance with the chart 

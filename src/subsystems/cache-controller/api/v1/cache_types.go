@@ -69,7 +69,8 @@ type EvictionConfig struct {
 	// +kubebuilder:default="30d"
 	LastAccessThreshold *string `json:"lastAccessThreshold,omitempty"`
 
-	// Size threshold for triggering cache eviction in percentage (0-100)
+	// Size threshold for triggering cache eviction in percentage (0-100).
+	// Eviction starts when cache utilization exceeds this value.
 	// +optional
 	// +kubebuilder:default="90"
 	SizeThreshold *string `json:"sizeThreshold,omitempty"`
@@ -79,9 +80,11 @@ type EvictionConfig struct {
 	// +kubebuilder:default="1h"
 	PassFrequency *string `json:"passFrequency,omitempty"`
 
-	// Target cache utilization percentage after eviction (0-100)
+	// Target cache utilization percentage after eviction (0-100).
+	// Eviction runs until cache utilization drops to this level.
+	// Must be less than SizeThreshold to avoid continuous eviction cycles.
 	// +optional
-	// +kubebuilder:default="90"
+	// +kubebuilder:default="80"
 	SizeTarget *string `json:"sizeTarget,omitempty"`
 }
 
@@ -179,21 +182,58 @@ type CacheSpec struct {
 	Storage *StorageConfig `json:"storage,omitempty"`
 }
 
+// ScalingStatus reports the current state of the scaling normalizer.
+// Present only when dynamic scaling is active and the controller has
+// successfully computed a replica target. Nil for static scaling or
+// when the scaling calculation could not be performed (error paths).
+//
+// A non-nil StabilizationEnds indicates a stabilization window is
+// holding back a scaling change. When StabilizationEnds is nil the
+// system has settled at TargetServers.
+type ScalingStatus struct {
+	// The server count the scaling algorithm computed. When a
+	// stabilization window is active this is the count the system
+	// would apply once the window expires. Nil on error paths where
+	// the target could not be determined.
+	// +optional
+	TargetServers *int32 `json:"targetServers,omitempty"`
+
+	// When the current stabilization window expires. Nil when
+	// scaling has settled.
+	// +optional
+	StabilizationEnds *metav1.Time `json:"stabilizationEnds,omitempty"`
+
+	// Human-readable summary of the current scaling state.
+	// +optional
+	Message string `json:"message,omitempty"`
+}
+
 // CacheStatus defines the observed state of Cache.
 type CacheStatus struct {
 	// conditions represent the current state of the Cache resource.
 	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
 	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
-	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
+	// All conditions use positive polarity (True = good/healthy). This aligns with the
+	// kstatus convention so that tooling such as `kubectl wait --for=condition=Ready` works
+	// out of the box. See https://github.com/kubernetes-sigs/cli-utils/blob/master/pkg/kstatus/README.md
+	//
+	// Condition types:
+	// - "Ready": overall readiness derived from all other conditions
+	// - "ReplicasReady": whether the desired number of StatefulSet replicas are running and ready
+	// - "PodsScheduled": whether all cache server pods have been successfully scheduled.
+	//   False when pods are stuck pending or scheduling errors occurred.
 	//
 	// The status of each condition is one of True, False, or Unknown.
 	// +listType=map
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// Scaling reports the state of the scaling normalizer's stabilization
+	// window. Nil when static scaling is configured or when the scaling
+	// calculation could not be performed.
+	// +optional
+	Scaling *ScalingStatus `json:"scaling,omitempty"`
 
 	// Desired number of cache server pods
 	// +optional
