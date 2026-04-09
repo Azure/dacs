@@ -20,17 +20,16 @@ IBConnection::~IBConnection()
 //---------------------------------------------------------------------------------------------------------------------
 int IBConnection::Read(char* buffer, int size)
 {
-    int readBytes = std::min(size, m_nDataReadFromRemote - m_readOffset);
-    if (readBytes > 0)
-    {
-        memcpy(buffer, m_buffer + m_readOffset, readBytes);
-        m_readOffset += readBytes;
-    }
-    else
+    if (m_readOffset >= m_nDataReadFromRemote)
     {
         LOG_WARN("End of read buffer, id={}, readOffset={}, m_nDataReadFromRemote={}, size={}",
             GetId(), m_readOffset, m_nDataReadFromRemote, size);
+        return 0;
     }
+
+    int readBytes = std::min(size, m_nDataReadFromRemote - m_readOffset);
+    memcpy(buffer, m_buffer + m_readOffset, readBytes);
+    m_readOffset += readBytes;
     return readBytes;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -140,6 +139,52 @@ bool IBConnection::Sendfile(int fileFd, uint64_t fileStartOffset, uint64_t total
     }
     m_writeOffset += totalRead;
     return FinalizeWrite();
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool IBConnection::Recvfile(int fileFd, uint64_t totalLength)
+{
+    // IB connections transfer data in a single RDMA read into m_buffer.
+    // splice() is not applicable here, so we write from m_buffer to file in chunks.
+    static constexpr uint64_t MAX_WRITE_CHUNK = 4 * 1024 * 1024;
+    uint64_t totalWritten = 0;
+
+    if (totalLength > static_cast<uint64_t>(m_nDataReadFromRemote - m_readOffset))
+    {
+        LOG_WARN("Recvfile: requested {} bytes but only {} available in IB buffer, qp={}",
+                 totalLength, m_nDataReadFromRemote - m_readOffset, GetId());
+        return false;
+    }
+
+    while (totalWritten < totalLength)
+    {
+        uint64_t toWrite = std::min(MAX_WRITE_CHUNK, totalLength - totalWritten);
+        if (m_readOffset >= m_nDataReadFromRemote)
+        {
+            LOG_WARN("Recvfile: end of IB read buffer, qp={}, readOffset={}, totalLength={}, written={}",
+                     GetId(), m_readOffset, totalLength, totalWritten);
+            return false;
+        }
+
+        char* src = m_buffer + m_readOffset;
+        int bytesToWrite = std::min(static_cast<int>(toWrite), m_nDataReadFromRemote - m_readOffset);
+
+        ssize_t w = ::write(fileFd, src, bytesToWrite);
+        if (w <= 0)
+        {
+            if (w < 0 && errno == EINTR)
+            {
+                continue;
+            }
+            LOG_WARN("Recvfile: write to file failed, fileFd={}, errno={}:{}, written={}/{}",
+                     fileFd, errno, strerror(errno), totalWritten, totalLength);
+            return false;
+        }
+
+        m_readOffset += w;
+        totalWritten += w;
+    }
+
+    return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
 int IBConnection::GetId()

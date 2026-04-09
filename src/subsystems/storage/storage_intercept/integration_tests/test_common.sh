@@ -311,6 +311,10 @@ function start_cache_server() {
   # Check if cache server is already running and kill it
   pkill CacheServer || true
 
+  # Increase fd limit for splice() zero-copy path which uses pipe fds per upload
+  ulimit -n 65536 2>/dev/null || ulimit -n 8192 2>/dev/null || echo "Warning: could not increase fd limit (current: $(ulimit -n))"
+  echo "File descriptor limit: $(ulimit -n)"
+
   # ensure cache storage path is present
   mkdir -p ${CACHE_SERVER_PATH}
 

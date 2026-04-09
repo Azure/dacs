@@ -13,6 +13,10 @@
 
 set -e
 
+# Increase fd limit for splice() zero-copy path which uses pipe fds per upload
+ulimit -n 65536 2>/dev/null || ulimit -n 8192 2>/dev/null || echo "Warning: could not increase fd limit (current: $(ulimit -n))"
+echo "File descriptor limit: $(ulimit -n)"
+
 # Source common utilities
 SCRIPT_DIR="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 export BUILD_CONFIGURATION="${1:-Release}"

@@ -35,6 +35,11 @@ class IBConnection : public IConnection
             /*[in ]*/ uint64_t totalLength
             );
 
+        bool Recvfile(
+            /*[in ]*/ int fileFd,
+            /*[in ]*/ uint64_t totalLength
+            );
+
         int GetId();
 
     private:
