@@ -35,6 +35,14 @@ class IConnection
             /*[in ] */ uint64_t totalLength
             ) = 0;
 
+        // Used to receive data from remote directly into a local file (fileFd).
+        // This is the inverse of Sendfile and uses splice() for zero-copy on TCP sockets.
+        // Returns true if all bytes were received and written successfully.
+        virtual bool Recvfile(
+            /*[in ] */ int fileFd,
+            /*[in ] */ uint64_t totalLength
+            ) = 0;
+
         // Identifier to uniquely identify this connection
         virtual int GetId() = 0;
 

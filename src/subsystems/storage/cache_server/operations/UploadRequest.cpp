@@ -23,6 +23,8 @@
 #include <set>
 #include <memory>
 #include <atomic>
+#include <sys/types.h>
+#include <sys/stat.h>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 using namespace cache;
@@ -48,7 +50,7 @@ bool AuthenticateRequest(const UploadRequest& request)
         LOG_WARN_REQID("Auth params not sent by client", request);
         return false;
     }
-    
+
     if (!ValidateAuthSignature(
         request.authparams().accountname(),
         request.authparams().signature(),
@@ -58,6 +60,87 @@ bool AuthenticateRequest(const UploadRequest& request)
         LOG_WARN_REQID("Auth validation failure", request);
         return false;
     }
+
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Forward declaration — buffered path defined below
+static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
+                        /*[in]*/ const cache::UploadRequest& uploadRequest,
+                        /*[in]*/ const std::string& strTempFileName,
+                        /*[out]*/ ResponseCode& eResponseCode,
+                        /*[out]*/ cache::UploadResponse& uploadResponse,
+                        /*[out]*/ uint64_t& totalRead);
+//---------------------------------------------------------------------------------------------------------------------
+/**
+ * Zero-copy path: receive data from connection directly into a file
+ * using splice() (socket -> pipe -> file) entirely in kernel space.
+ */
+static bool ReadFileDataZeroCopy(/*[in]*/ IConnection& clientConnection,
+                        /*[in]*/ const cache::UploadRequest& uploadRequest,
+                        /*[in]*/ const std::string& strTempFileName,
+                        /*[out]*/ ResponseCode& eResponseCode,
+                        /*[out]*/ cache::UploadResponse& uploadResponse,
+                        /*[out]*/ uint64_t& totalRead)
+{
+    const bool bNoDiscard = (!strTempFileName.empty());
+
+    if (uploadRequest.filesize() == 0)
+    {
+        LOG_INFO_REQID("No data to read for file: '{}'", uploadRequest, uploadRequest.filename());
+        return true;
+    }
+
+    LOG_DEBUG_REQID("Reading file data (splice) for file: {}", uploadRequest, uploadRequest.filename());
+
+    if (bNoDiscard)
+    {
+        int fileFd = open(strTempFileName.c_str(), O_WRONLY | O_TRUNC);
+        if (fileFd < 0)
+        {
+            LOG_WARN_REQID("Failed to open temp file: {}, errno: {}:{}",
+                           uploadRequest, strTempFileName, errno, strerror(errno));
+            CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
+            SET_RESULT(uploadResponse, eResponseCode, UploadResponse::INTERNAL_ERROR);
+            SendMessageToRemoteFinal(clientConnection, uploadResponse, uploadRequest.requestid());
+            return false;
+        }
+
+        bool bRecvOk = clientConnection.Recvfile(fileFd, uploadRequest.filesize());
+        if (bRecvOk)
+        {
+            totalRead = uploadRequest.filesize();
+        }
+
+        if (close(fileFd) < 0)
+        {
+            LOG_WARN_REQID("Error closing temp file: {}, errno: {}:{}",
+                           uploadRequest, strTempFileName, errno, strerror(errno));
+        }
+
+        if (!bRecvOk)
+        {
+            LOG_WARN_REQID("Recvfile failed for file: {}, expected: {} bytes",
+                           uploadRequest, uploadRequest.filename(), uploadRequest.filesize());
+            remove(strTempFileName.c_str());
+            CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
+            SET_RESULT(uploadResponse, eResponseCode, UploadResponse::INTERNAL_ERROR);
+            SendMessageToRemoteFinal(clientConnection, uploadResponse, uploadRequest.requestid());
+            return false;
+        }
+    }
+    else
+    {
+        // Discard path: no file to splice into, fall back to buffered read.
+        return ReadFileDataWithBuffer(clientConnection, uploadRequest, strTempFileName,
+                                      eResponseCode, uploadResponse, totalRead);
+    }
+
+    STORAGE_ASSERT(totalRead == uploadRequest.filesize(),
+                   "Read more bytes than expected. expected: {}. read: {}",
+                   uploadRequest.filesize(),
+                   totalRead);
+    LOG_DEBUG_REQID("Successfully read file data (zero-copy) for file: {}", uploadRequest, uploadRequest.filename());
 
     return true;
 }
@@ -82,6 +165,37 @@ bool ReadFileData(/*[in]*/ IConnection& clientConnection,
                   /*[out]*/ cache::UploadResponse& uploadResponse,
                   /*[out]*/ uint64_t& totalRead)
 {
+    // Set CACHESERVER_USE_ZEROCOPY=1 to enable splice/Recvfile zero-copy upload path.
+    // Default is disabled (original fstream-based path).
+    static const bool useZeroCopy = []() {
+        const char* env = getenv("CACHESERVER_USE_ZEROCOPY");
+        bool enabled = (env && std::string(env) == "1");
+        LOG_INFO("ReadFileData: zero-copy path {}", enabled ? "ENABLED" : "DISABLED (default)");
+        return enabled;
+    }();
+
+    if (useZeroCopy)
+    {
+        return ReadFileDataZeroCopy(clientConnection, uploadRequest, strTempFileName,
+                                    eResponseCode, uploadResponse, totalRead);
+    }
+
+    return ReadFileDataWithBuffer(clientConnection, uploadRequest, strTempFileName,
+                                   eResponseCode, uploadResponse, totalRead);
+}
+//---------------------------------------------------------------------------------------------------------------------
+/**
+ * Buffered read-file-data implementation using fstream.
+ * Extracted into its own function so that the stack buffer is only allocated
+ * when this path is actually taken.
+ */
+static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
+                        /*[in]*/ const cache::UploadRequest& uploadRequest,
+                        /*[in]*/ const std::string& strTempFileName,
+                        /*[out]*/ ResponseCode& eResponseCode,
+                        /*[out]*/ cache::UploadResponse& uploadResponse,
+                        /*[out]*/ uint64_t& totalRead)
+{
     const bool bNoDiscard = (!strTempFileName.empty());
 
     if (uploadRequest.filesize() == 0)
@@ -103,7 +217,6 @@ bool ReadFileData(/*[in]*/ IConnection& clientConnection,
         fileOutput = std::ofstream(strTempFileName, ofstream::out | ofstream::binary | ofstream::trunc);
     }
 
-    // TODO: we can try sendfile() for uploads too
     while (totalRead < uploadRequest.filesize())
     {
         int bufferPos = 0;
