@@ -185,6 +185,18 @@ else
 fi
 echo ""
 
+# If a federated token was passed as an env var (e.g. from the pipeline), write it to a temp
+# file inside this process/container and export AZURE_FEDERATED_TOKEN_FILE so that the Azure
+# Identity SDK EnvironmentCredential can pick it up.  The file must exist in the same
+# filesystem as the process that reads it, which is why we create it here rather than on the
+# host before invoking bldenv.sh / Docker.
+if [ -n "${AZURE_FEDERATED_TOKEN:-}" ] && [ -z "${AZURE_FEDERATED_TOKEN_FILE:-}" ]; then
+    _FEDERATED_TOKEN_FILE=$(mktemp)
+    echo "$AZURE_FEDERATED_TOKEN" > "$_FEDERATED_TOKEN_FILE"
+    export AZURE_FEDERATED_TOKEN_FILE="$_FEDERATED_TOKEN_FILE"
+    echo "Federated token written to $AZURE_FEDERATED_TOKEN_FILE"
+fi
+
 # Enable core dumps for debugging
 ulimit -c unlimited 2>/dev/null || echo "Could not set ulimit for core dumps"
 echo "Core dump size limit: $(ulimit -c 2>/dev/null || echo 'unknown')"

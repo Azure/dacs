@@ -97,6 +97,8 @@ pytest:
 		SI_azBlobAccessToken="$(SI_azBlobAccessToken)" \
 		AZURE_CLIENT_ID="$(AZURE_CLIENT_ID)" \
 		USER_VM_AZURE_CLIENT_ID="$(USER_VM_AZURE_CLIENT_ID)" \
+		AZURE_TENANT_ID="$(AZURE_TENANT_ID)" \
+		AZURE_FEDERATED_TOKEN="$(AZURE_FEDERATED_TOKEN)" \
 		./bldenv.sh /bin/bash "./.pipelines/pytest.sh $(BUILD_TYPE) $(PYTEST_ARGS)"; \
 	else \
 		BUILD_ARCH=$(BUILD_ARCH) ./.pipelines/pytest.sh $(BUILD_TYPE) $(PYTEST_ARGS); \

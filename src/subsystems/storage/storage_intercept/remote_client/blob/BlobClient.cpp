@@ -141,6 +141,11 @@ void BlobClient::GetConfigProperties()
         m_isTokenFetchEnabled = true;
     }
 
+    if (StorageInterceptConfig::GetInstance().GetUseAzureIdentitySDK(m_strMountName))
+    {
+        m_isTokenFetchEnabled = true;
+    }
+
     if (m_bIsDynamicAccount)
     {
         if (StorageInterceptConfig::GetInstance().GetStorageSASToken(m_strMountName).length() != 0)

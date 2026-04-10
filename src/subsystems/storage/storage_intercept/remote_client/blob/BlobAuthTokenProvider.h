@@ -15,11 +15,16 @@
 #include <fstream>
 #include <functional>
 #include <jsoncpp/json/json.h>
+#include <azure/identity.hpp>
+#ifdef STORAGE_INTERCEPT_UT
+#include <gtest/gtest.h>
+#endif
 
 enum class TokenFetchMode
 {
     MSI,              // Traditional managed identity via MSI endpoint (IMDS)
-    WorkloadIdentity  // AKS workload identity via federated token exchange
+    WorkloadIdentity, // AKS workload identity via federated token exchange
+    AzureIdentitySDK  // Fallback: Azure Identity SDK DefaultAzureCredential
 };
 
 struct TokenInfo
@@ -52,6 +57,7 @@ private:
     TokenInfo FetchNewAccessToken(const std::string& mountPath);
     TokenInfo FetchTokenViaMSI(const std::string& mountPath);
     TokenInfo FetchTokenViaWorkloadIdentity(const std::string& mountPath);
+    virtual TokenInfo FetchTokenViaAzureIdentitySDK();
     TokenFetchMode DetectTokenFetchMode(const std::string& mountPath);
     static std::string ReadFederatedTokenFile(const std::string& filePath);
     static std::string UrlEncode(CURL* curl, const std::string& value);
@@ -68,7 +74,10 @@ private:
     HttpResponse PerformCurlRequestWithHeaders(const std::string& url, const std::string& msiSecret);
     HttpResponse PerformCurlPostRequest(const std::string& url, const std::string& postData);
 
-
+    static bool HasCompleteMSIConfig(
+        const std::string& msiEndpoint,
+        const std::string& msiSecret,
+        const std::string& identityClientId);
     static std::string GenerateMSIUrl(const std::string& msiEndpoint, const std::string& identityClientId);
     static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp);
     static bool IsRetryableError(CURLcode curlCode, long httpCode);
@@ -91,4 +100,10 @@ private:
     
     static constexpr long HTTP_TIMEOUT_SECONDS = 180L;        // 3 minutes total timeout
     static constexpr long CONNECTION_TIMEOUT_SECONDS = 30L;   // 30 seconds connection timeout
+
+#ifdef STORAGE_INTERCEPT_UT
+    FRIEND_TEST(BlobAuthTokenProviderTest, TestDetectTokenFetchModeWorkloadIdentity);
+    FRIEND_TEST(BlobAuthTokenProviderTest, TestDetectTokenFetchModeMSI);
+    FRIEND_TEST(BlobAuthTokenProviderTest, TestDetectTokenFetchModeAzureIdentitySDK);
+#endif
 };

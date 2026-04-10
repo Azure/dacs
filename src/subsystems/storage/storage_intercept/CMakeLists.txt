@@ -40,7 +40,8 @@ ADD_LIBRARY(static-azurestorage STATIC IMPORTED)
 SET_TARGET_PROPERTIES(static-azurestorage PROPERTIES
         IMPORTED_LOCATION /opt/azure-storage-cpplite-0.3.0/lib/libazure-storage-lite.a)
 
-set(CommonDeps CacheClientLib StorageCommon CacheProto ClientConnections EncryptionUtils diagnostics curl static-azurestorage jsoncpp dl uuid crypto staticprotobuf)
+set(CommonDeps CacheClientLib StorageCommon CacheProto ClientConnections EncryptionUtils diagnostics
+    curl static-azurestorage jsoncpp dl uuid crypto staticprotobuf Azure::azure-identity)
 
 # Linker flags to hide static symbols
 set(HIDE_STATIC_SYMBOLS_FLAGS "-Wl,--exclude-libs,ALL")

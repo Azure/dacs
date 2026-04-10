@@ -77,6 +77,11 @@ azBlobAuthorityHost <authority-host-url> # optional, default: https://login.micr
 ```
 When AKS Workload Identity is enabled, the mutating webhook automatically injects the environment variables `AZURE_FEDERATED_TOKEN_FILE`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, and `AZURE_AUTHORITY_HOST` into the pod. The lib reads the projected service account token from `azBlobFederatedTokenFile` and exchanges it with Azure AD for an access token using the [OAuth 2.0 client credentials flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow#successful-response-1) with a JWT bearer assertion. The token file is automatically refreshed by the kubelet before expiry.
 
+Option D: Use the azure identity SDK to fetch token
+```
+azBlobUseAzureIdentitySDK true
+```
+
 To enable dynamic account interception, use
 ```
 azBlobDynamicAccount true

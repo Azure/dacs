@@ -1,8 +1,8 @@
 #include "BlobAuthTokenProvider.h"
 #include "StorageInterceptConfig.h"
 #include "StorageInterceptLogger.h"
-#include "RemoteClientException.h" 
-
+#include "RemoteClientException.h"
+#include <optional>
 
 BlobAuthTokenProvider::BlobAuthTokenProvider()
     : m_rng(std::random_device{}()),
@@ -46,7 +46,15 @@ BlobAuthTokenProvider& BlobAuthTokenProvider::GetInstance()
     return s_blobAuthTokenProviderInstance;
 }
 //---------------------------------------------------------------------------------------------------------------------
-// Function to retrive the access token for a given mount path
+/* static */ bool BlobAuthTokenProvider::HasCompleteMSIConfig(
+    const std::string& msiEndpoint,
+    const std::string& msiSecret,
+    const std::string& identityClientId)
+{
+    return !msiEndpoint.empty() && !msiSecret.empty() && !identityClientId.empty();
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Function to retrieve the access token for a given mount path
 std::string BlobAuthTokenProvider::GetAccessToken(const std::string& mountPath)
 {
     LOG_DEBUG("Get access token for mount path: {}", mountPath);
@@ -114,7 +122,7 @@ void BlobAuthTokenProvider::PerformTokenUpdate(const std::string& mountPath) {
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-// Detect whether to use MSI or Workload Identity based on available config
+// Detect whether to use MSI, Workload Identity, or Azure Identity SDK based on available config
 TokenFetchMode BlobAuthTokenProvider::DetectTokenFetchMode(const std::string& mountPath)
 {
     std::string federatedTokenFile = StorageInterceptConfig::GetInstance().GetFederatedTokenFile(mountPath);
@@ -126,11 +134,21 @@ TokenFetchMode BlobAuthTokenProvider::DetectTokenFetchMode(const std::string& mo
         return TokenFetchMode::WorkloadIdentity;
     }
 
-    LOG_INFO("Using MSI token fetch for mount path: {}", mountPath);
-    return TokenFetchMode::MSI;
+    std::string msiEndpoint = StorageInterceptConfig::GetInstance().GetMSIEndpoint(mountPath);
+    std::string msiSecret = StorageInterceptConfig::GetInstance().GetMSISecret(mountPath);
+    std::string identityClientId = StorageInterceptConfig::GetInstance().GetIdentityClientId(mountPath);
+
+    if (HasCompleteMSIConfig(msiEndpoint, msiSecret, identityClientId))
+    {
+        LOG_INFO("MSI config detected for mount path: {}", mountPath);
+        return TokenFetchMode::MSI;
+    }
+
+    LOG_INFO("No MSI or workload identity config found for mount path: {}, falling back to Azure Identity SDK", mountPath);
+    return TokenFetchMode::AzureIdentitySDK;
 }
 //---------------------------------------------------------------------------------------------------------------------
-// Function to fetch new access token for a given mount path (dispatches to MSI or Workload Identity)
+// Function to fetch new access token for a given mount path (dispatches to MSI, Workload Identity, or Azure Identity SDK)
 TokenInfo BlobAuthTokenProvider::FetchNewAccessToken(const std::string& mountPath)
 {
     LOG_INFO("Fetching new access token for mount path: {}", mountPath);
@@ -141,9 +159,13 @@ TokenInfo BlobAuthTokenProvider::FetchNewAccessToken(const std::string& mountPat
     {
         return FetchTokenViaWorkloadIdentity(mountPath);
     }
-    else
+    else if (mode == TokenFetchMode::MSI)
     {
         return FetchTokenViaMSI(mountPath);
+    }
+    else
+    {
+        return FetchTokenViaAzureIdentitySDK();
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -324,6 +346,87 @@ TokenInfo BlobAuthTokenProvider::FetchTokenViaWorkloadIdentity(const std::string
     return ExecuteWithRetry("WorkloadIdentity[" + mountPath + "]", httpRequestFn, responseHandlerFn);
 }
 //---------------------------------------------------------------------------------------------------------------------
+// Fetch token via Azure Identity SDK credential chain.
+// Used as a fallback when neither workload identity nor MSI params are configured.
+// Attempts credentials in order:
+//   1. EnvironmentCredential (AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID)
+//   2. WorkloadIdentityCredential (AZURE_FEDERATED_TOKEN_FILE)
+//   3. ManagedIdentityCredential (IMDS)
+//
+// Not using DefaultAzureCredential as it can get flagged by security scanners as risky due to its broad credential search.
+TokenInfo BlobAuthTokenProvider::FetchTokenViaAzureIdentitySDK()
+{
+    LOG_INFO("Fetching access token via Azure Identity SDK credential chain");
+
+    // Configure retry policy to match other token fetch methods
+    Azure::Core::Http::Policies::RetryOptions retryOptions;
+    retryOptions.MaxRetries = MAX_RETRIES;
+    retryOptions.RetryDelay = std::chrono::seconds(BASE_DELAY_SEC);
+    retryOptions.MaxRetryDelay = std::chrono::seconds(MAX_DELAY_SEC);
+
+    Azure::Core::Credentials::TokenRequestContext requestContext;
+    requestContext.Scopes = { std::string(STORAGE_RESOURCE) + "/.default" };
+
+    // Use a deadline context matching the HTTP timeout used by curl-based token fetches
+    Azure::Core::Context rootCtx;
+    auto ctx = rootCtx.WithDeadline(
+        std::chrono::system_clock::now() + std::chrono::seconds(HTTP_TIMEOUT_SECONDS));
+
+    // Helper: attempt a single credential, return TokenInfo on success or std::nullopt on auth failure.
+    auto tryCredential = [&](auto& credential, const std::string& credentialName)
+        -> std::optional<TokenInfo>
+    {
+        try
+        {
+            Azure::Core::Credentials::AccessToken token = credential.GetToken(requestContext, ctx);
+
+            LOG_INFO("Successfully fetched access token via {}, expires at: {}",
+                     credentialName, token.ExpiresOn.ToString());
+
+            auto expiresOnDuration = token.ExpiresOn.time_since_epoch();
+            auto expiryTime = std::chrono::system_clock::time_point(
+                std::chrono::duration_cast<std::chrono::system_clock::duration>(expiresOnDuration));
+
+            return TokenInfo{ token.Token, expiryTime };
+        }
+        catch (const Azure::Core::Credentials::AuthenticationException& e)
+        {
+            LOG_INFO("{} failed: {}", credentialName, e.what());
+            return std::nullopt;
+        }
+    };
+
+    // 1. EnvironmentCredential
+    {
+        Azure::Identity::EnvironmentCredentialOptions opts;
+        opts.Retry = retryOptions;
+        Azure::Identity::EnvironmentCredential cred(opts);
+        if (auto result = tryCredential(cred, "EnvironmentCredential"))
+            return *result;
+    }
+
+    // 2. WorkloadIdentityCredential
+    {
+        Azure::Identity::WorkloadIdentityCredentialOptions opts;
+        opts.Retry = retryOptions;
+        Azure::Identity::WorkloadIdentityCredential cred(opts);
+        if (auto result = tryCredential(cred, "WorkloadIdentityCredential"))
+            return *result;
+    }
+
+    // 3. ManagedIdentityCredential
+    {
+        Azure::Identity::ManagedIdentityCredentialOptions opts;
+        opts.Retry = retryOptions;
+        Azure::Identity::ManagedIdentityCredential cred(opts);
+        if (auto result = tryCredential(cred, "ManagedIdentityCredential"))
+            return *result;
+    }
+
+    LOG_ERROR("All Azure Identity SDK credentials failed");
+    throw RemoteClientException("AzureIdentityError: All credentials (Environment, WorkloadIdentity, ManagedIdentity) failed");
+}
+//---------------------------------------------------------------------------------------------------------------------
 // Fetch token via traditional MSI/IMDS endpoint
 TokenInfo BlobAuthTokenProvider::FetchTokenViaMSI(const std::string& mountPath)
 {
@@ -333,7 +436,7 @@ TokenInfo BlobAuthTokenProvider::FetchTokenViaMSI(const std::string& mountPath)
     std::string msiSecret = StorageInterceptConfig::GetInstance().GetMSISecret(mountPath);
     std::string identityClientId = StorageInterceptConfig::GetInstance().GetIdentityClientId(mountPath);
 
-    if (msiEndpoint.empty() || msiSecret.empty() || identityClientId.empty())
+    if (!HasCompleteMSIConfig(msiEndpoint, msiSecret, identityClientId))
     {
         LOG_ERROR("MSI endpoint, secret or client ID is empty for mount path: {}", mountPath);
         throw RemoteClientException("ConfigurationError: MSI endpoint, secret or client ID is empty for mount path " + mountPath);
