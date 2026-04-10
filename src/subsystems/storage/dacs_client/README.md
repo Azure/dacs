@@ -82,13 +82,14 @@ pip install -i internal-reference-removed dacs-client-official-amd64==0.9.0.2026
 
 ## Authentication
 
-The DACS Cache Client supports three authentication modes, resolved automatically at initialization:
+The DACS Cache Client supports four authentication modes, resolved automatically at initialization:
 
 | Mode | Environment Variable(s) | Description |
 | --- | --- | --- |
 | **SAS Token** | `USE_SAS_TOKEN=true` and `STORAGE_INTCPT_SAS_TOKEN` | For development/testing. Set both env vars. |
 | **Access Token** | `SI_azBlobAccessToken` | Provide a pre-fetched Azure access token. |
-| **Managed Identity** (default) | `AZURE_CLIENT_ID` (required), optionally `MSI_ENDPOINT` and `MSI_SECRET` | For production. Falls back to IMDS endpoint if MSI vars are not set. |
+| **Managed Identity** | `AZURE_CLIENT_ID`, `MSI_ENDPOINT` and `MSI_SECRET` | For production. Falls back to IMDS endpoint if MSI vars are not set. |
+| **Azure Identity SDK**  (default)| Fetch token using Defaultazurecredential in the Azure Identity SDK | Default auth mechanism if none of the above env vars are set
 
 > **Note:** No storage account name is needed — dynamic accounts and containers are used automatically.
 

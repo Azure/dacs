@@ -4,6 +4,7 @@
 #include "BlobAuthTokenProviderTest.h"
 #include "BlobAuthTokenProvider.h"
 #include "mock/MockBlobAuthTokenProvider.h"
+#include "RemoteClientException.h"
 #include "StorageInterceptConstants.h"
 #include "gtest/gtest.h"
 #include <chrono>
@@ -249,4 +250,95 @@ TEST_F(BlobAuthTokenProviderTest, TestMultiThreadedTokenUpdateAfterExpiry)
     // Check that all tokens fetched are the same
     ASSERT_EQ(tokens.size(), 1) << "Multiple different tokens fetched from MSI endpoint";
 
+}
+//---------------------------------------------------------------------------------------------------------------------
+// DetectTokenFetchMode: workload identity params present → WorkloadIdentity
+TEST_F(BlobAuthTokenProviderTest, TestDetectTokenFetchModeWorkloadIdentity)
+{
+    MockBlobAuthTokenProvider mockProvider;
+    std::string mountPath = "wli-detect";
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobFederatedTokenFile).c_str(), "/var/run/secrets/token");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobTenantId).c_str(), "tenant-id");
+    // Ensure MSI params are absent so we can confirm workload identity wins
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSIEndpoint).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSISecret).c_str(), "");
+
+    ASSERT_EQ(mockProvider.DetectTokenFetchMode(mountPath), TokenFetchMode::WorkloadIdentity);
+}
+//---------------------------------------------------------------------------------------------------------------------
+// DetectTokenFetchMode: MSI params present (no workload identity) → MSI
+TEST_F(BlobAuthTokenProviderTest, TestDetectTokenFetchModeMSI)
+{
+    MockBlobAuthTokenProvider mockProvider;
+    std::string mountPath = "msi-detect";
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobFederatedTokenFile).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobTenantId).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSIEndpoint).c_str(), "http://mock-msi-endpoint");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSISecret).c_str(), "mock-secret");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobIdentityClientId).c_str(), "mock-client-id");
+
+    ASSERT_EQ(mockProvider.DetectTokenFetchMode(mountPath), TokenFetchMode::MSI);
+}
+//---------------------------------------------------------------------------------------------------------------------
+// DetectTokenFetchMode: neither workload identity nor MSI params → AzureIdentitySDK
+TEST_F(BlobAuthTokenProviderTest, TestDetectTokenFetchModeAzureIdentitySDK)
+{
+    MockBlobAuthTokenProvider mockProvider;
+    std::string mountPath = "sdk-detect";
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobFederatedTokenFile).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobTenantId).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSIEndpoint).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSISecret).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobIdentityClientId).c_str(), "");
+
+    ASSERT_EQ(mockProvider.DetectTokenFetchMode(mountPath), TokenFetchMode::AzureIdentitySDK);
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Azure Identity SDK fallback: token is fetched when no MSI or workload identity config is present
+TEST_F(BlobAuthTokenProviderTest, TestGetAccessTokenViaAzureIdentitySDK)
+{
+    MockBlobAuthTokenProvider mockProvider;
+    std::string mountPath = "sdk-fetch";
+    // No MSI or workload identity config → forces AzureIdentitySDK path
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobFederatedTokenFile).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobTenantId).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSIEndpoint).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSISecret).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobIdentityClientId).c_str(), "");
+
+    std::string token = mockProvider.GetAccessToken(mountPath);
+    ASSERT_FALSE(token.empty()) << "Expected a token from Azure Identity SDK fallback";
+    ASSERT_NE(token.find("mock-azure-identity-token"), std::string::npos)
+        << "Token should come from the mocked Azure Identity SDK path";
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Azure Identity SDK fallback: cached token is reused on second call
+TEST_F(BlobAuthTokenProviderTest, TestGetAccessTokenViaAzureIdentitySDKCached)
+{
+    MockBlobAuthTokenProvider mockProvider;
+    std::string mountPath = "sdk-cache";
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobFederatedTokenFile).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobTenantId).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSIEndpoint).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSISecret).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobIdentityClientId).c_str(), "");
+
+    std::string token1 = mockProvider.GetAccessToken(mountPath);
+    std::string token2 = mockProvider.GetAccessToken(mountPath);
+    ASSERT_EQ(token1, token2) << "Second call should return the cached Azure Identity SDK token";
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Azure Identity SDK fallback: authentication failure propagates as RemoteClientException
+TEST_F(BlobAuthTokenProviderTest, TestGetAccessTokenViaAzureIdentitySDKFailure)
+{
+    MockBlobAuthTokenProvider mockProvider;
+    mockProvider.m_azureIdentitySDKShouldFail = true;
+    std::string mountPath = "sdk-fail";
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobFederatedTokenFile).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobTenantId).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSIEndpoint).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSISecret).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobIdentityClientId).c_str(), "");
+
+    ASSERT_THROW(mockProvider.GetAccessToken(mountPath), RemoteClientException);
 }

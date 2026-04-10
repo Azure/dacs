@@ -9,6 +9,11 @@ public:
     MockBlobAuthTokenProvider();
     CURLcode PerformCurlRequest(CURL* curl) override;
 
+    // Controls whether FetchTokenViaAzureIdentitySDK should simulate success or failure.
+    // When set, the mock returns a fake token instead of calling the real SDK.
+    bool m_azureIdentitySDKShouldFail = false;
+    TokenInfo FetchTokenViaAzureIdentitySDK() override;
+
 private:
     int attemptCount = 0;
     long mockStatusCode = 200;  

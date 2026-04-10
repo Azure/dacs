@@ -59,6 +59,8 @@ echo "STORAGE_INTCPT_SAS_TOKEN: ${STORAGE_INTCPT_SAS_TOKEN:+[SET]}"
 echo "SI_azBlobAccessToken: ${SI_azBlobAccessToken:+[SET]}"
 echo "AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-not set}"
 echo "USER_VM_AZURE_CLIENT_ID: ${USER_VM_AZURE_CLIENT_ID:-not set}"
+echo "AZURE_TENANT_ID: ${AZURE_TENANT_ID:-not set}"
+echo "AZURE_FEDERATED_TOKEN: ${AZURE_FEDERATED_TOKEN:+[SET]}"
 echo "========================================================"
 
 # Auto-detect InfiniBand devices for RDMA support
@@ -83,6 +85,8 @@ docker run \
     --env SI_azBlobAccessToken \
     --env AZURE_CLIENT_ID \
     --env USER_VM_AZURE_CLIENT_ID \
+    --env AZURE_TENANT_ID \
+    --env AZURE_FEDERATED_TOKEN \
     --env BUILD_ARCH \
     -v /etc/group:/etc/group:ro \
     -v /etc/passwd:/etc/passwd:ro \

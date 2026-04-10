@@ -880,6 +880,15 @@ std::string StorageInterceptConfig::GetAuthorityHost(const std::string& mountNam
         "https://login.microsoftonline.com");
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::GetUseAzureIdentitySDK(const std::string& mountName)
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameAzBlobUseAzureIdentitySDK,
+        false);
+}
+//---------------------------------------------------------------------------------------------------------------------
 std::string StorageInterceptConfig::GetBlobContainerName(const std::string& mountName)
 {
     return StorageInterceptConfig::GetConfigStr(

@@ -106,6 +106,7 @@ class StorageInterceptConfig
         std::string GetFederatedTokenFile(const std::string& mountName);
         std::string GetTenantId(const std::string& mountName);
         std::string GetAuthorityHost(const std::string& mountName);
+        bool GetUseAzureIdentitySDK(const std::string& mountName);
         std::string GetStorageEndpointUrl(const std::string& mountName);
         std::string GetBlobContainerName(const std::string& mountName);
         bool IsDynamicAccountMount(const std::string& mountName);

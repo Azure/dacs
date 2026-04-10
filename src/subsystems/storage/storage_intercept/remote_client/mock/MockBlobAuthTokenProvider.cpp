@@ -1,4 +1,5 @@
 #include "MockBlobAuthTokenProvider.h"
+#include "RemoteClientException.h"
 #include <random>
 #include <chrono>
 
@@ -62,4 +63,18 @@ CURLcode MockBlobAuthTokenProvider::PerformCurlRequest(CURL* curl) {
     SetStatusCode(200L);  // Set success code for normal responses
     attemptCount = 0; // Reset attempt count after successful request
     return CURLE_OK;
+}
+
+TokenInfo MockBlobAuthTokenProvider::FetchTokenViaAzureIdentitySDK()
+{
+    if (m_azureIdentitySDKShouldFail)
+    {
+        throw RemoteClientException("AzureIdentityError: DefaultAzureCredential failed: mock failure");
+    }
+
+    thread_local std::mt19937 rng(std::random_device{}());
+    std::uniform_int_distribution<int> dist(0, 9999);
+    std::string token = "mock-azure-identity-token-" + std::to_string(dist(rng));
+    auto expiryTime = std::chrono::system_clock::now() + std::chrono::seconds(3600);
+    return { token, expiryTime };
 }

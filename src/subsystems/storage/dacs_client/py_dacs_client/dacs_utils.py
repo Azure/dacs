@@ -13,12 +13,7 @@
 #
 # Internal functions:
 #    - _initialize_dacs_client_config(intercept_path): Initialize the DACS client with authentication
-#       (supports both SAS token and managed identity modes, internal use only)
-#
-# Notes:
-#     - Authentication modes: SAS token (dev) via STORAGE_INTCPT_SAS_TOKEN env var, or managed identity (production) via AZURE_CLIENT_ID
-#     - Workload identity is supported via AZURE_FEDERATED_TOKEN_FILE (set by AKS workload identity webhook)
-#     - MSI endpoint and secret default to IMDS values for testing but can be overridden
+#       (supports SAS token or access token or managed identity or Azure Identity SDK token fetching)
 # ---------------------------------------------------------------------------------------------------------------------
 import asyncio
 import logging
@@ -264,51 +259,23 @@ def _initialize_dacs_client_config(intercept_path: str = None, write_mode=None) 
             config_file.write(f"azBlobAccessToken {access_token}\n")
             logger.info("Using provided access token for authentication")
         else:
-            logger.info("No access token provided, falling back to managed identity (default credential)")
+            logger.info("No access or SAS token provided, falling back to token authentication")
 
-            # Use managed identity for authentication
+            # Traditional MSI: use MSI endpoint + secret for the native library's internal token fetching
+            # MSI_ENDPOINT and MSI_SECRET are available in cluster jobs\models and point to tokenproxy.
             azure_client_id = os.environ.get("AZURE_CLIENT_ID")
+            msi_endpoint = os.environ.get("MSI_ENDPOINT")
+            msi_secret = os.environ.get("MSI_SECRET")
 
-            # Validate that AZURE_CLIENT_ID is set (required for managed identity)
-            if not azure_client_id:
-                raise ValueError(
-                    "Managed identity authentication requires AZURE_CLIENT_ID environment variable to be set. "
-                    "Alternatively, set STORAGE_INTCPT_SAS_TOKEN for SAS token authentication."
-                )
-
-            # Check if workload identity is configured (AKS workload identity webhook injects these env vars)
-            federated_token_file = os.environ.get("AZURE_FEDERATED_TOKEN_FILE")
-            if federated_token_file:
-                # Workload identity: pass federated token config to the native library
-                # so it can handle token exchange and auto-refresh natively.
-                azure_tenant_id = os.environ.get("AZURE_TENANT_ID")
-                azure_authority_host = os.environ.get("AZURE_AUTHORITY_HOST", "https://login.microsoftonline.com")
-
-                if not azure_tenant_id:
-                    raise ValueError(
-                        "Workload identity authentication requires AZURE_TENANT_ID environment variable to be set."
-                    )
-
-                config_file.write(f"azBlobIdentityClientId {azure_client_id}\n")
-                config_file.write(f"azBlobFederatedTokenFile {federated_token_file}\n")
-                config_file.write(f"azBlobTenantId {azure_tenant_id}\n")
-                config_file.write(f"azBlobAuthorityHost {azure_authority_host}\n")
-
-                logger.info(
-                    "Using workload identity for authentication "
-                    "(federated token file: %s, tenant: %s, authority host: %s, client id: %s)",
-                    federated_token_file, azure_tenant_id, azure_authority_host, azure_client_id
-                )
-            else:
-                # Traditional MSI: use MSI endpoint + secret for the native library's internal token fetching
-                msi_endpoint = os.environ.get("MSI_ENDPOINT", "http://169.254.169.254/metadata/identity/oauth2/token")
-                msi_secret = os.environ.get("MSI_SECRET", "dummy")
-
+            if azure_client_id and msi_endpoint and msi_secret:
                 config_file.write(f"azBlobIdentityClientId {azure_client_id}\n")
                 config_file.write(f"azBlobMSIEndpoint {msi_endpoint}\n")
                 config_file.write(f"azBlobMSISecret {msi_secret}\n")
 
                 logger.info("Using managed identity (MSI endpoint) for authentication")
+            else:
+                config_file.write(f"azBlobUseAzureIdentitySDK true\n")
+                logger.info("Using Azure Identity SDK for authentication")
 
         config_file.write("enableLargePrefetch false\n")
         config_file.write("prefetchWindowSizeInMB 64\n")
