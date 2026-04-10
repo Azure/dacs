@@ -246,6 +246,17 @@ type CacheStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].message`
+// +kubebuilder:printcolumn:name="Current",type=integer,JSONPath=`.status.currentServers`
+// +kubebuilder:printcolumn:name="Desired",type=integer,JSONPath=`.status.desiredServers`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+// +kubebuilder:printcolumn:name="Size(GB)",type=integer,JSONPath=`.spec.serverSizeInGB`,priority=1
+// +kubebuilder:printcolumn:name="Memory(MB)",type=integer,JSONPath=`.spec.memoryLimitMB`,priority=1
+// +kubebuilder:printcolumn:name="Threads",type=integer,JSONPath=`.spec.serverThreads`,priority=1
+// +kubebuilder:printcolumn:name="IB Resources",type=integer,JSONPath=`.spec.infinibandResourceLimitCount`,priority=1
+// +kubebuilder:printcolumn:name="Selector Key",type=string,JSONPath=`.spec.nodeSelectorKey`,priority=1
+// +kubebuilder:printcolumn:name="Selector Value",type=string,JSONPath=`.spec.nodeSelectorValue`,priority=1
 
 // Cache is the Schema for the caches API
 type Cache struct {
