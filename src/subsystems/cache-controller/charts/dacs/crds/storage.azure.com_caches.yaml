@@ -14,7 +14,47 @@ spec:
     singular: cache
   scope: Namespaced
   versions:
-  - name: v1
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].message
+      name: Status
+      type: string
+    - jsonPath: .status.currentServers
+      name: Current
+      type: integer
+    - jsonPath: .status.desiredServers
+      name: Desired
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    - jsonPath: .spec.serverSizeInGB
+      name: Size(GB)
+      priority: 1
+      type: integer
+    - jsonPath: .spec.memoryLimitMB
+      name: Memory(MB)
+      priority: 1
+      type: integer
+    - jsonPath: .spec.serverThreads
+      name: Threads
+      priority: 1
+      type: integer
+    - jsonPath: .spec.infinibandResourceLimitCount
+      name: IB Resources
+      priority: 1
+      type: integer
+    - jsonPath: .spec.nodeSelectorKey
+      name: Selector Key
+      priority: 1
+      type: string
+    - jsonPath: .spec.nodeSelectorValue
+      name: Selector Value
+      priority: 1
+      type: string
+    name: v1
     schema:
       openAPIV3Schema:
         description: Cache is the Schema for the caches API
