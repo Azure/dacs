@@ -14,13 +14,14 @@ import shutil
 import stat as stat_module
 import tempfile
 import threading
-import time
 from collections import namedtuple
 from typing import Optional, Union, Iterator, List, Any, Tuple
 from enum import Enum
 
+import concurrent
+
 from py_dacs_client.dacs_client import DACSCacheClient, normalize_azure_path
-from py_dacs_client.dacs_utils import alloc_buffer, release_buffer, BoundedBufferManager, get_memory_limit
+from py_dacs_client.dacs_utils import BoundedBufferManager, get_memory_limit, _shared_loop_manager, async_parallel_ordered_result
 from py_dacs_client.dacs_exceptions import (
     DACSError,
     DACSStorageError,
@@ -260,7 +261,7 @@ class DACSBlobfileAdapter:
                 flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
 
             try:
-                self._file_handle = asyncio.run(self._client.get_file_handle(self._path, flags))
+                self._file_handle = self._client.get_file_handle_sync(self._path, flags)
             except Exception as e:
                 raise handle_native_error(e, operation="open", path=self._path) from e
 
@@ -322,7 +323,7 @@ class DACSBlobfileAdapter:
         # rather than reading the entire file, to avoid over-allocating buffers.
         if size == -1 or size is None:
             try:
-                file_size = asyncio.run(self._client.get_file_size(self._path))
+                file_size = self._client.get_file_size_sync(self._path)
             except Exception as e:
                 raise handle_native_error(e, operation="get_file_size", path=self._path) from e
             read_size = max(0, file_size - self._position)
@@ -338,13 +339,13 @@ class DACSBlobfileAdapter:
         # Use user-provided buffer or allocate internal buffer via BoundedBufferManager
         user_buffer_provided = buffer is not None
         if not user_buffer_provided:
-            buffer = asyncio.run(self._buffer_manager.acquire_buffer(read_size))
+            buffer = self._buffer_manager.acquire_buffer_sync(read_size)
 
         try:
             # Use the cached file handle's read method directly
             # Wrap in try-except to catch native library errors
             try:
-                bytes_read = asyncio.run(self._file_handle.read(buffer, read_size, self._position))
+                bytes_read = self._file_handle.read_sync(buffer, read_size, self._position)
             except Exception as e:
                 raise handle_native_error(e, operation="read", path=self._path) from e
 
@@ -370,7 +371,7 @@ class DACSBlobfileAdapter:
         finally:
             # Only release buffer if we allocated it internally
             if not user_buffer_provided:
-                asyncio.run(self._buffer_manager.release_buffer(buffer))
+                self._buffer_manager.release_buffer_sync(buffer)
 
         # Decode to string if opened in text mode (only for non-user-buffer case)
         if "b" not in self._mode:
@@ -462,7 +463,7 @@ class DACSBlobfileAdapter:
             # Track user buffer - we don't release it, but need to document lifetime requirement
             self._write_buffers.append((buffer, True, None))  # True = user-provided, don't release
             try:
-                bytes_written = asyncio.run(self._file_handle.write(buffer, size, self._position))
+                bytes_written = self._file_handle.write_sync(buffer, size, self._position)
             except Exception as e:
                 raise handle_native_error(e, operation="write", path=self._path) from e
 
@@ -477,7 +478,7 @@ class DACSBlobfileAdapter:
             # Build a ctypes-compatible buffer for the native pwrite call.
             def _copy_to_managed_buffer(src, length):
                 """Acquire a BoundedBufferManager buffer, copy src into it, and track it."""
-                buf = asyncio.run(self._buffer_manager.acquire_buffer(length))
+                buf = self._buffer_manager.acquire_buffer_sync(length)
                 ctypes.memmove(buf, src, length)
                 self._write_buffers.append((buf, False, None))  # Data copied, no source ref needed
                 return buf, length
@@ -507,7 +508,7 @@ class DACSBlobfileAdapter:
                 internal_buffer, data_len = _copy_to_managed_buffer(data_bytes, len(data_bytes))
 
             try:
-                bytes_written = asyncio.run(self._file_handle.write(internal_buffer, data_len, self._position))
+                bytes_written = self._file_handle.write_sync(internal_buffer, data_len, self._position)
             except DACSError:
                 raise
             except Exception as e:
@@ -559,7 +560,7 @@ class DACSBlobfileAdapter:
             new_position = self._position + offset
         elif whence == os.SEEK_END:
             try:
-                file_size = asyncio.run(self._client.get_file_size(self._path))
+                file_size = self._client.get_file_size_sync(self._path)
             except Exception as e:
                 raise handle_native_error(e, operation="get_file_size", path=self._path) from e
             new_position = file_size + offset
@@ -594,7 +595,7 @@ class DACSBlobfileAdapter:
             # Close the file handle to trigger close in storage intercept lib which actually writes the file to cache and/or blob.
             if self._file_handle is not None:
                 try:
-                    asyncio.run(self._client.release_file_handle(self._file_handle))
+                    self._client.release_file_handle_sync(self._file_handle)
                 except Exception as e:
                     logger.error(f"Error closing file handle for '{self._path}': {e}")
                     raise handle_native_error(e, operation="close", path=self._path) from e
@@ -606,8 +607,7 @@ class DACSBlobfileAdapter:
             # source_data_ref is kept alive until this loop completes (after native close)
             for buffer, is_user_provided, source_data_ref in self._write_buffers:
                 if not is_user_provided:
-                    asyncio.run(self._buffer_manager.release_buffer(buffer))
-                # source_data_ref is released when tuple is cleared below
+                    self._buffer_manager.release_buffer_sync(buffer)
             self._write_buffers.clear()
             self._closed = True
 
@@ -663,7 +663,8 @@ class DACSBlobfileAdapter:
 # chunks here to reduce Python-level overhead while keeping memory usage bounded.
 COPY_CHUNK_SIZE = 256 * 1024 * 1024
 
-def copy(src: str, dst: str, overwrite: bool = False, return_md5: bool = False) -> Optional[str]:
+def copy(src: str, dst: str, overwrite: bool = False, return_md5: bool = False,
+         executor: Optional[concurrent.futures.Executor] = None) -> Optional[str]:
     """
     Copy a file from one path to another.
 
@@ -733,22 +734,32 @@ def copy(src: str, dst: str, overwrite: bool = False, return_md5: bool = False) 
         if exists(dst):
             raise FileExistsError(f"Destination already exists: '{dst}'")
 
+    # Set custom executor if provided in DACSClient
+    if executor is not None:
+        client = _ClientManager.get_instance()
+        client.set_executor(executor)
+
     # Route to appropriate copy implementation
+    result = None
     if not src_is_remote and not dst_is_remote:
         # Local → Local
-        return _copy_local_to_local(src, dst, return_md5, overwrite=overwrite)
+        result = _copy_local_to_local(src, dst, return_md5, overwrite=overwrite)
     elif not src_is_remote and dst_is_remote:
         # Local → Remote (benefits from cache: populates cache for future reads)
-        return _copy_local_to_remote(src, dst, return_md5)
+        result = _copy_local_to_remote(src, dst, return_md5)
     elif src_is_remote and not dst_is_remote:
         # Remote → Local (benefits from cache: reads from cache if cached)
-        return _copy_remote_to_local(src, dst, return_md5, overwrite=overwrite)
+        result = _copy_remote_to_local(src, dst, return_md5, overwrite=overwrite)
     else:
         # Should not reach here due to prefilter
         raise OperationNotSupportedError(
             "copy() for remote-to-remote paths is not supported by DACS Client. "
         )
 
+    if executor is not None:
+        # Reset to default executor after operation
+        client.set_executor(None)
+    return result
 
 def _atomic_write_to_local(dst: str, overwrite: bool, write_fn):
     """Write to a local file atomically using a temp file.
@@ -829,46 +840,76 @@ def _copy_local_to_remote(src: str, dst: str, return_md5: bool) -> Optional[str]
 
 
 def _copy_remote_to_local(src: str, dst: str, return_md5: bool, overwrite: bool = False) -> Optional[str]:
-    """Copy remote file to local destination from cache layer."""
+    """Copy remote file to local destination from cache layer.
+    
+    Uses async parallelism on to maximize throughput while keeping memory usage bounded:
+    - Reads the remote file in parallel chunks using the async API and BoundedBufferManager for memory-limited buffers
+    - Writes chunks to the local file in order as they complete
+    - Handles errors by canceling pending operations and cleaning up buffers
+    """
     md5_hash = hashlib.md5() if return_md5 else None
 
     # Get source file size for chunked reading
     client = _ClientManager.get_instance()
     try:
-        src_size = asyncio.run(client.get_file_size(src))
+        src_size = client.get_file_size_sync(src)
     except Exception as e:
         raise handle_native_error(e, operation="get_file_size", path=src) from e
 
-    def write_fn(tmp_dst):
-        buffer_manager = _ClientManager.get_buffer_manager()
-        with DACSBlobfileAdapter(src, "rb") as src_adapter:
-            with open(tmp_dst, "wb") as dst_file:
-                offset = 0
-                while offset < src_size:
-                    chunk_size = min(COPY_CHUNK_SIZE, src_size - offset)
-                    # Allocate buffer for this chunk via BoundedBufferManager
-                    buffer = asyncio.run(buffer_manager.acquire_buffer(chunk_size))
-                    try:
-                        # Read chunk - need to use the file handle directly for offset reads
-                        try:
-                            bytes_read = asyncio.run(src_adapter._file_handle.read(buffer, chunk_size, offset))
-                        except Exception as e:
-                            raise handle_native_error(e, operation="read", path=src) from e
-                        check_native_result(bytes_read, operation="read", path=src)
-                        if bytes_read == 0:
-                            break
-                        # Create zero-copy memoryview over the C buffer
-                        chunk_data = memoryview(buffer)[:bytes_read]
-                        if md5_hash:
-                            md5_hash.update(chunk_data)
-                        dst_file.write(chunk_data)
-                        offset += bytes_read
-                    finally:
-                        asyncio.run(buffer_manager.release_buffer(buffer))
+    def write_fn(tmp_dst: str):
+        nonlocal md5_hash
+        # Run the async parallel write on the shared loop
+        _shared_loop_manager.run_coroutine(
+            _copy_remote_chunks_to_local_parallel(src, tmp_dst, src_size, md5_hash)
+        )
 
     _atomic_write_to_local(dst, overwrite, write_fn)
 
     return md5_hash.hexdigest() if md5_hash else None
+
+
+async def _copy_remote_chunks_to_local_parallel(src: str, tmp_dst: str, src_size: int, md5_hash) -> None:
+    """Read remote file in parallel chunks and write to local file in order.
+
+    Uses async_ordered_map to keep up to MAX_PARALLEL_READS reads in flight
+    simultaneously while yielding chunk data in order for sequential writing.
+    BoundedBufferManager provides memory back-pressure across concurrent reads.
+    """
+    MAX_PARALLEL_READS = 40  # High because BoundedBufferManager caps total memory usage
+
+    client = _ClientManager.get_instance()
+    buffer_manager = _ClientManager.get_buffer_manager()
+
+    # Build list of (offset, size) for each chunk
+    chunks: List[Tuple[int, int]] = []
+    offset = 0
+    while offset < src_size:
+        chunk_size = min(COPY_CHUNK_SIZE, src_size - offset)
+        chunks.append((offset, chunk_size))
+        offset += chunk_size
+
+    file_handle = await client.get_file_handle(src, os.O_RDONLY)
+    try:
+        async def read_chunk(chunk: Tuple[int, int]) -> bytes:
+            chunk_offset, chunk_size = chunk
+            buffer = await buffer_manager.acquire_buffer(chunk_size)
+            try:
+                bytes_read = await file_handle.read(buffer, chunk_size, chunk_offset)
+                check_native_result(bytes_read, operation="read", path=src)
+                return ctypes.string_at(buffer, bytes_read)
+            except Exception as e:
+                raise handle_native_error(e, operation="read", path=src) from e
+            finally:
+                await buffer_manager.release_buffer(buffer)
+
+        with open(tmp_dst, "wb") as dst_file:
+            loop = asyncio.get_running_loop()
+            async for chunk_data in async_parallel_ordered_result(read_chunk, chunks, MAX_PARALLEL_READS):
+                if md5_hash:
+                    md5_hash.update(chunk_data)
+                await loop.run_in_executor(client.get_executor(), dst_file.write, chunk_data)
+    finally:
+        await client.release_file_handle(file_handle)
 
 
 def _compute_file_md5(path: str) -> str:
@@ -892,7 +933,7 @@ def exists(path: str) -> bool:
     # Remote blob check using DACSCacheClient
     try:
         client = _ClientManager.get_instance()
-        asyncio.run(client.get_file_stat(normalized_path))
+        client.get_file_stat_sync(normalized_path)
         return True
     except DACSNotFoundError:
         return False
@@ -943,28 +984,23 @@ def listdir(path: str) -> Iterator[str]:
         # Normalize path for remote blob directory listing
         normalized_path = normalize_azure_path(path)
         
-        # Remote blob directory listing using DACSCacheClient
-        async def _listdir_async():
-            result = []
+        # Remote blob directory listing using DACSCacheClient (sync version)
+        try:
             client = _ClientManager.get_instance()
-            async for entry in client.list_dir(normalized_path):
+            entries = client.list_dir_sync(normalized_path)
+            for entry in entries:
                 # entry is a Dict[str, object] with 'd_name' field containing the filename
                 if "d_name" in entry:
                     name = entry["d_name"]
                     # Filter out '.' and '..' entries - these don't exist in blob storage
                     # They are artifacts from the storage intercept POSIX emulation layer
                     if name not in (".", ".."):
-                        result.append(name)
-            return result
-
-        try:
-            for item in asyncio.run(_listdir_async()):
-                yield item
+                        yield name
         except Exception as e:
             raise handle_native_error(e, operation="listdir", path=path) from e
 
 
-def scandir(path: str) -> Iterator[str]:
+def scandir(path: str) -> Iterator[Any]:
     """
     List contents of a directory (generator). Supported API.
     Returns DirEntry objects with path, name, is_dir, is_file, and stat fields.
@@ -984,54 +1020,70 @@ def scandir(path: str) -> Iterator[str]:
             "stat",    # Stat object (or None)
         ],
     )
+    
+    # Match blobfile's Stat
+    DirEntryStat = namedtuple(
+        "DirEntryStat",
+        [
+            "size",
+            "mtime",
+            "ctime",
+        ],
+    )
 
     if not _is_azure_path(path):
         # Local directory listing
         for entry in os.scandir(path):
-            yield entry.name
+            yield DirEntry(
+                path=entry.path,
+                name=entry.name,
+                is_dir=entry.is_dir(),
+                is_file=entry.is_file(),
+                stat=DirEntryStat(
+                    size=entry.stat().st_size,
+                    mtime=entry.stat().st_mtime,
+                    ctime=entry.stat().st_ctime,
+                ),
+            )
     else:
         # Normalize path for remote blob directory listing
         normalized_path = normalize_azure_path(path)
         
-        # Remote blob directory listing using DACSCacheClient
-        async def _scandir_collect():
-            result = []
+        # Remote blob directory listing using DACSCacheClient (sync version)
+        try:
             client = _ClientManager.get_instance()
-            async for entry in client.list_dir(normalized_path):
-                # entry is a Dict[str, object] with 'd_name' field containing the filename
+            entries = client.list_dir_sync(normalized_path)
+            for entry in entries:
+                # entry is a Dict[str, object] with fields from readdir
                 if "d_name" in entry:
                     name = entry["d_name"]
                     # Filter out '.' and '..' entries - these don't exist in blob storage
                     # They are artifacts from the storage intercept POSIX emulation layer
                     if name not in (".", ".."):
-                        result.append(name)
-            return result
+                        # Construct full path
+                        if path.endswith("/"):
+                            full_path = path + name
+                        else:
+                            full_path = path + "/" + name
 
-        try:
-            for item in asyncio.run(_scandir_collect()):
-                # Construct full path
-                if path.endswith("/"):
-                    full_path = path + item
-                else:
-                    full_path = path + "/" + item
+                        # Determine if directory based on trailing slash or d_type
+                        # d_type: 4 = DT_DIR (directory), 8 = DT_REG (regular file)
+                        is_dir = name.endswith("/") or entry.get("d_type") == 4
+                        
+                        # Build stat from listdir entry data (no separate stat call needed)
+                        entry_stat = DirEntryStat(
+                            size=entry.get("d_size", 0),
+                            mtime=entry.get("d_mtime", 0),
+                            ctime=entry.get("d_ctime", 0),
+                        )
 
-                # Determine if directory based on trailing slash
-                is_dir = item.endswith("/")
-
-                # Get stat information for the entry
-                try:
-                    entry_stat = stat(full_path)
-                except Exception:
-                    # If stat fails, set to None
-                    entry_stat = None
-
-                yield DirEntry(
-                    path=full_path,
-                    name=item,
-                    is_dir=is_dir,
-                    is_file=not is_dir,
-                    stat=entry_stat,
-                )
+                        yield DirEntry(
+                            path=full_path,
+                            name=name,
+                            is_dir=is_dir,
+                            is_file=not is_dir,
+                            stat=entry_stat,
+                        )
         except Exception as e:
             raise handle_native_error(e, operation="scandir", path=path) from e
 
@@ -1089,7 +1141,7 @@ def stat(path: str) -> Any:
 
     client = _ClientManager.get_instance()
     try:
-        stat_result = asyncio.run(client.get_file_stat(normalized_path))
+        stat_result = client.get_file_stat_sync(normalized_path)
     except Exception as e:
         raise handle_native_error(e, operation="stat", path=path) from e
 
@@ -1229,7 +1281,7 @@ def shutdown() -> None:
     for any subsequent operations.
     """
     client = _ClientManager.get_instance()
-    asyncio.run(client.shutdown())
+    client.shutdown_sync()
 
 
 # Alias for drop-in blobfile compatibility

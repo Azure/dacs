@@ -20,6 +20,7 @@ import logging
 import os
 import platform
 import sys
+import threading
 from ctypes import CDLL, c_char, c_size_t, c_void_p
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,105 @@ log_level = os.environ.get(
 )  # Default logging level is INFO, unless overridden via env var
 logger.setLevel(log_level)
 logger.propagate = False  # Prevents duplicate logging if this module is imported in other modules
+
+
+# =============================================================================
+# Shared Event Loop for Sync Wrappers
+# =============================================================================
+# This provides a dedicated event loop running in a background thread.
+# Sync wrappers use this loop to run async code without creating/destroying
+# loops on each call (avoiding asyncio.run() overhead).
+# Thread-safe and fork-safe via lazy initialization with PID detection.
+# =============================================================================
+
+class _SharedLoopManager:
+    """
+    Manages a dedicated asyncio event loop in a background thread for sync operations.
+    
+    Thread-safe and fork-safe: detects process forks and reinitializes automatically.
+    Uses lazy initialization to avoid creating resources until first use.
+    """
+    
+    def __init__(self):
+        self._owner_pid: int | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._thread: threading.Thread | None = None
+        self._init_lock = threading.Lock()
+        os.register_at_fork(after_in_child=self._reset_after_fork)
+
+    def _reset_after_fork(self) -> None:
+        """Reset state in the child process immediately after fork."""
+        self._owner_pid = None
+        self._loop = None
+        self._thread = None
+        self._init_lock = threading.Lock()
+    
+    def _ensure_started(self) -> None:
+        """Lazily start the dedicated event loop, reinitializing after fork if needed."""
+        current_pid = os.getpid()
+        
+        # Fast path: already initialized for this process.
+        # Snapshot self._loop into a local variable to avoid a TOCTOU race where
+        # another thread could set self._loop = None between the 'is not None'
+        # check and the 'is_closed()' call.
+        loop = self._loop
+        if self._owner_pid == current_pid and loop is not None and not loop.is_closed():
+            return
+        
+        # Slow path: need to initialize (or reinitialize after fork)
+        with self._init_lock:
+            # Double-check after acquiring lock (snapshot again under the lock)
+            loop = self._loop
+            if self._owner_pid == current_pid and loop is not None and not loop.is_closed():
+                return
+            
+            self._owner_pid = current_pid
+            self._start_loop()
+    
+    def _start_loop(self) -> None:
+        """Start the dedicated event loop in a background daemon thread."""
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(
+            target=self._run_loop,
+            daemon=True,
+            name="DACS-SharedLoop"
+        )
+        self._thread.start()
+        logger.debug(f"Shared event loop started (pid={self._owner_pid})")
+    
+    def _run_loop(self) -> None:
+        """Run the event loop forever (executed in the background thread)."""
+        asyncio.set_event_loop(self._loop)
+        self._loop.run_forever()
+    
+    def run_coroutine(self, coro):
+        """
+        Run a coroutine on the shared loop and return the result (blocking).
+        
+        Thread-safe: can be called from any thread.
+        """
+        self._ensure_started()
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return future.result()
+    
+    async def run_coroutine_async(self, coro):
+        """
+        Run a coroutine on the shared loop and return the result (async).
+        
+        Safe to call from any event loop - the coroutine runs on the shared loop.
+        """
+        self._ensure_started()
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return await asyncio.wrap_future(future)
+    
+    def get_loop(self) -> asyncio.AbstractEventLoop:
+        """Get the shared event loop (starts it if needed)."""
+        self._ensure_started()
+        return self._loop
+
+
+# Global shared loop manager instance
+_shared_loop_manager = _SharedLoopManager()
 
 
 # Helper function to get the number of CPU cores
@@ -152,75 +252,78 @@ def release_buffer(buffer: c_void_p) -> None:
 
 class BoundedBufferManager:
     """
-    A class to manage memory buffers with a bounded size limit.
-    It allows acquiring and releasing buffers while ensuring that the total memory usage does not exceed the specified limit.
+    Thin wrapper around libc malloc/free for allocating native memory buffers.
 
-    Uses an asyncio.Condition to correctly wake waiting acquirers when buffers are
-    released, avoiding the lost-wakeup problem inherent in bare Event objects.
+    The acquire/release API is intentionally kept async-compatible (same signatures
+    as before) so call-sites need no changes when the memory-capping logic is added.
+
+    TODO: Implement memory capping in C++ (storageIntercept / cache_client native
+    layer) and expose it via the DACSCacheClient binding so that back-pressure
+    is applied without any Python-level overhead or asyncio machinery.
     """
 
     def __init__(self, max_memory_limit: int = 1024 * 1024 * 1024):
-        if max_memory_limit <= 0:
-            raise ValueError(f"max_memory_limit must be > 0, got {max_memory_limit}")
-
+        # Stored for observability / future use by the C++ implementation.
         self.max_memory_limit = max_memory_limit
-        self.current_memory_usage = 0
-        self._buffer_sizes: dict[int, int] = {}
-        self._lock = asyncio.Lock()
-        self._condition = asyncio.Condition(self._lock)
 
-    def _can_allocate(self, buf_size: int) -> bool:
-        """Check whether a buffer of *buf_size* bytes may be allocated now."""
-        # If the single request exceeds the cap, allow it anyway to avoid deadlock.
-        if buf_size > self.max_memory_limit:
-            return True
-        return self.current_memory_usage + buf_size <= self.max_memory_limit
+    # === Public thread-safe API (blocking) ===
 
-    async def acquire_buffer(self, buf_size: int) -> c_void_p:
-        async with self._condition:
-            # Wait until there is room (or the request exceeds the cap entirely).
-            while not self._can_allocate(buf_size):
-                await self._condition.wait()
+    def acquire_buffer_sync(self, buf_size: int) -> c_void_p:
+        """Allocate a buffer (blocking, safe from any thread)."""
+        return alloc_buffer(buf_size)
 
-            # Allocate the C buffer *before* updating accounting so that a
-            # malloc failure never leaves the counter inflated.
-            buffer = alloc_buffer(buf_size)
-
-            self.current_memory_usage += buf_size
-            self._buffer_sizes[id(buffer)] = buf_size
-            usage_percent = (self.current_memory_usage / self.max_memory_limit) * 100
-            logger.log(
-                logging.INFO if usage_percent > 90 else logging.DEBUG,
-                f"Buffer acquired. Current memory usage: {self.current_memory_usage} bytes ({usage_percent:.2f}%)",
-            )
-            return buffer
-
-    async def release_buffer(self, buffer: c_void_p) -> None:
+    def release_buffer_sync(self, buffer: c_void_p) -> None:
+        """Free a buffer (blocking, safe from any thread)."""
         if buffer is None:
             logger.warning("Attempted to release a None buffer. Skipping.")
             return
+        release_buffer(buffer)
 
-        async with self._condition:
-            buffer_key = id(buffer)
-            buf_size = self._buffer_sizes.pop(buffer_key, None)
-            if buf_size is None:
-                try:
-                    buf_size = len(buffer)
-                except Exception:
-                    buf_size = 0
-                    logger.warning("Buffer size unknown during release; skipping accounting decrement for this buffer")
+    # === Public async API (safe from any event loop) ===
 
-            release_buffer(buffer)
+    async def acquire_buffer(self, buf_size: int) -> c_void_p:
+        """Allocate a buffer (async, safe from any event loop)."""
+        return alloc_buffer(buf_size)
 
-            self.current_memory_usage = max(0, self.current_memory_usage - buf_size)
-            usage_percent = (self.current_memory_usage / self.max_memory_limit) * 100
-            logger.log(
-                logging.INFO if usage_percent > 90 else logging.DEBUG,
-                f"Buffer released. Current memory usage: {self.current_memory_usage} bytes ({usage_percent:.2f}%)",
-            )
+    async def release_buffer(self, buffer: c_void_p) -> None:
+        """Free a buffer (async, safe from any event loop)."""
+        if buffer is None:
+            logger.warning("Attempted to release a None buffer. Skipping.")
+            return
+        release_buffer(buffer)
 
-            # Wake all waiters so they can re-check whether their request now fits.
-            self._condition.notify_all()
+    # === Properties for observability ===
+
+    @property
+    def current_memory_usage(self) -> int:
+        """Not tracked in this implementation; always returns 0."""
+        return 0
+
+
+async def async_parallel_ordered_result(coro_fn, items, max_concurrent: int):
+    """Async generator that applies coro_fn to each item with bounded concurrency.
+
+    Runs at most max_concurrent coroutines simultaneously and yields results in
+    the same order as items, regardless of completion order.
+
+    Usage:
+        async for result in async_parallel_ordered_result(fetch, urls, max_concurrent=10):
+            process(result)
+
+    Args:
+        coro_fn: Async callable taking one item and returning a result.
+        items:   Iterable of inputs.
+        max_concurrent: Maximum number of coroutines running at the same time.
+    """
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def _run(item):
+        async with semaphore:
+            return await coro_fn(item)
+
+    tasks = [asyncio.create_task(_run(item)) for item in items]
+    for task in tasks:
+        yield await task
 
 
 def _initialize_dacs_client_config(intercept_path: str = None, write_mode=None) -> None:
