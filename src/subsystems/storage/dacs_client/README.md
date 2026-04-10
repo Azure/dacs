@@ -97,9 +97,9 @@ The DACS Cache Client supports four authentication modes, resolved automatically
 
 ## DACS Cache Client API
 
-### DACSCacheClient (async)
+### DACSCacheClient
 
-The core async client. All blob operations are asynchronous.
+DACS Cache Client offer both sync and async version of various operations. The sync versions have _sync suffix.
 
 ```python
 from py_dacs_client.dacs_client import DACSCacheClient
@@ -113,7 +113,7 @@ DACSCacheClient(executor=None, write_mode=None)
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
-| `executor` | `concurrent.futures.Executor` | `None` | Thread pool executor. If `None`, a `ThreadPoolExecutor` is created with `min(cpu_count * 2, 24)` workers. |
+| `executor` | `concurrent.futures.Executor` | `None` | Thread pool executor. If `None`, a `ThreadPoolExecutor` is created with `max(4, min(cpu_count * 2, 40))` workers. |
 | `write_mode` | `WriteMode` | `None` | Write mode configuration. If `None`, writes are disabled. See [Write Modes](#write-modes). |
 
 #### Blob Operations
@@ -123,25 +123,30 @@ DACSCacheClient(executor=None, write_mode=None)
 | `get_file_size(blob_path) -> int` | Get the size (in bytes) of a blob. |
 | `get_file_stat(blob_path) -> Stat64` | Get complete file statistics (size, mtime, atime, ctime, mode, uid, gid, etc.). |
 | `get_file_handle(blob_path, flags) -> DACSCacheFileHandle` | Get a managed file handle for read/write. Use `os.O_RDONLY`, `os.O_WRONLY \| os.O_CREAT \| os.O_EXCL`, etc. |
-| `release_file_handle(file_handle)` | Release a managed file handle and close the underlying file when no references remain. |
+| `release_file_handle(file_handle)` | Release a managed file handle and close the underlying file. |
 | `read_blob(blob_path, buffer, size, offset) -> int` | Read data from a blob into a buffer. File open/close is managed automatically. Returns bytes read. |
 | `write_blob(blob_path, buffer, size) -> int` | Write data from a buffer to a new blob (uses `O_CREAT \| O_EXCL`). File open/close is managed automatically. Returns bytes written. |
 | `list_dir(blob_dir_path) -> AsyncIterator[Dict]` | Async iterate over directory entries. Each entry is a dict with keys: `d_ino`, `d_off`, `d_reclen`, `d_type`, `d_name`, `d_size`, `d_atime`, `d_mtime`. |
 | `shutdown()` | Close all open file handles and log final metrics (reads, writes, bytes, elapsed time). |
 
-> **Blob path format:** All `blob_path` arguments must start with `az://`, e.g. `az://account.blob.core.windows.net/container/path/to/blob`.
+> **Blob path format:** `blob_path` arguments accept three formats:
+> - `az://account.blob.core.windows.net/container/path` (long form — DACS internal format)
+> - `az://account/container/path` (short form — blobfile/boostedblob compatible)
+> - `https://account.blob.core.windows.net/container/path` (https form — blobfile compatible)
+>
+> All formats are normalized to the long `az://` form internally.
 
 #### DACSCacheFileHandle
 
-A context manager for managed file handle operations with reference counting.
+A context manager for managed file handle operations. Each instance owns its own file descriptor, which is opened on enter and closed on exit.
 
 ```python
-async with DACSCacheFileHandle(open_path, flags, file_handle_manager) as fh:
+async with DACSCacheFileHandle(open_path, flags, client.executor) as fh:
     bytes_read = await fh.read(buffer, size, offset)
     bytes_written = await fh.write(buffer, size, offset)
 ```
 
-Multiple handles to the same file share a single underlying file descriptor via reference counting. The file is closed only when all references are released.
+Supports both sync (`open_sync`/`close_sync`/`read_sync`/`write_sync`) and async (context manager with `read`/`write`) usage. Async methods delegate to the sync implementation via `run_in_executor`.
 
 ---
 
@@ -582,7 +587,7 @@ from py_dacs_client.dacs_client import DACSCacheFileHandle
 
 # Using context manager for automatic handle management
 open_path = "/mnt/dacs_cache/account.blob.core.windows.net/container/blob"
-async with DACSCacheFileHandle(open_path, os.O_RDONLY, client.file_handle_manager) as fh:
+async with DACSCacheFileHandle(open_path, os.O_RDONLY, client.executor) as fh:
     bytes_read = await fh.read(buffer, size, offset)
 ```
 
