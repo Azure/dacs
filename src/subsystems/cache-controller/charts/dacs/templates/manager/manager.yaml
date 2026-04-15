@@ -47,12 +47,14 @@ spec:
                   command:
                     - /manager
                   env:
+                    - name: CACHE_CONTROLLER_CACHESERVERIMAGE
+                      value: "{{ include "chart.image" (dict "global" .Values.global "repository" .Values.manager.cacheServerImage.repository "tag" .Values.manager.cacheServerImage.tag) }}"
+                    - name: CACHE_CONTROLLER_IMAGEPULLPOLICY
+                      value: {{ .Values.manager.image.pullPolicy | quote }}
                     {{- if .Values.manager.env }}
                     {{- toYaml .Values.manager.env | nindent 20 }}
-                    {{- else }}
-                    []
                     {{- end }}
-                  image: "{{ .Values.manager.image.repository }}:{{ .Values.manager.image.tag }}"
+                  image: "{{ include "chart.image" (dict "global" .Values.global "repository" .Values.manager.image.repository "tag" .Values.manager.image.tag) }}"
                   imagePullPolicy: {{ .Values.manager.image.pullPolicy }}
                   livenessProbe:
                     httpGet:

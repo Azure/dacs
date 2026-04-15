@@ -12,13 +12,16 @@ manager:
     tag: local
     pullPolicy: IfNotPresent
 
+  # Cache server image used by controller to create cache server pods
+  cacheServerImage:
+    repository: acstor/dacs-server
+    tag: local
+
   # Extra arguments to pass to the controller
   extraArgs: []
 
-  # Environment variables
-  env:
-    - name: CACHE_CONTROLLER_CACHESERVERIMAGE
-      value: cache-server:local
+  # Additional environment variables
+  env: []
 
   # Pod-level security settings
   podSecurityContext:
