@@ -70,3 +70,13 @@ Uses fullname + "-controller-manager" suffix for umbrella chart compatibility.
 {{- define "chart.serviceAccountName" -}}
 {{- include "chart.fullname" . }}-controller-manager
 {{- end }}
+
+{{/*
+Constructs a full image reference from global.registry, repository, and tag.
+Usage: {{ include "chart.image" (dict "global" .Values.global "repository" "my-image" "tag" "v1.0") }}
+When global.registry is set: <registry>/<repository>:<tag>
+When global.registry is not set: <repository>:<tag>
+*/}}
+{{- define "chart.image" -}}
+{{- if .global }}{{- if .global.registry }}{{ .global.registry }}/{{- end }}{{- end }}{{ .repository }}:{{ .tag }}
+{{- end -}}
