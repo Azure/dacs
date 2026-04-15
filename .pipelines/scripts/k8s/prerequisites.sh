@@ -20,36 +20,22 @@ check_command() {
   command -v "$1" >/dev/null 2>&1
 }
 
-# Install Docker
-if ! check_command docker; then
-  echo "Docker not found. Installing Docker..."
+# Install Docker CE (Ubuntu's docker.io is stuck on 24.x / API 1.43, incompatible with newer daemons)
+if ! check_command docker || ! docker buildx version &>/dev/null; then
+  echo "Installing Docker CE..."
+  sudo apt-get remove -y docker.io containerd runc moby-tini moby-engine moby-cli moby-compose moby-containerd moby-runc moby-buildx 2>/dev/null || true
+  sudo install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg --yes
+  sudo chmod a+r /etc/apt/keyrings/docker.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
+    | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo apt-get update
-  sudo apt-get install -y docker.io
+  sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
   sudo systemctl enable docker
   sudo systemctl start docker
-  echo "Docker installed successfully."
+  echo "Docker CE installed successfully."
 else
-  echo "Docker is already installed."
-fi
-
-# Install Docker Buildx (required for BuildKit features)
-if ! docker buildx version &>/dev/null; then
-  echo "Docker Buildx not found. Installing from GitHub releases..."
-  BUILDX_VERSION="v0.12.1"
-  BUILDX_ARCH="$KUBE_ARCH"
-  
-  echo "Installing Buildx for arch $BUILDX_ARCH..."
-  mkdir -p ~/.docker/cli-plugins
-  curl -sSL "https://github.com/docker/buildx/releases/download/${BUILDX_VERSION}/buildx-${BUILDX_VERSION}.linux-${BUILDX_ARCH}" -o ~/.docker/cli-plugins/docker-buildx
-  chmod +x ~/.docker/cli-plugins/docker-buildx
-  
-  # Also install system-wide for other users
-  sudo mkdir -p /usr/local/lib/docker/cli-plugins
-  sudo cp ~/.docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
-  
-  echo "Docker Buildx installed successfully."
-else
-  echo "Docker Buildx is already installed."
+  echo "Docker CE and Buildx are already installed."
 fi
 
 # Install Minikube
