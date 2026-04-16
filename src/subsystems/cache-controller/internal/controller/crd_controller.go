@@ -378,7 +378,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 			Namespace: desired.Namespace,
 		},
 	}
-	result, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
+	result, err := controllerutil.CreateOrPatch(ctx, r.Client, sts, func() error {
 		sts.Labels = desired.Labels
 		sts.Spec = desired.Spec
 		if err := controllerutil.SetControllerReference(cache, sts, r.Scheme); err != nil {
@@ -388,7 +388,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 	})
 
 	if err != nil {
-		log.Error(err, "Failed to create or update StatefulSet",
+		log.Error(err, "Failed to create or patch StatefulSet",
 			"statefulSetName", sts.Name,
 			"desiredReplicas", numServers)
 		return err
@@ -443,7 +443,7 @@ func (r *CacheReconciler) reconcileServices(ctx context.Context, cache *storagev
 			},
 		}
 
-		result, err := controllerutil.CreateOrUpdate(ctx, r.Client, service, func() error {
+		result, err := controllerutil.CreateOrPatch(ctx, r.Client, service, func() error {
 			service.Spec = desired.Spec
 			service.Labels = desired.Labels
 			if err := controllerutil.SetControllerReference(cache, service, r.Scheme); err != nil {
@@ -452,7 +452,7 @@ func (r *CacheReconciler) reconcileServices(ctx context.Context, cache *storagev
 			return nil
 		})
 		if err != nil {
-			log.Error(err, "Failed to create or update Service",
+			log.Error(err, "Failed to create or patch Service",
 				"serviceName", svc.name)
 			return err
 		}
@@ -489,7 +489,7 @@ func (r *CacheReconciler) reconcileConfigMap(ctx context.Context, cache *storage
 		},
 	}
 
-	result, err := controllerutil.CreateOrUpdate(ctx, r.Client, cm, func() error {
+	result, err := controllerutil.CreateOrPatch(ctx, r.Client, cm, func() error {
 		cm.Labels = desired.Labels
 		cm.Data = desired.Data
 		if err := controllerutil.SetControllerReference(cache, cm, r.Scheme); err != nil {
@@ -499,7 +499,7 @@ func (r *CacheReconciler) reconcileConfigMap(ctx context.Context, cache *storage
 	})
 
 	if err != nil {
-		log.Error(err, "Failed to create or update ConfigMap",
+		log.Error(err, "Failed to create or patch ConfigMap",
 			"configMapName", cm.Name)
 		return err
 	}
@@ -544,7 +544,7 @@ func renderTemplateInto(path string, values interface{}, out interface{}) error 
 	return nil
 }
 
-// logResourceOperation logs the result of a CreateOrUpdate operation in a consistent way
+// logResourceOperation logs the result of a CreateOrPatch operation in a consistent way
 func logResourceOperation(log logr.Logger, result controllerutil.OperationResult, resourceType, name string, extraFields ...interface{}) {
 	baseFields := []interface{}{"resourceName", name}
 	switch result {
