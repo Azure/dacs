@@ -1,5 +1,8 @@
 # Default values for dacs-prereq
 
+# Base name used for all resources (DaemonSet, ServiceAccount, Role, RoleBinding)
+name: dacs-prereq
+
 # Node selector for targeting NVMe-capable nodes
 nodeSelector:
   dacs.azure.com/processing-unit: cpu
@@ -9,6 +12,17 @@ tolerations: []
 
 # Mount point for the RAID array
 mountPoint: /var/lib/ssd/cacheserver
+
+# Priority class for the DaemonSet pods.
+# system-node-critical ensures NVMe setup runs before application pods and
+# survives eviction during node pressure.
+priorityClassName: system-node-critical
+
+# DaemonSet update strategy
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
 
 # nvme-raid-setup init container settings
 nvmeRaidSetup:
@@ -21,6 +35,7 @@ nvmeRaidSetup:
       cpu: 100m
       memory: 512Mi
     limits:
+      cpu: "1"
       memory: 512Mi
 
 # Pause container settings
@@ -34,5 +49,6 @@ pauseContainer:
       cpu: 1m
       memory: 16Mi
     limits:
+      cpu: 10m
       memory: 16Mi
 

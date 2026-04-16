@@ -31,6 +31,7 @@ help:
 	@echo ""
 	@echo "Other:"
 	@echo "  make storage-intercept-client      	- Run storage intercept client tests"
+	@echo "  make teardown-raid                 	- Tear down NVMe RAID on all nodes (destructive)"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make build"

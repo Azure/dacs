@@ -2,284 +2,157 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 #
-# This script is executed via nsenter in the host namespace.
-# See daemonset.yaml for the nsenter invocation.
+# Prepares local NVMe data disks for use as a DACS cache directory.
+# Executed via nsenter in the host namespace (see daemonset.yaml).
 
 set -euo pipefail
+
+readonly RAID_NAME="dacs"
+readonly FS_LABEL="dacs"
+MOUNT_POINT="${MOUNT_POINT:-/var/lib/ssd/cacheserver}"
 
 log() {
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"
 }
 
-settle_block() {
-  udevadm settle 2>/dev/null || true
-  sleep 1
-}
-
-get_root_disk_name() {
-  # Determine the underlying disk (e.g., nvme0n1, sda) that backs '/'.
-  # Works for /dev/nvme0n1pX, /dev/sdaX, and common mapper devices.
-  local root_source
-  local root_name
-  local pkname
-
-  root_source=$(findmnt -n -o SOURCE / 2>/dev/null || true)
-  if [ -z "${root_source}" ]; then
-    echo ""
-    return 0
-  fi
-
-  # Get a stable block-device name (no /dev/ prefix)
-  root_name=$(lsblk -no NAME "${root_source}" 2>/dev/null || true)
-  if [ -z "${root_name}" ]; then
-    # If findmnt gave us something lsblk can't resolve, bail out safely.
-    echo ""
-    return 0
-  fi
-
-  # PKNAME is the parent disk if root is a partition; empty if already a disk.
-  pkname=$(lsblk -no PKNAME "${root_source}" 2>/dev/null || true)
-  if [ -n "${pkname}" ]; then
-    echo "${pkname}"
-    return 0
-  fi
-
-  echo "${root_name}"
-  return 0
-}
-
 dump_diag() {
-  # Low-noise diagnostics for pipeline-only debugging. Call only on busy/failure.
   log "----- DEBUG (begin) -----"
-  if command -v hostname >/dev/null 2>&1; then
-    echo "hostname=$(hostname)"
-  else
-    echo "hostname=<unknown>"
-  fi
-  echo "uname=$(uname -a 2>/dev/null || true)"
+  echo "hostname=$(hostname 2>/dev/null || echo '<unknown>')"
+  lsblk -o NAME,TYPE,SIZE,FSTYPE,LABEL,MOUNTPOINT 2>/dev/null || true
   echo ""
-  echo "lsblk (name,type,size,fstype,mountpoint,pkname):"
-  lsblk -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINT,PKNAME 2>/dev/null || true
-  echo ""
-  echo "lsblk -f:"
-  lsblk -f 2>/dev/null || true
-  echo ""
-  echo "mount (filtered):"
-  mount | grep -E 'nvme|/mnt/raid|/var/lib/ssd' || true
-  echo ""
-  echo "/proc/mdstat:"
   cat /proc/mdstat 2>/dev/null || true
   echo ""
-  echo "mdadm --examine --scan:"
-  mdadm --examine --scan 2>/dev/null || true
-  echo ""
-  echo "Device holders (nvme*):"
-  for h in /sys/class/block/nvme*/holders/*; do
-    [ -e "$h" ] || continue
-    echo "$h"
-  done
+  mdadm --detail --scan 2>/dev/null || true
   log "----- DEBUG (end) -----"
 }
 
-device_in_use() {
-  local device="$1"
-  if lsblk -npo MOUNTPOINT "$device" 2>/dev/null | grep -qv '^[[:space:]]*$'; then
-    return 0
+persist_config() {
+  # Write mdadm.conf and fstab entries for reboot persistence.
+  mkdir -p /etc/mdadm
+  mdadm --detail --scan 2>/dev/null | tee /etc/mdadm/mdadm.conf >/dev/null || true
+  if ! grep -q "LABEL=${FS_LABEL}" /etc/fstab 2>/dev/null; then
+    echo "LABEL=${FS_LABEL} ${MOUNT_POINT} ext4 defaults,nofail 0 2" >> /etc/fstab
   fi
-  if [ -d "/sys/class/block/$(basename "$device")/holders" ] && [ "$(ls -A "/sys/class/block/$(basename "$device")/holders" 2>/dev/null | wc -l | xargs)" != "0" ]; then
-    return 0
+  if command -v update-initramfs &>/dev/null; then
+    update-initramfs -u
   fi
-  return 1
 }
 
-if command -v hostname >/dev/null 2>&1; then
-  NODE_NAME=$(hostname)
-else
-  NODE_NAME="<unknown>"
+log "========== NVMe setup starting on $(hostname 2>/dev/null || echo '<unknown>') =========="
+
+# --- Fast path: already mounted ------------------------------------------------
+if mountpoint -q "${MOUNT_POINT}" 2>/dev/null; then
+  log "${MOUNT_POINT} already mounted. Nothing to do."
+  exit 0
 fi
 
-log "========== NVMe setup starting on node ${NODE_NAME} =========="
-
-# Install required tools if missing
-if ! command -v mdadm >/dev/null 2>&1; then
-  log "mdadm not found, installing required tools..."
-  if command -v tdnf >/dev/null 2>&1; then
-    log "Using tdnf package manager..."
-    tdnf install -y mdadm util-linux e2fsprogs gdisk gawk || {
-      log "ERROR: Failed to install packages via tdnf"
-      exit 1
-    }
-  elif command -v apt-get >/dev/null 2>&1; then
-    log "Using apt-get package manager..."
+# --- Install mdadm if needed ---------------------------------------------------
+if ! command -v mdadm &>/dev/null; then
+  log "mdadm not found, installing..."
+  if command -v tdnf &>/dev/null; then
+    tdnf install -y mdadm e2fsprogs
+  elif command -v apt-get &>/dev/null; then
     export DEBIAN_FRONTEND=noninteractive
-    apt-get update >/dev/null && apt-get install -y mdadm util-linux e2fsprogs gdisk gawk || {
+    if ! { apt-get update >/dev/null && apt-get install -y mdadm e2fsprogs; }; then
       log "ERROR: Failed to install packages via apt-get"
       exit 1
-    }
+    fi
   else
-    log "ERROR: Neither tdnf nor apt-get found. Cannot install mdadm."
+    log "ERROR: No supported package manager found."
     exit 1
   fi
-  log "Package installation completed successfully"
-else
-  log "mdadm already installed, skipping package installation"
 fi
-
-MOUNT_POINT="${MOUNT_POINT:-/var/lib/ssd/cacheserver}"
-marker_file="${MOUNT_POINT}/.nvme-setup-done"
 
 mkdir -p "${MOUNT_POINT}"
-chmod 0777 "${MOUNT_POINT}"
 
-log "Ensured cache dir exists: ${MOUNT_POINT}"
+# --- Try to reassemble existing RAID arrays ------------------------------------
+mdadm --assemble --scan 2>/dev/null || true
 
-# If a previous run already configured NVMe correctly, treat as success.
-if mountpoint -q "${MOUNT_POINT}"; then
-  log "Detected existing NVMe setup (${MOUNT_POINT} already mounted). Ensuring marker and permissions."
-  mkdir -p "${MOUNT_POINT}"
-  chmod 0777 "${MOUNT_POINT}"
-  echo "nvme" > "${marker_file}"
-  log "Wrote marker: ${marker_file}"
-  log "NVMe setup already present; exiting successfully."
+# --- Check for existing filesystem with our label (covers RAID and single-disk)
+LABELED_DEV=$(blkid -L "${FS_LABEL}" 2>/dev/null || true)
+if [[ -n "${LABELED_DEV}" ]]; then
+  log "Found existing filesystem labeled '${FS_LABEL}' on ${LABELED_DEV}"
+  mount "${LABELED_DEV}" "${MOUNT_POINT}"
+  persist_config
+  log "Mounted ${LABELED_DEV}. Done."
   exit 0
 fi
 
-root_disk=$(get_root_disk_name)
-if [ -n "${root_disk}" ]; then
-  log "Detected root disk: ${root_disk} (will be excluded from NVMe candidates)"
-else
-  log "WARN: Unable to detect root disk; will fall back to excluding nvme0n1 only"
-fi
+# --- Find unused NVMe devices -------------------------------------------------
+ALL_NVME_DEVICES=$(ls /dev/nvme*n* 2>/dev/null || true)
+UNUSED_DEVICES=()
 
-# Build candidate NVMe device list, excluding the detected root disk if possible.
-nvme_devices=$(lsblk -nd -o NAME,TYPE | awk '$2=="disk" {print $1}' | grep '^nvme' || true)
-if [ -n "${root_disk}" ]; then
-  nvme_devices=$(echo "${nvme_devices}" | grep -vx "${root_disk}" || true)
-else
-  nvme_devices=$(echo "${nvme_devices}" | grep -v '^nvme0n1$' || true)
-fi
-
-log "Detected NVMe devices (excluding root): ${nvme_devices:-<none>}"
-
-if [ -z "${nvme_devices}" ]; then
-  log "No extra NVMe devices found. Using host OS disk path only."
-  echo "no-nvme" > "${marker_file}"
-  log "Wrote marker: ${marker_file}"
-  exit 0
-fi
-
-log "Stopping any existing RAID arrays (best-effort)"
-mdadm --stop /dev/md0 2>/dev/null || true
-settle_block
-
-raid_devices=""
-for disk in ${nvme_devices}; do
-  device="/dev/${disk}"
-  part="${device}p1"
-
-  log "Preparing ${device}"
-
-  if device_in_use "${device}"; then
-    log "WARN: ${device} appears busy. Attempting cleanup (best-effort)."
-    dump_diag
-
-    # Stop RAID (if present) and unmount the mountpoint first.
-    umount -fl "${MOUNT_POINT}" 2>/dev/null || true
-    mdadm --stop /dev/md0 2>/dev/null || true
-    mdadm --remove /dev/md0 2>/dev/null || true
-    settle_block
-
-    # Legacy cleanup
-    umount -fl "${part}" 2>/dev/null || true
-    umount -fl "${device}" 2>/dev/null || true
-    settle_block
-
-    if device_in_use "${device}"; then
-      log "ERROR: ${device} is still busy after cleanup; cannot proceed."
-      echo "device-busy" > "${marker_file}"
-      dump_diag
-      exit 1
-    fi
+for device in ${ALL_NVME_DEVICES}; do
+  # Skip partitions (only want whole disks)
+  [[ "$device" =~ p[0-9]+$ ]] && continue
+  # Skip RAID members
+  if mdadm --examine "$device" 2>/dev/null | grep -q 'RAID superblock'; then
+    continue
   fi
-
-  # Wipe any existing signatures, then create a single Linux RAID partition.
-  wipefs -af "${device}" 2>/dev/null || true
-  settle_block
-
-  log "Creating RAID partition on ${device}"
-  # Create 1 partition covering whole disk with type code fd00 (Linux RAID)
-  echo -e "n\n\n\n\nfd00\np\nw\nY" | gdisk "${device}" >/dev/null 2>&1 || true
-  settle_block
-
-  if [ ! -b "${part}" ]; then
-    log "ERROR: Expected partition ${part} was not created or not visible."
-    echo "partition-create-failed" > "${marker_file}"
-    dump_diag
-    exit 1
+  # Skip mounted devices (catches root/OS disk)
+  if findmnt -S "$device" -n &>/dev/null; then
+    continue
   fi
-
-  raid_devices="${raid_devices} ${part}"
-  log "Added RAID member partition: ${part}"
+  # Skip devices with existing signatures
+  if blkid "$device" &>/dev/null; then
+    continue
+  fi
+  UNUSED_DEVICES+=("$device")
 done
 
-raid_devices=$(echo "${raid_devices}" | xargs)
-device_count=$(echo "${raid_devices}" | wc -w | xargs)
-
-if [ "${device_count}" -lt 1 ]; then
-  log "ERROR: No RAID members available."
-  echo "no-raid-members" > "${marker_file}"
-  dump_diag
-  exit 1
+if [[ ${#UNUSED_DEVICES[@]} -eq 0 ]]; then
+  log "No unused NVMe devices found."
+  exit 0
 fi
 
-log "Creating RAID0 with ${device_count} devices: ${raid_devices}"
-if ! mdadm --create /dev/md0 --level=0 --raid-devices="${device_count}" ${raid_devices} --force; then
-  log "ERROR: RAID creation failed."
-  echo "raid-create-failed" > "${marker_file}"
-  dump_diag
-  exit 1
-fi
+log "Found ${#UNUSED_DEVICES[@]} unused NVMe device(s): ${UNUSED_DEVICES[*]}"
 
-sleep 5
-settle_block
-
-log "RAID status (/proc/mdstat):"
-cat /proc/mdstat || true
-
-log "Formatting /dev/md0 as ext4"
-if ! mkfs.ext4 -F /dev/md0; then
-  log "ERROR: mkfs failed."
-  echo "mkfs-failed" > "${marker_file}"
-  dump_diag
-  exit 1
-fi
-
-log "Mounting /dev/md0 at ${MOUNT_POINT}"
-mkdir -p "${MOUNT_POINT}"
-
-if ! mount | grep -qE " on ${MOUNT_POINT} "; then
-  if ! mount /dev/md0 "${MOUNT_POINT}"; then
-    log "ERROR: Mount failed."
-    echo "mount-failed" > "${marker_file}"
+# --- Single device: format and mount directly (no RAID) ------------------------
+if [[ ${#UNUSED_DEVICES[@]} -eq 1 ]]; then
+  DEVICE="${UNUSED_DEVICES[0]}"
+  log "Formatting ${DEVICE} as ext4 (label '${FS_LABEL}')"
+  if ! mkfs.ext4 -F -L "${FS_LABEL}" "${DEVICE}"; then
+    log "ERROR: mkfs failed on ${DEVICE}."
     dump_diag
     exit 1
   fi
-else
-  log "${MOUNT_POINT} already mounted"
+  mount "${DEVICE}" "${MOUNT_POINT}"
+  persist_config
+  log "Single-disk setup complete."
+  exit 0
 fi
 
-log "Ensuring permissions on NVMe-backed cache dir: ${MOUNT_POINT}"
-mkdir -p "${MOUNT_POINT}"
+# --- Multiple devices: create RAID0 -------------------------------------------
+log "Creating RAID0 with ${#UNUSED_DEVICES[@]} devices:"
+for device in "${UNUSED_DEVICES[@]}"; do
+  log "  - $device"
+done
+
+RAID_DEVICE="/dev/md0"
+if ! mdadm --create "${RAID_DEVICE}" \
+  --name="${RAID_NAME}" \
+  --level=0 \
+  --raid-devices="${#UNUSED_DEVICES[@]}" \
+  "${UNUSED_DEVICES[@]}" \
+  --run \
+  --force; then
+  log "ERROR: Failed to create RAID array."
+  dump_diag
+  exit 1
+fi
+
+log "Waiting for RAID device..."
+sleep 5
+
+log "Formatting ${RAID_DEVICE} as ext4 (label '${FS_LABEL}')"
+if ! mkfs.ext4 -F -L "${FS_LABEL}" "${RAID_DEVICE}"; then
+  log "ERROR: mkfs failed."
+  dump_diag
+  exit 1
+fi
+
+mount "${RAID_DEVICE}" "${MOUNT_POINT}"
 chmod 0777 "${MOUNT_POINT}"
+persist_config
 
-echo "nvme" > "${marker_file}"
-log "Wrote marker: ${marker_file}"
-
-log "========== Final validation =========="
-echo "Mounts (filtered):"
-mount | grep -E " ${MOUNT_POINT}" || true
-echo ""
-echo "df -h (filtered):"
-df -h | grep -E "Filesystem|${MOUNT_POINT}" || true
-
-log "NVMe setup completed successfully"
+log "RAID0 setup complete."

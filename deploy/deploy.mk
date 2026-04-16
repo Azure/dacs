@@ -212,6 +212,10 @@ helm-prereq-install: helm ## Deploy dacs-prereq chart for NVMe RAID setup.
 helm-prereq-uninstall: helm ## Uninstall dacs-prereq chart.
 	$(HELM_BIN) uninstall dacs-prereq --namespace $(HELM_NAMESPACE) --ignore-not-found --wait
 
+.PHONY: teardown-raid
+teardown-raid: ## Tear down NVMe RAID arrays and mounts on all nodes (destructive).
+	./deploy/scripts/aks/teardown-raid.sh
+
 .PHONY: helm-install
 helm-install: helm ## Deploy cache-server chart (minikube: local images, AKS: remote ACR chart).
 ifeq ($(CLUSTER_TYPE),minikube)
