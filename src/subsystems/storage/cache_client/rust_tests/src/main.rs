@@ -8,7 +8,7 @@ use std::ffi::{c_char, c_void, CString};
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 fn generate_random_string(length: usize) -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let characters: Vec<char> = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
         .chars()
         .collect();
