@@ -356,6 +356,8 @@ def _initialize_dacs_client_config(intercept_path: str = None, write_mode=None) 
         sas_token = os.environ.get("STORAGE_INTCPT_SAS_TOKEN") if os.environ.get("USE_SAS_TOKEN", "false") == "true" else None
         access_token = os.environ.get("SI_azBlobAccessToken")
         if sas_token:
+            # Strip trailing all whitespace, as it can cause issues with authentication
+            sas_token = sas_token.strip()
             config_file.write(f"azBlobSASToken {sas_token}\n")
             logger.info("Using SAS token for authentication")
         elif access_token:
