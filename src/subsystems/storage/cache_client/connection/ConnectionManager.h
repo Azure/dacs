@@ -126,6 +126,7 @@ class ConnectionManager
             enum ibv_mtu mtu;
             ibutils::unique_ibv_context context;
             ibutils::unique_ibv_pd pd;
+            int max_sge;  // max SGEs supported by device for send WRs
         };
         IbDev m_ibDevice;
 
