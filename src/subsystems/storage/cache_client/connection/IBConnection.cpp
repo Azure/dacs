@@ -5,13 +5,14 @@
 #include "CommonLogger.h"
 #include "StorageLibcApiWrapper.h"
 #include <fcntl.h>
+#include <limits>
 #include <poll.h>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace ibutils;
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
 IBConnection::IBConnection(unique_ibv_qp qp, unique_ibv_comp_channel eventChannel, unique_ibv_cq cq, unique_ibv_mr mr,
-    unique_ptr<char[]> mrBuffer)
+    unique_ptr<char[]> mrBuffer, bool directMrEnabled)
     : m_qp(move(qp))
     , m_eventChannel(move(eventChannel))
     , m_cq(move(cq))
@@ -22,6 +23,8 @@ IBConnection::IBConnection(unique_ibv_qp qp, unique_ibv_comp_channel eventChanne
     , m_readOffset(0)
     , m_qpError(false)
     , m_sendAttempted(false)
+    , m_externalMr(nullptr)
+    , m_directMrEnabled(directMrEnabled)
 {
 
     // Fetch and change the blocking mode of the completion channel to non-blocking
@@ -43,7 +46,8 @@ IBConnection::IBConnection(unique_ibv_qp qp, unique_ibv_comp_channel eventChanne
 IBConnection::~IBConnection()
 {
     LOG_DEBUG("Closing qp={}", GetId());
-    m_qp.reset(nullptr);
+    m_qp.reset(nullptr);          // flush/abort all pending WRs first
+    DeregisterExternalMr();        // now safe — no WRs reference the MR
     m_mr.reset(nullptr);
     m_cq.reset(nullptr);
     m_eventChannel.reset(nullptr);
@@ -51,11 +55,27 @@ IBConnection::~IBConnection()
 //---------------------------------------------------------------------------------------------------------------------
 void IBConnection::ResetConnection()
 {
+    DeregisterExternalMr();
     m_writeOffset = 0;
     m_responseLength = -1;
     m_readOffset = 0;
     m_qpError = false;
     m_sendAttempted = false;
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool IBConnection::DeregisterExternalMr()
+{
+    if (m_externalMr)
+    {
+        if (ibv_dereg_mr(m_externalMr))
+        {
+            LOG_ERROR("ibv_dereg_mr failed qp={} errno={}", GetId(), errno);
+            m_externalMr = nullptr;
+            return false;
+        }
+        m_externalMr = nullptr;
+    }
+    return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool IBConnection::FinalizeWrite()
@@ -128,9 +148,111 @@ int IBConnection::Send(const char* buffer, uint64_t size)
     return size;
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool IBConnection::FinalizeWriteWithExternalBuffer(const char* dataBuffer, uint64_t dataSize)
+{
+    if (m_sendAttempted)
+    {
+        LOG_CRITICAL("Remote send already attempted qp={}", GetId());
+        return false;
+    }
+
+    m_sendAttempted = true;
+
+    // ibv_sge.length is uint32_t, so reject buffers larger than 4 GiB
+    if (dataSize > std::numeric_limits<uint32_t>::max())
+    {
+        LOG_ERROR("Data size exceeds ibv_sge uint32_t limit qp={} size={}", GetId(), dataSize);
+        m_qpError = true;
+        return false;
+    }
+
+    // Deregister any previously-registered external MR to avoid leaking it
+    if (!DeregisterExternalMr())
+    {
+        LOG_ERROR("Failed to deregister previous external MR qp={}", GetId());
+        m_qpError = true;
+        return false;
+    }
+
+    // Register caller's buffer directly with the HCA
+    m_externalMr = ibv_reg_mr(m_mr->pd, const_cast<char*>(dataBuffer), dataSize,
+                              static_cast<int>(IBV_ACCESS_LOCAL_WRITE));
+    if (!m_externalMr)
+    {
+        LOG_ERROR("ibv_reg_mr() failed for external buffer qp={} size={} error={},{}",
+                  GetId(), dataSize, errno, strerror(errno));
+        m_qpError = true;
+        return false;
+    }
+
+    // Prepare to receive response before sending
+    struct ibv_sge recv_sg{};
+    recv_sg.addr   = (uintptr_t)(m_mrBuffer.get());
+    recv_sg.length = IB_BUFFER_SIZE;
+    recv_sg.lkey   = m_mr->lkey;
+
+    struct ibv_recv_wr recv_wr{};
+    recv_wr.wr_id   = (uint64_t)recv_sg.addr;
+    recv_wr.sg_list = &recv_sg;
+    recv_wr.num_sge = 1;
+
+    struct ibv_recv_wr* recv_bad_wr = nullptr;
+    int rc = ibv_post_recv(m_qp.get(), &recv_wr, &recv_bad_wr);
+    if (rc != 0)
+    {
+        LOG_ERROR("ibv_post_recv() failed qp={} error={},{}", GetId(), rc, strerror(errno));
+        DeregisterExternalMr();
+        m_qpError = true;
+        return false;
+    }
+
+    // 2-SGE scatter-gather: SGE[0]=header from MR buffer, SGE[1]=data from caller's buffer
+    struct ibv_sge sg[2]{};
+    sg[0].addr   = (uintptr_t)m_mrBuffer.get();
+    sg[0].length = m_writeOffset;
+    sg[0].lkey   = m_mr->lkey;
+    sg[1].addr   = (uintptr_t)dataBuffer;
+    sg[1].length = dataSize;
+    sg[1].lkey   = m_externalMr->lkey;
+
+    struct ibv_send_wr wr{};
+    wr.wr_id      = (uint64_t)m_mrBuffer.get();
+    wr.sg_list    = sg;
+    wr.num_sge    = 2;
+    wr.opcode     = IBV_WR_SEND;
+    wr.send_flags = IBV_SEND_SIGNALED | IBV_SEND_SOLICITED;
+    struct ibv_send_wr* bad_wr = nullptr;
+    rc = ibv_post_send(m_qp.get(), &wr, &bad_wr);
+    if (rc != 0)
+    {
+        LOG_WARN("ibv_post_send() failed qp={} error={},{}", GetId(), rc, strerror(errno));
+        DeregisterExternalMr();
+        m_qpError = true;
+        return false;
+    }
+
+    LOG_DEBUG("Sent request with external buffer on qp={}", GetId());
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
 int IBConnection::SendAndFinalize(const char* buffer, uint64_t size)
 {
     LOG_DEBUG("SendAndFinalize qp={} size={}", GetId(), size);
+
+    // For large buffers, register caller's buffer directly to avoid memcpy.
+    // Only used when the device supports 2-SGE sends (header + data).
+    if (m_directMrEnabled && size >= DIRECT_REG_THRESHOLD)
+    {
+        if (!FinalizeWriteWithExternalBuffer(buffer, size))
+        {
+            LOG_WARN("Failed to send with external buffer qp={}", GetId());
+            m_qpError = true;
+            return -1;
+        }
+        return size;
+    }
+
+    // Small buffer: use original memcpy path
     int bytesSent = Send(buffer, size);
     if (bytesSent >= 0 && !FinalizeWrite())
     {

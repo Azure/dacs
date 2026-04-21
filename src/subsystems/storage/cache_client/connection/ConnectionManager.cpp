@@ -319,6 +319,21 @@ bool ConnectionManager::InitInfiniband()
     LOG_INFO("IB Init successful");
     m_ibDevice.context = move(context);
     m_ibDevice.pd = move(pd);
+
+    // Query device capabilities to determine max SGE support
+    struct ibv_device_attr devAttr{};
+    int rc = ibv_query_device(m_ibDevice.context.get(), &devAttr);
+    if (rc != 0)
+    {
+        LOG_WARN("ibv_query_device failed error={},{}, defaulting max_sge=1", rc, strerror(errno));
+        m_ibDevice.max_sge = 1;
+    }
+    else
+    {
+        m_ibDevice.max_sge = devAttr.max_sge;
+        LOG_INFO("IB device max_sge={}", m_ibDevice.max_sge);
+    }
+
     m_bUseInfiniband = true;
     return true;
 }
@@ -384,7 +399,12 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(std::unique_p
         // There is only one message outstanding at any given time on the connection
         qpInitAttr.cap.max_send_wr = 1;
         qpInitAttr.cap.max_recv_wr = 1;
-        qpInitAttr.cap.max_send_sge = 1;
+        // 2 SGEs needed for uploads: SGE[0]=protobuf header from MR buffer,
+        // SGE[1]=data from caller's directly-registered buffer.
+        // Downloads and other ops use only 1 SGE but the limit applies per-QP.
+        // Cap to device max_sge to avoid ibv_create_qp failure on limited hardware.
+        int requestedSge = std::min(2, m_ibDevice.max_sge);
+        qpInitAttr.cap.max_send_sge = requestedSge;
         qpInitAttr.cap.max_recv_sge = 1;
 
         // Inline data limit (60 bytes) not sufficient for our use case so disabling it
@@ -495,12 +515,14 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(std::unique_p
         }
 
         LOG_DEBUG_REQID("Created IB connection, qp={}", *ibRequest, qp->qp_num);
+        bool directMrEnabled = (m_ibDevice.max_sge >= 2);
         std::unique_ptr<IBConnection> ibConnection = make_unique<IBConnection>(
             move(qp), 
             move(vectorEventChannels[qpn]),
             move(vectorCqs[qpn]), 
             move(mr), 
-            move(mrBufferBlock)
+            move(mrBufferBlock),
+            directMrEnabled
         );
         if (!PerformIBHandshake(ibConnection.get(), cacheserver))
         {

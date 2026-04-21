@@ -64,6 +64,31 @@ target_include_directories(CacheClientLibTests PRIVATE
     tests  
 )
 
+# Separate test binary for IBConnection with fake ibverbs stubs.
+# Compiles IBConnection.cpp directly and provides its own ibverbs symbols,
+# avoiding the DlsymWrapper so tests run without real IB hardware.
+add_executable(IBConnectionTests
+    tests/IBConnectionTests.cpp
+    tests/TestMain.cpp
+    connection/IBConnection.cpp
+)
+add_dependencies(IBConnectionTests StorageCommon StorageLibcDlsymWrapper diagnostics)
+target_link_libraries(IBConnectionTests
+    diagnostics
+    pthread
+    dl
+    xxhash
+    ${GTEST_LIBRARY}
+    ${GTEST_MAIN_LIBRARY}
+)
+target_include_directories(IBConnectionTests PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}
+    ${CMAKE_CURRENT_LIST_DIR}/connection
+    $<TARGET_PROPERTY:StorageCommon,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:StorageLibcDlsymWrapper,INTERFACE_INCLUDE_DIRECTORIES>
+    tests
+)
+
 # CMake archives dont include dependencies, only references.
 # So, merge all dependent objects into one archive.
 add_library(CacheClientStaticLibWithoutProtobuf STATIC
