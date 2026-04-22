@@ -1,6 +1,6 @@
 # DACS Client Library
 
-This Python library provides interfaces to perform file operations on Azure blobs with caching mechanisms. It includes both basic async operations and a blobfile-compatible synchronous adapter (`DACSAdapter`).
+This Python library provides interfaces to perform file operations on Azure blobs with caching mechanisms. It includes async operations, a blobfile-compatible synchronous adapter (`DACSBlobfileAdapter`), and a boostedblob-compatible async adapter (`dacs_boostedblob_adapter`).
 
 **Wiki Link:** internal-reference-removed
 
@@ -10,7 +10,8 @@ This Python library provides interfaces to perform file operations on Azure blob
 - [Authentication](#authentication)
 - [DACS Cache Client API](#dacs-client-api)
   - [DACSCacheClient (async)](#dacscacheclient-async)
-  - [DACSAdapter (blobfile-compatible, sync)](#dacsadapter-blobfile-compatible-sync)
+  - [DACSBlobfileAdapter (blobfile-compatible, sync)](#dacsblobfileadapter-blobfile-compatible-sync)
+  - [DACSBoostedBlobAdapter (boostedblob-compatible, async)](#dacsboostedblobadapter-boostedblob-compatible-async)
   - [Blobfile Integration (monkey-patching)](#blobfile-integration-monkey-patching)
   - [Utility API](#utility-api)
     - [BoundedBufferManager](#boundedbuffermanager)
@@ -150,27 +151,33 @@ Supports both sync (`open_sync`/`close_sync`/`read_sync`/`write_sync`) and async
 
 ---
 
-### DACSAdapter (blobfile-compatible, sync)
+### DACSBlobfileAdapter (blobfile-compatible, sync)
 
-A synchronous, blobfile-compatible adapter that wraps `DACSCacheClient`. Use this as a drop-in replacement for blobfile in read/write scenarios.
+A synchronous, blobfile-compatible adapter that wraps `DACSCacheClient`. Use this as a drop-in replacement for blobfile in read/write scenarios. Also available as the `BlobFile` alias.
 
 ```python
-from py_dacs_client.dacs_adapter import DACSAdapter, WriteMode
+from py_dacs_client.dacs_blobfile_adapter import DACSBlobfileAdapter, WriteMode
+# or use the alias:
+from py_dacs_client.dacs_blobfile_adapter import BlobFile
 ```
 
 #### Supported Operations
 
 | Function / Method | Description |
 | --- | --- |
-| `DACSAdapter(path, mode, ...)` | Open a file. Modes: `"r"`, `"rb"`, `"w"`, `"wb"`. Append mode is **not** supported. |
+| `DACSBlobfileAdapter(path, mode, ...)` | Open a file. Modes: `"r"`, `"rb"`, `"w"`, `"wb"`. Append mode is **not** supported. |
 | `.read(size, buffer)` | Read data. Returns `bytes`/`str` or `memoryview` if a user buffer is provided. |
 | `.write(data, size, buffer)` | Write data from `str`/`bytes` or a user-provided buffer. |
+| `.seek(offset, whence)` | Seek to a position. Supported for **read-mode remote (`az://`) paths** only. `SEEK_SET`, `SEEK_CUR`, and `SEEK_END` are all supported. |
+| `.tell() -> int` | Return the current file position. Supported for **remote (`az://`) paths** only. |
+| `.seekable() -> bool` | Returns `True` for read-mode remote paths, `False` otherwise. |
 | `.close()` | Close the file and release internally-allocated write buffers. |
 | `copy(src, dst, overwrite, return_md5)` | Copy a file between local and remote paths. See [Copy Operations](#copy-operations). |
 | `exists(path) -> bool` | Check if a blob exists. |
 | `stat(path) -> Stat` | Get file stats (size, mtime, ctime, plus extended POSIX fields). |
 | `listdir(path) -> Iterator[str]` | List filenames in a directory. |
 | `scandir(path) -> Iterator[DirEntry]` | List directory entries with stat info. |
+| `configure(**kwargs)` | Configure global settings. Supports `log_callback`; unsupported options raise `OperationNotSupportedError`. |
 | `shutdown()` | Shutdown the client singleton and clean up resources. |
 
 #### Copy Operations
@@ -178,7 +185,7 @@ from py_dacs_client.dacs_adapter import DACSAdapter, WriteMode
 The `copy()` function supports file copying between local and remote paths:
 
 ```python
-from py_dacs_client.dacs_adapter import copy
+from py_dacs_client.dacs_blobfile_adapter import copy
 
 copy(src, dst, overwrite=False, return_md5=False)
 ```
@@ -197,12 +204,14 @@ copy(src, dst, overwrite=False, return_md5=False)
 
 #### Unsupported Operations
 
-The following blobfile operations raise `OperationNotSupportedError`: `glob`, `scanglob`, `isdir`, `makedirs`, `remove`, `rmdir`, `rmtree`, `walk`, `basename`, `dirname`, `join`, `get_url`, `md5`, `set_mtime`, `readline`, `readlines`, `writelines`, `seek`, `tell`, `flush`.
+The following blobfile operations raise `OperationNotSupportedError`: `glob`, `scanglob`, `isdir`, `makedirs`, `remove`, `rmdir`, `rmtree`, `walk`, `basename`, `dirname`, `join`, `get_url`, `md5`, `set_mtime`, `readline`, `readlines`, `writelines`, `flush`.
+
+> **Note:** `seek()` is supported for read-mode remote paths only and raises `OperationNotSupportedError` for local paths and write-mode files. `tell()` is supported for all remote paths (both read and write mode) and raises `OperationNotSupportedError` for local paths only.
 
 #### Write Modes
 
 ```python
-from py_dacs_client.dacs_adapter import WriteMode
+from py_dacs_client.dacs_blobfile_adapter import WriteMode
 ```
 
 | Mode | Value | Description |
@@ -211,7 +220,73 @@ from py_dacs_client.dacs_adapter import WriteMode
 | `WRITE_CACHE_ONLY` | `"write_cache_only"` | Write to local cache only, no remote blob writes. |
 | `WRITE_BLOB_ONLY` | `"write_blob_only"` | Write directly to remote blob, bypass cache. |
 | `WRITE_CACHE_BLOB_ASYNC` | `"write_cache_blob_async"` | Write to cache first, async upload to blob in background. |
-| `WRITE_SYNC` | `"write_sync"` | Write to cache and blob synchronously. **(Default for DACSAdapter)** |
+| `WRITE_SYNC` | `"write_sync"` | Write to cache and blob synchronously. **(Default for DACSBlobfileAdapter)** |
+
+---
+
+### DACSBoostedBlobAdapter (boostedblob-compatible, async)
+
+An async, boostedblob-compatible adapter that wraps `DACSCacheClient`. Use this as a drop-in replacement for native boostedblob — it provides the same function signatures and submodule structure (`read`, `write`, `share`), but routes all operations through DACSCacheClient.
+
+```python
+import py_dacs_client.dacs_boostedblob_adapter as bbb
+```
+
+#### Supported Operations
+
+| Function | Description |
+| --- | --- |
+| `await read_single(path, buffer?, size?)` | Read entire blob contents. Returns `bytes`, or `int` (bytes read) when a user buffer is provided. |
+| `await read_byte_range(path, byte_range, buffer?, size?)` | Read a byte range from a blob. |
+| `read_stream(path, executor?, size?)` | Async iterator yielding chunks (streaming read). |
+| `read_stream_unordered(path, executor?, size?)` | Async iterator yielding chunks in unordered fashion. |
+| `read_chunked(path, executor?, size?)` | Read using chunked streaming. |
+| `await write_single(path, data, overwrite?)` | Write data to a new blob. |
+| `await exists(path) -> bool` | Check if a blob exists. |
+| `await stat(path) -> Stat` | Get blob metadata (size, mtime, ctime, etc.). |
+| `await getsize(path) -> int` | Get blob size in bytes. |
+| `await isdir(path) -> bool` | Check if a path is a directory. |
+| `await isfile(path) -> bool` | Check if a path is a file. |
+| `listdir(path)` | Async iterator listing directory contents (yields `BasePath`). |
+| `scandir(path)` | Async iterator listing directory entries (yields `DirEntry`). |
+| `listtree(path)` | Async iterator listing all files recursively (yields `BasePath`). |
+| `scantree(path)` | Async iterator listing all files recursively (yields `DirEntry`). |
+| `await shutdown()` | Clean up resources and close all file handles. |
+
+#### Submodule Access (boostedblob API parity)
+
+The adapter exposes synthetic submodules for API parity with native boostedblob:
+
+```python
+import py_dacs_client.dacs_boostedblob_adapter as bbb
+
+# Read submodule
+data = await bbb.read.read_single("az://account.blob.core.windows.net/container/blob.txt")
+data = await bbb.read.read_byte_range("az://account.blob.core.windows.net/container/blob.txt", (0, 1024))
+
+# Write submodule
+await bbb.write.write_single("az://account.blob.core.windows.net/container/new_blob.txt", b"data")
+```
+
+#### Path Classes
+
+| Class | Description |
+| --- | --- |
+| `AzurePath` | Azure blob path — fully supported. Parses `az://` and `https://*.blob.core.windows.net` URLs. |
+| `BasePath` | Abstract base for path types. |
+| `LocalPath`, `GooglePath` | **Not supported** — DACSCacheClient is Azure-only. |
+
+#### Unsupported Operations
+
+The following operations raise `OperationNotSupportedError`: `write_stream`, `write_stream_unordered`, `write_chunked`, `remove`, `rmtree`, `copyfile`, `copytree`, `sync`, `get_url`, `list_blobs`, `glob_scandir`.
+
+#### Write Modes
+
+The same `WriteMode` enum is available:
+
+```python
+from py_dacs_client.dacs_boostedblob_adapter import WriteMode
+```
 
 ---
 
@@ -233,7 +308,7 @@ from py_dacs_client.dacs_blobfile_patcher import enable_dacs_backend
 
 enable_dacs_backend()
 
-# All bf.* calls now use DACSAdapter for az:// paths
+# All bf.* calls now use DACSBlobfileAdapter for az:// paths
 with bf.BlobFile("az://account.blob.core.windows.net/container/file.txt", "rb") as f:
     data = f.read()
 ```
@@ -251,7 +326,7 @@ from py_dacs_client.dacs_blobfile_patcher import enable_dacs_backend  # Auto-pat
 
 #### How patching works
 
-- **Supported APIs** (`BlobFile`, `copy`, `exists`, `listdir`, `scandir`, `stat`) route `az://` paths through `DACSAdapter` and non-Azure paths through the original blobfile implementation.
+- **Supported APIs** (`BlobFile`, `copy`, `exists`, `listdir`, `scandir`, `stat`) route `az://` paths through `DACSBlobfileAdapter` and non-Azure paths through the original blobfile implementation.
 - **Unsupported APIs** (e.g., `glob`, `remove`, `walk`) raise `OperationNotSupportedError` when called.
 - DACSError exceptions are automatically converted to standard Python exceptions (`FileNotFoundError`, `PermissionError`, `FileExistsError`, `TimeoutError`, `IsADirectoryError`, etc.) for blobfile compatibility.
 
@@ -354,9 +429,9 @@ async def main():
     await asyncio.gather(*tasks)
 ```
 
-##### With DACSAdapter (automatic)
+##### With DACSBlobfileAdapter (automatic)
 
-When using `DACSAdapter`, a singleton `BoundedBufferManager` (80% of container memory) is created automatically — no manual setup is needed. Internal read and write buffers are acquired and released through this shared pool:
+When using `DACSBlobfileAdapter`, a singleton `BoundedBufferManager` (80% of container memory) is created automatically — no manual setup is needed. Internal read and write buffers are acquired and released through this shared pool:
 
 - **Reads without a user buffer:** The adapter acquires a buffer internally, copies data to Python bytes, and releases the buffer immediately.
 - **Reads with a user buffer:** The user allocates via `BoundedBufferManager.acquire_buffer()` and is responsible for calling `release_buffer()` after use.
@@ -365,7 +440,7 @@ When using `DACSAdapter`, a singleton `BoundedBufferManager` (80% of container m
 
 ```python
 import asyncio
-from py_dacs_client.dacs_adapter import DACSAdapter
+from py_dacs_client.dacs_blobfile_adapter import DACSBlobfileAdapter
 from py_dacs_client.dacs_utils import BoundedBufferManager
 
 # For user-managed buffer reads, create or share a BoundedBufferManager
@@ -374,7 +449,7 @@ buffer_manager = BoundedBufferManager(max_memory_limit=1024 * 1024 * 1024)
 async def read_blob_with_buffer():
     buffer = await buffer_manager.acquire_buffer(4096)
     try:
-        with DACSAdapter("az://account.blob.core.windows.net/container/blob", "rb") as f:
+        with DACSBlobfileAdapter("az://account.blob.core.windows.net/container/blob", "rb") as f:
             mv = f.read(size=4096, buffer=buffer)
             data = bytes(mv)
     finally:
@@ -468,7 +543,7 @@ client = DACSCacheClient()
 Or with write support and a custom write mode:
 
 ```python
-from py_dacs_client.dacs_adapter import WriteMode
+from py_dacs_client.dacs_blobfile_adapter import WriteMode
 
 client = DACSCacheClient(write_mode=WriteMode.WRITE_SYNC)
 ```
@@ -599,14 +674,14 @@ await client.shutdown()
 
 ---
 
-### Using DACSAdapter (blobfile-compatible, sync)
+### Using DACSBlobfileAdapter (blobfile-compatible, sync)
 
 #### Read a remote blob
 
 ```python
-from py_dacs_client.dacs_adapter import DACSAdapter
+from py_dacs_client.dacs_blobfile_adapter import DACSBlobfileAdapter
 
-with DACSAdapter("az://account.blob.core.windows.net/container/blob", "rb") as f:
+with DACSBlobfileAdapter("az://account.blob.core.windows.net/container/blob", "rb") as f:
     data = f.read()
 ```
 
@@ -616,14 +691,14 @@ Using `BoundedBufferManager` (recommended — enforces memory limits):
 
 ```python
 import asyncio
-from py_dacs_client.dacs_adapter import DACSAdapter
+from py_dacs_client.dacs_blobfile_adapter import DACSBlobfileAdapter
 from py_dacs_client.dacs_utils import BoundedBufferManager
 
 buffer_manager = BoundedBufferManager(max_memory_limit=1024 * 1024 * 1024)  # 1 GB limit
 
 buffer = asyncio.run(buffer_manager.acquire_buffer(1024))
 try:
-    with DACSAdapter("az://account.blob.core.windows.net/container/blob", "rb") as f:
+    with DACSBlobfileAdapter("az://account.blob.core.windows.net/container/blob", "rb") as f:
         mv = f.read(size=1024, buffer=buffer)
         # Use memoryview — buffer must stay alive
         data = bytes(mv)  # Copy if needed after release
@@ -634,12 +709,12 @@ finally:
 Using raw `alloc_buffer` / `release_buffer`:
 
 ```python
-from py_dacs_client.dacs_adapter import DACSAdapter
+from py_dacs_client.dacs_blobfile_adapter import DACSBlobfileAdapter
 from py_dacs_client.dacs_utils import alloc_buffer, release_buffer
 
 buffer = alloc_buffer(1024)
 try:
-    with DACSAdapter("az://account.blob.core.windows.net/container/blob", "rb") as f:
+    with DACSBlobfileAdapter("az://account.blob.core.windows.net/container/blob", "rb") as f:
         mv = f.read(size=1024, buffer=buffer)
         # Use memoryview — buffer must stay alive
         data = bytes(mv)  # Copy if needed after release
@@ -650,16 +725,16 @@ finally:
 #### Write a new remote blob
 
 ```python
-from py_dacs_client.dacs_adapter import DACSAdapter, WriteMode
+from py_dacs_client.dacs_blobfile_adapter import DACSBlobfileAdapter, WriteMode
 
-with DACSAdapter("az://account.blob.core.windows.net/container/new_blob", "wb", write_mode=WriteMode.WRITE_SYNC) as f:
+with DACSBlobfileAdapter("az://account.blob.core.windows.net/container/new_blob", "wb", write_mode=WriteMode.WRITE_SYNC) as f:
     f.write(data=b"Hello, World!")
 ```
 
 #### Check if a blob exists
 
 ```python
-from py_dacs_client.dacs_adapter import exists
+from py_dacs_client.dacs_blobfile_adapter import exists
 
 if exists("az://account.blob.core.windows.net/container/blob"):
     print("Blob exists!")
@@ -668,7 +743,7 @@ if exists("az://account.blob.core.windows.net/container/blob"):
 #### List directory contents
 
 ```python
-from py_dacs_client.dacs_adapter import listdir
+from py_dacs_client.dacs_blobfile_adapter import listdir
 
 for name in listdir("az://account.blob.core.windows.net/container/dir/"):
     print(name)
@@ -677,7 +752,7 @@ for name in listdir("az://account.blob.core.windows.net/container/dir/"):
 #### Get file statistics
 
 ```python
-from py_dacs_client.dacs_adapter import stat
+from py_dacs_client.dacs_blobfile_adapter import stat
 
 s = stat("az://account.blob.core.windows.net/container/blob")
 print(f"Size: {s.size}, Modified: {s.mtime}")
@@ -686,7 +761,7 @@ print(f"Size: {s.size}, Modified: {s.mtime}")
 #### Copy files
 
 ```python
-from py_dacs_client.dacs_adapter import copy
+from py_dacs_client.dacs_blobfile_adapter import copy
 
 # Remote to local
 copy("az://account.blob.core.windows.net/container/blob", "/local/path/file.bin")
@@ -716,6 +791,112 @@ if bf.exists("az://account.blob.core.windows.net/container/blob"):
 
 for name in bf.listdir("az://account.blob.core.windows.net/container/dir/"):
     print(name)
+```
+
+---
+
+### Using DACSBoostedBlobAdapter (boostedblob-compatible, async)
+
+#### Read a blob
+
+```python
+import asyncio
+import py_dacs_client.dacs_boostedblob_adapter as bbb
+
+async def main():
+    data = await bbb.read.read_single("az://account.blob.core.windows.net/container/blob")
+    print(f"Read {len(data)} bytes")
+
+    await bbb.shutdown()
+
+asyncio.run(main())
+```
+
+#### Read a byte range
+
+```python
+import asyncio
+import py_dacs_client.dacs_boostedblob_adapter as bbb
+
+async def main():
+    data = await bbb.read.read_byte_range(
+        "az://account.blob.core.windows.net/container/blob",
+        byte_range=(0, 1024)
+    )
+    print(f"Read {len(data)} bytes")
+
+    await bbb.shutdown()
+
+asyncio.run(main())
+```
+
+#### Write a blob
+
+```python
+import asyncio
+import py_dacs_client.dacs_boostedblob_adapter as bbb
+
+async def main():
+    await bbb.write.write_single(
+        "az://account.blob.core.windows.net/container/new_blob",
+        b"Hello, World!"
+    )
+
+    await bbb.shutdown()
+
+asyncio.run(main())
+```
+
+#### List and scan directories
+
+```python
+import asyncio
+import py_dacs_client.dacs_boostedblob_adapter as bbb
+
+async def main():
+    # List filenames
+    async for path in bbb.listdir("az://account.blob.core.windows.net/container/dir/"):
+        print(path)
+
+    # Scan with stat info
+    async for entry in bbb.scandir("az://account.blob.core.windows.net/container/dir/"):
+        print(f"{entry.path}: size={entry.stat.size}")
+
+    await bbb.shutdown()
+
+asyncio.run(main())
+```
+
+#### Streaming read
+
+```python
+import asyncio
+import py_dacs_client.dacs_boostedblob_adapter as bbb
+
+async def main():
+    async for chunk in bbb.read.read_stream("az://account.blob.core.windows.net/container/large_blob"):
+        process(chunk)
+
+    await bbb.shutdown()
+
+asyncio.run(main())
+```
+
+#### Using AzurePath
+
+```python
+import asyncio
+from py_dacs_client.dacs_boostedblob_adapter import AzurePath, stat
+import py_dacs_client.dacs_boostedblob_adapter as bbb
+
+async def main():
+    path = AzurePath.from_str("az://account.blob.core.windows.net/container/blob")
+    s = await stat(path)
+    print(f"Size: {s.size}, Modified: {s.mtime}")
+
+    await bbb.shutdown()
+
+asyncio.run(main())
 ```
 
 ---
