@@ -205,7 +205,7 @@ The validating webhook enforces:
 - Numeric fields meet minimums
 - Ports are 1–65535 and differ from each other
 - Exactly one of static/dynamic scaling
-- Dynamic `minServers <= maxServers`
+- Static `numServers >= 1`; dynamic `percentageOfNodesToUse` 1-100
 - Exactly one of ephemeral/hostPath storage
 - Duration fields parse correctly and are within bounds
 - Percentage strings are 0–100

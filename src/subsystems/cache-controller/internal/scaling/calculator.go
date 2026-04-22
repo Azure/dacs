@@ -15,37 +15,30 @@ import (
 //
 //	nodeCount:         total schedulable nodes matching the cache's node selector
 //	percentageOfNodes: from DynamicScaleConfig.PercentageOfNodesToUse (1-100)
-//	minServers:        optional floor (nil = no floor beyond 1)
-//	maxServers:        optional ceiling (nil = no ceiling)
+//	minServers:        if set and the calculated count is below this threshold (but > 0),
+//	                   the result is floored to 0 - the cache will not run until enough
+//	                   nodes are available.
+//	maxServers:        if set and the calculated count exceeds this value, the result is capped.
 //
-// Returns the clamped replica count (always >= 1) or an error for invalid inputs.
+// Returns the replica count using floor rounding, or an error for invalid inputs.
 func CalculateDesiredReplicas(nodeCount int, percentageOfNodes int32, minServers, maxServers *int32) (int32, error) {
-	if nodeCount < 0 {
+	if nodeCount < 0 || nodeCount > math.MaxInt32 {
 		return 0, fmt.Errorf("invalid node count: %d", nodeCount)
 	}
-	if percentageOfNodes <= 0 || percentageOfNodes > 100 {
+	if percentageOfNodes < 1 || percentageOfNodes > 100 {
 		return 0, fmt.Errorf("invalid percentage of nodes: %d (must be 1-100)", percentageOfNodes)
 	}
-	if minServers != nil && *minServers < 1 {
-		return 0, fmt.Errorf("invalid min servers: %d (must be >= 1)", *minServers)
-	}
-	if maxServers != nil && *maxServers < 1 {
-		return 0, fmt.Errorf("invalid max servers: %d (must be >= 1)", *maxServers)
-	}
-	if minServers != nil && maxServers != nil && *minServers > *maxServers {
-		return 0, fmt.Errorf("min servers (%d) exceeds max servers (%d)", *minServers, *maxServers)
-	}
 
-	// Compute raw value using ceiling so we always round up
-	raw := int32(math.Ceil(float64(nodeCount) * float64(percentageOfNodes) / 100.0))
-	raw = max(raw, 1)
+	// Safe integer arithmetic: int64 intermediate cannot overflow because
+	// nodeCount <= MaxInt32 and percentageOfNodes <= 100, so the product
+	// fits well within int64. The quotient is <= nodeCount, so it fits in int32.
+	desired := int32(int64(nodeCount) * int64(percentageOfNodes) / 100)
 
-	if minServers != nil {
-		raw = max(raw, *minServers)
+	if minServers != nil && desired > 0 && desired < *minServers {
+		return 0, nil
 	}
 	if maxServers != nil {
-		raw = min(raw, *maxServers)
+		desired = min(desired, *maxServers)
 	}
-
-	return raw, nil
+	return desired, nil
 }

@@ -155,7 +155,7 @@ var _ = Describe("Scaling Controller", func() {
 
 		It("should scale the StatefulSet based on percentage of matching nodes", func() {
 			By("creating a Cache CR with dynamic scaling at 50%")
-			cache := createDynamicCache(cacheName, ns, 50, nil, nil, &selectorKey, &selectorValue)
+			cache := testutil.NewDynamicCache(cacheName, ns, 50, &selectorKey, &selectorValue)
 			Expect(k8sClient.Create(ctx, cache)).To(Succeed(), "failed to create Cache CR %s/%s", ns, cacheName)
 
 			By("verifying the StatefulSet is created by the CRD controller")
@@ -177,7 +177,7 @@ var _ = Describe("Scaling Controller", func() {
 				node := createLabeledNode(nodeName, map[string]string{selectorKey: selectorValue})
 				Expect(k8sClient.Create(ctx, node)).To(Succeed(), "failed to create node %s", nodeName)
 
-				expectedReplicas := int32(math.Ceil(float64(totalNodes) * 0.5))
+				expectedReplicas := int32(math.Floor(float64(totalNodes) * 0.5))
 				Eventually(func(g Gomega) {
 					expectReplicas(g, ns, cacheName, expectedReplicas)
 				}).Should(Succeed(), "replicas and ConfigMap should converge after adding %s", nodeName)
@@ -194,8 +194,8 @@ var _ = Describe("Scaling Controller", func() {
 
 			By("verifying the StatefulSet scales based on 9 schedulable nodes")
 			Eventually(func(g Gomega) {
-				expectReplicas(g, ns, cacheName, 5)
-			}).Should(Succeed(), "replicas and ConfigMap should converge to 5 after cordoning")
+				expectReplicas(g, ns, cacheName, 4)
+			}).Should(Succeed(), "replicas and ConfigMap should converge to 4 after cordoning")
 		})
 
 		It("should scale back up when the node is uncordoned", func() {
@@ -285,10 +285,10 @@ var _ = Describe("Scaling Controller", func() {
 				return getScalingStatefulSet(ns, cacheName)
 			}).ShouldNot(BeNil(), "StatefulSet for Cache %s/%s was not created", ns, cacheName)
 
-			By("verifying replicas are at least minServers = 3")
+			By("verifying replicas are 0 (desired 1 < minServers 3)")
 			Eventually(func(g Gomega) {
-				expectReplicas(g, ns, cacheName, 3)
-			}).Should(Succeed(), "replicas and ConfigMap should converge to 3 (minServers override)")
+				expectReplicas(g, ns, cacheName, 0)
+			}).Should(Succeed(), "replicas and ConfigMap should converge to 0 (desired < minServers)")
 		})
 	})
 
@@ -336,8 +336,8 @@ var _ = Describe("Scaling Controller", func() {
 			}).Should(Succeed(), "replicas and ConfigMap should converge to 3 (maxServers clamp)")
 		})
 
-		It("should raise replicas to minServers when percentage yields fewer", func() {
-			By("setting percentage to 10% (ceil(1) = 1) with minServers = 4")
+		It("should floor to 0 when percentage yields fewer than minServers", func() {
+			By("setting percentage to 10% (floor = 1) with minServers = 4")
 			Eventually(func(g Gomega) {
 				var cache storagev1.Cache
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cacheName, Namespace: ns}, &cache)).To(Succeed())
@@ -349,8 +349,8 @@ var _ = Describe("Scaling Controller", func() {
 			}).Should(Succeed(), "failed to set percentage and minServers")
 
 			Eventually(func(g Gomega) {
-				expectReplicas(g, ns, cacheName, 4)
-			}).Should(Succeed(), "replicas and ConfigMap should converge to 4 (minServers override)")
+				expectReplicas(g, ns, cacheName, 0)
+			}).Should(Succeed(), "replicas and ConfigMap should converge to 0 (desired < minServers)")
 		})
 
 		It("should clamp between min and max when both are set", func() {
@@ -370,8 +370,8 @@ var _ = Describe("Scaling Controller", func() {
 			}).Should(Succeed(), "replicas and ConfigMap should converge to 7 (maxServers clamp)")
 		})
 
-		It("should respect minServers when percentage falls within min/max range", func() {
-			By("setting 5% with minServers = 2, maxServers = 7 (calculated = ceil(0.5) = 1, clamped to min = 2)")
+		It("should floor to 0 when percentage falls below minServers with both bounds set", func() {
+			By("setting 5% with minServers = 2, maxServers = 7 (calculated = floor(0.5) = 0)")
 			Eventually(func(g Gomega) {
 				var cache storagev1.Cache
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cacheName, Namespace: ns}, &cache)).To(Succeed())
@@ -383,12 +383,12 @@ var _ = Describe("Scaling Controller", func() {
 			}).Should(Succeed(), "failed to set low percentage with min/max")
 
 			Eventually(func(g Gomega) {
-				expectReplicas(g, ns, cacheName, 2)
-			}).Should(Succeed(), "replicas and ConfigMap should converge to 2 (minServers clamp)")
+				expectReplicas(g, ns, cacheName, 0)
+			}).Should(Succeed(), "replicas and ConfigMap should converge to 0 (desired < minServers)")
 		})
 
 		It("should scale freely after removing min/max bounds", func() {
-			By("setting 70% with no min/max (calculated = ceil(7) = 7)")
+			By("setting 70% with no min/max (calculated = 7)")
 			Eventually(func(g Gomega) {
 				var cache storagev1.Cache
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cacheName, Namespace: ns}, &cache)).To(Succeed())
@@ -429,11 +429,11 @@ var _ = Describe("Scaling Controller", func() {
 
 		It("should scale each Cache CR independently based on its PercentageOfNodesToUse", func() {
 			By("creating Cache CR with 30% in namespace A")
-			cache30 := createDynamicCache(cache30Name, ns30, 30, nil, nil, &selectorKey, &selectorValue)
+			cache30 := testutil.NewDynamicCache(cache30Name, ns30, 30, &selectorKey, &selectorValue)
 			Expect(k8sClient.Create(ctx, cache30)).To(Succeed())
 
 			By("creating Cache CR with 60% in namespace B")
-			cache60 := createDynamicCache(cache60Name, ns60, 60, nil, nil, &selectorKey, &selectorValue)
+			cache60 := testutil.NewDynamicCache(cache60Name, ns60, 60, &selectorKey, &selectorValue)
 			Expect(k8sClient.Create(ctx, cache60)).To(Succeed())
 
 			By("verifying Cache A scales to 3 replicas (30% of 10 nodes)")
@@ -490,7 +490,7 @@ var _ = Describe("Scaling Controller", func() {
 
 		It("should initially scale to 50% of 20 nodes = 10 replicas", func() {
 			By("creating a Cache CR with 10% tolerance (default)")
-			cache := createDynamicCache(cacheName, ns, 50, nil, nil, &selectorKey, &selectorValue)
+			cache := testutil.NewDynamicCache(cacheName, ns, 50, &selectorKey, &selectorValue)
 			Expect(k8sClient.Create(ctx, cache)).To(Succeed())
 
 			Eventually(func() *appsv1.StatefulSet {
@@ -504,9 +504,11 @@ var _ = Describe("Scaling Controller", func() {
 		})
 
 		It("should NOT scale when adding 1 node (change within 10% tolerance)", func() {
-			By("adding 1 node (21 nodes -> 50%% = ceil(10.5) = 11, ratio 11/10 = 1.1 <= 1+0.1 -> suppressed)")
-			node := createLabeledNode("tol-node-20", map[string]string{selectorKey: selectorValue})
-			Expect(k8sClient.Create(ctx, node)).To(Succeed())
+			By("adding 2 node (22 nodes -> 50%% = floor(11) = 11, ratio 11/10 = 1.1 <= 1+0.1 -> suppressed)")
+			node1 := createLabeledNode("tol-node-20", map[string]string{selectorKey: selectorValue})
+			node2 := createLabeledNode("tol-node-21", map[string]string{selectorKey: selectorValue})
+			Expect(k8sClient.Create(ctx, node1)).To(Succeed())
+			Expect(k8sClient.Create(ctx, node2)).To(Succeed())
 
 			By("waiting briefly to allow reconciliation")
 			Consistently(func() int32 {
@@ -516,15 +518,15 @@ var _ = Describe("Scaling Controller", func() {
 		})
 
 		It("should scale when the change exceeds tolerance", func() {
-			By("adding 2 more nodes (23 nodes -> 50%% = ceil(11.5) = 12, ratio 12/10 = 1.2 > 1.1 -> scales)")
-			for _, name := range []string{"tol-node-21", "tol-node-22"} {
+			By("adding 2 more nodes (24 nodes -> 50%% = floor(12.0) = 12, ratio 12/10 = 1.2 > 1.1 -> scales)")
+			for _, name := range []string{"tol-node-22", "tol-node-23"} {
 				node := createLabeledNode(name, map[string]string{selectorKey: selectorValue})
 				Expect(k8sClient.Create(ctx, node)).To(Succeed())
 			}
 
 			Eventually(func(g Gomega) {
 				g.Expect(getScalingReplicas(ns, cacheName)).To(Equal(int32(12)),
-					"expected 12 replicas (50%% of 23 nodes = ceil(11.5) = 12, exceeds tolerance)")
+					"expected 12 replicas (50%% of 24 nodes = floor(12.0) = 12, exceeds tolerance)")
 			}).Should(Succeed())
 		})
 
@@ -557,7 +559,7 @@ var _ = Describe("Scaling Controller", func() {
 
 		It("should initially scale to 50% of 10 nodes = 5 replicas", func() {
 			By("creating a Cache CR with dynamic scaling")
-			cache := createDynamicCache(cacheName, ns, 50, nil, nil, &selectorKey, &selectorValue)
+			cache := testutil.NewDynamicCache(cacheName, ns, 50, &selectorKey, &selectorValue)
 			Expect(k8sClient.Create(ctx, cache)).To(Succeed())
 
 			Eventually(func() *appsv1.StatefulSet {
@@ -704,7 +706,7 @@ var _ = Describe("Scaling Controller", func() {
 		})
 
 		It("should set conditions and scaling status after initial reconciliation", func() {
-			cache := createDynamicCache(cacheName, ns, 50, nil, nil, &selectorKey, &selectorValue)
+			cache := testutil.NewDynamicCache(cacheName, ns, 50, &selectorKey, &selectorValue)
 			Expect(k8sClient.Create(ctx, cache)).To(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -805,19 +807,19 @@ var _ = Describe("Scaling Controller", func() {
 			DeferCleanup(cleanupCache, ns, cacheName)
 			DeferCleanup(cleanupAllNodes)
 
-			By("creating 10 labeled nodes")
-			for i := range 10 {
+			By("creating 20 labeled nodes")
+			for i := range 20 {
 				node := createLabeledNode(fmt.Sprintf("noevent-node-%d", i), map[string]string{selectorKey: selectorValue})
 				Expect(k8sClient.Create(ctx, node)).To(Succeed())
 			}
 		})
 
-		It("should scale to 50% of 10 nodes = 5 replicas", func() {
-			cache := createDynamicCache(cacheName, ns, 50, nil, nil, &selectorKey, &selectorValue)
+		It("should scale to 50% of 20 nodes = 10 replicas", func() {
+			cache := testutil.NewDynamicCache(cacheName, ns, 50, &selectorKey, &selectorValue)
 			Expect(k8sClient.Create(ctx, cache)).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				g.Expect(getScalingReplicas(ns, cacheName)).To(Equal(int32(5)))
+				g.Expect(getScalingReplicas(ns, cacheName)).To(Equal(int32(10)))
 			}).Should(Succeed())
 		})
 
@@ -832,12 +834,9 @@ var _ = Describe("Scaling Controller", func() {
 				}
 			}
 
-			By("adding 1 node (within 10% tolerance, 11 nodes -> ceil(5.5)=6 but 6/5=1.2>1.1)")
-			// Actually 1 node at 10% tolerance on 5 replicas: ceil(5.5)=6, ratio=6/5=1.2>1.1 -- will scale.
-			// Use a smaller change: adding 0 nodes but removing 1 is within tolerance.
-			// Let's delete 1 node: 9 nodes -> ceil(4.5)=5, ratio = 5/5=1.0 <= 1.1 -> suppressed.
+			By("deleting 1 node (19 nodes -> floor(9.5)=9, ratio 9/10=0.9 >= 1.0-0.1 -> suppressed)")
 			node := &corev1.Node{}
-			node.Name = "noevent-node-9"
+			node.Name = "noevent-node-19"
 			Expect(k8sClient.Delete(ctx, node)).To(Succeed())
 
 			By("waiting for reconciliation and verifying no new event")

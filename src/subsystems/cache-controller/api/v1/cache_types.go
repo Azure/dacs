@@ -21,8 +21,7 @@ type ScalingType struct {
 }
 
 // DynamicScaleConfig defines automatic scaling parameters based on cluster node availability.
-// The controller will maintain cache servers as a percentage of available nodes,
-// constrained by minimum and maximum bounds.
+// The controller will maintain cache servers as a percentage of available nodes.
 type DynamicScaleConfig struct {
 	// Percentage of available nodes to use for cache servers
 	// +required
@@ -30,13 +29,17 @@ type DynamicScaleConfig struct {
 	// +kubebuilder:validation:Maximum=100
 	PercentageOfNodesToUse int32 `json:"percentageOfNodesToUse"`
 
-	// Minimum number of cache servers to maintain
+	// Minimum number of cache servers to run. If the percentage-based count
+	// falls below this threshold, the replica count is floored to 0 instead
+	// of being clamped up - the cache will not run at all until enough nodes
+	// are available to meet the minimum.
 	// +optional
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=99
 	MinServers *int32 `json:"minServers,omitempty"`
 
-	// Maximum number of cache servers to maintain
+	// Maximum number of cache servers to run. The replica count will never
+	// exceed this value regardless of the percentage calculation.
 	// +optional
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=99

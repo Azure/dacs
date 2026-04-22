@@ -166,13 +166,109 @@ func TestCacheWebhook_ValidateCreate(t *testing.T) {
 			mutate: func(c *Cache) {
 				c.Spec.Scaling.Dynamic = &DynamicScaleConfig{
 					PercentageOfNodesToUse: 50,
-					MinServers:             ptr.To(int32(2)),
+				}
+			},
+		},
+		{
+			name: "valid with dynamic scaling and minServers",
+			mutate: func(c *Cache) {
+				c.Spec.Scaling.Dynamic = &DynamicScaleConfig{
+					PercentageOfNodesToUse: 50,
+					MinServers:             ptr.To(int32(3)),
+				}
+			},
+		},
+		{
+			name: "valid with dynamic scaling and maxServers",
+			mutate: func(c *Cache) {
+				c.Spec.Scaling.Dynamic = &DynamicScaleConfig{
+					PercentageOfNodesToUse: 50,
 					MaxServers:             ptr.To(int32(10)),
 				}
 			},
 		},
 		{
-			name: "rejects minServers > maxServers",
+			name: "valid with dynamic scaling and both min and max",
+			mutate: func(c *Cache) {
+				c.Spec.Scaling.Dynamic = &DynamicScaleConfig{
+					PercentageOfNodesToUse: 50,
+					MinServers:             ptr.To(int32(3)),
+					MaxServers:             ptr.To(int32(10)),
+				}
+			},
+		},
+		{
+			name: "valid with dynamic scaling and min equals max",
+			mutate: func(c *Cache) {
+				c.Spec.Scaling.Dynamic = &DynamicScaleConfig{
+					PercentageOfNodesToUse: 50,
+					MinServers:             ptr.To(int32(5)),
+					MaxServers:             ptr.To(int32(5)),
+				}
+			},
+		},
+		{
+			name: "rejects minServers below 1",
+			mutate: func(c *Cache) {
+				c.Spec.Scaling.Dynamic = &DynamicScaleConfig{
+					PercentageOfNodesToUse: 50,
+					MinServers:             ptr.To(int32(0)),
+				}
+			},
+			expectedErr: "must be between 1 and 99",
+		},
+		{
+			name: "rejects maxServers below 1",
+			mutate: func(c *Cache) {
+				c.Spec.Scaling.Dynamic = &DynamicScaleConfig{
+					PercentageOfNodesToUse: 50,
+					MaxServers:             ptr.To(int32(0)),
+				}
+			},
+			expectedErr: "must be between 1 and 99",
+		},
+		{
+			name: "rejects minServers above 99",
+			mutate: func(c *Cache) {
+				c.Spec.Scaling.Dynamic = &DynamicScaleConfig{
+					PercentageOfNodesToUse: 50,
+					MinServers:             ptr.To(int32(100)),
+				}
+			},
+			expectedErr: "must be between 1 and 99",
+		},
+		{
+			name: "rejects maxServers above 99",
+			mutate: func(c *Cache) {
+				c.Spec.Scaling.Dynamic = &DynamicScaleConfig{
+					PercentageOfNodesToUse: 50,
+					MaxServers:             ptr.To(int32(100)),
+				}
+			},
+			expectedErr: "must be between 1 and 99",
+		},
+		{
+			name: "rejects negative minServers",
+			mutate: func(c *Cache) {
+				c.Spec.Scaling.Dynamic = &DynamicScaleConfig{
+					PercentageOfNodesToUse: 50,
+					MinServers:             ptr.To(int32(-1)),
+				}
+			},
+			expectedErr: "must be between 1 and 99",
+		},
+		{
+			name: "rejects negative maxServers",
+			mutate: func(c *Cache) {
+				c.Spec.Scaling.Dynamic = &DynamicScaleConfig{
+					PercentageOfNodesToUse: 50,
+					MaxServers:             ptr.To(int32(-1)),
+				}
+			},
+			expectedErr: "must be between 1 and 99",
+		},
+		{
+			name: "rejects minServers exceeding maxServers",
 			mutate: func(c *Cache) {
 				c.Spec.Scaling.Dynamic = &DynamicScaleConfig{
 					PercentageOfNodesToUse: 50,

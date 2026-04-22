@@ -27,10 +27,10 @@ replica count on every reconcile using this pipeline:
 List schedulable nodes matching nodeSelector
     |
     v
-Calculate raw desired = ceil(nodeCount * percentageOfNodesToUse / 100)
+Calculate raw desired = floor(nodeCount * percentageOfNodesToUse / 100)
     |
     v
-Apply minServers / maxServers bounds
+Apply server bounds (minServers / maxServers)
     |
     v
 Normalize (tolerance + stabilization window)
@@ -44,14 +44,25 @@ Return stabilized replicas + RequeueAfter
 The core formula is:
 
 ```
-desired = ceil(effectiveNodeCount * percentageOfNodesToUse / 100)
+desired = floor(effectiveNodeCount * percentageOfNodesToUse / 100)
 ```
 
-Constraints applied in order:
+The replica count will always be at least 1 (the cache always has at least one
+server), unless minServers forces a floor-to-zero (see below).
 
-1. Minimum of 1 (the cache always has at least one server).
-2. `minServers` floor (if configured).
-3. `maxServers` ceiling (if configured).
+#### Server Bounds
+
+Optional `minServers` and `maxServers` fields clamp the calculator output:
+
+- **maxServers:** If set, the desired count is capped to `min(desired, maxServers)`.
+- **minServers:** If set and `desired` is between 1 and `minServers - 1`
+  (exclusive), the desired count is floored to 0. This implements an
+  "all-or-nothing" minimum: the cache either runs at least `minServers`
+  replicas or shuts down entirely. This is useful when running fewer than
+  `minServers` replicas would actually be less efficient than pulling from blob.
+
+Bounds are applied in order: maxServers cap first, then minServers floor.
+Both fields are optional pointers; when nil, the corresponding bound is skipped.
 
 ### Configuration
 
@@ -75,9 +86,9 @@ The Cache CRD exposes only the core scaling knobs:
 
 | Field | Type | Range | Default | Description |
 |-------|------|-------|---------|-------------|
-| `percentageOfNodesToUse` | `int32` | 1--100 | _(required)_ | Percentage of schedulable matching nodes to use |
-| `minServers` | `*int32` | >= 1 | _(none)_ | Floor on replica count |
-| `maxServers` | `*int32` | >= 1 | _(none)_ | Ceiling on replica count |
+| `percentageOfNodesToUse` | `int32` | 1-100 | _(required)_ | Percentage of schedulable matching nodes to use |
+| `minServers` | `*int32` | 1-99 | _(nil)_ | Minimum replica count; if desired falls below this, floor to 0 |
+| `maxServers` | `*int32` | 1-99 | _(nil)_ | Maximum replica count cap; must be >= minServers |
 
 Operator-level config (applies to all Cache CRs):
 
@@ -308,7 +319,7 @@ Reconcile(Cache)
   |
   +-- Dynamic scaling
         +-- List schedulable nodes matching nodeSelector
-        +-- Calculate rawDesired
+        +-- Calculate rawDesired (with server bounds)
         |
         +-- First reconciliation (currentReplicas == 0)?
         |     +-- Seed normalizer history (no stabilization applied)

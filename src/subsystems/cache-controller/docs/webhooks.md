@@ -102,7 +102,7 @@ The validating webhook rejects invalid Cache configurations with clear error mes
 | `spec.scaling.dynamic.percentageOfNodesToUse` 1-100 | "must be between 1 and 100" |
 | `spec.scaling.dynamic.minServers` 1-99 | "must be between 1 and 99" |
 | `spec.scaling.dynamic.maxServers` 1-99 | "must be between 1 and 99" |
-| `spec.scaling.minServers` <= `spec.scaling.maxServers` | "minServers cannot exceed maxServers" |
+| `spec.scaling.dynamic.minServers` <= `spec.scaling.dynamic.maxServers` | "minServers cannot exceed maxServers" |
 
 #### Storage Configuration
 | Rule | Error Message |
