@@ -114,6 +114,10 @@ cache:
   scaling:
     static:
       numServers: 2
+    # dynamic:
+    #   percentageOfNodesToUse: 50
+    #   minServers: 2
+    #   maxServers: 10
 
   # Server configuration
   serverSizeInGB: 4

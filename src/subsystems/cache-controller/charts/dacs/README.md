@@ -54,6 +54,9 @@ helm install dacs ./charts/dacs \
 | `cache.serverImage.repository` | Cache server image repository |  `cache-server` |
 | `cache.serverImage.tag` | Cache server image tag | `latest` |
 | `cache.scaling.static.numServers` | Number of cache servers | `2` |
+| `cache.scaling.dynamic.percentageOfNodesToUse` | Percentage of nodes to run cache on (1-100) | |
+| `cache.scaling.dynamic.minServers` | Minimum cache servers, 1-99 (desired below this floors to 0) | |
+| `cache.scaling.dynamic.maxServers` | Maximum cache servers, 1-99 (hard cap; must be >= minServers) | |
 | `cache.serverSizeInGB` | Storage per server (GB) | `10` |
 | `cache.serverThreads` | Threads per server | `16` |
 

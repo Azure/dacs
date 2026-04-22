@@ -174,13 +174,19 @@ spec:
                     description: Dynamic configuration for scaling based on node availability
                     properties:
                       maxServers:
-                        description: Maximum number of cache servers to maintain
+                        description: |-
+                          Maximum number of cache servers to run. The replica count will never
+                          exceed this value regardless of the percentage calculation.
                         format: int32
                         maximum: 99
                         minimum: 1
                         type: integer
                       minServers:
-                        description: Minimum number of cache servers to maintain
+                        description: |-
+                          Minimum number of cache servers to run. If the percentage-based count
+                          falls below this threshold, the replica count is floored to 0 instead
+                          of being clamped up - the cache will not run at all until enough nodes
+                          are available to meet the minimum.
                         format: int32
                         maximum: 99
                         minimum: 1

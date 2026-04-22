@@ -16,14 +16,12 @@ spec:
     {{- else if .Values.cache.scaling.dynamic }}
     dynamic:
       {{- with .Values.cache.scaling.dynamic }}
-      {{- if .minServers }}
+      percentageOfNodesToUse: {{ .percentageOfNodesToUse }}
+      {{- if ne .minServers nil }}
       minServers: {{ .minServers }}
       {{- end }}
-      {{- if .maxServers }}
+      {{- if ne .maxServers nil }}
       maxServers: {{ .maxServers }}
-      {{- end }}
-      {{- if .percentageOfNodesToUse }}
-      percentageOfNodesToUse: {{ .percentageOfNodesToUse }}
       {{- end }}
       {{- end }}
     {{- end }}
