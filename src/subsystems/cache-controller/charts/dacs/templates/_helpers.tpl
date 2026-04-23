@@ -73,10 +73,11 @@ Uses fullname + "-controller-manager" suffix for umbrella chart compatibility.
 
 {{/*
 Constructs a full image reference from global.registry, repository, and tag.
-Usage: {{ include "chart.image" (dict "global" .Values.global "repository" "my-image" "tag" "v1.0") }}
+Falls back to appVersion when tag is empty.
+Usage: {{ include "chart.image" (dict "global" .Values.global "repository" "my-image" "tag" "v1.0" "appVersion" .Chart.AppVersion) }}
 When global.registry is set: <registry>/<repository>:<tag>
 When global.registry is not set: <repository>:<tag>
 */}}
 {{- define "chart.image" -}}
-{{- if .global }}{{- if .global.registry }}{{ .global.registry }}/{{- end }}{{- end }}{{ .repository }}:{{ .tag }}
+{{- if .global }}{{- if .global.registry }}{{ .global.registry }}/{{- end }}{{- end }}{{ .repository }}:{{ .tag | default .appVersion }}
 {{- end -}}

@@ -48,13 +48,13 @@ spec:
                     - /manager
                   env:
                     - name: CACHE_CONTROLLER_CACHESERVERIMAGE
-                      value: "{{ include "chart.image" (dict "global" .Values.global "repository" .Values.manager.cacheServerImage.repository "tag" .Values.manager.cacheServerImage.tag) }}"
+                      value: "{{ include "chart.image" (dict "global" .Values.global "repository" .Values.manager.cacheServerImage.repository "tag" .Values.manager.cacheServerImage.tag "appVersion" .Chart.AppVersion) }}"
                     - name: CACHE_CONTROLLER_IMAGEPULLPOLICY
                       value: {{ .Values.manager.image.pullPolicy | quote }}
                     {{- if .Values.manager.env }}
                     {{- toYaml .Values.manager.env | nindent 20 }}
                     {{- end }}
-                  image: "{{ include "chart.image" (dict "global" .Values.global "repository" .Values.manager.image.repository "tag" .Values.manager.image.tag) }}"
+                  image: "{{ include "chart.image" (dict "global" .Values.global "repository" .Values.manager.image.repository "tag" .Values.manager.image.tag "appVersion" .Chart.AppVersion) }}"
                   imagePullPolicy: {{ .Values.manager.image.pullPolicy }}
                   livenessProbe:
                     httpGet:

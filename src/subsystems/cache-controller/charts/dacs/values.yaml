@@ -9,13 +9,13 @@ manager:
   
   image:
     repository: acstor/dacs-controller
-    tag: local
+    tag: ""  # Empty defaults to .Chart.AppVersion (e.g. "local" for dev, build number for published charts)
     pullPolicy: IfNotPresent
 
   # Cache server image used by controller to create cache server pods
   cacheServerImage:
     repository: acstor/dacs-server
-    tag: local
+    tag: ""  # Empty defaults to .Chart.AppVersion (e.g. "local" for dev, build number for published charts)
 
   # Extra arguments to pass to the controller
   extraArgs: []
