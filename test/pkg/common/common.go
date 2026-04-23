@@ -397,14 +397,12 @@ func VerifyStatefulSetReady(ctx context.Context, k8sClient client.Client, namesp
 		err := k8sClient.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, sts)
 		g.Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Failed to get StatefulSet %s", name))
 
-		// Check that the StatefulSet has the expected number of replicas
-		g.Expect(sts.Status.Replicas).To(BeNumerically(">", 0), fmt.Sprintf("StatefulSet %s has no replicas", name))
+		g.Expect(sts.Spec.Replicas).NotTo(BeNil(),
+			fmt.Sprintf("StatefulSet %s has nil spec.replicas", name))
+		g.Expect(sts.Status.ReadyReplicas).To(Equal(*sts.Spec.Replicas),
+			fmt.Sprintf("StatefulSet %s has %d/%d ready replicas", name, sts.Status.ReadyReplicas, *sts.Spec.Replicas))
 
-		// Check that all replicas are ready
-		g.Expect(sts.Status.ReadyReplicas).To(Equal(sts.Status.Replicas),
-			fmt.Sprintf("StatefulSet %s has %d/%d ready replicas", name, sts.Status.ReadyReplicas, sts.Status.Replicas))
-
-		log.Info("StatefulSet is ready", "name", name, "ready", sts.Status.ReadyReplicas, "total", sts.Status.Replicas)
+		log.Info("StatefulSet is ready", "name", name, "ready", sts.Status.ReadyReplicas, "desired", *sts.Spec.Replicas)
 	}).WithContext(ctx).Should(Succeed())
 }
 
