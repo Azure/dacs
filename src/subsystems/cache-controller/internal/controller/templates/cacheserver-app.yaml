@@ -12,6 +12,7 @@ spec:
       app: cacheserver
   serviceName: cacheserver
   replicas: {{ .NumServers }}
+  podManagementPolicy: Parallel
   template:
     metadata:
       labels:
