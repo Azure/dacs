@@ -69,7 +69,7 @@ RUN TARGETARCH=${TARGETARCH:-amd64} && \
     fi
 
 RUN python3 -m venv /venv && . /venv/bin/activate && \
-    python -m pip install --no-cache-dir --upgrade pip setuptools opencensus-ext-azure h5py pytest pytest-timeout
+    python -m pip install --no-cache-dir --upgrade pip setuptools opencensus-ext-azure 'h5py==3.15.1' pytest pytest-timeout
 
 # Set Rust installation paths for all users
 ENV CARGO_HOME=/opt/cargo
