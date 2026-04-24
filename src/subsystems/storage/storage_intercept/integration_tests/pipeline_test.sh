@@ -571,7 +571,8 @@ else
 fi
 
 echo "Running integration test against blob with dynamic container mount"
-pip3 install h5py
+# Pin h5py to the last known-good release.
+pip3 install 'h5py==3.15.1'
 add_interception_config_blob /mnt/quiverfs true true
 eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d largeMultiMountDynamic -s -n 20 -p 4 -f"
 if [ $? -ne 0 ]

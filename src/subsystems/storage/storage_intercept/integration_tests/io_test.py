@@ -113,6 +113,7 @@ def read_folders_in_tarfile(args):
         for dirPath in dirs:
             os.rmdir(os.path.join(root, dirPath))
     os.rmdir(destDirectory)
+    tarObj.close()
 
     return  {
                 "message": "{moduleInfo:<16} Extracted {nFiles} files in {timeTaken} seconds using tarfile module",
@@ -132,6 +133,7 @@ def read_folders_in_zipfile(args):
         print(f'{moduleInfo:<16} Opening and reading {filePathFull}')
         with zipFileObj.open(filePathRelative) as zipFile:
             bytesRead += len(zipFile.read())
+    zipFileObj.close()
 
     return  {
                 "moduleName": "zipfile",
@@ -210,6 +212,7 @@ def read_folder_hdf5(args):
             hf = h5py.File(filePathFull, 'r')
             list(hf.keys())
             nFiles += 1
+            hf.close()
 
     return  {
                 "message": "{moduleInfo:<16} Read {nFiles} files in {timeTaken} seconds using the hdf5 module",
