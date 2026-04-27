@@ -8,7 +8,7 @@
 constexpr int DEFAULT_THREAD_POOL_SIZE = 256;
 constexpr int TCP_BACKLOG_SIZE = 1024;
 constexpr int REQUEST_METADATA_SIZE = 4;
-constexpr int DEFAULT_SOCKET_BUF_SIZE = 4 * 1024 * 1024; // 4 MiB
+constexpr int DEFAULT_SOCKET_BUF_SIZE = 0;
 constexpr int NUM_MAPS = 50; // Note: changing this value will cause existing snapshots to fail to load
 
 // Snapshot related settings
