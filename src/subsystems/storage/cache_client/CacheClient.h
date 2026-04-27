@@ -16,7 +16,7 @@ extern "C" {
 #define MAX_CACHE_KEY_LEN 127
 #define MAX_METADATA_KEY_VALUE_PAIRS 32
 #define MAX_GROUPID_LEN 127
-#define DEFAULT_SOCKET_BUF_SIZE (4 * 1024 * 1024)
+#define DEFAULT_SOCKET_BUF_SIZE 0
 //---------------------------------------------------------------------------------------------------------------------
 typedef enum
 {
