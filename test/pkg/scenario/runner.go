@@ -87,7 +87,7 @@ func (r *ModelLoadingRunner) Run(ctx context.Context) (*ModelLoadingResult, erro
 	}
 
 	// Snapshot cache server metrics before the test to measure cache hit/miss delta
-	metricsBefore := scrapeCacheServerMetrics(ctx, r.Config.Namespace)
+	metricsBefore := ScrapeCacheServerMetrics(ctx, r.Config.Namespace)
 
 	// Create the job
 	if err := r.K8sClient.Create(ctx, j); err != nil {
@@ -106,8 +106,9 @@ func (r *ModelLoadingRunner) Run(ctx context.Context) (*ModelLoadingResult, erro
 	}
 
 	// Snapshot cache server metrics after the test and compute delta
-	metricsAfter := scrapeCacheServerMetrics(ctx, r.Config.Namespace)
-	hits, misses := computeCacheMetricsDelta(metricsBefore, metricsAfter)
+	metricsAfter := ScrapeCacheServerMetrics(ctx, r.Config.Namespace)
+	delta := ComputeCacheMetricsDelta(metricsBefore, metricsAfter)
+	hits, misses := delta.DownloadSuccess, delta.DownloadInvalidTransition
 	if hits+misses > 0 {
 		result.CacheHitRate = float64(hits) / float64(hits+misses)
 		log.Info("Cache server metrics delta",
