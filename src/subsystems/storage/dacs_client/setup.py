@@ -117,7 +117,7 @@ if not platform_tag:
     raise ValueError(f"Unknown architecture: {build_arch}. Expected 'amd64' or 'arm64'.")
 
 setup(
-    name=f'dacs-client-{build_channel}-{build_arch}',
+    name=f'dacs-client-{build_channel}',
     version=VERSION,
     packages=[
         "py_dacs_client",

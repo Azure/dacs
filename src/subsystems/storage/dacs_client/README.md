@@ -28,9 +28,9 @@ Install the latest DACS Cache Client package from the official feed.
 
 **Feed:** internal-reference-removed
 
-Architecture-specific packages:
-- **amd64:** internal-reference-removed
-- **arm64:** internal-reference-removed
+**Package:** internal-reference-removed
+
+The package includes platform-specific wheels for both amd64 and arm64. `pip` automatically selects the correct wheel for your platform.
 
 ### Prerequisites to connect to the Feeds
 
@@ -59,24 +59,16 @@ pip install keyring artifacts-keyring
 
 ### Install the DACS Cache Client
 
-Once the prerequisites are met to connect to the feed, run the appropriate pip install for your architecture:
-
-**amd64:**
+Once the prerequisites are met to connect to the feed, install the package:
 
 ```bash
-pip install -i internal-reference-removed dacs-client-official-amd64
-```
-
-**arm64:**
-
-```bash
-pip install -i internal-reference-removed dacs-client-official-arm64
+pip install -i internal-reference-removed dacs-client-official
 ```
 
 To install a specific version:
 
 ```bash
-pip install -i internal-reference-removed dacs-client-official-amd64==0.9.0.20260218.4
+pip install -i internal-reference-removed dacs-client-official==0.9.0.20260218.4
 ```
 
 ---
