@@ -16,18 +16,22 @@ import (
 	"github.com/Azure/dacs/test/pkg/utils"
 )
 
-// cacheServerMetrics holds aggregated download request counters from all cache servers.
-type cacheServerMetrics struct {
-	// downloadSuccess counts Download requests with status=Success (cache hits).
-	downloadSuccess int
-	// downloadInvalidTransition counts Download requests with status=InvalidTransition (cache misses).
-	downloadInvalidTransition int
+// CacheServerMetrics holds aggregated request counters from all cache servers.
+type CacheServerMetrics struct {
+	// DownloadSuccess counts Download requests with status=Success (cache hits).
+	DownloadSuccess int
+	// DownloadInvalidTransition counts Download requests with status=InvalidTransition (cache misses).
+	DownloadInvalidTransition int
+	// UploadSuccess counts Upload requests with status=Success.
+	UploadSuccess int
+	// UploadInvalidTransition counts Upload requests with status=InvalidTransition (duplicate uploads / FILE_EXISTS).
+	UploadInvalidTransition int
 }
 
-// scrapeCacheServerMetrics scrapes Prometheus metrics from all cacheserver pods and returns
-// aggregated download request counters. This is used to compute cache hit/miss deltas
+// ScrapeCacheServerMetrics scrapes Prometheus metrics from all cacheserver pods and returns
+// aggregated request counters. This is used to compute cache hit/miss deltas
 // around test executions.
-func scrapeCacheServerMetrics(ctx context.Context, namespace string) cacheServerMetrics {
+func ScrapeCacheServerMetrics(ctx context.Context, namespace string) CacheServerMetrics {
 	// Find all cacheserver pods
 	cmd := exec.CommandContext(ctx, "kubectl", "get", "pods", "-n", namespace,
 		"-l", "app=cacheserver",
@@ -35,58 +39,73 @@ func scrapeCacheServerMetrics(ctx context.Context, namespace string) cacheServer
 	output, err := utils.Run(cmd)
 	if err != nil {
 		log.Info("Warning: failed to list cacheserver pods for metrics", "error", err)
-		return cacheServerMetrics{}
+		return CacheServerMetrics{}
 	}
 
-	var total cacheServerMetrics
+	var total CacheServerMetrics
 	for _, podName := range strings.Split(strings.TrimSpace(output), "\n") {
 		if podName == "" {
 			continue
 		}
 		m := scrapeSingleCacheServer(ctx, podName, namespace)
-		total.downloadSuccess += m.downloadSuccess
-		total.downloadInvalidTransition += m.downloadInvalidTransition
+		total.DownloadSuccess += m.DownloadSuccess
+		total.DownloadInvalidTransition += m.DownloadInvalidTransition
+		total.UploadSuccess += m.UploadSuccess
+		total.UploadInvalidTransition += m.UploadInvalidTransition
 	}
 	return total
 }
 
 // scrapeSingleCacheServer scrapes Prometheus metrics from a single cache server pod.
-func scrapeSingleCacheServer(ctx context.Context, podName, namespace string) cacheServerMetrics {
+func scrapeSingleCacheServer(ctx context.Context, podName, namespace string) CacheServerMetrics {
 	cmd := exec.CommandContext(ctx, "kubectl", "exec", "-n", namespace, podName,
 		"-c", "cacheserver", "--",
 		"curl", "-s", "http://localhost:9096/metrics")
 	output, err := utils.Run(cmd)
 	if err != nil {
 		log.Info("Warning: failed to scrape metrics", "pod", podName, "error", err)
-		return cacheServerMetrics{}
+		return CacheServerMetrics{}
 	}
 
-	var m cacheServerMetrics
+	var m CacheServerMetrics
 	for _, line := range strings.Split(output, "\n") {
 		if strings.HasPrefix(line, "#") || line == "" {
 			continue
 		}
-		if strings.Contains(line, "cache_server_request_counter") &&
-			strings.Contains(line, "request_type=\"Download\"") {
-			val := parsePrometheusValue(line)
+		if !strings.Contains(line, "cache_server_request_counter") {
+			continue
+		}
+		val := parsePrometheusValue(line)
+		if strings.Contains(line, "request_type=\"Download\"") {
 			if strings.Contains(line, "status=\"Success\"") {
-				m.downloadSuccess += val
+				m.DownloadSuccess += val
 			} else if strings.Contains(line, "status=\"InvalidTransition\"") {
-				m.downloadInvalidTransition += val
+				m.DownloadInvalidTransition += val
+			}
+		} else if strings.Contains(line, "request_type=\"Upload\"") {
+			if strings.Contains(line, "status=\"Success\"") {
+				m.UploadSuccess += val
+			} else if strings.Contains(line, "status=\"InvalidTransition\"") {
+				m.UploadInvalidTransition += val
 			}
 		}
 	}
 	return m
 }
 
-// computeCacheMetricsDelta computes the change in download hits and misses between two snapshots.
+// ComputeCacheMetricsDelta returns the full metric delta between two snapshots.
 // In the cache server protocol:
 //   - Download+Success = cache hit (data found in cache, returned to client)
 //   - Download+InvalidTransition = cache miss (data not found, client must upload)
-func computeCacheMetricsDelta(before, after cacheServerMetrics) (hits, misses int) {
-	hits = after.downloadSuccess - before.downloadSuccess
-	misses = after.downloadInvalidTransition - before.downloadInvalidTransition
-	return
+//   - Upload+Success = successful upload to cache
+//   - Upload+InvalidTransition = duplicate upload (FILE_EXISTS)
+func ComputeCacheMetricsDelta(before, after CacheServerMetrics) CacheServerMetrics {
+	return CacheServerMetrics{
+		DownloadSuccess:           after.DownloadSuccess - before.DownloadSuccess,
+		DownloadInvalidTransition: after.DownloadInvalidTransition - before.DownloadInvalidTransition,
+		UploadSuccess:             after.UploadSuccess - before.UploadSuccess,
+		UploadInvalidTransition:   after.UploadInvalidTransition - before.UploadInvalidTransition,
+	}
 }
 
 func parsePrometheusValue(line string) int {

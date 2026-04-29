@@ -26,7 +26,13 @@ const DACSClientPodYAML = "dacs-client-pod.yaml"
 // ScenarioModelLoadingJobYAML is the path to the scenario model loading job fixture.
 const ScenarioModelLoadingJobYAML = "scenario_model_loading_job.yaml"
 
-//go:embed iperf-server.yaml iperf-client.yaml perf-client.yaml dacs_cacheclient_job.yaml perf-client-serviceaccount.yaml mpi-job.yaml dacs_adapter_benchmark_job.yaml dacs-client-pod.yaml scenario_model_loading_job.yaml
+// UploadBlobPy is the path to the generic blob upload script fixture.
+const UploadBlobPy = "upload_blob.py"
+
+// ColdReadWorkerPy is the path to the cold read worker script fixture.
+const ColdReadWorkerPy = "cold_read_worker.py"
+
+//go:embed iperf-server.yaml iperf-client.yaml perf-client.yaml dacs_cacheclient_job.yaml perf-client-serviceaccount.yaml mpi-job.yaml dacs_adapter_benchmark_job.yaml dacs-client-pod.yaml scenario_model_loading_job.yaml upload_blob.py cold_read_worker.py
 var fs embed.FS
 
 // ReadIperfServer reads the iperf server pod fixture.
@@ -72,4 +78,14 @@ func ReadDACSClientPod() ([]byte, error) {
 // ReadScenarioModelLoadingJob reads the scenario model loading job fixture.
 func ReadScenarioModelLoadingJob() ([]byte, error) {
 	return fs.ReadFile(ScenarioModelLoadingJobYAML)
+}
+
+// ReadUploadBlob reads the generic blob upload Python script.
+func ReadUploadBlob() ([]byte, error) {
+	return fs.ReadFile(UploadBlobPy)
+}
+
+// ReadColdReadWorker reads the cold read worker Python script.
+func ReadColdReadWorker() ([]byte, error) {
+	return fs.ReadFile(ColdReadWorkerPy)
 }
