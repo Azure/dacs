@@ -22,7 +22,7 @@ priorityClassName: system-node-critical
 updateStrategy:
   type: RollingUpdate
   rollingUpdate:
-    maxUnavailable: 1
+    maxUnavailable: "10%"
 
 # nvme-raid-setup init container settings
 nvmeRaidSetup:
