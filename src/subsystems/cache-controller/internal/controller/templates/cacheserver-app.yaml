@@ -13,6 +13,10 @@ spec:
   serviceName: cacheserver
   replicas: {{ .NumServers }}
   podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: "10%"
   template:
     metadata:
       labels:

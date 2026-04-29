@@ -50,7 +50,7 @@ make helm-prereq-install
 | `mountPoint` | Mount point for the cache directory | `/var/lib/ssd/cacheserver` |
 | `priorityClassName` | Pod priority class | `system-node-critical` |
 | `updateStrategy.type` | DaemonSet update strategy | `RollingUpdate` |
-| `updateStrategy.rollingUpdate.maxUnavailable` | Max unavailable during updates | `1` |
+| `updateStrategy.rollingUpdate.maxUnavailable` | Max unavailable during updates | `"10%"` |
 | `nvmeRaidSetup.image.repository` | Init container image | `mcr.microsoft.com/azurelinux/base/core` |
 | `nvmeRaidSetup.image.tag` | Init container image tag | `3.0` |
 | `nvmeRaidSetup.resources.limits.cpu` | CPU limit for init container | `1` |
