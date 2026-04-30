@@ -117,8 +117,7 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			log.Info("Cache resource not found, nothing to reconcile")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get Cache")
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to get Cache: %w", err)
 	}
 
 	// Handle deletion: clean up tracker state so nodes are freed for
@@ -182,28 +181,24 @@ func (r *CacheReconciler) reconcileCache(ctx context.Context, cache *storagev1.C
 	// Reconcile StatefulSet
 	log.V(1).Info("Reconciling StatefulSet")
 	if err := r.reconcileStatefulSet(ctx, cache, desired); err != nil {
-		log.Error(err, "Failed to reconcile StatefulSet")
 		return fmt.Errorf("failed to reconcile StatefulSet: %w", err)
 	}
 
 	// Reconcile Services
 	log.V(1).Info("Reconciling Services")
 	if err := r.reconcileServices(ctx, cache); err != nil {
-		log.Error(err, "Failed to reconcile Services")
 		return fmt.Errorf("failed to reconcile Services: %w", err)
 	}
 
 	// Reconcile ConfigMap
 	log.V(1).Info("Reconciling ConfigMap")
 	if err := r.reconcileConfigMap(ctx, cache, desired); err != nil {
-		log.Error(err, "Failed to reconcile ConfigMap")
 		return fmt.Errorf("failed to reconcile ConfigMap: %w", err)
 	}
 
 	// Schedule pods (custom scheduling, stuck-pod cleanup, excess-pod removal)
 	if err := r.Scheduler.Reconcile(ctx, cache, h); err != nil {
-		log.Error(err, "Failed to schedule pods")
-		return err
+		return fmt.Errorf("failed to schedule pods: %w", err)
 	}
 
 	log.V(1).Info("Reconciliation completed successfully")
@@ -363,10 +358,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 	}
 	var desired appsv1.StatefulSet
 	if err := renderTemplateInto("templates/cacheserver-app.yaml", values, &desired); err != nil {
-		log.Error(err, "Failed to render cacheserver statefulset template",
-			"numServers", numServers,
-			"image", values.Image)
-		return err
+		return fmt.Errorf("failed to render cacheserver StatefulSet template (numServers=%d, image=%s): %w", numServers, values.Image, err)
 	}
 	// Create or Update StatefulSet. The template uses a fixed name
 	// ("cacheserver"), so exactly one StatefulSet -- and therefore one
@@ -388,10 +380,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 	})
 
 	if err != nil {
-		log.Error(err, "Failed to create or patch StatefulSet",
-			"statefulSetName", sts.Name,
-			"desiredReplicas", numServers)
-		return err
+		return fmt.Errorf("failed to create or patch StatefulSet %q (desiredReplicas=%d): %w", sts.Name, numServers, err)
 	}
 
 	logResourceOperation(log, result, "StatefulSet", sts.Name, "replicas", numServers)
@@ -431,10 +420,7 @@ func (r *CacheReconciler) reconcileServices(ctx context.Context, cache *storagev
 		// Render desired Service from template
 		var desired corev1.Service
 		if err := renderTemplateInto(svc.templatePath, svc.values, &desired); err != nil {
-			log.Error(err, "Failed to render service template",
-				"serviceName", svc.name,
-				"templatePath", svc.templatePath)
-			return err
+			return fmt.Errorf("failed to render Service template %q (path=%s): %w", svc.name, svc.templatePath, err)
 		}
 		service := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
@@ -452,9 +438,7 @@ func (r *CacheReconciler) reconcileServices(ctx context.Context, cache *storagev
 			return nil
 		})
 		if err != nil {
-			log.Error(err, "Failed to create or patch Service",
-				"serviceName", svc.name)
-			return err
+			return fmt.Errorf("failed to create or patch Service %q: %w", svc.name, err)
 		}
 
 		logResourceOperation(log, result, "Service", service.Name, "port", *cache.Spec.Port)
@@ -477,9 +461,7 @@ func (r *CacheReconciler) reconcileConfigMap(ctx context.Context, cache *storage
 
 	var desired corev1.ConfigMap
 	if err := renderTemplateInto("templates/cacheserver-discovery-config.yaml", values, &desired); err != nil {
-		log.Error(err, "Failed to render ConfigMap template",
-			"numServers", numServers)
-		return err
+		return fmt.Errorf("failed to render ConfigMap template (numServers=%d): %w", numServers, err)
 	}
 
 	cm := &corev1.ConfigMap{
@@ -499,9 +481,7 @@ func (r *CacheReconciler) reconcileConfigMap(ctx context.Context, cache *storage
 	})
 
 	if err != nil {
-		log.Error(err, "Failed to create or patch ConfigMap",
-			"configMapName", cm.Name)
-		return err
+		return fmt.Errorf("failed to create or patch ConfigMap %q: %w", cm.Name, err)
 	}
 
 	logResourceOperation(log, result, "ConfigMap", cm.Name, "numServers", numServers)
