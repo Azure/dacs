@@ -30,8 +30,13 @@ persist_config() {
   # Write mdadm.conf and fstab entries for reboot persistence.
   mkdir -p /etc/mdadm
   mdadm --detail --scan 2>/dev/null | tee /etc/mdadm/mdadm.conf >/dev/null || true
-  if ! grep -q "LABEL=${FS_LABEL}" /etc/fstab 2>/dev/null; then
-    echo "LABEL=${FS_LABEL} ${MOUNT_POINT} ext4 defaults,nofail 0 2" >> /etc/fstab
+  if grep -q "^LABEL=${FS_LABEL}[[:space:]]" /etc/fstab 2>/dev/null; then
+    # Ensure existing entry includes noatime (older entries may not).
+    if ! grep "^LABEL=${FS_LABEL}[[:space:]]" /etc/fstab | grep -q "noatime"; then
+      sed -i "/^LABEL=${FS_LABEL}[[:space:]]/s/defaults/defaults,noatime/" /etc/fstab
+    fi
+  else
+    echo "LABEL=${FS_LABEL} ${MOUNT_POINT} ext4 defaults,noatime,nofail 0 2" >> /etc/fstab
   fi
   if command -v update-initramfs &>/dev/null; then
     update-initramfs -u
@@ -72,7 +77,7 @@ mdadm --assemble --scan 2>/dev/null || true
 LABELED_DEV=$(blkid -L "${FS_LABEL}" 2>/dev/null || true)
 if [[ -n "${LABELED_DEV}" ]]; then
   log "Found existing filesystem labeled '${FS_LABEL}' on ${LABELED_DEV}"
-  mount "${LABELED_DEV}" "${MOUNT_POINT}"
+  mount -o noatime "${LABELED_DEV}" "${MOUNT_POINT}"
   persist_config
   log "Mounted ${LABELED_DEV}. Done."
   exit 0
@@ -116,7 +121,7 @@ if [[ ${#UNUSED_DEVICES[@]} -eq 1 ]]; then
     dump_diag
     exit 1
   fi
-  mount "${DEVICE}" "${MOUNT_POINT}"
+  mount -o noatime "${DEVICE}" "${MOUNT_POINT}"
   persist_config
   log "Single-disk setup complete."
   exit 0
@@ -151,7 +156,7 @@ if ! mkfs.ext4 -F -L "${FS_LABEL}" "${RAID_DEVICE}"; then
   exit 1
 fi
 
-mount "${RAID_DEVICE}" "${MOUNT_POINT}"
+mount -o noatime "${RAID_DEVICE}" "${MOUNT_POINT}"
 chmod 0777 "${MOUNT_POINT}"
 persist_config
 
