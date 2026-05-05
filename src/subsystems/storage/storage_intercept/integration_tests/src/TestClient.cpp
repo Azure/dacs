@@ -78,6 +78,240 @@ void TestFileReadWithSeek(const std::string& mountPath)
   }
 }
 //---------------------------------------------------------------------------------------------------------------------
+void TestSubChunkRead(const std::string& mountPath)
+{
+  // Test that sub-chunk reads return correct data.
+  // The sub-chunk optimization activates automatically for reads smaller than chunk size
+  // when encryption and checksum validation are disabled.
+  std::string remoteFilePath = mountPath + "/imagenet_data/train/n01494475/n01494475_10008.JPEG";
+  constexpr int expectedFileSize = 324089;
+
+  int fd = ::open(remoteFilePath.c_str(), O_RDONLY, 0777);
+  if (fd < 0)
+  {
+    std::cout << "ERROR: SubChunkRead: failed to open file: " << remoteFilePath << " err=" << strerror(errno) << std::endl;
+    throw "open file failed";
+  }
+
+  // 1. Read the entire file to warm the cache / PrefetchCache
+  std::unique_ptr<char[]> fullData(new char[expectedFileSize]);
+  size_t totalRead = 0;
+  while (totalRead < expectedFileSize)
+  {
+    ssize_t n = ::read(fd, fullData.get() + totalRead, expectedFileSize - totalRead);
+    if (n > 0)
+      totalRead += n;
+    else if (n < 0)
+    {
+      std::cout << "ERROR: SubChunkRead: warmup read failed err=" << strerror(errno) << std::endl;
+      throw "warmup read failed";
+    }
+    else
+      break;
+  }
+
+  if (totalRead != expectedFileSize)
+  {
+    std::cout << "ERROR: SubChunkRead: warmup read incomplete expected=" << expectedFileSize
+              << " got=" << totalRead << std::endl;
+    throw "warmup read incomplete";
+  }
+
+  // 2. Seek back to start and do a small 4KB read (sub-chunk candidate)
+  constexpr size_t smallReadSize = 4096;
+  std::unique_ptr<char[]> smallBuf(new char[smallReadSize]);
+
+  ::lseek64(fd, 0, SEEK_SET);
+  ssize_t bytesRead = ::read(fd, smallBuf.get(), smallReadSize);
+  if (bytesRead != static_cast<ssize_t>(smallReadSize))
+  {
+    std::cout << "ERROR: SubChunkRead: small read at offset 0 returned " << bytesRead << std::endl;
+    throw "small read failed";
+  }
+  if (::memcmp(fullData.get(), smallBuf.get(), smallReadSize) != 0)
+  {
+    std::cout << "ERROR: SubChunkRead: data mismatch at offset 0" << std::endl;
+    throw "sub-chunk data mismatch";
+  }
+
+  // 3. Seek to mid-file and do another small read
+  off64_t midOffset = expectedFileSize / 2;
+  ::lseek64(fd, midOffset, SEEK_SET);
+  bytesRead = ::read(fd, smallBuf.get(), smallReadSize);
+  if (bytesRead != static_cast<ssize_t>(smallReadSize))
+  {
+    std::cout << "ERROR: SubChunkRead: small read at offset " << midOffset << " returned " << bytesRead << std::endl;
+    throw "small read at offset failed";
+  }
+  if (::memcmp(fullData.get() + midOffset, smallBuf.get(), smallReadSize) != 0)
+  {
+    std::cout << "ERROR: SubChunkRead: data mismatch at offset " << midOffset << std::endl;
+    throw "sub-chunk data mismatch at offset";
+  }
+
+  // 4. Close and reopen to test cache-server path (Close purges PrefetchCache)
+  ::close(fd);
+  fd = ::open(remoteFilePath.c_str(), O_RDONLY, 0777);
+  if (fd < 0)
+  {
+    std::cout << "ERROR: SubChunkRead: failed to reopen file err=" << strerror(errno) << std::endl;
+    throw "reopen file failed";
+  }
+
+  bytesRead = ::read(fd, smallBuf.get(), smallReadSize);
+  if (bytesRead != static_cast<ssize_t>(smallReadSize))
+  {
+    std::cout << "ERROR: SubChunkRead: small read after reopen returned " << bytesRead << std::endl;
+    throw "small read after reopen failed";
+  }
+  if (::memcmp(fullData.get(), smallBuf.get(), smallReadSize) != 0)
+  {
+    std::cout << "ERROR: SubChunkRead: data mismatch after reopen" << std::endl;
+    throw "sub-chunk data mismatch after reopen";
+  }
+
+  ::close(fd);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void TestSubChunkBoundaryRead(const std::string& mountPath)
+{
+  // Test that a small 4KB read straddling a chunk boundary returns correct data.
+  // Uses STORAGE_INTEG_TESTCASE_FILE to find a file larger than the chunk size.
+  constexpr size_t defaultChunkSize = 4 * 1024 * 1024; // 4MB — matches code default
+  constexpr size_t smallReadSize = 4096;
+  constexpr size_t overlap = 2048;
+  const size_t boundaryOffset = defaultChunkSize - overlap;
+  const size_t minFileSize = boundaryOffset + smallReadSize;
+
+  const char* testCaseFile = getenv("STORAGE_INTEG_TESTCASE_FILE");
+  if (!testCaseFile)
+  {
+    std::cout << "SKIP: SubChunkBoundaryRead: STORAGE_INTEG_TESTCASE_FILE not set" << std::endl;
+    return;
+  }
+
+  std::ifstream ifil(testCaseFile, std::ios::in);
+  if (!ifil.is_open())
+  {
+    std::cout << "SKIP: SubChunkBoundaryRead: cannot open test case file" << std::endl;
+    return;
+  }
+
+  // First line is number of files
+  std::string header;
+  std::getline(ifil, header);
+
+  // Find the first file whose size exceeds the chunk boundary + read size
+  std::string largeFilePath;
+  size_t largeFileSize = 0;
+  std::string line;
+  while (std::getline(ifil, line))
+  {
+    auto commaIdx = line.rfind(',');
+    if (commaIdx == std::string::npos)
+      continue;
+    size_t fileSize = static_cast<size_t>(std::atoll(line.substr(commaIdx + 1).c_str()));
+    if (fileSize >= minFileSize)
+    {
+      largeFilePath = line.substr(0, commaIdx);
+      largeFileSize = fileSize;
+      break;
+    }
+  }
+  ifil.close();
+
+  if (largeFilePath.empty())
+  {
+    std::cout << "SKIP: SubChunkBoundaryRead: no file >= " << minFileSize
+              << " bytes in test case file" << std::endl;
+    return;
+  }
+
+  std::cout << "SubChunkBoundaryRead: using " << largeFilePath << " (" << largeFileSize << " bytes)" << std::endl;
+
+  int fd = ::open(largeFilePath.c_str(), O_RDONLY, 0777);
+  if (fd < 0)
+  {
+    std::cout << "ERROR: SubChunkBoundaryRead: failed to open file err=" << strerror(errno) << std::endl;
+    throw "open file failed";
+  }
+
+  // 1. Read the region around the chunk boundary to warm the cache
+  //    Read from offset 0 up to boundaryOffset + smallReadSize
+  std::unique_ptr<char[]> fullData(new char[minFileSize]);
+  size_t totalRead = 0;
+  while (totalRead < minFileSize)
+  {
+    ssize_t n = ::read(fd, fullData.get() + totalRead, minFileSize - totalRead);
+    if (n > 0)
+      totalRead += n;
+    else if (n < 0)
+    {
+      std::cout << "ERROR: SubChunkBoundaryRead: warmup read failed err=" << strerror(errno) << std::endl;
+      ::close(fd);
+      throw "warmup read failed";
+    }
+    else
+      break;
+  }
+
+  if (totalRead < minFileSize)
+  {
+    std::cout << "ERROR: SubChunkBoundaryRead: warmup read incomplete expected=" << minFileSize
+              << " got=" << totalRead << std::endl;
+    ::close(fd);
+    throw "warmup read incomplete";
+  }
+
+  // 2. Seek to chunk boundary - 2KB and read 4KB straddling the boundary
+  std::unique_ptr<char[]> smallBuf(new char[smallReadSize]);
+  ::lseek64(fd, boundaryOffset, SEEK_SET);
+  ssize_t bytesRead = ::read(fd, smallBuf.get(), smallReadSize);
+  if (bytesRead != static_cast<ssize_t>(smallReadSize))
+  {
+    std::cout << "ERROR: SubChunkBoundaryRead: straddling read at offset " << boundaryOffset
+              << " returned " << bytesRead << std::endl;
+    ::close(fd);
+    throw "straddling read failed";
+  }
+
+  if (::memcmp(fullData.get() + boundaryOffset, smallBuf.get(), smallReadSize) != 0)
+  {
+    std::cout << "ERROR: SubChunkBoundaryRead: data mismatch at chunk boundary offset "
+              << boundaryOffset << std::endl;
+    ::close(fd);
+    throw "sub-chunk boundary data mismatch";
+  }
+
+  // 3. Close and reopen to test cache-server path (Close purges PrefetchCache)
+  ::close(fd);
+  fd = ::open(largeFilePath.c_str(), O_RDONLY, 0777);
+  if (fd < 0)
+  {
+    std::cout << "ERROR: SubChunkBoundaryRead: failed to reopen file err=" << strerror(errno) << std::endl;
+    throw "reopen file failed";
+  }
+
+  ::lseek64(fd, boundaryOffset, SEEK_SET);
+  bytesRead = ::read(fd, smallBuf.get(), smallReadSize);
+  if (bytesRead != static_cast<ssize_t>(smallReadSize))
+  {
+    std::cout << "ERROR: SubChunkBoundaryRead: straddling read after reopen returned " << bytesRead << std::endl;
+    ::close(fd);
+    throw "straddling read after reopen failed";
+  }
+
+  if (::memcmp(fullData.get() + boundaryOffset, smallBuf.get(), smallReadSize) != 0)
+  {
+    std::cout << "ERROR: SubChunkBoundaryRead: data mismatch after reopen at offset "
+              << boundaryOffset << std::endl;
+    ::close(fd);
+    throw "sub-chunk boundary data mismatch after reopen";
+  }
+
+  ::close(fd);
+}
+//---------------------------------------------------------------------------------------------------------------------
 void TestStatInterception(const std::string& mountPath)
 {
   std::string remoteFilePath = mountPath + "/imagenet_data/train/n01494475/n01494475_10008.JPEG";
@@ -585,6 +819,12 @@ int main(int argc, char** argv)
 
   TestFileReadWithSeek(mountPath);
   std::cout << "Test read with seek done." << std::endl;
+
+  TestSubChunkRead(mountPath);
+  std::cout << "Test sub-chunk read done." << std::endl;
+
+  TestSubChunkBoundaryRead(mountPath);
+  std::cout << "Test sub-chunk boundary read done." << std::endl;
 
   TestStatInterception(mountPath);
   std::cout << "Test read with stat done." << std::endl;

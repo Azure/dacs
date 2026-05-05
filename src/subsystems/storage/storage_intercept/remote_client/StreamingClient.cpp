@@ -49,6 +49,8 @@ StreamingClient::StreamingClient(
     , m_strRemotePathPrefix(StorageInterceptUtils::GetRemotePathPrefix(mountName))
     , m_enableReadIOLogs(StorageInterceptConfig::GetInstance().GetEnableReadIOLogs())
     , m_nChunkSize(StorageInterceptConfig::GetInstance().GetStreamingChunkSize())
+    , m_bEncryptionEnabled(StorageInterceptConfig::GetInstance().GetCacheEncryptionEnabled(mountName))
+    , m_bChecksumValidationEnabled(StorageInterceptConfig::GetInstance().IsCacheValidateChecksumEnabled())
     , m_bEnableChunkOpParallelism(
         StorageInterceptConfig::GetInstance().GetChunkOperationParallelismEnabled(mountName))
     , m_nMaxChunkOpConcurrency(StorageInterceptConfig::GetInstance().GetChunkOperationMaxConcurrency(mountName))
@@ -71,6 +73,7 @@ StreamingClient::StreamingClient(
     , m_nReadChunksRemoteCache(0)
     , m_nReadChunksRemoteClient(0)
     , m_nReadChunksZeroCopy(0)
+    , m_nReadChunksSubChunk(0)
     , m_nWriteChunksTotalStarted(0)
     , m_nWriteChunksTotalCompleted(0)
     , m_nWriteChunksRemoteCache(0)
@@ -644,6 +647,19 @@ ssize_t StreamingClient::ReadChunkAndCopyToBuffer(
     size_t bufSize,
     size_t chunkCopyOffset)
 {
+    // Sub-chunk fast path: for small reads on cache hits, request only the needed bytes
+    // instead of fetching the entire chunk and copying a slice.
+    if (bufSize < m_nChunkSize
+        && !m_bEncryptionEnabled
+        && !m_bChecksumValidationEnabled)
+    {
+        auto subChunkResult = TrySubChunkRead(remotePath, chunkOffset, pUserBuf, bufSize, chunkCopyOffset);
+        if (subChunkResult.has_value())
+        {
+            return subChunkResult.value();
+        }
+    }
+
     // Zero copy should be done only if chunk copy offset is in chunkSize boundary and valid user buffer is passed.
     // And whether user buffer is aligned when ZC is enabled
     const bool bCanZeroCopyPathBeTaken = (m_bEnableZeroCopy
@@ -691,6 +707,195 @@ ssize_t StreamingClient::ReadChunkAndCopyToBuffer(
             copySize);
         return copySize;
     }
+}
+//---------------------------------------------------------------------------------------------------------------------
+CacheStatus StreamingClient::ProbeCacheServerWithRetry(
+    const std::string& cacheFilePath,
+    off64_t chunkOffset,
+    uint64_t startOffset,
+    uint64_t length,
+    char* buffer,
+    uint64_t& readLength)
+{
+    CacheStatus cacheStatus = CacheStatus::NOTFOUND;
+    auto cacheClient = std::atomic_load(&m_spCacheClient);
+    if (!cacheClient)
+    {
+        return cacheStatus;
+    }
+
+    int nIterations = 0;
+    do
+    {
+        if (nIterations > 0)
+        {
+            LOG_INFO("Waiting for cache entry for cacheFilePath: {}, attempt: {}, retrying after {} seconds",
+                cacheFilePath,
+                nIterations,
+                m_nRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs);
+            std::this_thread::sleep_for(std::chrono::seconds(m_nRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs));
+        }
+
+        readLength = 0;
+        DURATION_START(cacheDownload);
+        cacheStatus = cacheClient->DownloadSync(
+            m_strMountName,
+            cacheFilePath,
+            chunkOffset,
+            startOffset,
+            length,
+            buffer,
+            readLength);
+
+        if (cacheStatus == CacheStatus::SUCCESS)
+        {
+            m_nReadChunksRemoteCache++;
+            m_vecCacheDownloadLatencies[m_nTotalCacheDownloadLatencySamples.fetch_add(1) % m_nLatencySamplesVecSize] = DURATION_MS_GET(cacheDownload);
+        }
+        else if (cacheStatus == CacheStatus::INTERNAL_ERROR)
+        {
+            LOG_WARN("Server internal error for cacheFilePath: {}, offset: {}, startOffset: {}, length: {}, ignore and continue blob download",
+                cacheFilePath, chunkOffset, startOffset, length);
+        }
+        else if (cacheStatus == CacheStatus::CHECKSUM_MISMATCH)
+        {
+            LOG_WARN("Checksum mismatch for cacheFilePath: {}, offset: {}, startOffset: {}, length: {}, ignore and continue blob download",
+                cacheFilePath, chunkOffset, startOffset, length);
+        }
+
+        nIterations++;
+    }
+    while (m_bRemoteDownloadOnlyWhenLockHeldEnabled &&
+            cacheStatus == CacheStatus::NOTFOUND &&
+            nIterations < m_nRemoteDownloadOnlyWhenLockHeldMaxAttempts);
+
+    if (cacheStatus == CacheStatus::NOTFOUND && nIterations >= m_nRemoteDownloadOnlyWhenLockHeldMaxAttempts)
+    {
+        LOG_WARN("Max retry attempts reached for cacheFilePath: {}, max attempts: {}, downloading from remote store",
+            cacheFilePath, m_nRemoteDownloadOnlyWhenLockHeldMaxAttempts);
+    }
+
+    return cacheStatus;
+}
+//---------------------------------------------------------------------------------------------------------------------
+ssize_t StreamingClient::DownloadFullChunkFromBlob(
+    const std::string& remotePath,
+    off64_t chunkOffset,
+    FileData& readData)
+{
+    STORAGE_ASSERT(chunkOffset % m_nChunkSize == 0, "DownloadFullChunkFromBlob called with unaligned chunkOffset");
+
+    // NOTE: This function downloads into readData.Buffer regardless of ownership.
+    // Callers passing a user buffer (bIsUserBuffer=true) must handle cache upload
+    // separately (see ReadChunkImpl post-download logic).
+
+    DURATION_START(remoteDownload);
+    ssize_t nBytesFromRemote = std::atomic_load(&m_spRemoteClient)->ReadChunkSync(
+        remotePath,
+        readData.Buffer.get(),
+        m_nChunkSize,
+        chunkOffset);
+    if (nBytesFromRemote == -1)
+    {
+        LOG_ERROR("Remote read failed. remotePath={} readSize={} readOffset={}",
+            remotePath, m_nChunkSize, chunkOffset);
+        return -1;
+    }
+
+    m_vecRemoteDownloadLatencies[m_nTotaRemotelDownloadLatencySamples.fetch_add(1) % m_nLatencySamplesVecSize] = DURATION_MS_GET(remoteDownload);
+    readData.BufferSize = nBytesFromRemote;
+    m_nReadChunksRemoteClient++;
+    return nBytesFromRemote;
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::optional<ssize_t> StreamingClient::TrySubChunkRead(
+    const std::string& remotePath,
+    off64_t chunkOffset,
+    void* pUserBuf,
+    size_t bufSize,
+    size_t chunkCopyOffset)
+{
+    const std::string cacheFilePath = GetCacheFilePath(remotePath);
+
+    // Check PrefetchCache first — memcpy from RAM is cheaper than a cache-server round-trip
+    std::shared_ptr<const FileData> prefetchResult =
+        PrefetchCache::GetInstance().Get(cacheFilePath, chunkOffset);
+    if (prefetchResult && chunkCopyOffset < prefetchResult->BufferSize)
+    {
+        const size_t availableBytes = prefetchResult->BufferSize - chunkCopyOffset;
+        const size_t copySize = std::min(bufSize, availableBytes);
+        memcpy(pUserBuf, prefetchResult->Buffer.get() + chunkCopyOffset, copySize);
+        m_nReadChunksSubChunk++;
+        m_nReadChunksTotal++;
+        m_nReadChunksPrefetchCache++;
+        PostChunkOpComplete();
+        LOG_DEBUG("Sub-chunk prefetch-cache hit. chunkOffset={} chunkCopyOffset={} copySize={} bufSize={}",
+            chunkOffset, chunkCopyOffset, copySize, bufSize);
+        return static_cast<ssize_t>(copySize);
+    }
+
+    // PrefetchCache miss — probe the cache server with sub-chunk parameters.
+    // Uses the same retry loop as ReadChunkImpl via ProbeCacheServerWithRetry.
+    // The only intentional difference from ReadChunkImpl is no zero-copy path — sub-chunk reads
+    // require bufSize < m_nChunkSize, which is mutually exclusive with zero-copy.
+    uint64_t readLength = 0;
+    CacheStatus cacheStatus = ProbeCacheServerWithRetry(
+        cacheFilePath, chunkOffset, chunkCopyOffset, bufSize,
+        static_cast<char*>(pUserBuf), readLength);
+
+    if (cacheStatus == CacheStatus::SUCCESS)
+    {
+        m_nReadChunksSubChunk++;
+        m_nReadChunksTotal++;
+        PostChunkOpComplete();
+        LOG_DEBUG("Sub-chunk cache hit. chunkOffset={} chunkCopyOffset={} bufSize={} readLength={}",
+            chunkOffset, chunkCopyOffset, bufSize, readLength);
+        return static_cast<ssize_t>(readLength);
+    }
+
+    // Cache miss or error — download full chunk from blob (same as ReadChunkImpl)
+    auto remoteReadData = std::make_shared<FileData>(
+        chunkOffset, m_nChunkSize, nullptr, false /* setToZeros */);
+
+    STORAGE_ASSERT(!remoteReadData->bIsUserBuffer,
+        "TrySubChunkRead must own the download buffer for cache upload");
+    ssize_t nBytesFromRemote = DownloadFullChunkFromBlob(remotePath, chunkOffset, *remoteReadData);
+    if (nBytesFromRemote == -1)
+    {
+        PostChunkOpComplete();
+        return static_cast<ssize_t>(-1);
+    }
+
+    // Upload to cache server if we hold the lock (same guard as ReadChunkImpl)
+    if (cacheStatus == CacheStatus::NOTFOUND_LOCKED)
+    {
+        auto cacheClient = std::atomic_load(&m_spCacheClient);
+        LOG_DEBUG("Sub-chunk: uploading to cache server. file={} offset={}", remotePath, chunkOffset);
+        bool bRet = cacheClient->Upload(m_strMountName, cacheFilePath, chunkOffset, remoteReadData, false /* isWrite */);
+        if (!bRet)
+        {
+            LOG_DEBUG("Sub-chunk: failed to upload to cache. file={} offset={}", remotePath, chunkOffset);
+        }
+    }
+
+    // Populate PrefetchCache with the full chunk
+    PrefetchCache::GetInstance().Put(cacheFilePath, remoteReadData);
+
+    // Extract sub-chunk bytes (handle short reads near EOF)
+    const size_t availableBytes = (remoteReadData->BufferSize > chunkCopyOffset)
+        ? remoteReadData->BufferSize - chunkCopyOffset
+        : 0;
+    const size_t copySize = std::min(bufSize, availableBytes);
+    if (copySize > 0)
+    {
+        memcpy(pUserBuf, remoteReadData->Buffer.get() + chunkCopyOffset, copySize);
+    }
+    m_nReadChunksSubChunk++;
+    m_nReadChunksTotal++;
+    PostChunkOpComplete();
+    LOG_DEBUG("Sub-chunk blob fallback. chunkOffset={} chunkCopyOffset={} copySize={} fullChunkBytes={}",
+        chunkOffset, chunkCopyOffset, copySize, nBytesFromRemote);
+    return static_cast<ssize_t>(copySize);
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::shared_ptr<const FileData> StreamingClient::ReadChunk(
@@ -748,61 +953,14 @@ std::shared_ptr<const FileData> StreamingClient::ReadChunkImpl(
             false /* setToZeros */);
 
     // Try fetching from cache service
-    CacheStatus cacheStatus = CacheStatus::NOTFOUND;
-    auto cacheClient = std::atomic_load(&m_spCacheClient);
+    uint64_t readLength = 0;
+    CacheStatus cacheStatus = ProbeCacheServerWithRetry(
+        cacheFilePath, chunkOffset, 0, m_nChunkSize,
+        remoteReadData->Buffer.get(), readLength);
 
-    if (cacheClient)
+    if (cacheStatus == CacheStatus::SUCCESS)
     {
-        int nIterations = 0;
-        do
-        {
-            if(nIterations > 0)
-            {
-                LOG_INFO("Failed to acquire entry/lock for cacheFilePath: {}, attempt: {}, retrying after {} seconds",
-                    cacheFilePath,
-                    nIterations,
-                    m_nRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs);
-                std::this_thread::sleep_for(std::chrono::seconds(m_nRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs));
-            }
-
-            uint64_t readLength = 0;
-            DURATION_START(cacheDownload);
-            cacheStatus = cacheClient->DownloadSync(
-                m_strMountName,
-                cacheFilePath,
-                chunkOffset,
-                0,
-                m_nChunkSize,
-                remoteReadData->Buffer.get(),
-                readLength);
-            if (cacheStatus == CacheStatus::SUCCESS)
-            {
-                remoteReadData->BufferSize = readLength;
-                m_nReadChunksRemoteCache++;
-                m_vecCacheDownloadLatencies[m_nTotalCacheDownloadLatencySamples.fetch_add(1) % m_nLatencySamplesVecSize] = DURATION_MS_GET(cacheDownload);
-            }
-            else if (cacheStatus == CacheStatus::INTERNAL_ERROR )
-            {
-                LOG_WARN("Got server internal error for cacheFilePath: {}, offset: {}, length: {}, ignore and continue blob download",
-                    cacheFilePath, chunkOffset, readLength);
-            }
-            else if (cacheStatus == CacheStatus::CHECKSUM_MISMATCH)
-            {
-                LOG_WARN("Got checksum mismatch for cacheFilePath: {}, offset: {}, length: {} , ignore and continue blob download",
-                    cacheFilePath, chunkOffset, readLength);
-            }
-
-            nIterations++;
-        }
-        while (m_bRemoteDownloadOnlyWhenLockHeldEnabled &&
-                cacheStatus == CacheStatus::NOTFOUND &&
-                nIterations < m_nRemoteDownloadOnlyWhenLockHeldMaxAttempts);
-        
-        if (cacheStatus == CacheStatus::NOTFOUND && nIterations >= m_nRemoteDownloadOnlyWhenLockHeldMaxAttempts)
-        {
-            LOG_WARN("Failed to acquire lock/entry for cacheFilePath: {}, max attempts reached: {}, downloading from remote store",
-                cacheFilePath, m_nRemoteDownloadOnlyWhenLockHeldMaxAttempts);
-        }
+        remoteReadData->BufferSize = readLength;
     }
 
     if (cacheStatus == CacheStatus::SUCCESS && remoteReadData->bIsUserBuffer)
@@ -819,32 +977,19 @@ std::shared_ptr<const FileData> StreamingClient::ReadChunkImpl(
     // If cache client is not available or cache download failed, fetch from remote storage
     if (cacheStatus != CacheStatus::SUCCESS)
     {
-        // Fetch from remote storage   
-        DURATION_START(remoteDownload);
-        ssize_t nBytesFromRemote = std::atomic_load(&m_spRemoteClient)->ReadChunkSync(
-            remotePath,
-            remoteReadData->Buffer.get(),
-            m_nChunkSize,
-            chunkOffset);
+        ssize_t nBytesFromRemote = DownloadFullChunkFromBlob(remotePath, chunkOffset, *remoteReadData);
         if (nBytesFromRemote == -1)
         {
-            LOG_ERROR("Remote Client read failed. remotePath={} readSize={} readOffset={}",
-                remotePath,
-                m_nChunkSize,
-                chunkOffset);
             return nullptr;
         }
-
-        m_vecRemoteDownloadLatencies[m_nTotaRemotelDownloadLatencySamples.fetch_add(1) % m_nLatencySamplesVecSize] = DURATION_MS_GET(remoteDownload);
         LOG_DEBUG("Read file: {}, offset: {}, length: {} from remote server",
             remotePath, chunkOffset, nBytesFromRemote);
-        remoteReadData->BufferSize = nBytesFromRemote;
-        m_nReadChunksRemoteClient++;
     }
 
     // We have now the data in remoteReadData->Buffer, which is from remote storage.
     // Hence, we need to upload it to the cache server & prefetch cache
     std::shared_ptr<FileData> bufferForCacheUpload = remoteReadData;
+    auto cacheClient = std::atomic_load(&m_spCacheClient);
     if (remoteReadData->bIsUserBuffer)
     {
         // Zero copy read done from remote store into user buffer and cache is not enabled,
@@ -1522,14 +1667,15 @@ void StreamingClient::LogStats()
 void StreamingClient::LogReadChunkStats()
 {
     LOG_INFO("ReadChunk stats: MountName={} ChunkSize={} Total={} PrefetchCache={} RemoteCache={} RemoteClient={}"
-        " ZeroCopy={}",
+        " ZeroCopy={} SubChunk={}",
         m_strMountName,
         m_nChunkSize,
         m_nReadChunksTotal,
         m_nReadChunksPrefetchCache,
         m_nReadChunksRemoteCache,
         m_nReadChunksRemoteClient,
-        m_nReadChunksZeroCopy);
+        m_nReadChunksZeroCopy,
+        m_nReadChunksSubChunk);
 
     LOG_INFO("ReadFile requested stats: MountName={} TotalReads={} 128k={} 4MB={}, 100MB={} 1GB={} >1GB={}"
         " TotalBytes={} MaxReadBytes={}",

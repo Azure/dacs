@@ -31,6 +31,8 @@ class StreamingClientTest : public TestBase
             /*[in]*/ std::shared_ptr<FileData> writeData,
             /*[in]*/ size_t appendSize);
 
+        void EnsureSubChunkConfig();
+
         std::vector<char>                   m_vecBuffer;
         std::shared_ptr<ICacheClient>       m_cacheClient;
         std::shared_ptr<StreamingClient>    m_spStreamingClient;

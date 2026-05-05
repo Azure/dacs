@@ -202,6 +202,84 @@ TEST_F(LocalFSCacheClientTest, ZeroSizeUploadDownloadTest)
     ASSERT_EQ(dataRead, 0);
 }
 //---------------------------------------------------------------------------------------------------------------------
+TEST_F(LocalFSCacheClientTest, SubChunkOffsetDownloadTest)
+{
+    if (this->m_cacheClient == nullptr)
+    {
+        GTEST_SKIP();
+    }
+
+    const uint64_t fileSize = 1024 * 1024 * 4;
+    uint64_t dataRead = 0;
+    CacheStatus cacheStatus;
+
+    // Upload a 4MB chunk
+    string strFileName = GetRandFilename();
+    auto dataBuffer = GetRandDataBuffer(fileSize);
+    bool bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer, false /*isWrite*/);
+    ASSERT_EQ(bRetVal, true);
+    sleep(1);
+
+    // Download from startOffset=512 with length=256 — should return the correct sub-range
+    const uint64_t subOffset = 512;
+    const uint64_t subLength = 256;
+    std::vector<char> outBuffer(subLength);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, subOffset, subLength, outBuffer.data(), dataRead);
+    ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
+    ASSERT_EQ(dataRead, subLength);
+    AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get() + subOffset, dataRead);
+
+    // Download from a larger offset near the middle of the file
+    const uint64_t midOffset = fileSize / 2;
+    const uint64_t midLength = 1024;
+    outBuffer.resize(midLength);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, midOffset, midLength, outBuffer.data(), dataRead);
+    ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
+    ASSERT_EQ(dataRead, midLength);
+    AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get() + midOffset, dataRead);
+
+    // Download from the last byte of the file
+    const uint64_t lastByteOffset = fileSize - 1;
+    outBuffer.resize(1);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, lastByteOffset, 1, outBuffer.data(), dataRead);
+    ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
+    ASSERT_EQ(dataRead, 1);
+    ASSERT_EQ(outBuffer[0], dataBuffer->Buffer.get()[lastByteOffset]);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(LocalFSCacheClientTest, SubChunkOffsetPastEOFTest)
+{
+    if (this->m_cacheClient == nullptr)
+    {
+        GTEST_SKIP();
+    }
+
+    const uint64_t fileSize = 1024;
+    uint64_t dataRead = 0;
+    CacheStatus cacheStatus;
+
+    // Upload a small 1KB chunk
+    string strFileName = GetRandFilename();
+    auto dataBuffer = GetRandDataBuffer(fileSize);
+    bool bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer, false /*isWrite*/);
+    ASSERT_EQ(bRetVal, true);
+    sleep(1);
+
+    // Download with startOffset past EOF — should return 0 bytes
+    std::vector<char> outBuffer(256);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, fileSize + 100, 256, outBuffer.data(), dataRead);
+    ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
+    ASSERT_EQ(dataRead, 0);
+
+    // Download where startOffset + length exceeds file size — should return partial read
+    const uint64_t partialOffset = fileSize - 100;
+    outBuffer.resize(256);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, partialOffset, 256, outBuffer.data(), dataRead);
+    ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
+    ASSERT_EQ(dataRead, 100);
+    AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get() + partialOffset, dataRead);
+}
+//---------------------------------------------------------------------------------------------------------------------
 TEST_F(LocalFSCacheClientTest, ParallelUploadDownloadTest)
 {
     if (this->m_cacheClient == nullptr)

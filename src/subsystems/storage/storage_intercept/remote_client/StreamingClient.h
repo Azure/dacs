@@ -13,6 +13,7 @@
 #include <queue>
 #include <thread>
 #include <future>
+#include <optional>
 #include "IRemoteClient.h"
 #include "FileData.h"
 #include "ICacheClient.h"
@@ -76,8 +77,10 @@ class StreamingClient
         void ClearClients();
 
         #ifdef STORAGE_INTERCEPT_UT
-        // APIs to get stats for m_nReadChunksZeroCopy, used in unit testing
+        // APIs to get stats for read chunk counters, used in unit testing
         uint64_t GetReadChunksZeroCopy() const { return m_nReadChunksZeroCopy; }
+        uint64_t GetReadChunksSubChunk() const { return m_nReadChunksSubChunk; }
+        uint64_t GetReadChunksPrefetchCache() const { return m_nReadChunksPrefetchCache; }
         #endif
 
     private:
@@ -114,6 +117,10 @@ class StreamingClient
 
         const uint32_t                     m_nChunkSize;
 
+        // Sub-chunk read optimization: bypass full-chunk fetch for small cache-hit reads
+        const bool                         m_bEncryptionEnabled;
+        const bool                         m_bChecksumValidationEnabled;
+
         // Parallel chunk download related
         const bool                         m_bEnableChunkOpParallelism;
         const uint32_t                     m_nMaxChunkOpConcurrency;
@@ -146,6 +153,7 @@ class StreamingClient
         std::atomic_uint64_t               m_nReadChunksRemoteCache;
         std::atomic_uint64_t               m_nReadChunksRemoteClient;
         std::atomic_uint64_t               m_nReadChunksZeroCopy;
+        std::atomic_uint64_t               m_nReadChunksSubChunk;
         std::atomic_uint64_t               m_nWriteChunksTotalStarted;
         std::atomic_uint64_t               m_nWriteChunksTotalCompleted;
         std::atomic_uint64_t               m_nWriteChunksRemoteCache;
@@ -211,6 +219,32 @@ class StreamingClient
             /*[in] */ void* pUserPassedbuffer,
             /*[in] */ size_t bufSize,
             /*[in] */ size_t chunkCopyOffset);
+
+        // Attempt sub-chunk fast path for small reads. Returns bytes copied on success,
+        // or std::nullopt if caller should fall through to the full-chunk path.
+        std::optional<ssize_t> TrySubChunkRead(
+            /*[in] */ const std::string& remotePath,
+            /*[in] */ off64_t chunkOffset,
+            /*[in] */ void* pUserBuf,
+            /*[in] */ size_t bufSize,
+            /*[in] */ size_t chunkCopyOffset);
+
+        // Probe the cache server with a retry loop. Returns the final CacheStatus.
+        // On SUCCESS, readLength is set and metrics are recorded.
+        // Handles NOTFOUND retry (when lockHeldEnabled), INTERNAL_ERROR, CHECKSUM_MISMATCH.
+        cacheutils::CacheStatus ProbeCacheServerWithRetry(
+            /*[in] */ const std::string& cacheFilePath,
+            /*[in] */ off64_t chunkOffset,
+            /*[in] */ uint64_t startOffset,
+            /*[in] */ uint64_t length,
+            /*[in] */ char* buffer,
+            /*[out]*/ uint64_t& readLength);
+
+        // Download a full chunk from blob storage. Returns bytes read, or -1 on error.
+        ssize_t DownloadFullChunkFromBlob(
+            /*[in] */ const std::string& remotePath,
+            /*[in] */ off64_t chunkOffset,
+            /*[in] */ FileData& readData);
 
         // Function to serve read by sequentially downloading the required chunks.
         ssize_t ReadChunksSequential(
