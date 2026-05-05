@@ -108,6 +108,16 @@ fi
 popd
 echo -e "cache client lib integration test passed\n\n"
 
+echo "Running sub-chunk read integration test"
+add_interception_config_blob_with_cache /mnt/quiverfs
+eval "${SCRIPT_DIR}/synthetic_test_runner.sh -b ${BUILD_CONFIGURATION} -d small -s -n 5 -p 1"
+if [ $? -ne 0 ]
+then
+echo "Sub-chunk read integration test failed"
+exit 1
+fi
+echo -e "Sub-chunk read integration test passed\n\n"
+
 stop_cache_server
 
 #===============================================================================

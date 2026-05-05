@@ -86,16 +86,19 @@ CacheStatus LocalFSCacheClient::DownloadSync(
     const std::string cacheKey = GetCacheKey(filePath, fileOffset);
     const string localFilePath = m_strLocalCachePath + "/" + cacheKey;
 
-    if (startOffset > 0)
-    {
-        LOG_CRITICAL("non zero offset not supported, mountName={}, file={}, offset={}",
-            mountName, localFilePath, startOffset);
-        throw "non zero offset not supported";
-    }
-
     const int fileFD = StorageLibcApiWrapper::open(localFilePath.c_str(), O_RDONLY, 0777);
     if (fileFD >= 0)
     {
+        if (startOffset > 0)
+        {
+            if (StorageLibcApiWrapper::lseek64(fileFD, static_cast<off64_t>(startOffset), SEEK_SET) == -1)
+            {
+                LOG_WARN("Failed to lseek() for mountName={}, file={}, offset={}, errno={}:{}",
+                    mountName, localFilePath, startOffset, errno, strerror(errno));
+                StorageLibcApiWrapper::close(fileFD);
+                return cacheStatus;
+            }
+        }
         uint64_t totalRead = 0;
         while (totalRead < length)
         {

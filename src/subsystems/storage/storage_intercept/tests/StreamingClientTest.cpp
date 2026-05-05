@@ -8,11 +8,82 @@
 #include "InMemoryAttributesCache.h"
 #include "RemoteCacheClient.h"
 #include <atomic>
+#include <map>
 #include <vector>
 #include <mutex>
 #include <thread>
 //---------------------------------------------------------------------------------------------------------------------
 #define ASSERT_IF(condition, stmt)                                                         { if (condition) { stmt; } }
+//---------------------------------------------------------------------------------------------------------------------
+// In-memory cache client for testing the cache-server sub-chunk download path.
+// Tracks all DownloadSync calls so tests can verify startOffset/length parameters.
+//---------------------------------------------------------------------------------------------------------------------
+class InMemoryCacheClient : public ICacheClient
+{
+public:
+    struct DownloadCall {
+        std::string filePath;
+        off64_t fileOffset;
+        uint64_t startOffset;
+        uint64_t length;
+    };
+
+    cacheutils::CacheStatus DownloadSync(
+        const std::string& /*mountName*/,
+        const std::string& filePath,
+        off64_t fileOffset,
+        uint64_t startOffset,
+        uint64_t length,
+        char* buffer,
+        uint64_t& readLength) override
+    {
+        m_downloadCalls.push_back({filePath, fileOffset, startOffset, length});
+
+        std::string key = filePath + ":" + std::to_string(fileOffset);
+        auto it = m_store.find(key);
+        if (it == m_store.end())
+            return cacheutils::CacheStatus::NOTFOUND_LOCKED;
+
+        auto& data = it->second;
+        if (startOffset >= data->BufferSize)
+        {
+            readLength = 0;
+            return cacheutils::CacheStatus::SUCCESS;
+        }
+        uint64_t available = data->BufferSize - startOffset;
+        uint64_t toCopy = std::min(length, available);
+        memcpy(buffer, data->Buffer.get() + startOffset, toCopy);
+        readLength = toCopy;
+        return cacheutils::CacheStatus::SUCCESS;
+    }
+
+    bool Upload(
+        const std::string& /*mountName*/,
+        const std::string& filePath,
+        off64_t fileOffset,
+        std::shared_ptr<const FileData> fileData,
+        bool /*isWrite*/) override
+    {
+        std::string key = filePath + ":" + std::to_string(fileOffset);
+        m_store[key] = fileData;
+        m_uploadCalls.push_back(key);
+        return true;
+    }
+
+    std::vector<DownloadCall> m_downloadCalls;
+    std::vector<std::string> m_uploadCalls;  // keys of uploaded chunks
+    std::map<std::string, std::shared_ptr<const FileData>> m_store;
+};
+//---------------------------------------------------------------------------------------------------------------------
+void StreamingClientTest::EnsureSubChunkConfig()
+{
+    OverrideConfig(StorageInterceptConstants::ConfigNameCacheEncryptionEnabled, "false");
+    OverrideConfig(StorageInterceptConstants::ConfigNameCacheValidateChecksumEnabled, "false");
+    OverrideConfig(StorageInterceptConstants::ConfigNameEnableZeroCopy, "false");
+
+    m_spStreamingClient.reset();
+    SetUp();
+}
 //---------------------------------------------------------------------------------------------------------------------
 StreamingClientTest::StreamingClientTest()
     : TestBase(), m_vecBuffer(m_vecFileBuf)
@@ -299,6 +370,420 @@ TEST_F(StreamingClientTest, ReadSizeMoreThanFileSizeTestZC)
 }
 //---------------------------------------------------------------------------------------------------------------------
 // END: Test cases for streaming client with zero copy enabled
+//---------------------------------------------------------------------------------------------------------------------
+//---------------------------------------------------------------------------------------------------------------------
+// START: Test cases for streaming client with sub-chunk read optimization
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadFileTinyReadsSubChunkTest)
+{
+    EnsureSubChunkConfig();
+    uint64_t subChunkBefore = m_spStreamingClient->GetReadChunksSubChunk();
+
+    // First read — small read falls through sub-chunk (PrefetchCache miss, no cache
+    // server in serverless CI) to the full-chunk path, which populates PrefetchCache.
+    std::vector<char> readBuf(50);
+    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, 50);
+    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 0, 0, nBytesRead)));
+
+    // No Close() — keep PrefetchCache populated so the next read can hit sub-chunk.
+    uint64_t subChunkAfterWarmup = m_spStreamingClient->GetReadChunksSubChunk();
+
+    // Second read of same region should be a sub-chunk PrefetchCache hit
+    nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, 50);
+    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 0, 0, nBytesRead)));
+    ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkAfterWarmup, 1u);
+    ASSERT_GE(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 1u);
+    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadFileSubChunkAtOffsetTest)
+{
+    EnsureSubChunkConfig();
+    uint64_t subChunkBefore = m_spStreamingClient->GetReadChunksSubChunk();
+
+    // First read to populate PrefetchCache for chunk 0
+    std::vector<char> readBuf(512);
+    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 100, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, 512);
+
+    // No Close() — keep PrefetchCache populated
+    uint64_t subChunkAfterWarmup = m_spStreamingClient->GetReadChunksSubChunk();
+
+    // Second read at the same offset should hit sub-chunk PrefetchCache path
+    nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 100, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, 512);
+    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 100, 0, nBytesRead)));
+    ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkAfterWarmup, 1u);
+    ASSERT_GE(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 1u);
+    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadFileFullChunkBypassesSubChunkTest)
+{
+    EnsureSubChunkConfig();
+    uint64_t subChunkBefore = m_spStreamingClient->GetReadChunksSubChunk();
+
+    // A full-chunk-sized read should NOT use the sub-chunk path
+    std::vector<char> readBuf(DEFAULT_STREAMING_CHUNK_SIZE);
+
+    // First read to populate cache
+    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(DEFAULT_STREAMING_CHUNK_SIZE));
+    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+
+    // Second read — full chunk size is not less than m_nChunkSize, should not use sub-chunk
+    nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(DEFAULT_STREAMING_CHUNK_SIZE));
+    ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 0u);
+    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadFileSubChunkDisabledWithEncryptionTest)
+{
+    OverrideConfig(StorageInterceptConstants::ConfigNameCacheEncryptionEnabled, "true");
+    OverrideConfig(StorageInterceptConstants::ConfigNameCacheValidateChecksumEnabled, "false");
+    OverrideConfig(StorageInterceptConstants::ConfigNameEnableZeroCopy, "false");
+    m_spStreamingClient.reset();
+    SetUp();
+
+    uint64_t subChunkBefore = m_spStreamingClient->GetReadChunksSubChunk();
+
+    // First small read to populate PrefetchCache
+    std::vector<char> readBuf(50);
+    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, 50);
+
+    // Second read — sub-chunk should NOT activate when encryption is enabled
+    nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, 50);
+    ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 0u);
+    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadFileSubChunkDisabledWithChecksumTest)
+{
+    OverrideConfig(StorageInterceptConstants::ConfigNameCacheEncryptionEnabled, "false");
+    OverrideConfig(StorageInterceptConstants::ConfigNameCacheValidateChecksumEnabled, "true");
+    OverrideConfig(StorageInterceptConstants::ConfigNameEnableZeroCopy, "false");
+    m_spStreamingClient.reset();
+    SetUp();
+
+    uint64_t subChunkBefore = m_spStreamingClient->GetReadChunksSubChunk();
+
+    // First small read to populate PrefetchCache
+    std::vector<char> readBuf(50);
+    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, 50);
+
+    // Second read — sub-chunk should NOT activate when checksum validation is enabled
+    nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, 50);
+    ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 0u);
+    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadFileMultipleSubChunkHitsTest)
+{
+    EnsureSubChunkConfig();
+    uint64_t subChunkBefore = m_spStreamingClient->GetReadChunksSubChunk();
+
+    // Warmup read to populate PrefetchCache for chunk 0
+    std::vector<char> readBuf(256);
+    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, 256);
+
+    // No Close() — keep PrefetchCache populated
+    uint64_t subChunkAfterWarmup = m_spStreamingClient->GetReadChunksSubChunk();
+
+    // Multiple small reads at different offsets within the same cached chunk
+    for (int i = 0; i < 5; i++)
+    {
+        size_t offset = i * 256;
+        nBytesRead = m_spStreamingClient->ReadFile(
+            m_strRemoteFilePath, readBuf.data(), readBuf.size(), offset, REMOTE_FILE_SIZE);
+        ASSERT_EQ(nBytesRead, 256);
+        ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, offset, 0, nBytesRead)));
+    }
+
+    // All 5 reads should have been sub-chunk PrefetchCache hits
+    ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkAfterWarmup, 5u);
+    ASSERT_GE(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 5u);
+    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadFileSubChunkPrefetchCacheHitTest)
+{
+    EnsureSubChunkConfig();
+    // Verify the sub-chunk path serves from PrefetchCache when the file is still open.
+    // Without Close() between reads, PrefetchCache retains the chunk from the first read.
+    uint64_t subChunkBefore = m_spStreamingClient->GetReadChunksSubChunk();
+    uint64_t prefetchBefore = m_spStreamingClient->GetReadChunksPrefetchCache();
+
+    // First read — use full chunk size to force the full-chunk path (bypasses sub-chunk
+    // since bufSize >= threshold) and populate PrefetchCache.
+    std::vector<char> warmBuf(DEFAULT_STREAMING_CHUNK_SIZE);
+    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(), 0, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(DEFAULT_STREAMING_CHUNK_SIZE));
+
+    uint64_t subChunkAfterFirst = m_spStreamingClient->GetReadChunksSubChunk();
+
+    // No Close() — PrefetchCache still holds the chunk
+
+    // Second small read on the same chunk — should hit PrefetchCache sub-chunk path
+    std::vector<char> readBuf(128);
+    nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, 128);
+    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 0, 0, nBytesRead)));
+
+    // Sub-chunk counter should have incremented by 1 from the second read
+    ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkAfterFirst, 1u);
+    // PrefetchCache counter should have incremented (from the sub-chunk prefetch-cache hit)
+    ASSERT_GT(m_spStreamingClient->GetReadChunksPrefetchCache(), prefetchBefore);
+
+    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadFileSubChunkCacheServerPathTest)
+{
+    EnsureSubChunkConfig();
+
+    // Enable cache so SetClients stores our mock cache client (in serverless CI
+    // environments GetCacheEnable() defaults to false).
+    OverrideConfig(StorageInterceptConstants::ConfigNameCacheEnable, "true");
+
+    // Create a StreamingClient backed by an in-memory cache to exercise the
+    // cache-server sub-chunk download path (PrefetchCache miss → DownloadSync
+    // with startOffset/length).
+    auto mockCache = std::make_shared<InMemoryCacheClient>();
+    auto client = std::make_shared<StreamingClient>(
+        "", mockCache, std::make_shared<InMemoryAttributesCache>());
+
+    // Purge any stale PrefetchCache entries from prior tests for this file
+    client->Close(m_strRemoteFilePath, false /* isWriteMode */);
+
+    // Warmup: full-chunk read populates the in-memory cache via Upload
+    std::vector<char> warmBuf(DEFAULT_STREAMING_CHUNK_SIZE);
+    ssize_t nBytesRead = client->ReadFile(
+        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(), 0, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(DEFAULT_STREAMING_CHUNK_SIZE));
+
+    // Close purges PrefetchCache so the next read must go to the cache server
+    client->Close(m_strRemoteFilePath, false /* isWriteMode */);
+
+    size_t callsBefore = mockCache->m_downloadCalls.size();
+    uint64_t subChunkBefore = client->GetReadChunksSubChunk();
+
+    // Small sub-chunk read at offset 100, size 512
+    std::vector<char> readBuf(512);
+    nBytesRead = client->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 100, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, 512);
+
+    // Verify the cache server received a sub-chunk download request
+    ASSERT_GT(mockCache->m_downloadCalls.size(), callsBefore);
+    auto& lastCall = mockCache->m_downloadCalls.back();
+    ASSERT_EQ(lastCall.startOffset, 100u);
+    ASSERT_EQ(lastCall.length, 512u);
+
+    // Verify the sub-chunk counter incremented
+    ASSERT_EQ(client->GetReadChunksSubChunk() - subChunkBefore, 1u);
+
+    // Verify data correctness
+    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 100, 0, 512)));
+
+    client->Close(m_strRemoteFilePath, false /* isWriteMode */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadFileSubChunkColdPathTest)
+{
+    EnsureSubChunkConfig();
+
+    // Enable cache so SetClients stores our mock cache client
+    OverrideConfig(StorageInterceptConstants::ConfigNameCacheEnable, "true");
+
+    // Create a StreamingClient with an EMPTY in-memory cache — every chunk is a cold miss.
+    // The sub-chunk probe will return NOTFOUND_LOCKED (we get the lock).
+    // The fix should: download full chunk from blob, upload to cache server, extract sub-chunk.
+    auto mockCache = std::make_shared<InMemoryCacheClient>();
+    auto client = std::make_shared<StreamingClient>(
+        "", mockCache, std::make_shared<InMemoryAttributesCache>());
+
+    // Purge any stale PrefetchCache entries
+    client->Close(m_strRemoteFilePath, false /* isWriteMode */);
+
+    size_t uploadsBefore = mockCache->m_uploadCalls.size();
+    uint64_t subChunkBefore = client->GetReadChunksSubChunk();
+
+    // Small sub-chunk read at offset 100, size 512 — cache is empty (cold)
+    std::vector<char> readBuf(512);
+    ssize_t nBytesRead = client->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 100, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, 512);
+
+    // Verify the sub-chunk counter incremented (cold path still counts as sub-chunk)
+    ASSERT_EQ(client->GetReadChunksSubChunk() - subChunkBefore, 1u);
+
+    // Verify the cache server received an Upload (the lock was used correctly)
+    ASSERT_GT(mockCache->m_uploadCalls.size(), uploadsBefore);
+
+    // Verify data correctness
+    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 100, 0, 512)));
+
+    // Verify cache is now populated — a second sub-chunk read should hit the cache
+    client->Close(m_strRemoteFilePath, false /* isWriteMode */);  // purge PrefetchCache
+    size_t callsBefore = mockCache->m_downloadCalls.size();
+
+    std::vector<char> readBuf2(256);
+    nBytesRead = client->ReadFile(
+        m_strRemoteFilePath, readBuf2.data(), readBuf2.size(), 200, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, 256);
+
+    // This second read should hit the cache (SUCCESS, not NOTFOUND_LOCKED)
+    ASSERT_GT(mockCache->m_downloadCalls.size(), callsBefore);
+    auto& secondCall = mockCache->m_downloadCalls.back();
+    ASSERT_EQ(secondCall.startOffset, 200u);
+    ASSERT_EQ(secondCall.length, 256u);
+
+    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf2, 200, 0, 256)));
+
+    client->Close(m_strRemoteFilePath, false /* isWriteMode */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadFileSubChunkZeroByteTest)
+{
+    EnsureSubChunkConfig();
+
+    // Warmup: populate PrefetchCache for chunk 0
+    std::vector<char> warmBuf(DEFAULT_STREAMING_CHUNK_SIZE);
+    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(), 0, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(DEFAULT_STREAMING_CHUNK_SIZE));
+
+    // Zero-byte read — should return 0 without crashing
+    char dummy = 0;
+    nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, &dummy, 0, 0, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, 0);
+
+    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadFileSubChunkNearEOFTest)
+{
+    EnsureSubChunkConfig();
+
+    // Warmup: read at offset near the last chunk to populate PrefetchCache for chunk 3
+    const size_t lastChunkOffset = (REMOTE_FILE_SIZE / DEFAULT_STREAMING_CHUNK_SIZE - 1)
+                                   * DEFAULT_STREAMING_CHUNK_SIZE;
+    std::vector<char> warmBuf(DEFAULT_STREAMING_CHUNK_SIZE);
+    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(), lastChunkOffset, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(DEFAULT_STREAMING_CHUNK_SIZE));
+
+    uint64_t subChunkBefore = m_spStreamingClient->GetReadChunksSubChunk();
+
+    // Read near EOF: request 512 bytes but only 100 bytes remain
+    const size_t nearEOFOffset = REMOTE_FILE_SIZE - 100;
+    std::vector<char> readBuf(512);
+    nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), nearEOFOffset, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, 100);
+    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, nearEOFOffset, 0, nBytesRead)));
+
+    // The read should have taken the sub-chunk PrefetchCache path
+    ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 1u);
+
+    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadFileSubChunkBoundaryStraddleTest)
+{
+    EnsureSubChunkConfig();
+
+    // Enable cache so SetClients stores our mock cache client
+    OverrideConfig(StorageInterceptConstants::ConfigNameCacheEnable, "true");
+
+    // Create a StreamingClient backed by an in-memory cache to verify that a
+    // small read straddling two chunks issues sub-chunk downloads for both.
+    auto mockCache = std::make_shared<InMemoryCacheClient>();
+    auto client = std::make_shared<StreamingClient>(
+        "", mockCache, std::make_shared<InMemoryAttributesCache>());
+
+    // Purge any stale PrefetchCache entries
+    client->Close(m_strRemoteFilePath, false /* isWriteMode */);
+
+    // Warmup: read chunk 0 and chunk 1 fully to populate the in-memory cache
+    std::vector<char> warmBuf(DEFAULT_STREAMING_CHUNK_SIZE);
+    ssize_t nBytesRead = client->ReadFile(
+        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(), 0, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(DEFAULT_STREAMING_CHUNK_SIZE));
+
+    nBytesRead = client->ReadFile(
+        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(),
+        DEFAULT_STREAMING_CHUNK_SIZE, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(DEFAULT_STREAMING_CHUNK_SIZE));
+
+    // Close purges PrefetchCache — next read must go through the cache server
+    client->Close(m_strRemoteFilePath, false /* isWriteMode */);
+
+    size_t downloadsBefore = mockCache->m_downloadCalls.size();
+    size_t uploadsBefore   = mockCache->m_uploadCalls.size();
+    uint64_t subChunkBefore = client->GetReadChunksSubChunk();
+
+    // Read 4KB straddling the chunk boundary: 2KB from end of chunk 0, 2KB from start of chunk 1
+    constexpr size_t straddleReadSize = 4096;
+    constexpr size_t overlap = 2048;
+    const off64_t straddleOffset = DEFAULT_STREAMING_CHUNK_SIZE - overlap;
+
+    std::vector<char> readBuf(straddleReadSize);
+    nBytesRead = client->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), straddleOffset, REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(straddleReadSize));
+
+    // Verify data correctness
+    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(
+        m_vecBuffer, readBuf, straddleOffset, 0, straddleReadSize)));
+
+    // Exactly 2 new DownloadSync calls — one per chunk
+    ASSERT_EQ(mockCache->m_downloadCalls.size(), downloadsBefore + 2);
+
+    // First call: tail of chunk 0
+    auto& call0 = mockCache->m_downloadCalls[downloadsBefore];
+    ASSERT_EQ(call0.fileOffset, 0);
+    ASSERT_EQ(call0.startOffset, static_cast<uint64_t>(DEFAULT_STREAMING_CHUNK_SIZE - overlap));
+    ASSERT_EQ(call0.length, static_cast<uint64_t>(overlap));
+
+    // Second call: head of chunk 1
+    auto& call1 = mockCache->m_downloadCalls[downloadsBefore + 1];
+    ASSERT_EQ(call1.fileOffset, static_cast<off64_t>(DEFAULT_STREAMING_CHUNK_SIZE));
+    ASSERT_EQ(call1.startOffset, 0u);
+    ASSERT_EQ(call1.length, static_cast<uint64_t>(overlap));
+
+    // No new uploads — both chunks were already cached (warm path)
+    ASSERT_EQ(mockCache->m_uploadCalls.size(), uploadsBefore);
+
+    // Sub-chunk counter incremented by 2 (one per chunk portion)
+    ASSERT_EQ(client->GetReadChunksSubChunk() - subChunkBefore, 2u);
+
+    client->Close(m_strRemoteFilePath, false /* isWriteMode */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+// END: Test cases for streaming client with sub-chunk read optimization
 //---------------------------------------------------------------------------------------------------------------------
 //---------------------------------------------------------------------------------------------------------------------
 // START: Test cases for writes
