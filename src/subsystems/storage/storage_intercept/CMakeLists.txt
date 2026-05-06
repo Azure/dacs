@@ -46,20 +46,22 @@ set(CommonDeps CacheClientLib StorageCommon CacheProto ClientConnections Encrypt
 # Linker flags to hide static symbols
 set(HIDE_STATIC_SYMBOLS_FLAGS "-Wl,--exclude-libs,ALL")
 
-# storage intercept library meant to be LD_PRELOADed, so needs to link to the dlsym wrapper
+# Core storage dependencies
+set(STORAGE_CORE_DEPS StorageCommon CacheProto ClientConnections EncryptionUtils)
+
+# storage intercept library meant to be LD_PRELOADed
 add_library(StorageIntercept SHARED ${STORAGE_INTERCEPT_SOURCES_INTERCEPTOR})
-add_dependencies(StorageIntercept StorageLibcDlsymWrapper StorageCommon CacheProto ClientConnections EncryptionUtils)
-target_link_libraries(StorageIntercept StorageLibcDlsymWrapper ${CommonDeps} ibverbs)
+add_dependencies(StorageIntercept StorageLibcDlsymWrapper ${STORAGE_CORE_DEPS})
+target_link_libraries(StorageIntercept StorageLibcDlsymWrapper ${CommonDeps})
 target_link_options(StorageIntercept PRIVATE ${HIDE_STATIC_SYMBOLS_FLAGS})
 
 # cache storage client library called directly without LD_PRELOAD (from python package for example)
-# No dlsym wrapper needed here.
 add_library(StorageDirect SHARED ${STORAGE_INTERCEPT_SOURCES_INTERCEPTOR})
-add_dependencies(StorageDirect StorageLibcDirectWrapper StorageCommon CacheProto ClientConnections EncryptionUtils)
-target_link_libraries(StorageDirect StorageLibcDirectWrapper ${CommonDeps} ibverbs)
+add_dependencies(StorageDirect StorageLibcDirectWrapper ${STORAGE_CORE_DEPS})
+target_link_libraries(StorageDirect StorageLibcDirectWrapper ${CommonDeps})
 target_link_options(StorageDirect PRIVATE ${HIDE_STATIC_SYMBOLS_FLAGS})
 
-add_dependencies(CacheClient StorageLibcDirectWrapper StorageCommon CacheProto ClientConnections EncryptionUtils)
+add_dependencies(CacheClient StorageLibcDirectWrapper ${STORAGE_CORE_DEPS})
 target_link_libraries(CacheClient StorageLibcDirectWrapper ${CommonDeps})
 target_link_options(CacheClient PRIVATE ${HIDE_STATIC_SYMBOLS_FLAGS})
 
