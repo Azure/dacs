@@ -35,14 +35,14 @@ type DynamicScaleConfig struct {
 	// are available to meet the minimum.
 	// +optional
 	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=99
+	// +kubebuilder:validation:Maximum=499
 	MinServers *int32 `json:"minServers,omitempty"`
 
 	// Maximum number of cache servers to run. The replica count will never
 	// exceed this value regardless of the percentage calculation.
 	// +optional
 	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=99
+	// +kubebuilder:validation:Maximum=499
 	MaxServers *int32 `json:"maxServers,omitempty"`
 }
 
@@ -52,6 +52,7 @@ type StaticScaleConfig struct {
 	// Number of cache server replicas to maintain
 	// +required
 	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=499
 	NumServers int32 `json:"numServers"`
 }
 

@@ -215,7 +215,7 @@ func TestCacheWebhook_ValidateCreate(t *testing.T) {
 					MinServers:             ptr.To(int32(0)),
 				}
 			},
-			expectedErr: "must be between 1 and 99",
+			expectedErr: "must be between 1 and 499",
 		},
 		{
 			name: "rejects maxServers below 1",
@@ -225,27 +225,27 @@ func TestCacheWebhook_ValidateCreate(t *testing.T) {
 					MaxServers:             ptr.To(int32(0)),
 				}
 			},
-			expectedErr: "must be between 1 and 99",
+			expectedErr: "must be between 1 and 499",
 		},
 		{
-			name: "rejects minServers above 99",
+			name: "rejects minServers above 499",
 			mutate: func(c *Cache) {
 				c.Spec.Scaling.Dynamic = &DynamicScaleConfig{
 					PercentageOfNodesToUse: 50,
-					MinServers:             ptr.To(int32(100)),
+					MinServers:             ptr.To(int32(500)),
 				}
 			},
-			expectedErr: "must be between 1 and 99",
+			expectedErr: "must be between 1 and 499",
 		},
 		{
-			name: "rejects maxServers above 99",
+			name: "rejects maxServers above 499",
 			mutate: func(c *Cache) {
 				c.Spec.Scaling.Dynamic = &DynamicScaleConfig{
 					PercentageOfNodesToUse: 50,
-					MaxServers:             ptr.To(int32(100)),
+					MaxServers:             ptr.To(int32(500)),
 				}
 			},
-			expectedErr: "must be between 1 and 99",
+			expectedErr: "must be between 1 and 499",
 		},
 		{
 			name: "rejects negative minServers",
@@ -255,7 +255,7 @@ func TestCacheWebhook_ValidateCreate(t *testing.T) {
 					MinServers:             ptr.To(int32(-1)),
 				}
 			},
-			expectedErr: "must be between 1 and 99",
+			expectedErr: "must be between 1 and 499",
 		},
 		{
 			name: "rejects negative maxServers",
@@ -265,7 +265,7 @@ func TestCacheWebhook_ValidateCreate(t *testing.T) {
 					MaxServers:             ptr.To(int32(-1)),
 				}
 			},
-			expectedErr: "must be between 1 and 99",
+			expectedErr: "must be between 1 and 499",
 		},
 		{
 			name: "rejects minServers exceeding maxServers",
@@ -415,6 +415,13 @@ func TestCacheWebhook_ValidateCreate(t *testing.T) {
 				c.Spec.Scaling.Static = &StaticScaleConfig{NumServers: 0}
 			},
 			expectedErr: "must be at least 1",
+		},
+		{
+			name: "rejects static numServers = 500",
+			mutate: func(c *Cache) {
+				c.Spec.Scaling.Static = &StaticScaleConfig{NumServers: 500}
+			},
+			expectedErr: "must be at most 499",
 		},
 	}
 
