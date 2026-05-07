@@ -56,9 +56,9 @@ sudo chmod 777 ${CACHE_SERVER_PATH} ${CACHE_LOCAL_SSD_PATH}
 echo "Cache directories cleaned and ready: ${CACHE_SERVER_PATH}, ${CACHE_LOCAL_SSD_PATH}"
 
 # 1.3 Cache Server Metrics Configuration
-# Set the cache server metrics port to 9096 for testing
-export CACHESERVER_METRICS_PORT="9096"
-echo "cache server metrics port set to ${CACHESERVER_METRICS_PORT}"
+CACHESERVER_METRICS_PORT_START=9096
+CACHESERVER_METRICS_PORT_LENGTH=10000
+export CACHESERVER_METRICS_PORT="${CACHESERVER_METRICS_PORT_START}"
 
 # 1.4 Build Configuration Detection
 if [ -z "$1" ]
@@ -346,11 +346,19 @@ function start_cache_server() {
   mkdir -p ${CACHE_SERVER_PATH}
 
   # Loop and find free port to listen
-  isfree=$(netstat -taln | grep $CACHE_SERVER_PORT)
+  isfree=$(netstat -taln | grep ":$CACHE_SERVER_PORT ")
   while [[ -n "$isfree" ]]; do
       export CACHE_SERVER_PORT=$(($CACHE_SERVER_PORT_RANGE_START + $RANDOM % $CACHE_SERVER_PORT_RANGE_LENGTH))
-      isfree=$(netstat -taln | grep $CACHE_SERVER_PORT)
+      isfree=$(netstat -taln | grep ":$CACHE_SERVER_PORT ")
   done
+  echo "Cache server port set to ${CACHE_SERVER_PORT}."
+
+  isfree=$(netstat -taln | grep ":$CACHESERVER_METRICS_PORT ")
+  while [[ -n "$isfree" ]]; do
+      export CACHESERVER_METRICS_PORT=$(($CACHESERVER_METRICS_PORT_START + $RANDOM % $CACHESERVER_METRICS_PORT_LENGTH))
+      isfree=$(netstat -taln | grep ":$CACHESERVER_METRICS_PORT ")
+  done
+  echo "Cache server metrics port set to ${CACHESERVER_METRICS_PORT}."
   
   # Start cache server in the background and save pid
   CACHE_SERVER_EXE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/CacheServer"

@@ -16,7 +16,9 @@ CACHE_SERVER_PORT_RANGE_START=20100
 CACHE_SERVER_PORT_RANGE_LENGTH=10000
 export CACHE_SERVER_PORT=${CACHE_SERVER_PORT_RANGE_START}
 export CACHE_SERVER_LIST="127.0.0.1"
-export CACHESERVER_METRICS_PORT=9096
+CACHESERVER_METRICS_PORT_START=9096
+CACHESERVER_METRICS_PORT_LENGTH=10000
+export CACHESERVER_METRICS_PORT="${CACHESERVER_METRICS_PORT_START}"
 CACHE_SERVER_PID=-1
 CACHE_SERVER_PATH=/tmp/_cache
 CACHE_LOCAL_SSD_PATH=/tmp/_localcache
@@ -39,12 +41,20 @@ function start_cache_server() {
   mkdir -p ${CACHE_SERVER_PATH}
 
   # Loop and find free port to listen
-  isfree=$(netstat -taln | grep $CACHE_SERVER_PORT)
+  isfree=$(netstat -taln | grep ":$CACHE_SERVER_PORT ")
   while [[ -n "$isfree" ]]; do
       export CACHE_SERVER_PORT=$(($CACHE_SERVER_PORT_RANGE_START + $RANDOM % $CACHE_SERVER_PORT_RANGE_LENGTH))
-      isfree=$(netstat -taln | grep $CACHE_SERVER_PORT)
+      isfree=$(netstat -taln | grep ":$CACHE_SERVER_PORT ")
   done
-  
+  echo "Cache server port set to ${CACHE_SERVER_PORT}."
+
+  isfree=$(netstat -taln | grep ":$CACHESERVER_METRICS_PORT ")
+  while [[ -n "$isfree" ]]; do
+      export CACHESERVER_METRICS_PORT=$(($CACHESERVER_METRICS_PORT_START + $RANDOM % $CACHESERVER_METRICS_PORT_LENGTH))
+      isfree=$(netstat -taln | grep ":$CACHESERVER_METRICS_PORT ")
+  done
+  echo "Cache server metrics port set to ${CACHESERVER_METRICS_PORT}."
+
   # Start cache server in the background and save pid
   CACHE_SERVER_EXE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/CacheServer"
   TTL_WINDOW_IN_SECONDS=5
