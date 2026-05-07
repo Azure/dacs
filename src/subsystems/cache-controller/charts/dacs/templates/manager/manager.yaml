@@ -47,6 +47,8 @@ spec:
                   command:
                     - /manager
                   env:
+                    - name: CACHE_CONTROLLER_LOGLEVEL
+                      value: {{ .Values.manager.logLevel | quote }}
                     - name: CACHE_CONTROLLER_CACHESERVERIMAGE
                       value: "{{ include "chart.image" (dict "global" .Values.global "repository" .Values.manager.cacheServerImage.repository "tag" .Values.manager.cacheServerImage.tag "appVersion" .Chart.AppVersion) }}"
                     - name: CACHE_CONTROLLER_IMAGEPULLPOLICY

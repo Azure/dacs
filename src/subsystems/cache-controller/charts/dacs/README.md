@@ -39,6 +39,7 @@ helm install dacs ./charts/dacs \
 | `manager.image.repository` | Controller image repository | `dacs/dacs` |
 | `manager.image.tag` | Controller image tag | `latest` |
 | `manager.image.pullPolicy` | Image pull policy | `IfNotPresent` |
+| `manager.logLevel` | Controller log level via env (`CACHE_CONTROLLER_LOGLEVEL`) | `info` |
 | `manager.resources.limits.cpu` | CPU limit | `500m` |
 | `manager.resources.limits.memory` | Memory limit | `128Mi` |
 | `manager.resources.requests.cpu` | CPU request | `10m` |
