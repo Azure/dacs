@@ -6,6 +6,9 @@ manager:
   replicas: 1
   # Namespace for controller deployment (defaults to Release.Namespace)
   namespace: ""
+
+  # Controller log level passed via CACHE_CONTROLLER_LOGLEVEL (e.g. trace, debug, info, warn, error)
+  logLevel: info
   
   image:
     repository: acstor/dacs-controller

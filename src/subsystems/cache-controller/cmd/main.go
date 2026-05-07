@@ -56,6 +56,15 @@ func init() {
 	// +kubebuilder:scaffold:scheme
 }
 
+func getZapLogLevel(logLevel string) zapcore.Level {
+	zapLevel, err := zapcore.ParseLevel(logLevel)
+	if err != nil {
+		setupLog.Error(err, "could not parse zap log level, defaulting to info", "logLevel", logLevel)
+		return zapcore.InfoLevel
+	}
+	return zapLevel
+}
+
 func initLogger(logLevel string) {
 	// We use 2 logging libraries:
 	// 1. logrus for general logging.
@@ -68,14 +77,6 @@ func initLogger(logLevel string) {
 	} else {
 		log.SetLevel(level)
 	}
-
-	// Initialize zap logger with the same log level
-	var zapLevel zapcore.Level
-	if err := zapLevel.UnmarshalText([]byte(logLevel)); err != nil {
-		log.Warnf("Could not parse zap log level from %s, defaulting to info", logLevel)
-		zapLevel = zapcore.InfoLevel
-	}
-	ctrl.SetLogger(zap.New(zap.Level(zapLevel)))
 
 	// Setup logrus hooks to separate stdout and stderr
 	// From https://github.com/sirupsen/logrus/tree/master/hooks/writer#usage
@@ -156,17 +157,17 @@ func main() {
 		"cache-controller-validating-webhook-configuration",
 		"The name of the ValidatingWebhookConfiguration.")
 
+	internalConfig := config.GetConfig()
+	setupLog.Info("Configuration loaded", "fullConfig", internalConfig)
+	initLogger(internalConfig.LogLevel)
+
 	opts := zap.Options{
 		Development: true,
+		Level:       getZapLogLevel(internalConfig.LogLevel),
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
-
-	internalConfig := config.GetConfig()
-	setupLog.Info("Configuration loaded", "fullConfig", internalConfig)
-
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
-	initLogger(internalConfig.LogLevel)
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
