@@ -229,6 +229,9 @@ func (r *Cache) validateCache() (admission.Warnings, error) { //nolint:gocyclo
 		if r.Spec.Scaling.Static.NumServers < 1 {
 			allErrs = append(allErrs, field.Invalid(staticPath.Child("numServers"), r.Spec.Scaling.Static.NumServers, "must be at least 1"))
 		}
+		if r.Spec.Scaling.Static.NumServers > 499 {
+			allErrs = append(allErrs, field.Invalid(staticPath.Child("numServers"), r.Spec.Scaling.Static.NumServers, "must be at most 499"))
+		}
 	}
 
 	if r.Spec.Scaling.Dynamic != nil {
@@ -237,13 +240,13 @@ func (r *Cache) validateCache() (admission.Warnings, error) { //nolint:gocyclo
 			allErrs = append(allErrs, field.Invalid(dynamicPath.Child("percentageOfNodesToUse"), r.Spec.Scaling.Dynamic.PercentageOfNodesToUse, "must be between 1 and 100"))
 		}
 		if r.Spec.Scaling.Dynamic.MinServers != nil {
-			if *r.Spec.Scaling.Dynamic.MinServers < 1 || *r.Spec.Scaling.Dynamic.MinServers > 99 {
-				allErrs = append(allErrs, field.Invalid(dynamicPath.Child("minServers"), *r.Spec.Scaling.Dynamic.MinServers, "must be between 1 and 99"))
+			if *r.Spec.Scaling.Dynamic.MinServers < 1 || *r.Spec.Scaling.Dynamic.MinServers > 499 {
+				allErrs = append(allErrs, field.Invalid(dynamicPath.Child("minServers"), *r.Spec.Scaling.Dynamic.MinServers, "must be between 1 and 499"))
 			}
 		}
 		if r.Spec.Scaling.Dynamic.MaxServers != nil {
-			if *r.Spec.Scaling.Dynamic.MaxServers < 1 || *r.Spec.Scaling.Dynamic.MaxServers > 99 {
-				allErrs = append(allErrs, field.Invalid(dynamicPath.Child("maxServers"), *r.Spec.Scaling.Dynamic.MaxServers, "must be between 1 and 99"))
+			if *r.Spec.Scaling.Dynamic.MaxServers < 1 || *r.Spec.Scaling.Dynamic.MaxServers > 499 {
+				allErrs = append(allErrs, field.Invalid(dynamicPath.Child("maxServers"), *r.Spec.Scaling.Dynamic.MaxServers, "must be between 1 and 499"))
 			}
 		}
 		if r.Spec.Scaling.Dynamic.MinServers != nil && r.Spec.Scaling.Dynamic.MaxServers != nil {
