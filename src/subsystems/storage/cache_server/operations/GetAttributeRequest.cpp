@@ -67,6 +67,7 @@ void PopulateAttributesInResponse(GetAttributeResponse& getAttributeResponse,
     fileAttr->set_filesize(cacheAttr.m_filesize);
     fileAttr->set_accessedtime(cacheAttr.m_accessedtime);
     fileAttr->set_modifiedtime(cacheAttr.m_modifiedtime);
+    fileAttr->set_version(cacheAttr.m_version);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool HandleGetAttribute(IConnection& clientConnection, const GetAttributeRequest& getAttributeRequest)

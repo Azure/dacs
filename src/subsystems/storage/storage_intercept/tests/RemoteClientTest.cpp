@@ -4,6 +4,7 @@
 #include "RemoteClientTest.h"
 #include "RemoteClientProvider.h"
 #include "mock/MockRemoteClient.h"
+#include <dirent.h>
 //---------------------------------------------------------------------------------------------------------------------
 RemoteClientTest::RemoteClientTest()
     : TestBase()
@@ -42,6 +43,16 @@ TEST_F(RemoteClientTest, GetPropertiesTest)
     ASSERT_EQ(result, 0);
     ASSERT_EQ(fileAttr.isDir, false);
     ASSERT_EQ(fileAttr.size, REMOTE_FILE_SIZE);
+    if (m_bUsingMock)
+    {
+        // Mock client reads dacsfileversion from file xattr set during setup
+        ASSERT_EQ(fileAttr.version, "mock-test-version-001");
+    }
+    else
+    {
+        // Real Azure blobs without dacsfileversion fall back to etag
+        ASSERT_FALSE(fileAttr.version.empty());
+    }
 
     FileAttributes dirAttr;
     result = m_RemoteClient->GetProperties(m_strRemoteDirPath, dirAttr);
@@ -56,6 +67,24 @@ TEST_F(RemoteClientTest, ReadDirectoryTest)
     std::string newContToken = m_RemoteClient->ReadDirectory(m_strRemoteDirPath, "", vecDirEntries);
     ASSERT_EQ(newContToken, "");
     ASSERT_EQ(vecDirEntries.size(), 2);
+    for (const auto& entry : vecDirEntries)
+    {
+        if (entry.d_type == DT_DIR)
+        {
+            // Directories never have version
+            ASSERT_EQ(entry.d_version[0], '\0');
+        }
+        else if (m_bUsingMock)
+        {
+            // Mock client reads dacsfileversion from file xattr
+            ASSERT_STREQ(entry.d_version, "mock-test-version-001");
+        }
+        else
+        {
+            // Real Azure blobs without dacsfileversion fall back to etag
+            ASSERT_NE(entry.d_version[0], '\0');
+        }
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(RemoteClientTest, GetPropForDirPathEndingWithDirDelimiterTest)

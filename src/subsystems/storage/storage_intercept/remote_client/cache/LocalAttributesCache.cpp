@@ -110,6 +110,7 @@ CacheStatus LocalAttributesCache::Get(const std::string& path, FileAttributes& f
         fileAttributes.aTime.tv_sec = response.fileattribute().accessedtime();
         fileAttributes.mTime.tv_sec = response.fileattribute().modifiedtime();
         fileAttributes.cTime.tv_sec = response.fileattribute().modifiedtime();
+        fileAttributes.version = response.fileattribute().version();
         cacheStatus = CacheStatus::SUCCESS;
     }
     else if (response.result() == cache::GetAttributeResponse::NOT_FOUND_GOT_LOCK)
@@ -172,6 +173,7 @@ void LocalAttributesCache::PutAll(
             fileAttributes.mTime.tv_sec = dirEntry.d_mtime;
             fileAttributes.aTime.tv_sec = dirEntry.d_atime;
             fileAttributes.cTime = fileAttributes.mTime;
+            fileAttributes.version = dirEntry.d_version;
             auto uploadContext = make_unique<UploadContext>(
                 StorageInterceptUtils::CombinePath(pathPrefix, dirEntry.d_name), fileAttributes);
             m_uploadQueue.push(move(uploadContext));
@@ -231,6 +233,7 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
         attr->set_filesize(queueEntry->m_fileAttributes.size);
         attr->set_accessedtime(queueEntry->m_fileAttributes.aTime.tv_sec);
         attr->set_modifiedtime(queueEntry->m_fileAttributes.mTime.tv_sec);
+        attr->set_version(queueEntry->m_fileAttributes.version);
     }
     LOG_DEBUG_REQID("Creating PutAttributeRequest with {} entries", *putAttributeRequest, putAttributeRequest->fileattributes_size());
 

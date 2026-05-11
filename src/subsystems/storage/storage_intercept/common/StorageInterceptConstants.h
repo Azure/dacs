@@ -139,6 +139,10 @@ namespace StorageInterceptConstants
     const char* const CACHE_META_FILE_SIZE = "FILE_SIZE";
     const char* const CACHE_META_FILE_ATIME = "FILE_ATIME";
     const char* const CACHE_META_FILE_MTIME = "FILE_MTIME";
+    const char* const CACHE_META_FILE_VERSION = "FILE_VERSION";
+
+    // Azure blob metadata key for file version
+    const char* const BlobMetadataKeyVersion = "dacsfileversion";
 
     // Config constants for write support
     const char* const ConfigNameWriteEnable = "enableWrite";

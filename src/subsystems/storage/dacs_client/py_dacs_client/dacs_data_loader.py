@@ -107,6 +107,7 @@ storage_intercept_lib.dacs_stat.restype = c_int
 #   off64_t             d_size;      /* Length of this file, 0 if its a directory */
 #   time_t              d_atime;     /* Last accessed time */
 #   time_t              d_mtime;     /* Last modified time */
+#   char                d_version[D_VERSION_LEN]; /* File version */
 # };
 
 
@@ -121,6 +122,7 @@ class DirectoryEntry(Structure):
         ("d_size", c_long),
         ("d_atime", c_long),
         ("d_mtime", c_long),
+        ("d_version", c_char * 40),  # Internal field, required for struct layout, not exposed to users
     ]
 
 

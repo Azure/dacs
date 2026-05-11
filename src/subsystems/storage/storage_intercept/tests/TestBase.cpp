@@ -8,6 +8,7 @@
 #include <map>
 #include <mutex>
 #include <fstream>
+#include <sys/xattr.h>
 #include <stdlib.h>
 #include <time.h>
 #include <vector>
@@ -166,11 +167,20 @@ void TestBase::SetupMockRemoteClient()
     ASSERT_EQ(::close(nFd), 0);
     std::cout << "MockRemoteClient Setup created test file " << mockClientTestFilePath << std::endl;
 
+    // Set dacsfileversion xattr on test file for version metadata testing
+    std::string xattrName = std::string("user.") + StorageInterceptConstants::BlobMetadataKeyVersion;
+    std::string xattrValue = "mock-test-version-001";
+    setxattr(mockClientTestFilePath.c_str(), xattrName.c_str(), xattrValue.c_str(), xattrValue.size(), 0);
+
     // Create test dir and it's children
     ::mkdir(mockClientTestDirPath.c_str(), 0777);
     ::mkdir(mockClientTestDirChildDirPath.c_str(), 0777);
     nFd = ::open(mockClientTestDirChildFilePath.c_str(), O_RDWR | O_CREAT, 0777);
     ASSERT_EQ(::close(nFd), 0);
+
+    // Set dacsfileversion xattr on child file for version metadata testing
+    setxattr(mockClientTestDirChildFilePath.c_str(), xattrName.c_str(), xattrValue.c_str(), xattrValue.size(), 0);
+
     std::cout << "MockRemoteClient Setup created test dir " << mockClientTestDirPath << std::endl;
 
     std::map<std::string, std::string> mockClientConfig;

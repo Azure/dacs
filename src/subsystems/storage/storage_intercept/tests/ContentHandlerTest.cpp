@@ -13,6 +13,7 @@
 #include <thread>
 #include <fstream>
 #include <dirent.h>
+#include "DirectoryEntry.h"
 #include <sys/stat.h>
 #include <stdlib.h>
 #include "FileStat.h"
@@ -177,6 +178,29 @@ TEST_F(ContentHandlerTest, ReaddirOneThreadTest)
 
     // Execute ReaddirCheck with the task parameters
     ReaddirCheck(task);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, ReaddirVersionTest)
+{
+    // Verify version in readdir entries: non-empty for files, empty for directories
+    std::string dirPath = m_strInterceptPath + '/' + m_strRemoteDirPath;
+    void* dirp = ContentHandler::GetInstance().HandleOpendir(dirPath.c_str());
+    ASSERT_NE(dirp, nullptr);
+
+    DirectoryEntry *entry;
+    while ((entry = (DirectoryEntry*)ContentHandler::GetInstance().HandleReaddir(dirp, true)) != NULL)
+    {
+        if (entry->d_type == DT_REG)
+        {
+            ASSERT_NE(entry->d_version[0], '\0');
+        }
+        else if (entry->d_type == DT_DIR)
+        {
+            ASSERT_EQ(entry->d_version[0], '\0');
+        }
+    }
+
+    ContentHandler::GetInstance().HandleClosedir(dirp);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(ContentHandlerTest, GetPropertiesOneThreadTest)

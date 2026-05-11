@@ -88,7 +88,8 @@ bool AttributesManager::PutAttributes(const cache::PutAttributeRequest& putAttri
             fileAttr.fileattribute().isdir(),
             fileAttr.fileattribute().filesize(),
             fileAttr.fileattribute().accessedtime(),
-            fileAttr.fileattribute().modifiedtime());
+            fileAttr.fileattribute().modifiedtime(),
+            fileAttr.fileattribute().version());
         return true;
     }
     
@@ -115,7 +116,8 @@ bool AttributesManager::PutAttributes(const cache::PutAttributeRequest& putAttri
                 fileAttr->fileattribute().isdir(),
                 fileAttr->fileattribute().filesize(),
                 fileAttr->fileattribute().accessedtime(),
-                fileAttr->fileattribute().modifiedtime());
+                fileAttr->fileattribute().modifiedtime(),
+                fileAttr->fileattribute().version());
         }
     }
     return true;

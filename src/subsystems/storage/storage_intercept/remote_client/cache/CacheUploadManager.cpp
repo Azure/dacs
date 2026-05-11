@@ -81,27 +81,29 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
               uploadContext->m_fileAttributes.get() ? uploadContext->m_fileAttributes->size : -1);
 
     Metadata metadata;
+    std::vector<KeyValuePair> metadataEntries;
     if(uploadContext->m_fileAttributes.get())
     {
-        KeyValuePair* metadataValues = new KeyValuePair[4];
-        metadataValues[0].strKey = (char*)CACHE_META_FILE_ISDIR;
-        metadataValues[0].strValue =
-            (char*)(uploadContext->m_fileAttributes->isDir ? strTrue.c_str() : strFalse.c_str());
+        metadataEntries.push_back({(char*)CACHE_META_FILE_ISDIR,
+            (char*)(uploadContext->m_fileAttributes->isDir ? strTrue.c_str() : strFalse.c_str())});
 
-        metadataValues[1].strKey = (char*)CACHE_META_FILE_SIZE;
         snprintf(arrFileSizeBuffer, sizeof(arrFileSizeBuffer), "%ld", uploadContext->m_fileAttributes->size);
-        metadataValues[1].strValue = arrFileSizeBuffer;
+        metadataEntries.push_back({(char*)CACHE_META_FILE_SIZE, arrFileSizeBuffer});
 
-        metadataValues[2].strKey = (char*)CACHE_META_FILE_ATIME;
         snprintf(arrATimeBuffer, sizeof(arrATimeBuffer), "%ld", uploadContext->m_fileAttributes->aTime.tv_sec);
-        metadataValues[2].strValue = arrATimeBuffer;
+        metadataEntries.push_back({(char*)CACHE_META_FILE_ATIME, arrATimeBuffer});
 
-        metadataValues[3].strKey = (char*)CACHE_META_FILE_MTIME;
         snprintf(arrMTimeBuffer, sizeof(arrMTimeBuffer), "%ld", uploadContext->m_fileAttributes->mTime.tv_sec);
-        metadataValues[3].strValue = arrMTimeBuffer;
+        metadataEntries.push_back({(char*)CACHE_META_FILE_MTIME, arrMTimeBuffer});
 
-        metadata.arrKeyValuePairs = metadataValues;
-        metadata.nKeyValuePairs = 4;
+        if (!uploadContext->m_fileAttributes->version.empty())
+        {
+            metadataEntries.push_back({(char*)CACHE_META_FILE_VERSION,
+                (char*)uploadContext->m_fileAttributes->version.c_str()});
+        }
+
+        metadata.arrKeyValuePairs = metadataEntries.data();
+        metadata.nKeyValuePairs = static_cast<int>(metadataEntries.size());
     }
     else
     {
@@ -125,12 +127,6 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
         m_keyGroupId.empty() ? nullptr : m_keyGroupId.c_str(),
         metadata.nKeyValuePairs > 0 ? &metadata : nullptr,
         uploadContext->m_encryptionKey.empty() ? nullptr : uploadContext->m_encryptionKey.c_str());
-
-    // Clean up metadata
-    if(metadata.arrKeyValuePairs != nullptr)
-    {
-        delete[] metadata.arrKeyValuePairs;
-    }
 
     return (status == CacheClientStatus::SUCCESS);
 }

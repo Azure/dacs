@@ -134,6 +134,7 @@ std::string AdlsHttpClient::ListDirectory(
     dirEntries.back().d_mtime = static_cast<time_t>(statusValue["modificationTime"].asInt64() / 1000);
     dirEntries.back().d_atime = static_cast<time_t>(statusValue["accessTime"].asInt64() / 1000);
     strncpy(dirEntries.back().d_name, statusValue["pathSuffix"].asCString(), D_NAME_LEN);
+    dirEntries.back().d_version[0] = '\0';
   }
   newContinuationToken = listingValue["FileStatuses"]["continuationToken"].asString();
   LOG_DEBUG("Received the list directory API response");

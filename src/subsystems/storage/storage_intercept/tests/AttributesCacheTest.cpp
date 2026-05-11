@@ -67,6 +67,7 @@ TEST_F(AttributesCacheTest, SimpleGetPutTest)
     fileAttributes.aTime.tv_sec = 1;
     fileAttributes.mTime.tv_sec = 2;
     fileAttributes.cTime.tv_sec = 2;
+    fileAttributes.version = "test-version-1";
     m_attributesCacheClient->Put(strFileName, fileAttributes);
 
     // wait for async upload to complete 
@@ -80,6 +81,7 @@ TEST_F(AttributesCacheTest, SimpleGetPutTest)
     ASSERT_EQ(fileAttributes.aTime.tv_sec, 1);
     ASSERT_EQ(fileAttributes.mTime.tv_sec, 2);
     ASSERT_EQ(fileAttributes.cTime.tv_sec, 2);
+    ASSERT_EQ(fileAttributes.version, "test-version-1");
 
     string strFileName1 = GetRandFilename();
     fileAttributes.isDir = false;
@@ -87,6 +89,7 @@ TEST_F(AttributesCacheTest, SimpleGetPutTest)
     fileAttributes.aTime.tv_sec = 1;
     fileAttributes.mTime.tv_sec = 2;
     fileAttributes.cTime.tv_sec = 2;
+    fileAttributes.version = "test-version-2";
     m_attributesCacheClient->Put(strFileName1, fileAttributes);
 
     string strFileName2 = GetRandFilename();
@@ -95,6 +98,7 @@ TEST_F(AttributesCacheTest, SimpleGetPutTest)
     fileAttributes.aTime.tv_sec = 21;
     fileAttributes.mTime.tv_sec = 22;
     fileAttributes.cTime.tv_sec = 22;
+    fileAttributes.version = "test-version-3";
     m_attributesCacheClient->Put(strFileName2, fileAttributes);
 
     string strFileName3 = GetRandFilename();
@@ -103,6 +107,7 @@ TEST_F(AttributesCacheTest, SimpleGetPutTest)
     fileAttributes.aTime.tv_sec = 31;
     fileAttributes.mTime.tv_sec = 32;
     fileAttributes.cTime.tv_sec = 32;
+    fileAttributes.version = "";
     m_attributesCacheClient->Put(strFileName3, fileAttributes);
 
     // wait for async upload to complete 
@@ -116,6 +121,7 @@ TEST_F(AttributesCacheTest, SimpleGetPutTest)
     ASSERT_EQ(fileAttributes.aTime.tv_sec, 1);
     ASSERT_EQ(fileAttributes.mTime.tv_sec, 2);
     ASSERT_EQ(fileAttributes.cTime.tv_sec, 2);
+    ASSERT_EQ(fileAttributes.version, "test-version-1");
 
     cacheStatus = m_attributesCacheClient->Get(strFileName1, fileAttributes);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
@@ -124,6 +130,7 @@ TEST_F(AttributesCacheTest, SimpleGetPutTest)
     ASSERT_EQ(fileAttributes.aTime.tv_sec, 1);
     ASSERT_EQ(fileAttributes.mTime.tv_sec, 2);
     ASSERT_EQ(fileAttributes.cTime.tv_sec, 2);
+    ASSERT_EQ(fileAttributes.version, "test-version-2");
 
     cacheStatus = m_attributesCacheClient->Get(strFileName2, fileAttributes);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
@@ -132,6 +139,7 @@ TEST_F(AttributesCacheTest, SimpleGetPutTest)
     ASSERT_EQ(fileAttributes.aTime.tv_sec, 21);
     ASSERT_EQ(fileAttributes.mTime.tv_sec, 22);
     ASSERT_EQ(fileAttributes.cTime.tv_sec, 22);
+    ASSERT_EQ(fileAttributes.version, "test-version-3");
 
     cacheStatus = m_attributesCacheClient->Get(strFileName3, fileAttributes);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
@@ -140,6 +148,7 @@ TEST_F(AttributesCacheTest, SimpleGetPutTest)
     ASSERT_EQ(fileAttributes.aTime.tv_sec, 31);
     ASSERT_EQ(fileAttributes.mTime.tv_sec, 32);
     ASSERT_EQ(fileAttributes.cTime.tv_sec, 32);
+    ASSERT_TRUE(fileAttributes.version.empty());
 
     // Test PutAll API
     string strDirPath = GetRandFilename() + "/";
@@ -148,10 +157,14 @@ TEST_F(AttributesCacheTest, SimpleGetPutTest)
     dirEntry.d_type = DT_DIR;
     dirEntry.d_size = 0;
     strcpy(dirEntry.d_name, "dir1");
+    strncpy(dirEntry.d_version, "ver-dir1", sizeof(dirEntry.d_version) - 1);
+    dirEntry.d_version[sizeof(dirEntry.d_version) - 1] = '\0';
     dirEntryList.push_back(dirEntry);
     dirEntry.d_type = DT_REG;
     dirEntry.d_size = 1024;
     strcpy(dirEntry.d_name, "file1");
+    strncpy(dirEntry.d_version, "ver-file1", sizeof(dirEntry.d_version) - 1);
+    dirEntry.d_version[sizeof(dirEntry.d_version) - 1] = '\0';
     dirEntryList.push_back(dirEntry);
     m_attributesCacheClient->PutAll(strDirPath, dirEntryList, 0);
     sleep(5);
@@ -160,11 +173,13 @@ TEST_F(AttributesCacheTest, SimpleGetPutTest)
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(fileAttributes.isDir, true);
     ASSERT_EQ(fileAttributes.size, 0);
+    ASSERT_EQ(fileAttributes.version, "ver-dir1");
 
     cacheStatus = m_attributesCacheClient->Get(strDirPath + "file1", fileAttributes);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(fileAttributes.isDir, false);
     ASSERT_EQ(fileAttributes.size, 1024);
+    ASSERT_EQ(fileAttributes.version, "ver-file1");
 
     cacheStatus = m_attributesCacheClient->Get(strDirPath + "dir2", fileAttributes);
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
@@ -175,10 +190,12 @@ TEST_F(AttributesCacheTest, SimpleGetPutTest)
     dirEntry.d_type = DT_DIR;
     dirEntry.d_size = 0;
     strcpy(dirEntry.d_name, "dir2");
+    dirEntry.d_version[0] = '\0';
     dirEntryList.push_back(dirEntry);
     dirEntry.d_type = DT_REG;
     dirEntry.d_size = 2048;
     strcpy(dirEntry.d_name, "file2");
+    dirEntry.d_version[0] = '\0';
     dirEntryList.push_back(dirEntry);
     m_attributesCacheClient->PutAll(strDirPath, dirEntryList, 2);
     sleep(5);
@@ -187,21 +204,25 @@ TEST_F(AttributesCacheTest, SimpleGetPutTest)
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(fileAttributes.isDir, true);
     ASSERT_EQ(fileAttributes.size, 0);
+    ASSERT_EQ(fileAttributes.version, "ver-dir1");
 
     cacheStatus = m_attributesCacheClient->Get(strDirPath + "file1", fileAttributes);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(fileAttributes.isDir, false);
     ASSERT_EQ(fileAttributes.size, 1024);
+    ASSERT_EQ(fileAttributes.version, "ver-file1");
 
     cacheStatus = m_attributesCacheClient->Get(strDirPath + "dir2", fileAttributes);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(fileAttributes.isDir, true);
     ASSERT_EQ(fileAttributes.size, 0);
+    ASSERT_TRUE(fileAttributes.version.empty());
 
     cacheStatus = m_attributesCacheClient->Get(strDirPath + "file2", fileAttributes);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(fileAttributes.isDir, false);
     ASSERT_EQ(fileAttributes.size, 2048);
+    ASSERT_TRUE(fileAttributes.version.empty());
 
     m_attributesCacheClient->PutAll(strDirPath, dirEntryList, 0);
     sleep(5);
@@ -210,20 +231,24 @@ TEST_F(AttributesCacheTest, SimpleGetPutTest)
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(fileAttributes.isDir, true);
     ASSERT_EQ(fileAttributes.size, 0);
+    ASSERT_EQ(fileAttributes.version, "ver-dir1");
 
     cacheStatus = m_attributesCacheClient->Get(strDirPath + "file1", fileAttributes);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(fileAttributes.isDir, false);
     ASSERT_EQ(fileAttributes.size, 1024);
+    ASSERT_EQ(fileAttributes.version, "ver-file1");
 
     cacheStatus = m_attributesCacheClient->Get(strDirPath + "dir2", fileAttributes);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(fileAttributes.isDir, true);
     ASSERT_EQ(fileAttributes.size, 0);
+    ASSERT_TRUE(fileAttributes.version.empty());
 
     cacheStatus = m_attributesCacheClient->Get(strDirPath + "file2", fileAttributes);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(fileAttributes.isDir, false);
     ASSERT_EQ(fileAttributes.size, 2048);
+    ASSERT_TRUE(fileAttributes.version.empty());
 }
 //---------------------------------------------------------------------------------------------------------------------
