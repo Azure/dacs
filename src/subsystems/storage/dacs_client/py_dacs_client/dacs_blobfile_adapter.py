@@ -21,7 +21,13 @@ from enum import Enum
 import concurrent
 
 from py_dacs_client.dacs_client import DACSCacheClient, normalize_azure_path
-from py_dacs_client.dacs_utils import BoundedBufferManager, get_memory_limit, _shared_loop_manager, async_parallel_ordered_result
+from py_dacs_client.dacs_utils import (
+    BoundedBufferManager,
+    get_memory_limit,
+    _shared_loop_manager,
+    async_parallel_ordered_result,
+    safe_string_at,
+)
 from py_dacs_client.dacs_exceptions import (
     DACSError,
     DACSStorageError,
@@ -364,10 +370,8 @@ class DACSBlobfileAdapter:
                 return memoryview(char_array)
             else:
                 # Copy data to Python bytes - maintains API parity with native blobfile
-                # Note: ctypes._string_at.argtypes is patched at module load to use
-                # c_ssize_t (64-bit) instead of c_int (32-bit), enabling reads > 2GB
                 # For faster reads, use the zero-copy path with a pre-allocated buffer
-                data = ctypes.string_at(buffer, bytes_read)
+                data = safe_string_at(buffer, bytes_read)
         finally:
             # Only release buffer if we allocated it internally
             if not user_buffer_provided:
@@ -896,7 +900,7 @@ async def _copy_remote_chunks_to_local_parallel(src: str, tmp_dst: str, src_size
             try:
                 bytes_read = await file_handle.read(buffer, chunk_size, chunk_offset)
                 check_native_result(bytes_read, operation="read", path=src)
-                return ctypes.string_at(buffer, bytes_read)
+                return safe_string_at(buffer, bytes_read)
             except Exception as e:
                 raise handle_native_error(e, operation="read", path=src) from e
             finally:
