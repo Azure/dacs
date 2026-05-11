@@ -7,6 +7,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 const unsigned short D_NAME_LEN = 1024;
 const ino64_t        D_INO_VAL = 2; // TODO: remove
+const unsigned short D_VERSION_LEN = 40; // Holds dacsfileversion UUID (36 chars) or Azure ETag (~19 chars)
 //---------------------------------------------------------------------------------------------------------------------
 // Struct similar to dirent64 for storing file entries
 struct DirectoryEntry
@@ -19,5 +20,6 @@ struct DirectoryEntry
   off64_t             d_size;      /* Length of this file, 0 if its a directory */
   time_t              d_atime;     /* Last accessed time */
   time_t              d_mtime;     /* Last modified time */
+  char                d_version[D_VERSION_LEN]; /* File version */
 };
 //---------------------------------------------------------------------------------------------------------------------

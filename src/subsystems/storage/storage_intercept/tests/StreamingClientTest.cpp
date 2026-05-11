@@ -12,6 +12,7 @@
 #include <vector>
 #include <mutex>
 #include <thread>
+#include <dirent.h>
 //---------------------------------------------------------------------------------------------------------------------
 #define ASSERT_IF(condition, stmt)                                                         { if (condition) { stmt; } }
 //---------------------------------------------------------------------------------------------------------------------
@@ -178,6 +179,15 @@ TEST_F(StreamingClientTest, RootDirPathTest)
     );
     ASSERT_TRUE(dirEntries.size() > 0);
 
+    /* Verify version is populated for file entries (etag fallback or dacsfileversion) */
+    for (const auto& entry : dirEntries)
+    {
+        if (entry.d_type == DT_REG)
+        {
+            ASSERT_NE(entry.d_version[0], '\0');
+        }
+    }
+
     /* Tests if GetProperties call on root path, identifies it as a valid directory */
     FileAttributes attr;
     int nResult = m_spStreamingClient->GetProperties(
@@ -186,6 +196,19 @@ TEST_F(StreamingClientTest, RootDirPathTest)
     );
     ASSERT_EQ(nResult, 0);
     ASSERT_EQ(attr.isDir, true);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, GetPropertiesVersionTest)
+{
+    /* Verify GetProperties on a file returns a non-empty version (etag or dacsfileversion) */
+    FileAttributes fileAttr;
+    int nResult = m_spStreamingClient->GetProperties(
+        m_strRemoteFilePath,
+        fileAttr
+    );
+    ASSERT_EQ(nResult, 0);
+    ASSERT_EQ(fileAttr.isDir, false);
+    ASSERT_FALSE(fileAttr.version.empty());
 }
 //---------------------------------------------------------------------------------------------------------------------
 // BEGIN: Test cases for streaming client with zero copy disabled

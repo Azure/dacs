@@ -212,6 +212,7 @@ message FileAttribute
     uint64 filesize = 2;
     uint64 accessedtime = 3;
     uint64 modifiedtime = 4;
+    string version = 5;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message FileAttributes

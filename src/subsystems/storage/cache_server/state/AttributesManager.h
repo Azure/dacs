@@ -21,8 +21,10 @@ class AttributesManager
 
         struct CacheAttributes
         {
-            CacheAttributes(bool isdir, int64_t filesize, uint64_t accessedtime, uint64_t modifiedtime)
-                : m_isdir(isdir), m_filesize(filesize), m_accessedtime(accessedtime), m_modifiedtime(modifiedtime) {}
+            CacheAttributes(bool isdir, int64_t filesize, uint64_t accessedtime, uint64_t modifiedtime,
+                            const std::string& version = "")
+                : m_isdir(isdir), m_filesize(filesize), m_accessedtime(accessedtime), m_modifiedtime(modifiedtime),
+                  m_version(version) {}
             CacheAttributes() 
                 : m_isdir(false), m_filesize(-1), m_accessedtime(0), m_modifiedtime(0) {}
 
@@ -30,6 +32,7 @@ class AttributesManager
             int64_t m_filesize;
             uint64_t m_accessedtime;
             uint64_t m_modifiedtime;
+            std::string m_version;
         };
 
         void SetAttributeCacheLimit(

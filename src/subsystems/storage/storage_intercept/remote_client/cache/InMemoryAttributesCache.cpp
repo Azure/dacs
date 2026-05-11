@@ -80,6 +80,7 @@ void InMemoryAttributesCache::PutAll(
         fileAttributes.mTime.tv_sec = dirEntry.d_mtime;
         fileAttributes.aTime.tv_sec = dirEntry.d_atime;
         fileAttributes.cTime = fileAttributes.mTime;
+        fileAttributes.version = std::string(dirEntry.d_version);
 
         const std::string strPath = StorageInterceptUtils::CombinePath(pathPrefix, dirEntry.d_name);
         m_mapAttributes[strPath] = fileAttributes;

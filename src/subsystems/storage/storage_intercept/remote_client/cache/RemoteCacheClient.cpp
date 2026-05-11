@@ -238,6 +238,12 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(const std::string& mount
 
         fileAttributes->cTime.tv_sec = fileAttributes->mTime.tv_sec =
             std::strtoull(strMTime->second.c_str(), nullptr, 0);
+
+        auto strVersion = fileMetadata.find(CACHE_META_FILE_VERSION);
+        if (strVersion != fileMetadata.end())
+        {
+            fileAttributes->version = strVersion->second;
+        }
     }
 
     switch(cacheClientStatus)
@@ -347,6 +353,7 @@ void RemoteCacheClient::PutAll(const std::string& pathPrefix,
             fileAttributes.mTime.tv_sec = dirEntry.d_mtime;
             fileAttributes.aTime.tv_sec = dirEntry.d_atime;
             fileAttributes.cTime = fileAttributes.mTime;
+            fileAttributes.version = std::string(dirEntry.d_version);
 
             const string cacheKey = GetAttributeCacheKey(StorageInterceptUtils::CombinePath(pathPrefix, dirEntry.d_name));
             const string strEcncryptionKey = "";

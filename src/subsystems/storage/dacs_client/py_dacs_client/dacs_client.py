@@ -134,6 +134,7 @@ def _list_dir_inner_sync(pathname: str) -> List[Dict[str, object]]:
         if not dirent or not dirent.contents:
             break
 
+        # Note: d_version is intentionally excluded — it is an internal field
         entries.append(
             {
                 "d_ino": dirent.contents.d_ino,

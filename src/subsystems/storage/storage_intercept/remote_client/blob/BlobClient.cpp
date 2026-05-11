@@ -3,6 +3,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "BlobClient.h"
 #include "StorageInterceptConfig.h"
+#include "StorageInterceptConstants.h"
 #include "StorageInterceptLogger.h"
 #include "StorageInterceptUtils.h"
 #include "RemoteClientException.h"
@@ -296,6 +297,7 @@ std::string BlobClient::ReadDirectory(
             strptime(container.last_modified.c_str(), "%a, %d %b %Y %H:%M:%S", &mTime);
             // Response from blob only contains mTime
             dirEntries.back().d_atime = dirEntries.back().d_mtime = timegm(&mTime);
+            dirEntries.back().d_version[0] = '\0';
         }
 
         return listContainersOutcome.response().next_marker;
@@ -360,6 +362,28 @@ std::string BlobClient::ReadDirectory(
         strptime(blob.last_modified.c_str(), "%a, %d %b %Y %H:%M:%S", &mTime);
         // Response from blob only contains mTime
         dirEntries.back().d_atime = dirEntries.back().d_mtime = timegm(&mTime);
+
+        // Extract dacsfileversion from blob metadata, fall back to etag
+        std::string blobVersion;
+        for (const std::pair<std::string, std::string>& kvp : blob.metadata)
+        {
+            if (kvp.first == StorageInterceptConstants::BlobMetadataKeyVersion)
+            {
+                blobVersion = kvp.second;
+                break;
+            }
+        }
+        if (blobVersion.empty() && !blob.is_directory)
+        {
+            blobVersion = blob.etag;
+        }
+
+        strncpy(dirEntries.back().d_version, blobVersion.c_str(), D_VERSION_LEN - 1);
+        dirEntries.back().d_version[D_VERSION_LEN - 1] = '\0';
+        if (!blobVersion.empty())
+        {
+            LOG_DEBUG("ReadDirectory: blob={} dacsfileversion={}", dirEntries.back().d_name, blobVersion);
+        }
     }
 
     LOG_DEBUG(
@@ -678,6 +702,22 @@ void BlobClient::MakeFileAttr(const azBlobItem_t& blobItem, FileAttributes& attr
 
     // Response from blob only contains mTime, setting aTime/cTime to mTime
     attr.aTime = attr.cTime = attr.mTime;
+
+    // Extract dacsfileversion from blob metadata, fall back to etag
+    for (const std::pair<std::string, std::string>& kvp : blobItem.metadata)
+    {
+        if (kvp.first == StorageInterceptConstants::BlobMetadataKeyVersion)
+        {
+            attr.version = kvp.second;
+            LOG_DEBUG("Found dacsfileversion metadata: {}", attr.version);
+            break;
+        }
+    }
+    if (attr.version.empty())
+    {
+        attr.version = blobItem.etag;
+        LOG_DEBUG("No dacsfileversion, using etag as version: {}", attr.version);
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 void BlobClient::MakeDirectoryAttr(FileAttributes& attr)
