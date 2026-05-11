@@ -87,7 +87,7 @@ from typing import (
 )
 
 from py_dacs_client.dacs_client import DACSCacheClient, normalize_azure_path
-from py_dacs_client.dacs_utils import alloc_buffer, release_buffer
+from py_dacs_client.dacs_utils import alloc_buffer, release_buffer, safe_string_at
 from py_dacs_client.dacs_exceptions import (
     DACSError,
     DACSStorageError,
@@ -507,9 +507,7 @@ async def read_single(
             raise handle_native_error(e, operation="read", path=path_str) from e
 
         # Copy data to Python bytes - maintains API parity with native boostedblob
-        # Note: ctypes._string_at.argtypes is patched at module load to use
-        # c_ssize_t (64-bit) instead of c_int (32-bit), enabling reads > 2GB
-        data = ctypes.string_at(internal_buffer, bytes_read)
+        data = safe_string_at(internal_buffer, bytes_read)
         return data
     finally:
         release_buffer(internal_buffer)
@@ -593,7 +591,7 @@ async def read_byte_range(
             raise handle_native_error(e, operation="read_byte_range", path=path_str) from e
 
         # Copy data to Python bytes - maintains API parity with native boostedblob
-        data = ctypes.string_at(internal_buffer, bytes_read)
+        data = safe_string_at(internal_buffer, bytes_read)
         return data
     finally:
         release_buffer(internal_buffer)

@@ -16,12 +16,13 @@
 #       (supports SAS token or access token or managed identity or Azure Identity SDK token fetching)
 # ---------------------------------------------------------------------------------------------------------------------
 import asyncio
+import ctypes
 import logging
 import os
 import platform
 import sys
 import threading
-from ctypes import CDLL, c_char, c_size_t, c_void_p
+from ctypes import CDLL, c_char, c_size_t, c_ssize_t, c_void_p
 
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stdout)
@@ -248,6 +249,20 @@ def release_buffer(buffer: c_void_p) -> None:
     if logger.level == logging.DEBUG:
         after_free = get_current_memory_usage()
         logger.debug(f"Buffer memory released:{before_free - after_free} KB")
+
+
+_PyBytes_FromStringAndSize = ctypes.pythonapi.PyBytes_FromStringAndSize
+_PyBytes_FromStringAndSize.restype = ctypes.py_object
+_PyBytes_FromStringAndSize.argtypes = [c_void_p, c_ssize_t]
+
+
+def safe_string_at(buffer: c_void_p, size: int) -> bytes:
+    """Copy native buffer data to Python bytes with Py_ssize_t-sized lengths."""
+    if size < 0:
+        raise ValueError(
+            f"safe_string_at: negative size {size}; native read likely returned an error code"
+        )
+    return _PyBytes_FromStringAndSize(buffer, size)
 
 
 class BoundedBufferManager:
