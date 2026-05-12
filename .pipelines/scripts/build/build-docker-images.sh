@@ -40,6 +40,14 @@ echo "image registry: $REGISTRY"
 base_dockerfile_changed() {
     docker_image_name="$1"
 
+    # Strategy 0: scheduled (cron) build -- always rebuild so security patches
+    # for transitive system packages (libc6, libssl3, etc.) are picked up even
+    # when Docker/base/ files have not changed.
+    if [[ "${BUILD_REASON:-}" == "Schedule" ]]; then
+        echo "[DEBUG] Forcing base image rebuild (BUILD_REASON=Schedule)" >&2
+        return 0
+    fi
+
     # Strategy 1: PR builds - compare against origin/main
     git fetch origin main --depth=1 2>/dev/null || true
     if git diff --name-only origin/main...HEAD 2>/dev/null | grep -q "Docker/base/"; then
@@ -88,10 +96,21 @@ prepare_base_image() {
     local image="${REGISTRY}/${name}:latest"
     local current_sha
     current_sha=$(git rev-parse HEAD)
-    
+
+    # On scheduled rebuilds, bypass Docker's layer cache so that
+    # `apt-get update && apt-get upgrade` actually re-runs and pulls fresh
+    # security patches. Without this, warm agents would reuse a cached layer
+    # whose RUN string is byte-identical to last week and skip the upgrade.
+    # `--pull` additionally forces re-resolving the FROM tag against the
+    # registry so the upstream ubuntu:22.04 layer itself is refreshed.
+    local no_cache_flag=""
+    if [[ "${BUILD_REASON:-}" == "Schedule" ]]; then
+        no_cache_flag="--no-cache --pull"
+    fi
+
     if base_dockerfile_changed "$name"; then
         echo "Building $name (Dockerfile changed)..."
-        docker build \
+        docker build $no_cache_flag \
             --label "git-sha=$current_sha" \
             -f "$REPOSITORY_ROOT/$dockerfile" \
             -t "$image" \
@@ -103,7 +122,7 @@ prepare_base_image() {
             echo "Pulled $name from ACR"
         else
             echo "Pull failed for $image, building locally..."
-            docker build \
+            docker build $no_cache_flag \
                 --label "git-sha=$current_sha" \
                 -f "$REPOSITORY_ROOT/$dockerfile" \
                 -t "$image" \
