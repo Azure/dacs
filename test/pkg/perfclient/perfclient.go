@@ -81,6 +81,12 @@ type Config struct {
 	ChecksumAlgorithm ChecksumAlgorithm
 	// ColocateWithServer schedules the perf client on the same node as the cache server
 	ColocateWithServer bool
+	// AllowColocation removes the perf client's pod anti-affinity vs cacheserver
+	// pods so it can land on any matching node (including one already running a
+	// cacheserver). Use for resilience tests where the cacheserver fleet may
+	// occupy every eligible node. Mutually compatible with ColocateWithServer
+	// (Colocate takes precedence).
+	AllowColocation bool
 	// ConnectionPoolSize overrides the connection pool size (required when discovery is enabled)
 	ConnectionPoolSize int
 
@@ -219,6 +225,14 @@ func (c *Config) WithColocate(colocate bool) *Config {
 	return c
 }
 
+// WithAllowColocation drops the perf client's anti-affinity against cacheserver
+// pods, allowing it to schedule on a cacheserver node. Unlike WithColocate it
+// does not pin to a specific server pod.
+func (c *Config) WithAllowColocation(allow bool) *Config {
+	c.AllowColocation = allow
+	return c
+}
+
 // WithStorageAccount sets the Azure storage account name for direct blob client.
 func (c *Config) WithStorageAccount(account string) *Config {
 	c.StorageAccount = account
@@ -326,8 +340,9 @@ func (c *Config) LoadJob() (*batchv1.Job, error) {
 		job.Spec.Template.Spec.ServiceAccountName = c.ServiceAccountName
 	}
 
-	// Handle affinity configuration based on ColocateWithServer setting
-	if c.ColocateWithServer {
+	// Handle affinity configuration based on ColocateWithServer / AllowColocation
+	switch {
+	case c.ColocateWithServer:
 		// Replace anti-affinity with affinity to schedule on same node as cacheserver-0
 		job.Spec.Template.Spec.Affinity.PodAntiAffinity = nil
 		job.Spec.Template.Spec.Affinity.PodAffinity = &corev1.PodAffinity{
@@ -346,7 +361,13 @@ func (c *Config) LoadJob() (*batchv1.Job, error) {
 				},
 			},
 		}
-	} else {
+	case c.AllowColocation:
+		// Drop anti-affinity entirely so the client can land on any matching
+		// node, including one already running a cacheserver pod.
+		if job.Spec.Template.Spec.Affinity != nil {
+			job.Spec.Template.Spec.Affinity.PodAntiAffinity = nil
+		}
+	default:
 		// Update pod anti-affinity for the client pods (default behavior)
 		if job.Spec.Template.Spec.Affinity != nil &&
 			job.Spec.Template.Spec.Affinity.PodAntiAffinity != nil {

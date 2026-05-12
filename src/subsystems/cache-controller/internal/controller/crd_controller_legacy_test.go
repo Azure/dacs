@@ -123,7 +123,7 @@ var _ = Describe("Cache controller legacy backwards compatibility", Ordered, fun
 			err := k8sClient.Get(ctx, types.NamespacedName{Name: cacheName, Namespace: legacyTestNamespace}, &sts)
 			g.Expect(err).To(Succeed(), "fetching StatefulSet %s", cacheName)
 			g.Expect(sts.Spec.PodManagementPolicy).To(Equal(appsv1.ParallelPodManagement), "STS %s should be recreated with Parallel PMP", cacheName)
-			hasEventForCache(ctx, g, legacyTestNamespace, cacheName, eventReasonRecreated)
+			hasEventForCache(ctx, g, legacyTestNamespace, cacheName, storagev1.EventReasonRecreated)
 		}).Should(Succeed(), "waiting for legacy STS %s to be recreated with Parallel PMP and a Recreated event", cacheName)
 	})
 

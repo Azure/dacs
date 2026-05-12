@@ -1,0 +1,24 @@
+# Shared values for AKS integration test pipelines that exercise the
+# cache-controller's dynamic node-tracking scaler (e.g. aks-scale).
+#
+# Use with:
+#   helm install ... \
+#     --values src/subsystems/cache-controller/charts/dacs/aks-int-dynamic-values.yaml
+#
+# Inherits the perf sizing (large server, NVMe host path) and configures
+# dynamic scaling at 100% of nodes so the cache replica count tracks the
+# nodepool 1:1. This lets the scale test drive cacheserver scaling indirectly
+# by changing the AKS nodepool size.
+
+cache:
+  serverSizeInGB: 1000
+  cpuLimit: 4
+  memoryLimitMB: 128000
+  storage:
+    ephemeral: false
+    hostPath:
+      nodeCacheFolderPath: /var/lib/ssd/cacheserver
+  scaling:
+    static: null
+    dynamic:
+      percentageOfNodesToUse: 100

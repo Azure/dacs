@@ -78,15 +78,6 @@ func NewCacheReconciler(c client.Client, scheme *runtime.Scheme, recorder events
 
 const cacheFinalizerName = "storage.azure.com/finalizer"
 
-// Event reason/action constants used with Recorder.Eventf.
-const (
-	eventReasonScaling   = "Scaling"
-	eventReasonRecreated = "RecreatedStatefulSet"
-
-	eventActionScale    = "ScaleReplicas"
-	eventActionRecreate = "RecreateStatefulSet"
-)
-
 // Default RBAC rules added by kubebuilder
 // +kubebuilder:rbac:groups=storage.azure.com,resources=caches,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=storage.azure.com,resources=caches/status,verbs=get;update;patch
@@ -249,10 +240,10 @@ func (r *CacheReconciler) resolveNumServers(ctx context.Context, cache *storagev
 
 	if desired != currentReplicas && currentReplicas > 0 {
 		log.Info("Scaling cache servers", "from", currentReplicas, "to", desired)
-		r.Recorder.Eventf(cache, nil, corev1.EventTypeNormal, eventReasonScaling, eventActionScale, "Scaling cache servers from %d to %d replicas", currentReplicas, desired)
+		r.Recorder.Eventf(cache, nil, corev1.EventTypeNormal, storagev1.EventReasonScaling, storagev1.EventActionScale, "Scaling cache servers from %d to %d replicas", currentReplicas, desired)
 	} else if desired != currentReplicas && currentReplicas == 0 {
 		log.Info("Initial scaling", "desired", desired)
-		r.Recorder.Eventf(cache, nil, corev1.EventTypeNormal, eventReasonScaling, eventActionScale, "Initial scale to %d replicas", desired)
+		r.Recorder.Eventf(cache, nil, corev1.EventTypeNormal, storagev1.EventReasonScaling, storagev1.EventActionScale, "Initial scale to %d replicas", desired)
 	}
 
 	return desired, nil
@@ -403,7 +394,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 			if err := r.Delete(ctx, sts); client.IgnoreNotFound(err) != nil {
 				return fmt.Errorf("failed to delete incompatible StatefulSet %s: %w", sts.Name, err)
 			}
-			r.Recorder.Eventf(cache, sts, corev1.EventTypeNormal, eventReasonRecreated, eventActionRecreate,
+			r.Recorder.Eventf(cache, sts, corev1.EventTypeNormal, storagev1.EventReasonRecreated, storagev1.EventActionRecreate,
 				"Deleted StatefulSet %s to apply immutable spec change; it will be recreated on next reconcile", sts.Name)
 			return nil
 		}

@@ -67,7 +67,7 @@ EXTRA_TEST_ARGS ?=
 
 .PHONY: test-e2e
 test-e2e: ginkgo kubectl mpi-operator ## Run tests against cluster. Use TEST_FILTER to filter by label.
-	$(call run_e2e_tests,$(COMPUTED_LABEL_FILTER),./test/perf ./test/e2e)
+	$(call run_e2e_tests,$(COMPUTED_LABEL_FILTER),./test/perf ./test/e2e ./test/aks)
 
 define run_e2e_tests
 GIT_COMMIT=$(GIT_COMMIT) GIT_BRANCH=$(GIT_BRANCH) PATH=$(LOCALBIN):$$PATH $(GINKGO) -v -r --timeout="$(TEST_TIMEOUT)" $(if $(1),--label-filter="$(1)",) --focus="$(FOCUS)" --no-color="$(NO_COLOR)" $(2) -- \
