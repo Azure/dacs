@@ -4,8 +4,12 @@ FROM mcr.microsoft.com/mirror/docker/library/ubuntu:22.04
 
 USER root
 
-# Install all required apt packages
+# Install all required apt packages.
+# `apt-get upgrade` is included so each rebuild of this base image pulls the
+# latest security patches for packages already present in the upstream image
+# (e.g. libc6, libssl3, libgnutls30) -- not just the ones in our install list.
 RUN apt-get update && \
+    apt-get upgrade -yq && \
     apt-get install -yq \
     python3 \
     python3-pip \

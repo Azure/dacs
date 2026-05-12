@@ -52,6 +52,15 @@ echo ""
 
 # Check if base Dockerfiles changed
 base_dockerfile_changed() {
+    # Strategy 0: scheduled (cron) build -- always push so security patches
+    # for transitive system packages (libc6, libssl3, etc.), picked up by
+    # `apt-get upgrade` during the scheduled rebuild, actually land in ACR.
+    # Mirrors the same logic in build-docker-images.sh.
+    if [[ "${BUILD_REASON:-}" == "Schedule" ]]; then
+        echo "[DEBUG] Forcing base image push (BUILD_REASON=Schedule)" >&2
+        return 0
+    fi
+
     # Strategy 1: PR builds - compare against origin/main
     git fetch origin main --depth=1 2>/dev/null || true
     if git diff --name-only origin/main...HEAD 2>/dev/null | grep -q "Docker/base/"; then
