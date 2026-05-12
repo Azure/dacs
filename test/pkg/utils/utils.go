@@ -93,6 +93,7 @@ func GetProjectDir() (string, error) {
 	wd = strings.ReplaceAll(wd, "/test/e2e/cacheClient", "")
 	wd = strings.ReplaceAll(wd, "/test/e2e", "")
 	wd = strings.ReplaceAll(wd, "/test/perf", "")
+	wd = strings.ReplaceAll(wd, "/test/aks", "")
 
 	return wd, nil
 }

@@ -56,9 +56,9 @@ Templates are defined as parameter files in `deploy/parameters/`. Available temp
 | Template | Description | VM Size |
 |----------|-------------|---------|
 | `nvme` | AKS cluster with Standard_L8s_v3 VMs with NVMe disks | Standard_L8s_v3 |
-| `nvme-perf-l8` | Performance testing cluster with L8s_v3 VMs | Standard_L8s_v3 |
-| `nvme-perf-l16` | Performance testing cluster with L16s_v3 VMs | Standard_L16s_v3 |
-| `nvme-perf-l32` | Performance testing cluster with L32s_v3 VMs | Standard_L32s_v3 |
+| `nvme-l8` | Performance testing cluster with L8s_v3 VMs | Standard_L8s_v3 |
+| `nvme-l16` | Performance testing cluster with L16s_v3 VMs | Standard_L16s_v3 |
+| `nvme-l32` | Performance testing cluster with L32s_v3 VMs | Standard_L32s_v3 |
 
 The `nvme-perf-*` templates are optimized for performance testing with larger VM sizes and more NVMe storage capacity.
 

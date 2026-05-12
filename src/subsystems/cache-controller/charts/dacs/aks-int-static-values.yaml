@@ -1,0 +1,23 @@
+# Shared values for AKS integration test pipelines that need a realistic
+# multi-server cache topology (e.g. aks-upgrade, aks-restart, other resilience
+# tests).
+#
+# Use with:
+#   helm install ... \
+#     --values src/subsystems/cache-controller/charts/dacs/aks-int-static-values.yaml
+#
+# Inherits the perf sizing (large server, NVMe host path) and pins to 5
+# statically-scaled servers so resilience tests have enough nodes to exercise
+# multi-server scenarios (rolling upgrades, node drains, restarts, etc.).
+
+cache:
+  serverSizeInGB: 1000
+  cpuLimit: 4
+  memoryLimitMB: 128000
+  storage:
+    ephemeral: false
+    hostPath:
+      nodeCacheFolderPath: /var/lib/ssd/cacheserver
+  scaling:
+    static:
+      numServers: 5

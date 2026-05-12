@@ -153,7 +153,7 @@ make load-images                # Load images into minikube
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AKS_LOCATION` | `eastus` | Azure region |
-| `AKS_TEMPLATE` | `nvme` | Parameter template (nvme, nvme-perf-l8, etc.) |
+| `AKS_TEMPLATE` | `nvme` | Parameter template (nvme, nvme-l8, etc.) |
 | `AKS_RESOURCE_GROUP` | auto | Resource group name |
 
 ---

@@ -752,10 +752,10 @@ var _ = Describe("Scaling Controller", func() {
 
 				found := false
 				for _, e := range events.Items {
-					if e.Reason == "Scaling" && e.Regarding.Name == cacheName {
+					if e.Reason == storagev1.EventReasonScaling && e.Regarding.Name == cacheName {
 						found = true
 						g.Expect(e.Type).To(Equal(corev1.EventTypeNormal))
-						g.Expect(e.Action).To(Equal("ScaleReplicas"))
+						g.Expect(e.Action).To(Equal(storagev1.EventActionScale))
 						g.Expect(e.Note).To(ContainSubstring("5 replicas"))
 					}
 				}
@@ -783,8 +783,8 @@ var _ = Describe("Scaling Controller", func() {
 
 				found := false
 				for _, e := range events.Items {
-					if e.Reason == "Scaling" && e.Regarding.Name == cacheName && e.Note != "" {
-						if e.Action == "ScaleReplicas" {
+					if e.Reason == storagev1.EventReasonScaling && e.Regarding.Name == cacheName && e.Note != "" {
+						if e.Action == storagev1.EventActionScale {
 							// Look for the scale-up event from 5 to 8
 							if containsAll(e.Note, "5", "8") {
 								found = true
@@ -829,7 +829,7 @@ var _ = Describe("Scaling Controller", func() {
 			Expect(k8sClient.List(ctx, &beforeEvents, client.InNamespace(ns))).To(Succeed())
 			scalingEventCount := 0
 			for _, e := range beforeEvents.Items {
-				if e.Reason == "Scaling" && e.Regarding.Name == cacheName {
+				if e.Reason == storagev1.EventReasonScaling && e.Regarding.Name == cacheName {
 					scalingEventCount++
 				}
 			}
@@ -845,7 +845,7 @@ var _ = Describe("Scaling Controller", func() {
 				Expect(k8sClient.List(ctx, &events, client.InNamespace(ns))).To(Succeed())
 				count := 0
 				for _, e := range events.Items {
-					if e.Reason == "Scaling" && e.Regarding.Name == cacheName {
+					if e.Reason == storagev1.EventReasonScaling && e.Regarding.Name == cacheName {
 						count++
 					}
 				}

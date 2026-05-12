@@ -168,7 +168,7 @@ SEND_METRICS=true make test-e2e TEST_FILTER=perf EXTRA_TEST_ARGS="--data-size-gi
 
 ```sh
 # Create AKS cluster with NVMe nodes (L16s_v3 recommended for perf)
-make provision TARGET=aks AKS_TEMPLATE=nvme-perf-l16 AKS_LOCATION=westus2
+make provision TARGET=aks AKS_TEMPLATE=nvme-l16 AKS_LOCATION=westus2
 
 # Install prerequisites and cache-server
 DOCKER_REGISTRY=dacs.azurecr.io BUILD_NUMBER=20251222.6 make deploy
@@ -185,9 +185,9 @@ make unprovision
 
 | Template | VM Size | Description |
 |----------|---------|-------------|
-| `nvme-perf-l8` | Standard_L8s_v3 | 8 vCPUs, smaller workloads |
-| `nvme-perf-l16` | Standard_L16s_v3 | 16 vCPUs, recommended for perf tests |
-| `nvme-perf-l32` | Standard_L32s_v3 | 32 vCPUs, large scale testing |
+| `nvme-l8` | Standard_L8s_v3 | 8 vCPUs, smaller workloads |
+| `nvme-l16` | Standard_L16s_v3 | 16 vCPUs, recommended for perf tests |
+| `nvme-l32` | Standard_L32s_v3 | 32 vCPUs, large scale testing |
 
 ## Test Framework
 
