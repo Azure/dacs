@@ -71,7 +71,6 @@ import sys
 import threading
 import types
 from dataclasses import dataclass
-from enum import Enum
 from typing import (
     Any,
     AsyncIterator,
@@ -87,7 +86,7 @@ from typing import (
 )
 
 from py_dacs_client.dacs_client import DACSCacheClient, normalize_azure_path
-from py_dacs_client.dacs_utils import alloc_buffer, release_buffer, safe_string_at
+from py_dacs_client.dacs_utils import WriteMode, alloc_buffer, release_buffer, safe_string_at
 from py_dacs_client.dacs_exceptions import (
     DACSError,
     DACSStorageError,
@@ -182,24 +181,6 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
-
-class WriteMode(Enum):
-    """
-    Enumeration of write modes for boostedblob operations.
-
-    WRITE_DISABLED: Disable write operations, read-only mode
-    WRITE_CACHE_ONLY: Write to cache only, no blob storage
-    WRITE_BLOB_ONLY: Write to blob storage only, bypass cache
-    WRITE_CACHE_BLOB_ASYNC: Write to cache first, async update blob storage
-    WRITE_SYNC: Write to cache and blob storage synchronously (DEFAULT)
-    """
-
-    WRITE_DISABLED = "write_disabled"
-    WRITE_CACHE_ONLY = "write_cache_only"
-    WRITE_BLOB_ONLY = "write_blob_only"
-    WRITE_CACHE_BLOB_ASYNC = "write_cache_blob_async"
-    WRITE_SYNC = "write_sync"
-
 
 # ==============================
 # Path Classes (matching boostedblob)

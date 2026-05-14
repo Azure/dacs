@@ -3,6 +3,7 @@
 
 import os
 import pytest
+import py_dacs_client
 from py_dacs_client import dacs_utils
 
 # To run the test: 
@@ -45,6 +46,35 @@ class TestInitializeDACSClientConfigSASToken:
         assert "\r" not in config_contents
 
         # Clean up the config file after the test
+        if os.path.exists(actual_config_path):
+            os.remove(actual_config_path)
+
+    def test_shared_write_mode_configures_core_client(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("USE_SAS_TOKEN", raising=False)
+        monkeypatch.delenv("STORAGE_INTCPT_SAS_TOKEN", raising=False)
+        monkeypatch.delenv("SI_azBlobAccessToken", raising=False)
+        monkeypatch.delenv("AZURE_CLIENT_ID", raising=False)
+        monkeypatch.delenv("MSI_ENDPOINT", raising=False)
+        monkeypatch.delenv("MSI_SECRET", raising=False)
+        monkeypatch.delenv("CACHE_DISCOVERY_URL", raising=False)
+        monkeypatch.delenv("CACHE_SERVER_LIST", raising=False)
+        monkeypatch.delenv("CACHE_SERVER_PORT", raising=False)
+
+        monkeypatch.setattr(os, "getpid", lambda: tmp_path.name)
+
+        dacs_utils._initialize_dacs_client_config(
+            intercept_path="/mnt/data",
+            write_mode=py_dacs_client.WriteMode.WRITE_CACHE_ONLY,
+        )
+
+        actual_config_path = os.environ["STORAGE_INTERCEPT_CONFIG_FILEPATH"]
+        with open(actual_config_path) as f:
+            config_contents = f.read()
+
+        assert "enableWrite true\n" in config_contents
+        assert "enableWriteRemote false\n" in config_contents
+        assert "enableWriteRemoteAsync false\n" in config_contents
+
         if os.path.exists(actual_config_path):
             os.remove(actual_config_path)
 

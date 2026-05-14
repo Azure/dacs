@@ -35,10 +35,10 @@ import concurrent.futures
 import ctypes
 import os
 import time
-from py_dacs_client.dacs_utils import _initialize_dacs_client_config, logger
+from py_dacs_client.dacs_utils import WriteMode, _initialize_dacs_client_config, logger
 from py_dacs_client.dacs_data_loader import DACSCacheDataLoader, Stat64
 from py_dacs_client.dacs_exceptions import check_native_result
-from typing import AsyncIterator, List, Dict
+from typing import AsyncIterator, List, Dict, Optional
 
 
 # Constants
@@ -272,7 +272,7 @@ class DACSCacheClient:
         All methods are safe to call concurrently - each operation uses its own file descriptor.
     """
     
-    def __init__(self, executor: concurrent.futures.Executor = None, write_mode=None):
+    def __init__(self, executor: concurrent.futures.Executor = None, write_mode: Optional[WriteMode] = None):
         if executor is None:
             self.reset_executor()
         else:

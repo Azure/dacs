@@ -148,7 +148,7 @@ Supports both sync (`open_sync`/`close_sync`/`read_sync`/`write_sync`) and async
 A synchronous, blobfile-compatible adapter that wraps `DACSCacheClient`. Use this as a drop-in replacement for blobfile in read/write scenarios. Also available as the `BlobFile` alias.
 
 ```python
-from py_dacs_client.dacs_blobfile_adapter import DACSBlobfileAdapter, WriteMode
+from py_dacs_client.dacs_blobfile_adapter import DACSBlobfileAdapter
 # or use the alias:
 from py_dacs_client.dacs_blobfile_adapter import BlobFile
 ```
@@ -201,6 +201,11 @@ The following blobfile operations raise `OperationNotSupportedError`: `glob`, `s
 > **Note:** `seek()` is supported for read-mode remote paths only and raises `OperationNotSupportedError` for local paths and write-mode files. `tell()` is supported for all remote paths (both read and write mode) and raises `OperationNotSupportedError` for local paths only.
 
 #### Write Modes
+
+`WriteMode` is shared by `DACSCacheClient`, `DACSBlobfileAdapter`, and
+`dacs_boostedblob_adapter`. Adapter-specific code can import it from the
+adapter module; core `DACSCacheClient` code should import it from
+`py_dacs_client`.
 
 ```python
 from py_dacs_client.dacs_blobfile_adapter import WriteMode
@@ -274,7 +279,7 @@ The following operations raise `OperationNotSupportedError`: `write_stream`, `wr
 
 #### Write Modes
 
-The same `WriteMode` enum is available:
+The boostedblob adapter also uses the shared `WriteMode` enum:
 
 ```python
 from py_dacs_client.dacs_boostedblob_adapter import WriteMode
@@ -535,7 +540,7 @@ client = DACSCacheClient()
 Or with write support and a custom write mode:
 
 ```python
-from py_dacs_client.dacs_blobfile_adapter import WriteMode
+from py_dacs_client import WriteMode
 
 client = DACSCacheClient(write_mode=WriteMode.WRITE_SYNC)
 ```

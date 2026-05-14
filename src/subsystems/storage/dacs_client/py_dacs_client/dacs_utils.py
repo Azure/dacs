@@ -23,6 +23,8 @@ import platform
 import sys
 import threading
 from ctypes import CDLL, c_char, c_size_t, c_ssize_t, c_void_p
+from enum import Enum
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stdout)
@@ -36,6 +38,24 @@ log_level = os.environ.get(
 )  # Default logging level is INFO, unless overridden via env var
 logger.setLevel(log_level)
 logger.propagate = False  # Prevents duplicate logging if this module is imported in other modules
+
+
+class WriteMode(Enum):
+    """
+    Enumeration of write modes for DACS write operations.
+
+    WRITE_DISABLED: Disable write operations, read-only mode
+    WRITE_CACHE_ONLY: Write to cache only, no blob storage
+    WRITE_BLOB_ONLY: Write to blob storage only, bypass cache
+    WRITE_CACHE_BLOB_ASYNC: Write to cache first, async update blob storage
+    WRITE_SYNC: Write to cache and blob storage synchronously
+    """
+
+    WRITE_DISABLED = "write_disabled"
+    WRITE_CACHE_ONLY = "write_cache_only"
+    WRITE_BLOB_ONLY = "write_blob_only"
+    WRITE_CACHE_BLOB_ASYNC = "write_cache_blob_async"
+    WRITE_SYNC = "write_sync"
 
 
 # =============================================================================
@@ -341,14 +361,14 @@ async def async_parallel_ordered_result(coro_fn, items, max_concurrent: int):
         yield await task
 
 
-def _initialize_dacs_client_config(intercept_path: str = None, write_mode=None) -> None:
+def _initialize_dacs_client_config(intercept_path: str = None, write_mode: Optional[WriteMode] = None) -> None:
     """Internal API: Initialize DACS client configuration.
 
     This is an internal function and should only be called from within the library.
 
     Args:
         intercept_path: Path to the intercept mount point
-        write_mode: Write mode configuration (from WriteMode enum in dacs_adapter)
+        write_mode: Write mode configuration.
     """
 
     # Use process-specific config path to avoid race conditions in multi-process scenarios

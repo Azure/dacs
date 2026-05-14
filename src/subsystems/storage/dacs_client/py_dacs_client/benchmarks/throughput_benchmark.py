@@ -253,7 +253,8 @@ def run_write_process(
     
     if is_dacs_client(client) and is_blobfile_family(client):
         try:
-            from py_dacs_client.dacs_blobfile_adapter import DACSBlobfileAdapter as DACSAdapter, WriteMode, shutdown as dacs_blobfile_shutdown
+            from py_dacs_client import WriteMode
+            from py_dacs_client.dacs_blobfile_adapter import DACSBlobfileAdapter as DACSAdapter, shutdown as dacs_blobfile_shutdown
             from py_dacs_client.dacs_utils import alloc_buffer, release_buffer
         except ImportError as e:
             return ProcessResult(
