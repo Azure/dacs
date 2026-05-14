@@ -87,6 +87,10 @@ type Config struct {
 	// occupy every eligible node. Mutually compatible with ColocateWithServer
 	// (Colocate takes precedence).
 	AllowColocation bool
+	// CacheName is the name of the cache (StatefulSet). Used to derive the
+	// discovery endpoint and the pod name for colocate affinity. Defaults to
+	// "cacheserver" for backward compatibility with the legacy helm chart.
+	CacheName string
 	// ConnectionPoolSize overrides the connection pool size (required when discovery is enabled)
 	ConnectionPoolSize int
 
@@ -109,6 +113,7 @@ func NewConfig() *Config {
 		Namespace:               "cache-server",
 		Image:                   common.GetDefaultImage(),
 		DiscoveryEnabled:        true,
+		CacheName:               common.LegacyStatefulSetName,
 		NumThreads:              1,
 		DataSizeGiB:             1,
 		NumIterations:           1,
@@ -155,6 +160,14 @@ func (c *Config) WithServerHostname(hostname string) *Config {
 // When enabled (the default), PerfClient discovers available servers automatically.
 func (c *Config) WithDiscoveryEnabled(enabled bool) *Config {
 	c.DiscoveryEnabled = enabled
+	return c
+}
+
+// WithCacheName sets the cache name used to derive the discovery endpoint
+// and the pod name for colocate affinity. When not set, defaults to the
+// legacy "cacheserver" name for backward compatibility.
+func (c *Config) WithCacheName(name string) *Config {
+	c.CacheName = name
 	return c
 }
 
@@ -343,7 +356,7 @@ func (c *Config) LoadJob() (*batchv1.Job, error) {
 	// Handle affinity configuration based on ColocateWithServer / AllowColocation
 	switch {
 	case c.ColocateWithServer:
-		// Replace anti-affinity with affinity to schedule on same node as cacheserver-0
+		// Replace anti-affinity with affinity to schedule on same node as the first cache server pod
 		job.Spec.Template.Spec.Affinity.PodAntiAffinity = nil
 		job.Spec.Template.Spec.Affinity.PodAffinity = &corev1.PodAffinity{
 			RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
@@ -353,7 +366,7 @@ func (c *Config) LoadJob() (*batchv1.Job, error) {
 							{
 								Key:      "statefulset.kubernetes.io/pod-name",
 								Operator: metav1.LabelSelectorOpIn,
-								Values:   []string{"cacheserver-0"},
+								Values:   []string{c.CacheName + "-0"},
 							},
 						},
 					},
@@ -409,7 +422,7 @@ func (c *Config) LoadJob() (*batchv1.Job, error) {
 				"--is-discovery-enabled", fmt.Sprintf("%t", c.DiscoveryEnabled),
 			}
 			if c.DiscoveryEnabled {
-				discoveryEndpoint := fmt.Sprintf("cacheserver-discovery.%s.svc.cluster.local", c.Namespace)
+				discoveryEndpoint := common.GetDiscoveryURLForCache(c.CacheName, c.Namespace)
 				container.Args = append(container.Args,
 					"--discovery-endpoint", discoveryEndpoint,
 				)

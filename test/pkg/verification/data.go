@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/Azure/dacs/test/pkg/common"
 	"github.com/Azure/dacs/test/pkg/kube/job"
 	"github.com/Azure/dacs/test/pkg/perfclient"
 	"github.com/Azure/dacs/test/pkg/utils"
@@ -26,11 +28,12 @@ const defaultJobTimeout = 10 * time.Minute
 // UploadTestData uploads test data to the cache and returns a prefix that can
 // be used to download and verify the data later. This proves data survived
 // a disruption when called before/after a test.
-func UploadTestData(ctx context.Context, namespace string, log logr.Logger) (DataPrefix, error) {
+func UploadTestData(ctx context.Context, k8sClient client.Client, namespace string, log logr.Logger) (DataPrefix, error) {
 	prefix := fmt.Sprintf("t3-%d", time.Now().UnixMilli())
 	config := perfclient.NewConfig().
 		WithMode(perfclient.ModeUpload).
 		WithNamespace(namespace).
+		WithCacheName(common.GetCacheName(ctx, k8sClient)).
 		WithCalculateChecksum(true).
 		WithPrefix(prefix).
 		WithConnectionPoolSize(defaultConnectionPoolSize).
@@ -45,10 +48,11 @@ func UploadTestData(ctx context.Context, namespace string, log logr.Logger) (Dat
 
 // DownloadAndVerify downloads previously uploaded data and validates checksums.
 // Returns an error if any chunks are missing or corrupted.
-func DownloadAndVerify(ctx context.Context, namespace string, prefix DataPrefix, log logr.Logger) error {
+func DownloadAndVerify(ctx context.Context, k8sClient client.Client, namespace string, prefix DataPrefix, log logr.Logger) error {
 	config := perfclient.NewConfig().
 		WithMode(perfclient.ModeDownload).
 		WithNamespace(namespace).
+		WithCacheName(common.GetCacheName(ctx, k8sClient)).
 		WithValidateChecksum(true).
 		WithPrefix(string(prefix)).
 		WithConnectionPoolSize(defaultConnectionPoolSize).
@@ -64,12 +68,12 @@ func DownloadAndVerify(ctx context.Context, namespace string, prefix DataPrefix,
 // VerifyCacheServing performs a fresh upload + download cycle to prove the cache
 // works end-to-end. Use this when prior data may have been lost (e.g., nodes
 // replaced during upgrade).
-func VerifyCacheServing(ctx context.Context, namespace string, log logr.Logger) error {
-	prefix, err := UploadTestData(ctx, namespace, log)
+func VerifyCacheServing(ctx context.Context, k8sClient client.Client, namespace string, log logr.Logger) error {
+	prefix, err := UploadTestData(ctx, k8sClient, namespace, log)
 	if err != nil {
 		return fmt.Errorf("fresh verification upload failed: %w", err)
 	}
-	if err := DownloadAndVerify(ctx, namespace, prefix, log); err != nil {
+	if err := DownloadAndVerify(ctx, k8sClient, namespace, prefix, log); err != nil {
 		return fmt.Errorf("fresh verification download failed: %w", err)
 	}
 	log.Info("cache serving verified end-to-end", "namespace", namespace)

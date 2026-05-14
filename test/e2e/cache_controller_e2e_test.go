@@ -37,8 +37,11 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Azure/dacs/test/e2e/testutil"
@@ -49,23 +52,29 @@ const (
 	// Cache CR resource names
 	CacheCRName = "cache-sample"
 
-	// StatefulSet and Service names
-	CacheStatefulSetName = "cacheserver"
-	CacheServiceName     = "cacheserver"
-	DiscoveryServiceName = "cacheserver-discovery"
+	// StatefulSet and Service names (derived from CacheCRName)
+	CacheStatefulSetName = CacheCRName
+	CacheServiceName     = CacheCRName
+	DiscoveryServiceName = CacheCRName + storagev1.DiscoverySuffix
 
 	// ConfigMap names
-	DiscoveryConfigMapName = "cacheserver-discovery-config"
+	DiscoveryConfigMapName = CacheCRName + storagev1.DiscoveryConfigSuffix
 
 	// ConfigMap data keys
-	ServerCountKey = "cache_server_count"
+	ServerCountKey    = "cache_server_count"
+	EndpointFormatKey = "cache_server_endpoint_format"
 
 	// Labels
 	CacheServerLabelKey   = "app"
 	CacheServerLabelValue = "cacheserver"
+	CacheNameLabelKey     = "dacs.azure.com/cache-name"
 
 	// Expected replica count from storage_v1_cache.yaml
 	ExpectedReplicas = 2
+
+	// Multi-cache test constants
+	MultiCacheName     = "cache-multi"
+	MultiCacheReplicas = int32(1)
 
 	// Controller namespace
 	ControllerNamespace = "cache-controller-system"
@@ -137,6 +146,10 @@ var _ = Describe("Cache Controller", Label("e2e", "controller"), Ordered, func()
 
 			By("verifying StatefulSet pod template has correct labels")
 			Expect(sts.Spec.Template.Labels[CacheServerLabelKey]).To(Equal(CacheServerLabelValue))
+			Expect(sts.Spec.Template.Labels[CacheNameLabelKey]).To(Equal(CacheCRName))
+
+			By("verifying StatefulSet selector includes cache-name label")
+			Expect(sts.Spec.Selector.MatchLabels[CacheNameLabelKey]).To(Equal(CacheCRName))
 
 			By("verifying headless Service is created with correct configuration")
 			headlessSvc := &corev1.Service{}
@@ -148,6 +161,7 @@ var _ = Describe("Cache Controller", Label("e2e", "controller"), Ordered, func()
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(headlessSvc.Spec.ClusterIP).To(Equal("None"))
 				g.Expect(headlessSvc.Spec.Selector[CacheServerLabelKey]).To(Equal(CacheServerLabelValue))
+				g.Expect(headlessSvc.Spec.Selector[CacheNameLabelKey]).To(Equal(CacheCRName))
 				g.Expect(headlessSvc.Spec.Ports).NotTo(BeEmpty())
 				g.Expect(headlessSvc.OwnerReferences).To(HaveLen(1))
 				g.Expect(headlessSvc.OwnerReferences[0].Name).To(Equal(CacheCRName))
@@ -163,6 +177,7 @@ var _ = Describe("Cache Controller", Label("e2e", "controller"), Ordered, func()
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(discoverySvc.Spec.ClusterIP).NotTo(Equal("None"))
 				g.Expect(discoverySvc.Spec.Selector[CacheServerLabelKey]).To(Equal(CacheServerLabelValue))
+				g.Expect(discoverySvc.Spec.Selector[CacheNameLabelKey]).To(Equal(CacheCRName))
 				g.Expect(discoverySvc.OwnerReferences).To(HaveLen(1))
 				g.Expect(discoverySvc.OwnerReferences[0].Name).To(Equal(CacheCRName))
 			}).WithContext(ctx).Should(Succeed())
@@ -190,13 +205,7 @@ var _ = Describe("Cache Controller", Label("e2e", "controller"), Ordered, func()
 				g.Expect(err).NotTo(HaveOccurred())
 
 				// Verify Ready condition
-				var readyCondition *metav1.Condition
-				for i := range cache.Status.Conditions {
-					if cache.Status.Conditions[i].Type == "Ready" {
-						readyCondition = &cache.Status.Conditions[i]
-						break
-					}
-				}
+				readyCondition := meta.FindStatusCondition(cache.Status.Conditions, storagev1.ReadyCondition)
 				g.Expect(readyCondition).NotTo(BeNil(), "Ready condition should exist")
 				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
 				g.Expect(cache.Status.CurrentServers).NotTo(BeNil(), "CurrentServers should not be nil")
@@ -208,7 +217,10 @@ var _ = Describe("Cache Controller", Label("e2e", "controller"), Ordered, func()
 				podList := &corev1.PodList{}
 				err := k8sClient.List(ctx, podList,
 					client.InNamespace(namespace),
-					client.MatchingLabels{CacheServerLabelKey: CacheServerLabelValue})
+					client.MatchingLabels{
+						CacheServerLabelKey: CacheServerLabelValue,
+						CacheNameLabelKey:   CacheCRName,
+					})
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(podList.Items).To(HaveLen(ExpectedReplicas))
 
@@ -386,6 +398,231 @@ var _ = Describe("Cache Controller", Label("e2e", "controller"), Ordered, func()
 				"-p", `[{"op": "replace", "path": "/spec/serverSizeInGB", "value": 100}]`)
 			output, err := cmd.CombinedOutput()
 			Expect(err).NotTo(HaveOccurred(), "Failed to restore serverSizeInGB: %s", string(output))
+		})
+	})
+
+	Describe("Multi-cache support", Ordered, func() {
+		// Create a second Cache CR in the same namespace to verify resource isolation.
+		// The Ephemeral field is intentionally omitted; the webhook defaults it to
+		// false (persistent storage). This ensures the custom scheduler is exercised
+		// for this CR, since ephemeral caches use the default Kubernetes scheduler.
+		BeforeAll(func(ctx SpecContext) {
+			multiCache := &storagev1.Cache{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      MultiCacheName,
+					Namespace: namespace,
+				},
+				Spec: storagev1.CacheSpec{
+					ServerSizeInGB: 1,
+					ServerThreads:  4,
+					Scaling: storagev1.ScalingType{
+						Static: &storagev1.StaticScaleConfig{
+							NumServers: MultiCacheReplicas,
+						},
+					},
+					NodeSelectorKey:   ptr.To("dacs.azure.com/processing-unit"),
+					NodeSelectorValue: ptr.To("cpu"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, multiCache)).To(Succeed(), "Failed to create second Cache CR for multi-cache tests")
+
+			DeferCleanup(func(ctx SpecContext) {
+				cache := &storagev1.Cache{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      MultiCacheName,
+					Namespace: namespace,
+				}, cache)
+				if errors.IsNotFound(err) {
+					return
+				}
+				Expect(err).NotTo(HaveOccurred())
+				Expect(k8sClient.Delete(ctx, cache)).To(Succeed())
+
+				Eventually(func() bool {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      MultiCacheName,
+						Namespace: namespace,
+					}, &storagev1.Cache{})
+					return errors.IsNotFound(err)
+				}).WithContext(ctx).WithTimeout(2*time.Minute).Should(BeTrue(), "Failed to delete second Cache CR for multi-cache tests")
+			})
+		})
+
+		It("should reach Ready state", func(ctx SpecContext) {
+			Eventually(func(g Gomega) {
+				cache := &storagev1.Cache{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      MultiCacheName,
+					Namespace: namespace,
+				}, cache)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				readyCondition := meta.FindStatusCondition(cache.Status.Conditions, storagev1.ReadyCondition)
+				g.Expect(readyCondition).NotTo(BeNil(), "Ready condition should exist")
+				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
+				g.Expect(cache.Status.CurrentServers).NotTo(BeNil())
+				g.Expect(*cache.Status.CurrentServers).To(Equal(MultiCacheReplicas))
+			}).WithContext(ctx).Should(Succeed())
+		})
+
+		It("should create resources with correct labels and selectors", func(ctx SpecContext) {
+			multiStsName := MultiCacheName
+			multiDiscoverySvcName := MultiCacheName + storagev1.DiscoverySuffix
+			multiConfigMapName := MultiCacheName + storagev1.DiscoveryConfigSuffix
+
+			By("verifying StatefulSet has correct dual-label selectors")
+			sts := &appsv1.StatefulSet{}
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      multiStsName,
+					Namespace: namespace,
+				}, sts)
+				g.Expect(err).NotTo(HaveOccurred())
+			}).WithContext(ctx).Should(Succeed())
+
+			Expect(sts.Spec.Template.Labels[CacheServerLabelKey]).To(Equal(CacheServerLabelValue))
+			Expect(sts.Spec.Template.Labels[CacheNameLabelKey]).To(Equal(MultiCacheName))
+			Expect(sts.Spec.Selector.MatchLabels[CacheServerLabelKey]).To(Equal(CacheServerLabelValue))
+			Expect(sts.Spec.Selector.MatchLabels[CacheNameLabelKey]).To(Equal(MultiCacheName))
+
+			By("verifying headless Service selector targets only the second cache")
+			headlessSvc := &corev1.Service{}
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      MultiCacheName,
+					Namespace: namespace,
+				}, headlessSvc)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(headlessSvc.Spec.ClusterIP).To(Equal("None"))
+				g.Expect(headlessSvc.Spec.Selector[CacheServerLabelKey]).To(Equal(CacheServerLabelValue))
+				g.Expect(headlessSvc.Spec.Selector[CacheNameLabelKey]).To(Equal(MultiCacheName))
+			}).WithContext(ctx).Should(Succeed())
+
+			By("verifying discovery Service selector targets only the second cache")
+			discoverySvc := &corev1.Service{}
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      multiDiscoverySvcName,
+					Namespace: namespace,
+				}, discoverySvc)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(discoverySvc.Spec.ClusterIP).NotTo(Equal("None"))
+				g.Expect(discoverySvc.Spec.Selector[CacheServerLabelKey]).To(Equal(CacheServerLabelValue))
+				g.Expect(discoverySvc.Spec.Selector[CacheNameLabelKey]).To(Equal(MultiCacheName))
+			}).WithContext(ctx).Should(Succeed())
+
+			By("verifying ConfigMap has correct server count and endpoint format")
+			cm := &corev1.ConfigMap{}
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      multiConfigMapName,
+					Namespace: namespace,
+				}, cm)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(cm.Data[ServerCountKey]).To(Equal(fmt.Sprintf("%d", MultiCacheReplicas)))
+			}).WithContext(ctx).Should(Succeed())
+
+			expectedEndpointPrefix := fmt.Sprintf("%s-{}.%s.%s.svc.cluster.local",
+				MultiCacheName, MultiCacheName, namespace)
+			Expect(cm.Data).To(HaveKey(EndpointFormatKey))
+			Expect(cm.Data[EndpointFormatKey]).To(Equal(expectedEndpointPrefix))
+		})
+
+		It("should isolate pods between caches via labels", func(ctx SpecContext) {
+			By("verifying pods for the second cache have correct labels")
+			multiPods := &corev1.PodList{}
+			Eventually(func(g Gomega) {
+				err := k8sClient.List(ctx, multiPods,
+					client.InNamespace(namespace),
+					client.MatchingLabels{
+						CacheServerLabelKey: CacheServerLabelValue,
+						CacheNameLabelKey:   MultiCacheName,
+					})
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(multiPods.Items).To(HaveLen(int(MultiCacheReplicas)))
+			}).WithContext(ctx).Should(Succeed())
+
+			By("verifying pods for the first cache are still intact")
+			firstPods := &corev1.PodList{}
+			Eventually(func(g Gomega) {
+				err := k8sClient.List(ctx, firstPods,
+					client.InNamespace(namespace),
+					client.MatchingLabels{
+						CacheServerLabelKey: CacheServerLabelValue,
+						CacheNameLabelKey:   CacheCRName,
+					})
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(firstPods.Items).To(HaveLen(ExpectedReplicas))
+			}).WithContext(ctx).Should(Succeed())
+
+			By("verifying total pod count equals sum of both caches")
+			allPods := &corev1.PodList{}
+			err := k8sClient.List(ctx, allPods,
+				client.InNamespace(namespace),
+				client.MatchingLabels{CacheServerLabelKey: CacheServerLabelValue})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(allPods.Items).To(HaveLen(ExpectedReplicas + int(MultiCacheReplicas)))
+		})
+
+		It("should place every cache pod on a unique node", func(ctx SpecContext) {
+			By("collecting node assignments for all cache pods")
+			var allPods corev1.PodList
+			Eventually(func(g Gomega) {
+				err := k8sClient.List(ctx, &allPods,
+					client.InNamespace(namespace),
+					client.MatchingLabels{
+						CacheServerLabelKey: CacheServerLabelValue,
+					})
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(allPods.Items).To(HaveLen(ExpectedReplicas + int(MultiCacheReplicas)))
+				for _, pod := range allPods.Items {
+					g.Expect(pod.Spec.NodeName).NotTo(BeEmpty(), "pod %s not yet scheduled", pod.Name)
+				}
+			}).WithContext(ctx).Should(Succeed())
+
+			By("logging pod -> node mapping and verifying uniqueness")
+			log := GinkgoLogr.WithName("node-placement")
+			nodeToPod := map[string]string{}
+			for _, pod := range allPods.Items {
+				cacheName := pod.Labels[CacheNameLabelKey]
+				log.Info("pod scheduled", "pod", pod.Name, "cache", cacheName, "node", pod.Spec.NodeName)
+
+				if existing, ok := nodeToPod[pod.Spec.NodeName]; ok {
+					Fail(fmt.Sprintf("node %s has multiple cache pods: %s and %s - custom scheduler should assign one pod per node",
+						pod.Spec.NodeName, existing, pod.Name))
+				}
+				nodeToPod[pod.Spec.NodeName] = pod.Name
+			}
+		})
+
+		It("should not affect first cache resources", func(ctx SpecContext) {
+			By("verifying first cache StatefulSet still targets the correct cache")
+			sts := &appsv1.StatefulSet{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      CacheStatefulSetName,
+				Namespace: namespace,
+			}, sts)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sts.Spec.Selector.MatchLabels[CacheNameLabelKey]).To(Equal(CacheCRName))
+			Expect(*sts.Spec.Replicas).To(Equal(int32(ExpectedReplicas)))
+
+			By("verifying first cache headless Service still targets the correct cache")
+			headlessSvc := &corev1.Service{}
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      CacheServiceName,
+				Namespace: namespace,
+			}, headlessSvc)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(headlessSvc.Spec.Selector[CacheNameLabelKey]).To(Equal(CacheCRName))
+
+			By("verifying first cache discovery Service still targets the correct cache")
+			discoverySvc := &corev1.Service{}
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      DiscoveryServiceName,
+				Namespace: namespace,
+			}, discoverySvc)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(discoverySvc.Spec.Selector[CacheNameLabelKey]).To(Equal(CacheCRName))
 		})
 	})
 })

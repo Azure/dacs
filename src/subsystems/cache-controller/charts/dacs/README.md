@@ -50,7 +50,7 @@ helm install dacs ./charts/dacs \
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `cache.enabled` | Deploy a Cache CR with controller | `false` |
-| `cache.name` | Name of the Cache CR | `cache-sample` |
+| `cache.name` | Name of the Cache CR (max 53 chars, RFC 1123 DNS label) | `cache-sample` |
 | `cache.namespace` | Namespace for Cache CR | `cache-server` |
 | `cache.serverImage.repository` | Cache server image repository |  `cache-server` |
 | `cache.serverImage.tag` | Cache server image tag | `latest` |
@@ -124,9 +124,9 @@ kubectl logs -n dacs-system -l app.kubernetes.io/name=dacs -f
 
 **Common cause:** Cache server pods with persistent storage (`storage.ephemeral=false`) require a custom scheduler (`cacheserver-scheduler`) which must be deployed separately.
 
-Check which scheduler the pod is using:
+Check which scheduler the pod is using (pod names are `<cache-name>-<ordinal>`):
 ```bash
-kubectl get pod cacheserver-0 -n cache-server -o jsonpath='{.spec.schedulerName}'
+kubectl get pod <cache-name>-0 -n cache-server -o jsonpath='{.spec.schedulerName}'
 ```
 
 **Solutions:**

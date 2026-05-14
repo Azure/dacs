@@ -52,6 +52,7 @@ func (c *perfTestConfig) newPerfConfig(mode perfclient.Mode, prefix string) *per
 		WithMode(mode).
 		WithPrefix(prefix).
 		WithColocate(c.colocate).
+		WithCacheName(cacheName).
 		WithNamespace(namespace).
 		WithDataSizeGiB(opts.DataSizeGiB).
 		WithNumThreads(opts.NumThreads)
@@ -76,7 +77,7 @@ func (c *perfTestConfig) newPerfConfig(mode perfclient.Mode, prefix string) *per
 
 		if c.colocate {
 			// Colocated tests target specific servers — disable discovery and use explicit hostnames
-			config.WithServerHostname(buildServerHostname(namespace, serverCount)).
+			config.WithServerHostname(buildServerHostname(cacheName, namespace, serverCount)).
 				WithDiscoveryEnabled(false)
 		}
 		// Otherwise, discovery is enabled by default — no need to specify hostnames
@@ -271,17 +272,19 @@ func runPerfClientWithConfig(ctx context.Context, config *perfclient.Config, col
 	return summary
 }
 
-// buildServerHostname builds the cache server hostname string for the given number of servers.
-func buildServerHostname(ns string, numServers int) string {
+// buildServerHostname builds the cache server hostname string for the given
+// cache name and number of servers. The headless service has the same name as
+// the cache, so pod DNS follows the pattern <cacheName>-N.<cacheName>.<ns>...
+func buildServerHostname(name, ns string, numServers int) string {
 	if numServers == 1 {
-		return fmt.Sprintf("cacheserver-0.cacheserver.%s.svc.cluster.local", ns)
+		return fmt.Sprintf("%s-0.%s.%s.svc.cluster.local", name, name, ns)
 	}
 	var hosts strings.Builder
 	for i := range numServers {
 		if i > 0 {
 			hosts.WriteString("#")
 		}
-		fmt.Fprintf(&hosts, "cacheserver-%d.cacheserver.%s.svc.cluster.local", i, ns)
+		fmt.Fprintf(&hosts, "%s-%d.%s.%s.svc.cluster.local", name, i, name, ns)
 	}
 	return hosts.String()
 }

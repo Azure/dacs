@@ -361,6 +361,28 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: must specify metadata.name or metadata.generateName
+          rule: has(self.metadata.name) || has(self.metadata.generateName)
+        - message: metadata.name must be at most 53 characters; the controller appends
+            suffixes up to 10 characters to create Service names, which are limited
+            to 63
+          rule: '!has(self.metadata.name) || size(self.metadata.name) <= 53'
+        - message: 'metadata.name must be a valid RFC 1123 DNS label: lowercase alphanumeric
+            and hyphens, must start and end with alphanumeric'
+          rule: '!has(self.metadata.name) || self.metadata.name.matches(''^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'')'
+        - message: metadata.name must not end with '-discovery'; that suffix is reserved
+            for the discovery Service derived from another Cache and would cause a
+            Service name collision
+          rule: '!has(self.metadata.name) || !self.metadata.name.endsWith(''-discovery'')'
+        - message: metadata.generateName must be at most 48 characters; the apiserver
+            appends a 5-char suffix and the controller appends suffixes up to 10 characters
+            to create Service names, which are limited to 63
+          rule: '!has(self.metadata.generateName) || size(self.metadata.generateName)
+            <= 48'
+        - message: 'metadata.generateName must be a valid RFC 1123 DNS label prefix:
+            lowercase alphanumeric and hyphens, must start with alphanumeric'
+          rule: '!has(self.metadata.generateName) || self.metadata.generateName.matches(''^[a-z0-9]([a-z0-9-]*)?$'')'
     served: true
     storage: true
     subresources:

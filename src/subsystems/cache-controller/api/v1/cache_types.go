@@ -261,6 +261,24 @@ type CacheStatus struct {
 // +kubebuilder:printcolumn:name="IB Resources",type=integer,JSONPath=`.spec.infinibandResourceLimitCount`,priority=1
 // +kubebuilder:printcolumn:name="Selector Key",type=string,JSONPath=`.spec.nodeSelectorKey`,priority=1
 // +kubebuilder:printcolumn:name="Selector Value",type=string,JSONPath=`.spec.nodeSelectorValue`,priority=1
+//
+// Name validation: the controller derives sub-resource names by appending
+// suffixes to metadata.name (longest: "-discovery", 10 chars). Service names
+// must be valid RFC 1123 DNS labels (max 63 chars), so the Cache name is
+// capped at 53 characters and must match the DNS label pattern. When using
+// metadata.generateName, the apiserver appends a 5-char random suffix to form
+// the final name, so the prefix is capped at 48 characters.
+//
+// Names ending in "-discovery" are also rejected: the controller creates a
+// Service named "{cacheName}-discovery", so a Cache literally named
+// "{x}-discovery" would have a main Service that collides with the discovery
+// Service derived from a Cache named "{x}".
+// +kubebuilder:validation:XValidation:rule="has(self.metadata.name) || has(self.metadata.generateName)",message="must specify metadata.name or metadata.generateName"
+// +kubebuilder:validation:XValidation:rule="!has(self.metadata.name) || size(self.metadata.name) <= 53",message="metadata.name must be at most 53 characters; the controller appends suffixes up to 10 characters to create Service names, which are limited to 63"
+// +kubebuilder:validation:XValidation:rule="!has(self.metadata.name) || self.metadata.name.matches('^[a-z0-9]([a-z0-9-]*[a-z0-9])?$')",message="metadata.name must be a valid RFC 1123 DNS label: lowercase alphanumeric and hyphens, must start and end with alphanumeric"
+// +kubebuilder:validation:XValidation:rule="!has(self.metadata.name) || !self.metadata.name.endsWith('-discovery')",message="metadata.name must not end with '-discovery'; that suffix is reserved for the discovery Service derived from another Cache and would cause a Service name collision"
+// +kubebuilder:validation:XValidation:rule="!has(self.metadata.generateName) || size(self.metadata.generateName) <= 48",message="metadata.generateName must be at most 48 characters; the apiserver appends a 5-char suffix and the controller appends suffixes up to 10 characters to create Service names, which are limited to 63"
+// +kubebuilder:validation:XValidation:rule="!has(self.metadata.generateName) || self.metadata.generateName.matches('^[a-z0-9]([a-z0-9-]*)?$')",message="metadata.generateName must be a valid RFC 1123 DNS label prefix: lowercase alphanumeric and hyphens, must start with alphanumeric"
 
 // Cache is the Schema for the caches API
 type Cache struct {

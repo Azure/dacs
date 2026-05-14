@@ -1,9 +1,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: cacheserver
+  name: {{ .Name }}
   labels:
     app: cacheserver
+    dacs.azure.com/cache-name: {{ .Name }}
   namespace: {{ .Namespace }}
 spec:
   ports:
@@ -16,3 +17,4 @@ spec:
   clusterIP: None
   selector:
     app: cacheserver
+    dacs.azure.com/cache-name: {{ .Name }}

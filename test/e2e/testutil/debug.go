@@ -33,7 +33,7 @@ func PrintCacheStatus(ctx SpecContext, cacheName, namespace string) {
 
 	// StatefulSet status
 	GinkgoWriter.Println("\n--- StatefulSet ---")
-	cmd = exec.CommandContext(ctx, "kubectl", "-n", namespace, "get", "statefulset", "cacheserver", "-o", "wide")
+	cmd = exec.CommandContext(ctx, "kubectl", "-n", namespace, "get", "statefulset", cacheName, "-o", "wide")
 	if output, err := cmd.CombinedOutput(); err == nil {
 		GinkgoWriter.Println(string(output))
 	} else {
@@ -42,7 +42,8 @@ func PrintCacheStatus(ctx SpecContext, cacheName, namespace string) {
 
 	// Pods status
 	GinkgoWriter.Println("\n--- Cache Server Pods ---")
-	cmd = exec.CommandContext(ctx, "kubectl", "-n", namespace, "get", "pods", "-l", "app=cacheserver", "-o", "wide")
+	cmd = exec.CommandContext(ctx, "kubectl", "-n", namespace, "get", "pods",
+		"-l", fmt.Sprintf("app=cacheserver,dacs.azure.com/cache-name=%s", cacheName), "-o", "wide")
 	if output, err := cmd.CombinedOutput(); err == nil {
 		GinkgoWriter.Println(string(output))
 	} else {
@@ -60,7 +61,7 @@ func PrintCacheStatus(ctx SpecContext, cacheName, namespace string) {
 
 	// ConfigMap
 	GinkgoWriter.Println("\n--- Discovery ConfigMap ---")
-	cmd = exec.CommandContext(ctx, "kubectl", "-n", namespace, "get", "configmap", "cacheserver-discovery-config", "-o", "yaml")
+	cmd = exec.CommandContext(ctx, "kubectl", "-n", namespace, "get", "configmap", cacheName+"-discovery-config", "-o", "yaml")
 	if output, err := cmd.CombinedOutput(); err == nil {
 		GinkgoWriter.Println(string(output))
 	} else {
@@ -112,7 +113,7 @@ func PrintControllerLogs(ctx SpecContext, controllerNamespace string, tailLines 
 	GinkgoWriter.Println(separator + "\n")
 
 	cmd := exec.CommandContext(ctx, "kubectl", "-n", controllerNamespace, "logs",
-		"deployment/cache-controller-controller-manager", "-c", "manager", "--tail", fmt.Sprintf("%d", tailLines))
+		"deployment/dacs-manager", "-c", "manager", "--tail", fmt.Sprintf("%d", tailLines))
 	if output, err := cmd.CombinedOutput(); err == nil {
 		GinkgoWriter.Println(string(output))
 	} else {

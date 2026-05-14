@@ -164,19 +164,24 @@ NAME           AGE
 cache-sample   2m
 ```
 
-Check the cache server pods (created by the controller):
+Check the cache server pods (created by the controller). Pod names are
+derived from the Cache CR name (default `cache-sample`):
 
 ```sh
+# List pods for a specific Cache CR
+kubectl get pods -n dacs-system -l dacs.azure.com/cache-name=cache-sample
+
+# Or list all cache server pods across all Cache CRs
 kubectl get pods -n dacs-system -l app=cacheserver
 ```
 
 Expected output:
 
 ```
-NAME             READY   STATUS    RESTARTS   AGE
-cacheserver-0    1/1     Running   0          2m
-cacheserver-1    1/1     Running   0          2m
-cacheserver-2    1/1     Running   0          2m
+NAME              READY   STATUS    RESTARTS   AGE
+cache-sample-0    1/1     Running   0          2m
+cache-sample-1    1/1     Running   0          2m
+cache-sample-2    1/1     Running   0          2m
 ```
 
 ## Configuration
@@ -246,8 +251,11 @@ helm upgrade --install dacs \
 # Controller logs
 kubectl logs -n dacs-system -l app.kubernetes.io/name=dacs --prefix -f
 
-# Cache server logs
+# Cache server logs (all cache pods)
 kubectl logs -n dacs-system -l app=cacheserver --prefix --all-containers
+
+# Cache server logs (specific Cache CR)
+kubectl logs -n dacs-system -l dacs.azure.com/cache-name=cache-sample --prefix --all-containers
 
 # Events
 kubectl events -n dacs-system
@@ -292,7 +300,7 @@ kubectl logs -n dacs-system -l app.kubernetes.io/name=dacs -f
 Check pod events and node labels:
 
 ```sh
-kubectl describe pod cacheserver-0 -n dacs-system
+kubectl describe pod <cache-name>-0 -n dacs-system
 kubectl get nodes --show-labels | grep dacs.azure.com/processing-unit
 ```
 
@@ -314,7 +322,7 @@ Common causes:
 Check logs:
 
 ```sh
-kubectl logs cacheserver-0 -n dacs-system --previous
+kubectl logs <cache-name>-0 -n dacs-system --previous
 ```
 
 ## Uninstalling dacs

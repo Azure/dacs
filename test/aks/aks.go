@@ -161,7 +161,7 @@ func beforeEach(ctx context.Context) {
 	}).WithContext(ctx).WithTimeout(10*time.Minute).WithPolling(10*time.Second).Should(Succeed(), "application health verification failed before test")
 
 	By("verifying cache serving (upload+download round-trip) before test")
-	Expect(verification.VerifyCacheServing(ctx, tc.namespace, log)).
+	Expect(verification.VerifyCacheServing(ctx, tc.Client, tc.namespace, log)).
 		To(Succeed(), "cache serving verification failed before test")
 
 	By("recording initial cluster state")
@@ -223,7 +223,7 @@ func afterEach(ctx context.Context) {
 	}).WithContext(ctx).WithTimeout(10*time.Minute).WithPolling(10*time.Second).Should(Succeed(), "application health verification failed")
 
 	By("verifying data integrity")
-	Expect(verification.VerifyCacheServing(ctx, tc.namespace, log)).To(Succeed(), "cache serving verification failed")
+	Expect(verification.VerifyCacheServing(ctx, tc.Client, tc.namespace, log)).To(Succeed(), "cache serving verification failed")
 }
 
 // generateLogLinks discovers the Log Analytics workspace and writes an ADX

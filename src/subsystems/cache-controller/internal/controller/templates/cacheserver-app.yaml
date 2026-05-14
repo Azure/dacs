@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: cacheserver
+  name: {{ .Name }}
   namespace: {{ .Namespace }}
   labels:
     app: cacheserver
@@ -10,7 +10,8 @@ spec:
   selector:
     matchLabels:
       app: cacheserver
-  serviceName: cacheserver
+      dacs.azure.com/cache-name: {{ .Name }}
+  serviceName: {{ .Name }}
   replicas: {{ .NumServers }}
   podManagementPolicy: Parallel
   updateStrategy:
@@ -168,4 +169,4 @@ spec:
 {{- end }}
         - name: cache-discovery-config
           configMap:
-            name: cacheserver-discovery-config
+            name: {{ .Name }}-discovery-config

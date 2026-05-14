@@ -133,8 +133,8 @@ The scheduling reconciler (`scheduling.Reconciler.Reconcile`) runs after scaling
 
 Cache pods are grandchildren of the Cache CR (Cache -> StatefulSet -> Pod), so the standard `Owns` mechanism doesn't apply. Instead, the controller watches pods directly with:
 
-- **`cacheserverPodPredicate`** -- only reacts to pods labeled `app=cacheserver` with scheduling-relevant changes (phase, node assignment, deletion timestamp, container readiness).
-- **`MapPodToCaches`** -- reads the `dacs.azure.com/cache-name` label from the pod and enqueues the owning Cache CR directly (no API call).
+- **`cacheserverPodPredicate`** - only reacts to pods labeled `app=cacheserver` with scheduling-relevant changes (phase, node assignment, deletion timestamp, container readiness).
+- **`MapPodToCaches`** - reads the `dacs.azure.com/cache-name` label from the pod and enqueues the owning Cache CR directly (no API call).
 
 ## Implementation Reference
 

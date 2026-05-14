@@ -67,6 +67,17 @@ The validating webhook rejects invalid Cache configurations with clear error mes
 
 ### Validation Rules
 
+#### Name Validation
+| Rule | Error Message |
+|------|---------------|
+| Either `metadata.name` or `metadata.generateName` must be set | "metadata.name or metadata.generateName must be set" |
+| `metadata.name` max 53 characters | "cache name must be at most 53 characters..." |
+| `metadata.name` must be a valid RFC 1123 DNS label (lowercase alphanumeric or hyphens, must start/end with alphanumeric) | error details from `validation.IsDNS1123Label` |
+| `metadata.generateName` max 48 characters | "cache generateName must be at most 48 characters..." |
+| `metadata.generateName` must be a valid DNS-1123 prefix (the controller appends a 5-character random suffix; trailing hyphens are allowed) | error details from `validation.IsDNS1123Label` on `generateName + "aaaaa"` |
+
+The 53-character limit ensures all derived resource names (longest suffix is `-discovery` at 10 characters) stay within the Kubernetes 63-character DNS label limit. When `generateName` is used, the apiserver appends a 5-character `[a-z0-9]` random suffix before the validating webhook runs, so the prefix limit is 48 characters (53 - 5).
+
 #### Required Fields
 | Field | Rule | Error Message |
 |-------|------|---------------|
