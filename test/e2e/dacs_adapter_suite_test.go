@@ -94,7 +94,7 @@ func DescribePytestAdapterTests(cfg PytestAdapterConfig, cacheEnabled bool) {
 				clientID:                 clientID,
 				sasToken:                 sasToken,
 				cacheEnabled:             cacheEnabled,
-				cacheDiscoveryURL:        common.GetDiscoveryURL(namespace),
+				cacheDiscoveryURL:        common.GetDiscoveryURLForCache(cacheName, namespace),
 				pytestOutput:             fluxOpts.PytestOutput,
 			}
 

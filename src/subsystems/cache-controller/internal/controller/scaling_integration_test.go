@@ -44,9 +44,9 @@ func createLabeledNode(name string, labels map[string]string) *corev1.Node {
 	}
 }
 
-func verifyConfigMapServerCount(ctx context.Context, namespace string, expectedCount int) error {
+func verifyConfigMapServerCount(ctx context.Context, namespace, cacheName string, expectedCount int) error {
 	var cm corev1.ConfigMap
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: "cacheserver-discovery-config", Namespace: namespace}, &cm)
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: cacheName + storagev1.DiscoveryConfigSuffix, Namespace: namespace}, &cm)
 	if err != nil {
 		return fmt.Errorf("failed to get ConfigMap: %w", err)
 	}
@@ -106,7 +106,7 @@ var _ = Describe("Scaling Controller", func() {
 	expectReplicas := func(g Gomega, ns, cacheName string, expected int32) {
 		g.Expect(getScalingReplicas(ns, cacheName)).To(Equal(expected),
 			"expected %d replicas for Cache %s/%s", expected, ns, cacheName)
-		g.Expect(verifyConfigMapServerCount(ctx, ns, int(expected))).To(Succeed(),
+		g.Expect(verifyConfigMapServerCount(ctx, ns, cacheName, int(expected))).To(Succeed(),
 			"ConfigMap should reflect %d servers for Cache %s/%s", expected, ns, cacheName)
 	}
 
@@ -657,7 +657,7 @@ var _ = Describe("Scaling Controller", func() {
 			Eventually(func(g Gomega) {
 				g.Expect(getScalingReplicas(ns, cacheName)).To(Equal(int32(3)),
 					"expected 3 replicas for static scaling")
-				g.Expect(verifyConfigMapServerCount(ctx, ns, 3)).To(Succeed(),
+				g.Expect(verifyConfigMapServerCount(ctx, ns, cacheName, 3)).To(Succeed(),
 					"ConfigMap should reflect 3 servers for static scaling")
 			}).Should(Succeed())
 		})
@@ -682,7 +682,7 @@ var _ = Describe("Scaling Controller", func() {
 			Eventually(func(g Gomega) {
 				g.Expect(getScalingReplicas(ns, cacheName)).To(Equal(int32(5)),
 					"expected 5 replicas after static count update")
-				g.Expect(verifyConfigMapServerCount(ctx, ns, 5)).To(Succeed(),
+				g.Expect(verifyConfigMapServerCount(ctx, ns, cacheName, 5)).To(Succeed(),
 					"ConfigMap should reflect 5 servers after static count update")
 			}).Should(Succeed())
 		})

@@ -5,55 +5,56 @@ metadata:
 rules:
     - apiGroups:
         - ""
-      resourceNames:
-        - cacheserver-discovery-config
       resources:
         - configmaps
       verbs:
-        - delete
         - get
-        - patch
+        - list
+        - watch
+        - create
         - update
+        - patch
+        - delete
     - apiGroups:
         - ""
       resources:
-        - configmaps
-        - services
+        - nodes
       verbs:
-        - create
+        - get
         - list
         - watch
     - apiGroups:
         - ""
-      resourceNames:
-        - cacheserver
-        - cacheserver-discovery
+      resources:
+        - pods
+      verbs:
+        - get
+        - list
+        - watch
+    - apiGroups:
+        - ""
       resources:
         - services
       verbs:
-        - delete
         - get
-        - patch
+        - list
+        - watch
+        - create
         - update
+        - patch
+        - delete
     - apiGroups:
         - apps
       resources:
         - statefulsets
       verbs:
-        - create
+        - get
         - list
         - watch
-    - apiGroups:
-        - apps
-      resourceNames:
-        - cacheserver
-      resources:
-        - statefulsets
-      verbs:
-        - delete
-        - get
-        - patch
+        - create
         - update
+        - patch
+        - delete
     - apiGroups:
         - storage.azure.com
       resources:

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 )
 
@@ -160,6 +161,106 @@ func TestCacheWebhook_ValidateCreate(t *testing.T) {
 	}{
 		{
 			name: "valid default",
+		},
+		{
+			name: "rejects empty name and empty generateName",
+			mutate: func(c *Cache) {
+				c.Name = ""
+			},
+			expectedErr: "must specify metadata.name or metadata.generateName",
+		},
+		{
+			name: "accepts generateName instead of name",
+			mutate: func(c *Cache) {
+				c.Name = ""
+				c.GenerateName = "my-cache-"
+			},
+		},
+		{
+			name: "accepts generateName at max length (48 chars)",
+			mutate: func(c *Cache) {
+				c.Name = ""
+				c.GenerateName = strings.Repeat("a", MaxCacheGenerateNameLength)
+			},
+		},
+		{
+			name: "rejects generateName exceeding 48 characters",
+			mutate: func(c *Cache) {
+				c.Name = ""
+				c.GenerateName = strings.Repeat("a", MaxCacheGenerateNameLength+1)
+			},
+			expectedErr: "must be at most 48 characters",
+		},
+		{
+			name: "rejects generateName with uppercase letters",
+			mutate: func(c *Cache) {
+				c.Name = ""
+				c.GenerateName = "MyCache-"
+			},
+			expectedErr: "a lowercase RFC 1123 label must consist of",
+		},
+		{
+			name: "rejects generateName starting with hyphen",
+			mutate: func(c *Cache) {
+				c.Name = ""
+				c.GenerateName = "-my-cache-"
+			},
+			expectedErr: "a lowercase RFC 1123 label must consist of",
+		},
+		{
+			name: "accepts generateName ending with hyphen",
+			mutate: func(c *Cache) {
+				c.Name = ""
+				c.GenerateName = "my-cache-"
+			},
+		},
+		{
+			name: "accepts name at max length (53 chars)",
+			mutate: func(c *Cache) {
+				c.Name = strings.Repeat("a", MaxCacheNameLength)
+			},
+		},
+		{
+			name: "rejects name exceeding 53 characters",
+			mutate: func(c *Cache) {
+				c.Name = strings.Repeat("a", MaxCacheNameLength+1)
+			},
+			expectedErr: "must be at most 53 characters",
+		},
+		{
+			name: "rejects name with uppercase letters",
+			mutate: func(c *Cache) {
+				c.Name = "MyCache"
+			},
+			expectedErr: "a lowercase RFC 1123 label must consist of",
+		},
+		{
+			name: "rejects name starting with hyphen",
+			mutate: func(c *Cache) {
+				c.Name = "-mycache"
+			},
+			expectedErr: "a lowercase RFC 1123 label must consist of",
+		},
+		{
+			name: "rejects name ending with hyphen",
+			mutate: func(c *Cache) {
+				c.Name = "mycache-"
+			},
+			expectedErr: "a lowercase RFC 1123 label must consist of",
+		},
+		{
+			name: "rejects name with dots",
+			mutate: func(c *Cache) {
+				c.Name = "my.cache"
+			},
+			expectedErr: "must not contain dots",
+		},
+		{
+			name: "rejects name ending in -discovery (cacheserver-discovery)",
+			mutate: func(c *Cache) {
+				c.Name = "cacheserver-discovery"
+			},
+			expectedErr: `must not end with "-discovery"`,
 		},
 		{
 			name: "valid with dynamic scaling",
@@ -429,7 +530,10 @@ func TestCacheWebhook_ValidateCreate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			cache := &Cache{Spec: CacheSpec{ServerSizeInGB: 100, ServerThreads: 8}}
+			cache := &Cache{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cache"},
+				Spec:       CacheSpec{ServerSizeInGB: 100, ServerThreads: 8},
+			}
 			if tt.mutate != nil {
 				tt.mutate(cache)
 			}
@@ -492,8 +596,10 @@ func TestCacheWebhook_ValidateUpdate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
-			oldCache := &Cache{Spec: CacheSpec{ServerSizeInGB: 100, ServerThreads: 8}}
+			oldCache := &Cache{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cache"},
+				Spec:       CacheSpec{ServerSizeInGB: 100, ServerThreads: 8},
+			}
 			if tt.mutateOld != nil {
 				tt.mutateOld(oldCache)
 			}
@@ -501,7 +607,10 @@ func TestCacheWebhook_ValidateUpdate(t *testing.T) {
 				t.Fatalf("Default() old error: %v", err)
 			}
 
-			newCache := &Cache{Spec: CacheSpec{ServerSizeInGB: 100, ServerThreads: 8}}
+			newCache := &Cache{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cache"},
+				Spec:       CacheSpec{ServerSizeInGB: 100, ServerThreads: 8},
+			}
 			if tt.mutateNew != nil {
 				tt.mutateNew(newCache)
 			}
@@ -529,7 +638,10 @@ func TestCacheWebhook_ValidateUpdate(t *testing.T) {
 func TestCacheWebhook_ValidateDelete(t *testing.T) {
 	t.Parallel()
 
-	cache := &Cache{Spec: CacheSpec{ServerSizeInGB: 100, ServerThreads: 8}}
+	cache := &Cache{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-cache"},
+		Spec:       CacheSpec{ServerSizeInGB: 100, ServerThreads: 8},
+	}
 	if err := cache.Default(context.Background(), cache); err != nil {
 		t.Fatalf("Default() error: %v", err)
 	}

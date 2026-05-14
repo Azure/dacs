@@ -80,7 +80,7 @@ var testAdapterBenchmark = func(ctx context.Context, clients string) {
 		numBlobs:                 numBlobs,
 		numProcesses:             numProcesses,
 		writeMode:                writeMode,
-		cacheDiscoveryURL:        common.GetDiscoveryURL(namespace),
+		cacheDiscoveryURL:        common.GetDiscoveryURLForCache(cacheName, namespace),
 	}
 
 	result, err := config.runBenchmark(ctx)

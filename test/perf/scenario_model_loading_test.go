@@ -28,7 +28,7 @@ func scenarioConfig() scenario.ModelLoadingConfig {
 		TestImage:                getClientImage(),
 		WorkloadIdentityClientID: opts.WorkloadIdentityClientID,
 		WorkloadIdentitySA:       opts.WorkloadIdentitySA,
-		CacheDiscoveryURL:        common.GetDiscoveryURL(namespace),
+		CacheDiscoveryURL:        common.GetDiscoveryURLForCache(cacheName, namespace),
 	}
 }
 

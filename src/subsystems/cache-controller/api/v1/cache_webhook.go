@@ -13,6 +13,7 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -136,6 +137,56 @@ func (r *Cache) ValidateDelete(ctx context.Context, cache *Cache) (admission.War
 func (r *Cache) validateCache() (admission.Warnings, error) { //nolint:gocyclo
 	var allErrs field.ErrorList
 	var warnings admission.Warnings
+
+	// Validate metadata.name (or metadata.generateName) for derived resource
+	// naming constraints. The controller creates Services and ConfigMaps with
+	// suffixed names (e.g. "{name}-discovery"), which must be valid DNS labels
+	// (RFC 1123).
+	//
+	// generateName is supported: the apiserver runs name generation between
+	// the mutating and validating admission webhooks, so by the time we get
+	// here r.Name is already populated with "{generateName}{5-char-suffix}".
+	// We still validate r.GenerateName explicitly so users get an error that
+	// references the field they actually set.
+	namePath := field.NewPath("metadata", "name")
+	genNamePath := field.NewPath("metadata", "generateName")
+
+	switch {
+	case r.Name == "" && r.GenerateName == "":
+		allErrs = append(allErrs, field.Required(namePath,
+			"must specify metadata.name or metadata.generateName"))
+	case r.GenerateName != "":
+		if len(r.GenerateName) > MaxCacheGenerateNameLength {
+			allErrs = append(allErrs, field.Invalid(genNamePath, r.GenerateName,
+				fmt.Sprintf("must be at most %d characters; the apiserver appends a %d-char random suffix and the controller appends suffixes up to %d characters to create Service names, which are limited to 63",
+					MaxCacheGenerateNameLength, RandomNameSuffixLength, len(DiscoverySuffix))))
+		}
+		// Validate the generated name (generateName + 5 random lowercase
+		// alphanumeric chars) as a DNS-1123 label. Appending a placeholder
+		// suffix of valid characters lets a generateName ending in '-' pass
+		// (the random suffix would prevent a trailing hyphen in the final name).
+		candidate := r.GenerateName + strings.Repeat("a", RandomNameSuffixLength)
+		for _, msg := range validation.IsDNS1123Label(candidate) {
+			allErrs = append(allErrs, field.Invalid(genNamePath, r.GenerateName, msg))
+		}
+	case r.Name != "":
+		if len(r.Name) > MaxCacheNameLength {
+			allErrs = append(allErrs, field.Invalid(namePath, r.Name,
+				fmt.Sprintf("must be at most %d characters; the controller appends suffixes up to %d characters to create Service names, which are limited to 63", MaxCacheNameLength, len(DiscoverySuffix))))
+		}
+		for _, msg := range validation.IsDNS1123Label(r.Name) {
+			allErrs = append(allErrs, field.Invalid(namePath, r.Name, msg))
+		}
+		// Names ending in "-discovery" are rejected because the controller
+		// derives a discovery Service named "{cacheName}-discovery" from
+		// every Cache. A Cache named "{x}-discovery" would have a main
+		// Service whose name collides with the discovery Service derived
+		// from a Cache named "{x}".
+		if strings.HasSuffix(r.Name, DiscoverySuffix) {
+			allErrs = append(allErrs, field.Invalid(namePath, r.Name,
+				fmt.Sprintf("must not end with %q; that suffix is reserved for the discovery Service derived from another Cache and would cause a Service name collision", DiscoverySuffix)))
+		}
+	}
 
 	specPath := field.NewPath("spec")
 

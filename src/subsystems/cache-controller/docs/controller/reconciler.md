@@ -4,8 +4,8 @@
 
 The cache controller is built around a single Kubernetes custom resource (`Cache`) and one main controller (`CacheReconciler`) that delegates to two embedded sub-reconcilers:
 
-- **Scaling reconciler** -- determines the desired replica count based on cluster size and scaling policy.
-- **Scheduling reconciler** -- handles custom pod-to-node placement and stuck pod cleanup.
+- **Scaling reconciler** - determines the desired replica count based on cluster size and scaling policy.
+- **Scheduling reconciler** - handles custom pod-to-node placement and stuck pod cleanup.
 
 Status conditions and requeue timing are accumulated via a **status helper** throughout the reconcile cycle. After all sub-reconcilers have run, a `patchStatus` call sets final conditions and writes the accumulated status in a single API call. Multiple sub-reconcilers can independently set conditions and request requeue without conflicting.
 
@@ -106,24 +106,24 @@ The status helper keeps the **shortest positive duration**, so the controller wa
 
 ### StatefulSet
 
-The controller creates or updates a single StatefulSet named `cacheserver`. It renders the manifest from an embedded template (`templates/cacheserver-app.yaml`) and only mutates managed fields (`Replicas`, `Selector`, `ServiceName`, `Template`) to avoid fighting server-defaulted values.
+The controller creates or updates a StatefulSet whose name matches the Cache CR's `metadata.name`. It renders the manifest from an embedded template (`templates/cacheserver-app.yaml`) and only mutates managed fields (`Replicas`, `Selector`, `ServiceName`, `Template`) to avoid fighting server-defaulted values.
 
 Owner references are set so the StatefulSet is garbage-collected when the Cache CR is deleted.
 
 ### Services
 
-Two fixed-name Services are managed:
+Two Services are managed, named relative to the Cache CR name:
 
-| Service | Purpose |
-|---|---|
-| `cacheserver` | Client access to cache pods |
-| `cacheserver-discovery` | Peer discovery (headless) |
+| Service | Name | Purpose |
+|---|---|---|
+| Headless | `<cache-name>` | Client access to cache pods |
+| Discovery | `<cache-name>-discovery` | Peer discovery |
 
 ### ConfigMap
 
-A single ConfigMap (`cacheserver-discovery-config`) is maintained with the current server count for peer discovery.
+A ConfigMap (`<cache-name>-discovery-config`) is maintained with the current server count for peer discovery.
 
-> **Note:** Resource names are fixed constants. This enforces a **one Cache deployment per namespace** constraint.
+All derived resource names use the Cache CR's `metadata.name` as a prefix. The webhook enforces a 53-character maximum on the Cache name to ensure derived names (longest suffix is `-discovery` at 10 chars) stay within the 63-character DNS label limit.
 
 ## Multi-Cache Concurrency
 

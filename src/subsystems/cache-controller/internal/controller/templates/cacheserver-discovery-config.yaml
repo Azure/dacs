@@ -1,10 +1,11 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: cacheserver-discovery-config
+  name: {{ .Name }}-discovery-config
   namespace: {{ .Namespace }}
   labels:
     app: cacheserver
+    dacs.azure.com/cache-name: {{ .Name }}
 data:
   cache_server_count: "{{ .NumServers }}"
-  cache_server_endpoint_format: "cacheserver-{}.cacheserver.{{ .Namespace }}.svc.cluster.local"
+  cache_server_endpoint_format: "{{ .Name }}-{}.{{ .Name }}.{{ .Namespace }}.svc.cluster.local"

@@ -59,11 +59,11 @@ var _ = Describe("Cache Controller", func() {
 		timeout := 10     // seconds
 		pollInterval := 1 // second
 
-		// Helper to get StatefulSet
-		getStatefulSet := func() *appsv1.StatefulSet {
+		// Helper to get StatefulSet by cache name
+		getStatefulSetByName := func(name string) *appsv1.StatefulSet {
 			statefulSet := &appsv1.StatefulSet{}
 			err := k8sClient.Get(ctx, types.NamespacedName{
-				Name:      "cacheserver",
+				Name:      name,
 				Namespace: resourceNamespace,
 			}, statefulSet)
 			if err != nil || statefulSet.Spec.Replicas == nil {
@@ -71,28 +71,28 @@ var _ = Describe("Cache Controller", func() {
 			}
 			return statefulSet
 		}
-		// Helper to get StatefulSet replicas
-		getStatefulSetReplicas := func() int32 {
-			ss := getStatefulSet()
+		// Helper to get StatefulSet replicas by cache name
+		getStatefulSetReplicasByName := func(name string) int32 {
+			ss := getStatefulSetByName(name)
 			if ss == nil {
 				return -1
 			}
 			return *ss.Spec.Replicas
 		}
-		// Helper to get StatefulSet annotations
-		getStatefulSetSchedulerName := func() string {
-			ss := getStatefulSet()
+		// Helper to get StatefulSet scheduler name by cache name
+		getStatefulSetSchedulerByName := func(name string) string {
+			ss := getStatefulSetByName(name)
 			if ss == nil {
 				return ""
 			}
 			return ss.Spec.Template.Spec.SchedulerName
 		}
 
-		// Helper to get discovery ConfigMap server count
-		getConfigMapServerCount := func() string {
+		// Helper to get discovery ConfigMap server count by cache name
+		getConfigMapServerCountByName := func(name string) string {
 			configMap := &corev1.ConfigMap{}
 			err := k8sClient.Get(ctx, types.NamespacedName{
-				Name:      "cacheserver-discovery-config",
+				Name:      name + storagev1.DiscoveryConfigSuffix,
 				Namespace: resourceNamespace,
 			}, configMap)
 			if err != nil {
@@ -144,25 +144,25 @@ var _ = Describe("Cache Controller", func() {
 				_ = k8sClient.Delete(ctx, cache)
 
 				// Delete subresources created by the Cache CR
-				sts := getStatefulSet()
+				sts := getStatefulSetByName(name)
 				if sts != nil {
 					_ = k8sClient.Delete(ctx, sts)
 				}
 
 				svc := &corev1.Service{}
-				err = k8sClient.Get(ctx, types.NamespacedName{Name: "cacheserver", Namespace: resourceNamespace}, svc)
+				err = k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: resourceNamespace}, svc)
 				if err == nil {
 					_ = k8sClient.Delete(ctx, svc)
 				}
 
 				discoverySvc := &corev1.Service{}
-				err = k8sClient.Get(ctx, types.NamespacedName{Name: "cacheserver-discovery", Namespace: resourceNamespace}, discoverySvc)
+				err = k8sClient.Get(ctx, types.NamespacedName{Name: name + storagev1.DiscoverySuffix, Namespace: resourceNamespace}, discoverySvc)
 				if err == nil {
 					_ = k8sClient.Delete(ctx, discoverySvc)
 				}
 
 				cm := &corev1.ConfigMap{}
-				err = k8sClient.Get(ctx, types.NamespacedName{Name: "cacheserver-discovery-config", Namespace: resourceNamespace}, cm)
+				err = k8sClient.Get(ctx, types.NamespacedName{Name: name + storagev1.DiscoveryConfigSuffix, Namespace: resourceNamespace}, cm)
 				if err == nil {
 					_ = k8sClient.Delete(ctx, cm)
 				}
@@ -177,19 +177,19 @@ var _ = Describe("Cache Controller", func() {
 			Expect(k8sClient.Create(ctx, cache)).To(Succeed())
 
 			By("verifying the CacheServer StatefulSet is created with correct replicas")
-			Eventually(getStatefulSetReplicas, timeout, pollInterval).Should(Equal(int32(2)))
+			Eventually(func() int32 { return getStatefulSetReplicasByName(cacheName) }, timeout, pollInterval).Should(Equal(int32(2)))
 
 			By("Verifying the CacheServer StatefulSet has default-scheduler annotation")
-			Eventually(getStatefulSetSchedulerName, timeout, pollInterval).Should(Equal("default-scheduler"))
+			Eventually(func() string { return getStatefulSetSchedulerByName(cacheName) }, timeout, pollInterval).Should(Equal("default-scheduler"))
 
 			By("verifying the CacheServer Service is created")
-			Eventually(func() error { return serviceExists("cacheserver") }, timeout, pollInterval).Should(Succeed())
+			Eventually(func() error { return serviceExists(cacheName) }, timeout, pollInterval).Should(Succeed())
 
 			By("verifying the CacheServer Discovery Service is created")
-			Eventually(func() error { return serviceExists("cacheserver-discovery") }, timeout, pollInterval).Should(Succeed())
+			Eventually(func() error { return serviceExists(cacheName + storagev1.DiscoverySuffix) }, timeout, pollInterval).Should(Succeed())
 
 			By("verifying the CacheServer Discovery ConfigMap is created with correct server count")
-			Eventually(getConfigMapServerCount, timeout, pollInterval).Should(Equal("2"))
+			Eventually(func() string { return getConfigMapServerCountByName(cacheName) }, timeout, pollInterval).Should(Equal("2"))
 
 			By("verifying webhook defaults were applied to the Cache CR")
 			updatedCache := &storagev1.Cache{}
@@ -231,19 +231,19 @@ var _ = Describe("Cache Controller", func() {
 			Eventually(func() error { return updateCacheReplicas(cacheName, 4) }).Should(Succeed())
 
 			By("verifying StatefulSet scales to 4 replicas")
-			Eventually(getStatefulSetReplicas, timeout, pollInterval).Should(Equal(int32(4)))
+			Eventually(func() int32 { return getStatefulSetReplicasByName(cacheName) }, timeout, pollInterval).Should(Equal(int32(4)))
 
 			By("verifying ConfigMap is updated with server count of 4")
-			Eventually(getConfigMapServerCount, timeout, pollInterval).Should(Equal("4"))
+			Eventually(func() string { return getConfigMapServerCountByName(cacheName) }, timeout, pollInterval).Should(Equal("4"))
 
 			By("updating Cache CR to 3 replicas (scaling down)")
 			Eventually(func() error { return updateCacheReplicas(cacheName, 3) }).Should(Succeed())
 
 			By("verifying StatefulSet scales down to 3 replicas")
-			Eventually(getStatefulSetReplicas, timeout, pollInterval).Should(Equal(int32(3)))
+			Eventually(func() int32 { return getStatefulSetReplicasByName(cacheName) }, timeout, pollInterval).Should(Equal(int32(3)))
 
 			By("verifying ConfigMap is updated with server count of 3")
-			Eventually(getConfigMapServerCount, timeout, pollInterval).Should(Equal("3"))
+			Eventually(func() string { return getConfigMapServerCountByName(cacheName) }, timeout, pollInterval).Should(Equal("3"))
 
 			By("cleaning up test-cache before next test")
 			deleteCache(cacheName)
@@ -261,19 +261,19 @@ var _ = Describe("Cache Controller", func() {
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, cache) })
 
 			By("verifying the CacheServer StatefulSet is created with correct replicas")
-			Eventually(getStatefulSetReplicas, timeout, pollInterval).Should(Equal(int32(3)))
+			Eventually(func() int32 { return getStatefulSetReplicasByName(cacheName) }, timeout, pollInterval).Should(Equal(int32(3)))
 
 			By("verifying the CacheServer Statefulset uses custom scheduler cache-controller")
-			Eventually(getStatefulSetSchedulerName, timeout, pollInterval).Should(Equal("cache-controller"))
+			Eventually(func() string { return getStatefulSetSchedulerByName(cacheName) }, timeout, pollInterval).Should(Equal("cache-controller"))
 
 			By("verifying the CacheServer Service is created")
-			Eventually(func() error { return serviceExists("cacheserver") }, timeout, pollInterval).Should(Succeed())
+			Eventually(func() error { return serviceExists(cacheName) }, timeout, pollInterval).Should(Succeed())
 
 			By("verifying the CacheServer Discovery Service is created")
-			Eventually(func() error { return serviceExists("cacheserver-discovery") }, timeout, pollInterval).Should(Succeed())
+			Eventually(func() error { return serviceExists(cacheName + storagev1.DiscoverySuffix) }, timeout, pollInterval).Should(Succeed())
 
 			By("verifying the CacheServer Discovery ConfigMap is created with correct server count")
-			Eventually(getConfigMapServerCount, timeout, pollInterval).Should(Equal("3"))
+			Eventually(func() string { return getConfigMapServerCountByName(cacheName) }, timeout, pollInterval).Should(Equal("3"))
 
 			By("verifying status conditions")
 			Eventually(func(g Gomega) {
@@ -286,6 +286,109 @@ var _ = Describe("Cache Controller", func() {
 				// reconciler sees zero pods and reports all scheduled.
 				g.Expect(meta.IsStatusConditionTrue(cache.Status.Conditions, "PodsScheduled")).To(BeTrue())
 			}, timeout, pollInterval).Should(Succeed())
+		})
+	})
+
+	Context("Multi-cache in same namespace", Ordered, func() {
+		const resourceNamespace = "azureml-multi"
+		timeout := 10     // seconds
+		pollInterval := 1 // second
+		BeforeAll(func() {
+			By("creating the namespace for multi-cache tests")
+			ctx := context.Background()
+			namespace := corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: resourceNamespace,
+				},
+			}
+			err := k8sClient.Create(ctx, &namespace)
+			if err != nil && !errors.IsAlreadyExists(err) {
+				Expect(err).NotTo(HaveOccurred())
+			}
+		})
+
+		It("should create isolated resources for two Cache CRs in the same namespace", func(ctx context.Context) {
+			cacheA := "cache-alpha"
+			cacheB := "cache-beta"
+
+			By("creating two Cache CRs with different names")
+			crA := createTestCache(cacheA, resourceNamespace, 2, true)
+			crB := createTestCache(cacheB, resourceNamespace, 3, true)
+			Expect(k8sClient.Create(ctx, crA)).To(Succeed())
+			Expect(k8sClient.Create(ctx, crB)).To(Succeed())
+			DeferCleanup(func() {
+				_ = k8sClient.Delete(ctx, crA)
+				_ = k8sClient.Delete(ctx, crB)
+			})
+
+			By("verifying each cache gets its own StatefulSet with correct replicas")
+			Eventually(func() int32 {
+				sts := &appsv1.StatefulSet{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: cacheA, Namespace: resourceNamespace}, sts); err != nil || sts.Spec.Replicas == nil {
+					return -1
+				}
+				return *sts.Spec.Replicas
+			}).Should(Equal(int32(2)))
+
+			Eventually(func() int32 {
+				sts := &appsv1.StatefulSet{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: cacheB, Namespace: resourceNamespace}, sts); err != nil || sts.Spec.Replicas == nil {
+					return -1
+				}
+				return *sts.Spec.Replicas
+			}).Should(Equal(int32(3)))
+
+			By("verifying StatefulSets have distinct cache-name labels")
+			var stsA appsv1.StatefulSet
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cacheA, Namespace: resourceNamespace}, &stsA)).To(Succeed())
+			Expect(stsA.Spec.Selector.MatchLabels[CacheNameLabelKey]).To(Equal(cacheA))
+
+			var stsB appsv1.StatefulSet
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cacheB, Namespace: resourceNamespace}, &stsB)).To(Succeed())
+			Expect(stsB.Spec.Selector.MatchLabels[CacheNameLabelKey]).To(Equal(cacheB))
+
+			By("verifying each cache gets its own headless Service")
+			var svcA corev1.Service
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: cacheA, Namespace: resourceNamespace}, &svcA)
+			}).Should(Succeed())
+			Expect(svcA.Spec.Selector[CacheNameLabelKey]).To(Equal(cacheA))
+
+			var svcB corev1.Service
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: cacheB, Namespace: resourceNamespace}, &svcB)
+			}, timeout, pollInterval).Should(Succeed())
+			Expect(svcB.Spec.Selector[CacheNameLabelKey]).To(Equal(cacheB))
+
+			By("verifying each cache gets its own discovery Service")
+			var discA corev1.Service
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: cacheA + storagev1.DiscoverySuffix, Namespace: resourceNamespace}, &discA)
+			}, timeout, pollInterval).Should(Succeed())
+			Expect(discA.Spec.Selector[CacheNameLabelKey]).To(Equal(cacheA))
+
+			var discB corev1.Service
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: cacheB + storagev1.DiscoverySuffix, Namespace: resourceNamespace}, &discB)
+			}, timeout, pollInterval).Should(Succeed())
+			Expect(discB.Spec.Selector[CacheNameLabelKey]).To(Equal(cacheB))
+
+			By("verifying each cache gets its own discovery ConfigMap")
+			var cmA corev1.ConfigMap
+			Eventually(func() string {
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: cacheA + storagev1.DiscoveryConfigSuffix, Namespace: resourceNamespace}, &cmA); err != nil {
+					return ""
+				}
+				return cmA.Data["cache_server_count"]
+			}, timeout, pollInterval).Should(Equal("2"))
+
+			var cmB corev1.ConfigMap
+			Eventually(func() string {
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: cacheB + storagev1.DiscoveryConfigSuffix, Namespace: resourceNamespace}, &cmB); err != nil {
+					return ""
+				}
+				return cmB.Data["cache_server_count"]
+			}, timeout, pollInterval).Should(Equal("3"))
 		})
 	})
 })

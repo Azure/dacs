@@ -83,25 +83,11 @@ const cacheFinalizerName = "storage.azure.com/finalizer"
 // +kubebuilder:rbac:groups=storage.azure.com,resources=caches/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=storage.azure.com,resources=caches/finalizers,verbs=update
 //
-// RBAC permissions are split into two rules per resource type:
-// 1. Read/Create rule (no resourceNames): Includes 'list;watch' because controller-runtime
-//    informers (created by .Owns() in SetupWithManager) need to list/watch ALL resources to
-//    build their cache and detect changes. Informers cannot work with resourceNames restrictions.
-// 2. Modify rule (with resourceNames): Restricts get/update/patch/delete to only the specific named
-//    resources this controller manages for security.
-//
-// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=create;list;watch
-// +kubebuilder:rbac:groups=apps,resources=statefulsets,resourceNames=cacheserver,verbs=get;update;patch;delete
-//
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
-//
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
-//
-// +kubebuilder:rbac:groups="",resources=services,verbs=create;list;watch
-// +kubebuilder:rbac:groups="",resources=services,resourceNames=cacheserver;cacheserver-discovery,verbs=get;update;patch;delete
-//
-// +kubebuilder:rbac:groups="",resources=configmaps,verbs=create;list;watch
-// +kubebuilder:rbac:groups="",resources=configmaps,resourceNames=cacheserver-discovery-config,verbs=get;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -115,7 +101,6 @@ func (r *CacheReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	var cache storagev1.Cache
 	if err := r.Get(ctx, req.NamespacedName, &cache); err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("Cache resource not found, nothing to reconcile")
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get Cache: %w", err)
@@ -254,7 +239,7 @@ func (r *CacheReconciler) resolveNumServers(ctx context.Context, cache *storagev
 // for unexpected failures so the caller can distinguish "no STS" from "can't read STS".
 func (r *CacheReconciler) getCurrentReplicas(ctx context.Context, cache *storagev1.Cache) (int32, error) {
 	var sts appsv1.StatefulSet
-	if err := r.Get(ctx, types.NamespacedName{Name: "cacheserver", Namespace: cache.Namespace}, &sts); err != nil {
+	if err := r.Get(ctx, types.NamespacedName{Name: cache.Name, Namespace: cache.Namespace}, &sts); err != nil {
 		if apierrors.IsNotFound(err) {
 			return 0, nil
 		}
@@ -361,10 +346,6 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 	if err := renderTemplateInto("templates/cacheserver-app.yaml", values, &desired); err != nil {
 		return fmt.Errorf("failed to render cacheserver StatefulSet template (numServers=%d, image=%s): %w", numServers, values.Image, err)
 	}
-	// Create or Update StatefulSet. The template uses a fixed name
-	// ("cacheserver"), so exactly one StatefulSet -- and therefore one
-	// Cache CR -- is supported per namespace.
-	// TODO(jlong): support multiple Cache CRs per namespace.
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      desired.Name,
@@ -414,21 +395,23 @@ func (r *CacheReconciler) reconcileServices(ctx context.Context, cache *storagev
 		values       interface{}
 	}{
 		{
-			name:         "cacheserver",
+			name:         cache.Name,
 			templatePath: "templates/cacheserver-service.yaml",
 			values: struct {
+				Name        string
 				Namespace   string
 				Port        int
 				MetricsPort int
-			}{Namespace: cache.Namespace, Port: int(*cache.Spec.Port), MetricsPort: int(*cache.Spec.MetricsPort)},
+			}{Name: cache.Name, Namespace: cache.Namespace, Port: int(*cache.Spec.Port), MetricsPort: int(*cache.Spec.MetricsPort)},
 		},
 		{
-			name:         "cacheserver-discovery",
+			name:         cache.Name + storagev1.DiscoverySuffix,
 			templatePath: "templates/cacheserver-discovery-service.yaml",
 			values: struct {
+				Name      string
 				Namespace string
 				Port      int
-			}{Namespace: cache.Namespace, Port: int(*cache.Spec.Port)},
+			}{Name: cache.Name, Namespace: cache.Namespace, Port: int(*cache.Spec.Port)},
 		},
 	}
 
@@ -468,14 +451,17 @@ func (r *CacheReconciler) reconcileServices(ctx context.Context, cache *storagev
 func (r *CacheReconciler) reconcileConfigMap(ctx context.Context, cache *storagev1.Cache, numServers int32) error {
 	log := logf.FromContext(ctx)
 
+	configMapName := cache.Name + storagev1.DiscoveryConfigSuffix
+
 	log.V(1).Info("Reconciling ConfigMap",
-		"configMapName", "cacheserver-discovery-config",
+		"configMapName", configMapName,
 		"numServers", numServers)
 
 	values := struct {
+		Name       string
 		Namespace  string
 		NumServers int32
-	}{cache.Namespace, numServers}
+	}{cache.Name, cache.Namespace, numServers}
 
 	var desired corev1.ConfigMap
 	if err := renderTemplateInto("templates/cacheserver-discovery-config.yaml", values, &desired); err != nil {
@@ -484,7 +470,7 @@ func (r *CacheReconciler) reconcileConfigMap(ctx context.Context, cache *storage
 
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "cacheserver-discovery-config",
+			Name:      configMapName,
 			Namespace: cache.Namespace,
 		},
 	}
@@ -610,7 +596,7 @@ func (r *CacheReconciler) setReplicasReady(ctx context.Context, h *statushelper.
 	}
 
 	var sts appsv1.StatefulSet
-	err := r.Get(ctx, types.NamespacedName{Name: "cacheserver", Namespace: cache.Namespace}, &sts)
+	err := r.Get(ctx, types.NamespacedName{Name: cache.Name, Namespace: cache.Namespace}, &sts)
 
 	if apierrors.IsNotFound(err) {
 		log.V(1).Info("StatefulSet not found, will be created")
@@ -618,7 +604,7 @@ func (r *CacheReconciler) setReplicasReady(ctx context.Context, h *statushelper.
 		return 0
 	}
 	if err != nil {
-		log.Error(err, "Failed to get StatefulSet for status update", "statefulSetName", "cacheserver")
+		log.Error(err, "Failed to get StatefulSet for status update", "statefulSetName", cache.Name)
 		h.MarkUnknown(storagev1.ReplicasReadyCondition, storagev1.ReasonStatefulSetGetError, "Failed to get StatefulSet: %v", err)
 		return 0
 	}

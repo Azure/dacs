@@ -31,6 +31,12 @@ var (
 	// k8sClient is the controller-runtime client for interacting with the cluster.
 	k8sClient client.Client
 
+	// cacheName is the cache name for the current deployment, detected at
+	// suite startup. When the new controller is present the cache is named
+	// after the Cache CR (e.g. "cache-sample"); otherwise it falls back to
+	// the legacy "cacheserver" name.
+	cacheName string
+
 	// defaultKubeConfigPath is the default path to the kubeconfig file.
 	defaultKubeConfigPath = filepath.Join(os.Getenv("HOME"), ".kube", "config")
 	// fluxOpts holds the e2e test options
@@ -82,6 +88,8 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = BeforeSuite(func(ctx context.Context) {
+	cacheName = common.GetCacheName(ctx, k8sClient)
+	log.Info("Detected cache name", "cacheName", cacheName)
 	common.Setup(ctx, k8sClient, namespace)
 })
 

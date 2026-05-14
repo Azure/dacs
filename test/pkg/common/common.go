@@ -35,6 +35,17 @@ const (
 	controllerNamespace      = "cache-controller-system"
 	controllerDeploymentName = "dacs-manager"
 	cacheControllerCRDName   = "caches.storage.azure.com"
+
+	// LegacyStatefulSetName is the hardcoded StatefulSet name used by the
+	// old helm/cache-server chart (no controller). The StatefulSet was always
+	// named "cacheserver" regardless of the release name.
+	LegacyStatefulSetName = "cacheserver"
+
+	// ControllerCacheName is the default Cache CR name created by the
+	// dacs controller chart (values.cache.name). The controller
+	// names the StatefulSet after the Cache CR, so this is also the
+	// StatefulSet name when the controller is managing the deployment.
+	ControllerCacheName = "cache-sample"
 )
 
 // log is the default logger for the test package. It uses klog's textlogger
@@ -109,11 +120,17 @@ func Setup(ctx context.Context, k8sClient client.Client, namespace string) {
 		if controllerPresent {
 			ensureControllerInstall(ctx, k8sClient)
 		}
+		// The new controller names the StatefulSet after the Cache CR;
+		// the legacy helm chart always used "cacheserver".
+		stsName := LegacyStatefulSetName
+		if controllerPresent {
+			stsName = ControllerCacheName
+		}
 		Eventually(func() bool {
-			return statefulSetExists(ctx, k8sClient, namespace, "cacheserver")
+			return statefulSetExists(ctx, k8sClient, namespace, stsName)
 		}).WithTimeout(5*time.Minute).WithPolling(5*time.Second).Should(BeTrue(),
-			"Cache StatefulSet not found. Ensure cache infrastructure is installed before running tests.")
-		ensureCacheReady(ctx, k8sClient, namespace, controllerPresent)
+			fmt.Sprintf("Cache StatefulSet %q not found. Ensure cache infrastructure is installed before running tests.", stsName))
+		ensureCacheReady(ctx, k8sClient, namespace, stsName, controllerPresent)
 		return
 	}
 
@@ -150,7 +167,7 @@ func Setup(ctx context.Context, k8sClient client.Client, namespace string) {
 		g.Expect(err).NotTo(HaveOccurred(), "Failed to deploy cache server")
 	}).WithTimeout(5*time.Minute).WithContext(ctx).Should(Succeed(), "Failed to deploy cache server")
 
-	ensureCacheReady(ctx, k8sClient, namespace, false)
+	ensureCacheReady(ctx, k8sClient, namespace, LegacyStatefulSetName, false)
 }
 
 func controllerDeploymentExists(ctx context.Context, k8sClient client.Client) bool {
@@ -358,8 +375,8 @@ func CollectSuiteSupportBundle(ctx context.Context, supportBundleDir string) {
 }
 
 // ensureCacheReady validates cache-server components and skips scheduler checks when controller-managed.
-func ensureCacheReady(ctx context.Context, k8sClient client.Client, namespace string, controllerManaged bool) {
-	VerifyStatefulSetReady(ctx, k8sClient, namespace, "cacheserver")
+func ensureCacheReady(ctx context.Context, k8sClient client.Client, namespace, statefulSetName string, controllerManaged bool) {
+	VerifyStatefulSetReady(ctx, k8sClient, namespace, statefulSetName)
 
 	if controllerManaged {
 		log.Info("Skipping cacheserver-scheduler readiness check", "reason", "controller-managed deployment")
@@ -466,9 +483,26 @@ func GetCacheServerList(ctx context.Context, k8sClient client.Client, namespace 
 	return cacheServerList[:len(cacheServerList)-1], nil
 }
 
-// GetDiscoveryURL returns the FQDN of the cache server discovery service.
+// GetCacheName returns the cache name for the current deployment.
+// When the new controller is present, the cache name is ControllerCacheName;
+// otherwise it falls back to LegacyStatefulSetName.
+func GetCacheName(ctx context.Context, k8sClient client.Client) string {
+	if controllerDeploymentExists(ctx, k8sClient) {
+		return ControllerCacheName
+	}
+	return LegacyStatefulSetName
+}
+
+// GetDiscoveryURL returns the FQDN of the cache server discovery service
+// using the legacy discovery service name.
 func GetDiscoveryURL(namespace string) string {
-	return fmt.Sprintf("%s.%s.svc.cluster.local", DEFAULT_DISCOVERY_SERVICE_NAME, namespace)
+	return GetDiscoveryURLForCache(LegacyStatefulSetName, namespace)
+}
+
+// GetDiscoveryURLForCache returns the FQDN of the discovery service for a
+// given cache name. The discovery service is named "<cacheName>-discovery".
+func GetDiscoveryURLForCache(cacheName, namespace string) string {
+	return fmt.Sprintf("%s-discovery.%s.svc.cluster.local", cacheName, namespace)
 }
 
 // GetNodeList returns the list of nodes in the cluster.
