@@ -28,8 +28,10 @@ from py_dacs_client.dacs_exceptions import (
     check_native_result,
     errno_to_exception_class,
 )
+from py_dacs_client.dacs_utils import WriteMode
 
 __all__ = [
+    "WriteMode",
     "DACSError",
     "DACSStorageError",
     "DACSAuthenticationError",

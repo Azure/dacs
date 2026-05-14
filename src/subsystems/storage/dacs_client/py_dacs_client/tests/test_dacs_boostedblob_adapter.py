@@ -22,7 +22,6 @@ from dacs_boostedblob_adapter import (
     BasePath,
     Stat,
     DirEntry,
-    WriteMode,
     OperationNotSupportedError,
     ByteRange,
     OptByteRange,
@@ -626,8 +625,8 @@ class TestWriteModes:
 
     def test_write_mode_enum_values(self):
         """Test WriteMode enum has expected values."""
-        assert hasattr(WriteMode, 'WRITE_DISABLED')
-        assert hasattr(WriteMode, 'WRITE_SYNC')
+        assert hasattr(bbb.WriteMode, 'WRITE_DISABLED')
+        assert hasattr(bbb.WriteMode, 'WRITE_SYNC')
 
     def test_default_write_mode(self):
         """Test that writes work with default mode."""

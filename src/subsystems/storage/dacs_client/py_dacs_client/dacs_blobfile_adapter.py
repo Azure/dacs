@@ -16,12 +16,12 @@ import tempfile
 import threading
 from collections import namedtuple
 from typing import Optional, Union, Iterator, List, Any, Tuple
-from enum import Enum
 
 import concurrent
 
 from py_dacs_client.dacs_client import DACSCacheClient, normalize_azure_path
 from py_dacs_client.dacs_utils import (
+    WriteMode,
     BoundedBufferManager,
     get_memory_limit,
     _shared_loop_manager,
@@ -136,24 +136,6 @@ class _ClientManager:
                         f"({buffer_memory_limit / (1024 * 1024):.0f} MB) limit"
                     )
         return cls._buffer_manager
-
-
-class WriteMode(Enum):
-    """
-    Enumeration of write modes for DACSBlobfileAdapter operations.
-
-    WRITE_DISABLED: Disable write operations, read-only mode
-    WRITE_CACHE_ONLY: Write to cache only, no blob storage
-    WRITE_BLOB_ONLY: Write to blob storage only, bypass cache
-    WRITE_CACHE_BLOB_ASYNC: Write to cache first, async update blob storage
-    WRITE_SYNC: Write to cache and blob storage synchronously (DEFAULT)
-    """
-
-    WRITE_DISABLED = "write_disabled"
-    WRITE_CACHE_ONLY = "write_cache_only"
-    WRITE_BLOB_ONLY = "write_blob_only"
-    WRITE_CACHE_BLOB_ASYNC = "write_cache_blob_async"
-    WRITE_SYNC = "write_sync"
 
 
 class DACSBlobfileAdapter:
