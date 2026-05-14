@@ -129,7 +129,7 @@ setup(
         "py_dacs_client.tests": ["requirements.txt"],
     },
     install_requires=[
-        "blobfile>=3.0.0",
+        # Not listing blobfile as a dependency as it is only required for the blobfile adaptor
         "azure-identity>=1.12.0",
     ],
     author='Microsoft Corporation',
