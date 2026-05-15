@@ -460,29 +460,6 @@ func VerifyPodUp(ctx context.Context, k8sClient client.Client, namespace, podLab
 	Eventually(verifyPodUp).WithContext(ctx).Should(Succeed())
 }
 
-// GetCacheServerList returns a formatted list of cache server endpoints.
-// It queries the StatefulSet in the specified namespace and constructs service endpoints.
-//
-// Deprecated: Use GetDiscoveryURL instead. The discovery service allows the dacs client
-// to discover cache servers dynamically without needing a pre-built server list.
-func GetCacheServerList(ctx context.Context, k8sClient client.Client, namespace string) (string, error) {
-	var cacheServerSts appsv1.StatefulSet
-	err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: DEFAULT_CACHESERVER_NAME}, &cacheServerSts)
-	if err != nil {
-		return "", fmt.Errorf("Failed to get cacheserver information from namespace: %s error: %v", namespace, err)
-	}
-	var cacheServerList string
-	if cacheServerSts.Spec.Replicas == nil || *cacheServerSts.Spec.Replicas == 0 {
-		return "", nil
-	}
-	for i := int32(0); i < *cacheServerSts.Spec.Replicas; i++ {
-		// Format: <service-name>-<pod-index>.<service-name>.<namespace>.svc.cluster.local
-		cacheServerList += fmt.Sprintf("%s-%d.%s.%s.svc.cluster.local#", DEFAULT_CACHESERVER_NAME, i, DEFAULT_CACHESERVER_SERVICE_NAME, namespace)
-	}
-	// Remove trailing #
-	return cacheServerList[:len(cacheServerList)-1], nil
-}
-
 // GetCacheName returns the cache name for the current deployment.
 // When the new controller is present, the cache name is ControllerCacheName;
 // otherwise it falls back to LegacyStatefulSetName.

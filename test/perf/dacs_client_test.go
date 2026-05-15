@@ -78,8 +78,7 @@ func (config *CacheClientConfig) dacsClientTest(ctx context.Context, testName st
 	mpiJob, err := mpi.LoadMPIJob(fixtures.ReadMPIJob)
 	Expect(err).ShouldNot(HaveOccurred(), "Failed to load MPI job fixture")
 
-	cacheServerList, err := common.GetCacheServerList(ctx, config.k8sClient, config.cacheServerNamespace)
-	Expect(err).ShouldNot(HaveOccurred(), "Failed to get cacheserver list for cacheclient job")
+	cacheDiscoveryURL := common.GetDiscoveryURLForCache(cacheName, config.cacheServerNamespace)
 
 	accessEnvKey, accessEnvValue, err := common.GetStorageAccessEnv(ctx, config.k8sClient, config.storageAccountName)
 	Expect(err).ShouldNot(HaveOccurred(), "Failed to get storage access key/value for cacheclient job")
@@ -120,7 +119,7 @@ func (config *CacheClientConfig) dacsClientTest(ctx context.Context, testName st
 		WithLauncherImage(config.cacheClientImage, corev1.PullIfNotPresent).
 		WithWorkerImage(config.cacheClientImage, corev1.PullIfNotPresent).
 		WithWorkerReplicas(int32(config.count)).
-		WithLauncherEnv(corev1.EnvVar{Name: "CACHE_SERVER_LIST", Value: cacheServerList}).
+		WithLauncherEnv(corev1.EnvVar{Name: "CACHE_DISCOVERY_URL", Value: cacheDiscoveryURL}).
 		WithLauncherEnv(corev1.EnvVar{Name: "AZURE_STORAGE_ACCOUNT_NAME", Value: config.storageAccountName}).
 		WithLauncherCommand([]string{"/bin/bash", "-lc"}...).
 		WithWorkerPodAntiAffinityForJob().
@@ -372,7 +371,7 @@ func (config *CacheClientConfig) getLauncherCommandArgs() []string {
 			-x AZURE_TENANT_ID \
 			-x AZURE_FEDERATED_TOKEN_FILE \
 			-x AZURE_AUTHORITY_HOST \
-			-x CACHE_SERVER_LIST \
+			-x CACHE_DISCOVERY_URL \
 			-x CACHE_SERVER_PORT \
 			-x SI_cacheKeyExpirySeconds \
 			-x POD_NAME \
