@@ -18,7 +18,7 @@ spec:
       containers:
         - name: prometheus
           # TODO: The new MCR image must be tested by deploying to a test cluster
-          image: mcr.microsoft.com/oss/prometheus/prometheus:v2.45.2-linux-amd64
+          image: mcr.microsoft.com/oss/prometheus/prometheus:v2.45.6-linux-amd64
           ports:
             - containerPort: 9090
           volumeMounts:
