@@ -96,7 +96,7 @@ prometheus:
 cleanup:
   image:
     repository: mcr.microsoft.com/oss/v2/kubernetes/kubectl
-    tag: v1.35.1
+    tag: v1.35.4
     pullPolicy: IfNotPresent
   timeoutSeconds: 300
   resources:
