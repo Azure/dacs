@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/go-logr/logr v1.4.3
 	github.com/onsi/ginkgo/v2 v2.27.2
-	github.com/onsi/gomega v1.38.2
+	github.com/onsi/gomega v1.38.3
 	github.com/open-policy-agent/cert-controller v0.15.0
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/viper v1.21.0
