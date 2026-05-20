@@ -69,3 +69,57 @@ TEST_F(PrefetchCacheTest, PrefetchCachePutGetPurgeTest)
     ASSERT_EQ(testCache.m_mapBuffers.size(), 0);
 }
 //---------------------------------------------------------------------------------------------------------------------
+TEST_F(PrefetchCacheTest, PrefetchCacheVersionAwareTest)
+{
+    PrefetchCache testCache(4, 16);
+    const uint64_t chunkSize = 512;
+
+    std::string testPath = "account1/container1/blob1";
+    std::string version1 = "v1-guid";
+    std::string version2 = "v2-guid";
+
+    auto chunkV1 = GetRandDataBuffer(0, chunkSize);
+    auto chunkV2 = GetRandDataBuffer(0, chunkSize);
+
+    // Put chunk with version1 — only visible to version1
+    testCache.Put(testPath, chunkV1, version1);
+    ASSERT_NE(testCache.Get(testPath, 0, version1), nullptr);
+    ASSERT_EQ(testCache.Get(testPath, 0, version2), nullptr);
+    ASSERT_EQ(testCache.Get(testPath, 0), nullptr);
+
+    // Put same offset with version2 — both versions coexist
+    testCache.Put(testPath, chunkV2, version2);
+    ASSERT_NE(testCache.Get(testPath, 0, version1), nullptr);
+    ASSERT_NE(testCache.Get(testPath, 0, version2), nullptr);
+    ASSERT_EQ(testCache.m_mapBuffers.size(), 2);
+
+    // GetCachedOffsets is version-scoped
+    ASSERT_EQ(testCache.GetCachedOffsets(testPath, version1).size(), 1);
+    ASSERT_EQ(testCache.GetCachedOffsets(testPath, version2).size(), 1);
+
+    // Put a second chunk for version1 to test PurgeOffsets
+    auto chunkV1Offset1 = GetRandDataBuffer(chunkSize, chunkSize);
+    testCache.Put(testPath, chunkV1Offset1, version1);
+    ASSERT_EQ(testCache.GetCachedOffsets(testPath, version1).size(), 2);
+    ASSERT_EQ(testCache.m_mapBuffers.size(), 3);
+
+    // PurgeOffsets with version1 only purges from v1, leaves v2 untouched
+    testCache.PurgeOffsets(testPath, vector<off64_t>{(off64_t)chunkSize}, version1);
+    ASSERT_EQ(testCache.GetCachedOffsets(testPath, version1).size(), 1);
+    ASSERT_NE(testCache.Get(testPath, 0, version1), nullptr);
+    ASSERT_EQ(testCache.Get(testPath, chunkSize, version1), nullptr);
+    ASSERT_NE(testCache.Get(testPath, 0, version2), nullptr);
+    ASSERT_EQ(testCache.m_mapBuffers.size(), 2);
+
+    // PurgeAll with version1 only purges v1
+    testCache.PurgeAll(testPath, version1);
+    ASSERT_EQ(testCache.Get(testPath, 0, version1), nullptr);
+    ASSERT_NE(testCache.Get(testPath, 0, version2), nullptr);
+    ASSERT_EQ(testCache.m_mapBuffers.size(), 1);
+
+    // PurgeAll with version2 purges the rest
+    testCache.PurgeAll(testPath, version2);
+    ASSERT_EQ(testCache.Get(testPath, 0, version2), nullptr);
+    ASSERT_EQ(testCache.m_mapBuffers.size(), 0);
+}
+//---------------------------------------------------------------------------------------------------------------------

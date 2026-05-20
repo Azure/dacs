@@ -23,6 +23,7 @@ constexpr uint64_t CHUNK_SIZE_4_MIB = 4 * 1024 * 1024;
 //---------------------------------------------------------------------------------------------------------------------
 RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
     : m_bAttributesCachePutAllOnReaddir(StorageInterceptConfig::GetInstance().GetAttributesCachePutAllOnReaddir())
+    , m_bEnableVersionedCacheKeys(StorageInterceptConfig::GetInstance().IsVersionedCacheKeysEnabled())
 {
     int serverPort = StorageInterceptConfig::GetInstance().GetCacheServerPort();
     bool enableRemoteCache = StorageInterceptConfig::GetInstance().GetCacheEnableRemote();
@@ -149,13 +150,14 @@ RemoteCacheClient::~RemoteCacheClient()
 //---------------------------------------------------------------------------------------------------------------------
 CacheStatus RemoteCacheClient::DownloadSync(const std::string& mountName,
                                             const std::string& filePath,
+                                            const std::string& version,
                                             off64_t fileOffset,
                                             uint64_t startOffset,
                                             uint64_t length,
                                             char* buffer,
                                             uint64_t& readLength)
 {
-    const std::string cacheKey = GetCacheKey(mountName, filePath, fileOffset);
+    const std::string cacheKey = GetCacheKey(mountName, filePath, version, fileOffset);
     return DownloadWithMetadataSync(mountName, cacheKey, startOffset, length, buffer, readLength, nullptr);
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -282,18 +284,22 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(const std::string& mount
 //---------------------------------------------------------------------------------------------------------------------
 bool RemoteCacheClient::Upload(const std::string& mountName,
                                const std::string& filePath,
+                               const std::string& version,
                                off64_t fileOffset,
                                std::shared_ptr<const FileData> fileData,
                                bool isWrite)
 {
-    const std::string cacheKey = GetCacheKey(mountName, filePath, fileOffset);
+    const std::string cacheKey = GetCacheKey(mountName, filePath, version, fileOffset);
+
     return m_spUploadManager->Upload(
         mountName,
         cacheKey,
         fileData,
         GetEncryptionKeyForMount(mountName),
         nullptr,
-        isWrite);
+        isWrite,
+        filePath,
+        version);
 }
 //---------------------------------------------------------------------------------------------------------------------
 CacheStatus RemoteCacheClient::Get(const std::string& path, ::FileAttributes& fileAttributes)
@@ -412,13 +418,22 @@ std::string& RemoteCacheClient::GetEncryptionKeyForMount(const std::string& moun
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::string
-RemoteCacheClient::GetCacheKey(const std::string& mountName, const std::string& filePath, off64_t fileOffset)
+RemoteCacheClient::GetCacheKey(
+    const std::string& mountName,
+    const std::string& filePath,
+    const std::string& version,
+    off64_t fileOffset)
 {
     // To uniquely identify a chunk within a cluster we need
-    // <account name>/<container name>/<filepath within the container>:<file offset>:<chunk size>
-    // (with chunk size optional)
-    return GetSHA256Hex(m_strCachePrefixMap.at(mountName) + "/" + filePath + ":" + std::to_string(fileOffset) +
-                        m_strChunkSizeSuffix);
+    // <account name>/<container name>/<filepath within the container>:<version>:<file offset>:<chunk size>
+    // (with version and chunk size optional)
+    std::string keyInput = m_strCachePrefixMap.at(mountName) + "/" + filePath + ":";
+    if (m_bEnableVersionedCacheKeys && !version.empty())
+    {
+        keyInput += version + ":";
+    }
+    keyInput += std::to_string(fileOffset) + m_strChunkSizeSuffix;
+    return GetSHA256Hex(keyInput);
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::string RemoteCacheClient::GetAttributeCacheKey(const std::string& filePath)

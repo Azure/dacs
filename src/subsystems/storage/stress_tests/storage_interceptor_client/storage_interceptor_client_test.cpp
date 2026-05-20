@@ -52,7 +52,7 @@ bool ReadFileWithRetries(
         std::size_t nLength = nChunkSizeBytes;
         try
         {
-            nLength = pStreamingClient->ReadFile(strFileName.c_str(), buffer, nLength, 0, uint64_t(20) * 1024 * 1024 * 1024); // 20GB
+            nLength = pStreamingClient->ReadFile(strFileName.c_str(), buffer, nLength, 0, uint64_t(20) * 1024 * 1024 * 1024, "" /* version */); // 20GB
         }
         catch (const std::exception& e)
         {

@@ -24,6 +24,7 @@ class RemoteCacheClient : public ICacheClient, public IAttributesCache
         cacheutils::CacheStatus DownloadSync(
             /*[in] */ const std::string& mountName,
             /*[in] */ const std::string& filePath,
+            /*[in] */ const std::string& version,
             /*[in] */ off64_t fileOffset,
             /*[in] */ uint64_t startOffset,
             /*[in] */ uint64_t length,
@@ -33,6 +34,7 @@ class RemoteCacheClient : public ICacheClient, public IAttributesCache
         bool Upload(
             /*[in] */ const std::string& mountName,
             /*[in] */ const std::string& filePath,
+            /*[in] */ const std::string& version,
             /*[in] */ off64_t fileOffset,
             /*[in] */ std::shared_ptr<const FileData> fileData,
             /*[in]*/ bool isWrite) override;
@@ -56,6 +58,7 @@ class RemoteCacheClient : public ICacheClient, public IAttributesCache
         int                                             m_numServerNodes;
         InMemoryAttributesCache                         m_inMemAttributeCache;
         const bool                                      m_bAttributesCachePutAllOnReaddir;
+        const bool                                      m_bEnableVersionedCacheKeys;
         std::string                                     m_strChunkSizeSuffix;
 
         // Per mount specific parameters
@@ -82,6 +85,7 @@ class RemoteCacheClient : public ICacheClient, public IAttributesCache
         std::string GetCacheKey(
             /*[in] */ const std::string& mountName,
             /*[in] */ const std::string& filePath,
+            /*[in] */ const std::string& version,
             /*[in] */ off64_t fileOffset);
 
         std::string GetAttributeCacheKey(

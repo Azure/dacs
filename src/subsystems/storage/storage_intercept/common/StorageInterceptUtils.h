@@ -42,6 +42,11 @@ class StorageInterceptUtils
         */
         static std::string GetRemotePathPrefix(const std::string& mountName);
 
+        /**
+         * Generate a random UUID string for versioning.
+         */
+        static std::string GenerateUUID();
+
     private:
         static const char SEPARATOR_CHAR = '/';
 };

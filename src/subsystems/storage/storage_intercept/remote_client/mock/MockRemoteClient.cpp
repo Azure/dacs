@@ -2,7 +2,9 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include <fcntl.h>
+#include <sys/xattr.h>
 #include "StorageInterceptConfig.h"
+#include "StorageInterceptConstants.h"
 #include "StorageInterceptLogger.h"
 #include "StorageInterceptUtils.h"
 #include "StorageLibcApiWrapper.h"
@@ -105,7 +107,8 @@ int MockRemoteClient::StageBlocksForUpload(
 }
 //---------------------------------------------------------------------------------------------------------------------
 int MockRemoteClient::CommitBlocksForUpload(
-    /*[in]*/ const std::string& remotePath)
+    /*[in]*/ const std::string& remotePath,
+    /*[in]*/ const std::string& version)
 {
     // Implement by reading the blocks, combining them into the final file and deleting the temp files.
     const std::string baseFilePath =
@@ -191,6 +194,21 @@ int MockRemoteClient::CommitBlocksForUpload(
     }
 
     StorageLibcApiWrapper::close(fdFinal);
+
+    // Mirror BlobClient: persist the version as blob metadata. The mock backend
+    // simulates blob metadata via an xattr that MockGetPropertiesApi reads back,
+    // so the Commit -> GetProperties round-trip behaves like the real backend.
+    if (!version.empty())
+    {
+        const std::string xattrName =
+            std::string("user.") + StorageInterceptConstants::BlobMetadataKeyVersion;
+        if (setxattr(baseFilePath.c_str(), xattrName.c_str(), version.c_str(), version.size(), 0) != 0)
+        {
+            LOG_ERROR("Failed to set dacsfileversion xattr on file={} version={}",
+                baseFilePath, version);
+        }
+    }
+
     LOG_INFO("Committed all {} blocks to final file={}", nChunks, baseFilePath);
     return 0;
 }

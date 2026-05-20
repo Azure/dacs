@@ -76,6 +76,7 @@ LocalFSCacheClient::~LocalFSCacheClient()
 CacheStatus LocalFSCacheClient::DownloadSync(
     const std::string& mountName,
     const std::string& filePath,
+    const std::string& version,
     off64_t fileOffset,
     uint64_t startOffset,
     uint64_t length,
@@ -83,7 +84,7 @@ CacheStatus LocalFSCacheClient::DownloadSync(
     uint64_t& readLength)
 {
     CacheStatus cacheStatus = CacheStatus::INTERNAL_ERROR;
-    const std::string cacheKey = GetCacheKey(filePath, fileOffset);
+    const std::string cacheKey = GetCacheKey(filePath, version, fileOffset);
     const string localFilePath = m_strLocalCachePath + "/" + cacheKey;
 
     const int fileFD = StorageLibcApiWrapper::open(localFilePath.c_str(), O_RDONLY, 0777);
@@ -252,6 +253,7 @@ void LocalFSCacheClient::CheckBufferMemory()
 bool LocalFSCacheClient::Upload(
     const std::string& mountName,
     const std::string& filePath,
+    const std::string& version,
     off64_t fileOffset,
     std::shared_ptr<const FileData> fileData,
     bool isWrite)
@@ -259,7 +261,7 @@ bool LocalFSCacheClient::Upload(
     {
         CheckBufferMemory();
 
-        const std::string cacheKey = GetCacheKey(filePath, fileOffset);
+        const std::string cacheKey = GetCacheKey(filePath, version, fileOffset);
         lock_guard lock(m_mutexQueue);
         if ((m_uploadBufferMemory + fileData->BufferSize) > m_maxUploadBufferMemory)
         {
@@ -278,8 +280,13 @@ bool LocalFSCacheClient::Upload(
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::string LocalFSCacheClient::GetCacheKey(const std::string& filePath, off64_t fileOffset)
+std::string LocalFSCacheClient::GetCacheKey(const std::string& filePath, const std::string& version, off64_t fileOffset)
 {
-    return GetSHA256Hex(filePath + ":" + std::to_string(fileOffset));
+    // Include version in cache key so different file versions get separate cache entries
+    if (version.empty())
+    {
+        return GetSHA256Hex(filePath + ":" + std::to_string(fileOffset));
+    }
+    return GetSHA256Hex(filePath + ":" + version + ":" + std::to_string(fileOffset));
 }
 //---------------------------------------------------------------------------------------------------------------------

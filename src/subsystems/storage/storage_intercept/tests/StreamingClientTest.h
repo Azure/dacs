@@ -36,5 +36,6 @@ class StreamingClientTest : public TestBase
         std::vector<char>                   m_vecBuffer;
         std::shared_ptr<ICacheClient>       m_cacheClient;
         std::shared_ptr<StreamingClient>    m_spStreamingClient;
+        std::string                         m_strFileVersion;
 };
 //---------------------------------------------------------------------------------------------------------------------

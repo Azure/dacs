@@ -6,6 +6,9 @@
 #include "StorageInterceptConstants.h"
 #include "StorageInterceptConfig.h"
 #include <cstring>
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
 //---------------------------------------------------------------------------------------------------------------------
 std::string StorageInterceptUtils::CombinePath(
     const std::string& basePath,
@@ -152,5 +155,12 @@ std::string StorageInterceptUtils::GetRemotePathPrefix(const std::string& mountN
     }
 
     return remotePathPrefix;
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptUtils::GenerateUUID()
+{
+    static thread_local boost::uuids::random_generator uuidGenerator;
+    boost::uuids::uuid uuid = uuidGenerator();
+    return boost::uuids::to_string(uuid);
 }
 //---------------------------------------------------------------------------------------------------------------------

@@ -44,7 +44,8 @@ class AdlsClient : public IRemoteClient
       /*[in]*/ off64_t blockId) override;
     
     int CommitBlocksForUpload(
-      /*[in]*/ const std::string& remotePath) override;
+      /*[in]*/ const std::string& remotePath,
+      /*[in]*/ const std::string& version) override;
 
   private:
     void GetConfig(const std::string& mountName);

@@ -149,5 +149,8 @@ namespace StorageInterceptConstants
     const char* const ConfigNameWriteEnableRemote = "enableWriteRemote";
     const char* const ConfigNameWriteEnableRemoteAsync = "enableWriteRemoteAsync";
     const char* const ConfigNameRemoteAsyncWriteFileConcurrency = "remoteAsyncWriteFileConcurrency";
+
+    // Config constant for versioned cache keys (feature flag)
+    const char* const ConfigNameEnableVersionedCacheKeys = "enableVersionedCacheKeys";
 };
 //---------------------------------------------------------------------------------------------------------------------

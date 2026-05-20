@@ -404,11 +404,12 @@ int ContentHandler::HandleFClose(void* stream)
     }
 
     const std::string remotePath = fdIt->second->RemotePath;
+    const std::string version = fdIt->second->Attributes.version;
     MountInfo& mountInfo = GetMountInfo(fdIt->second->MountName);
     m_mapOpenHandles.erase(fdIt);
     openHandlesLock.unlock();
 
-    GetStreamingClient(mountInfo).Close(remotePath, false /* isWriteMode */);
+    GetStreamingClient(mountInfo).Close(remotePath, version, false /* isWriteMode */);
 
     LOG_DEBUG("Intercepted the fclose system call at fd={} path={} mountName={}",
         fd,
@@ -633,17 +634,19 @@ ssize_t ContentHandler::HandleRead(int fd, void *buf, size_t nBytes)
     const off64_t readOffset = fdIt->second->FileOffset;
     const off64_t fileSize = fdIt->second->Attributes.size;
     const std::string path = fdIt->second->RemotePath;
+    const std::string version = fdIt->second->Attributes.version;
     MountInfo& mountInfo = GetMountInfo(fdIt->second->MountName);
     openHandlesLock.unlock();
 
-    LOG_DEBUG("Intercepting the read system call at fd={} mountName={} path={} nBytes={} readOffset={}",
+    LOG_DEBUG("Intercepting the read system call at fd={} mountName={} path={} nBytes={} readOffset={} version={}",
         fd,
         mountInfo.MountName,
         path,
         nBytes,
-        readOffset);
+        readOffset,
+        version);
 
-    ssize_t result = GetStreamingClient(mountInfo).ReadFile(path, buf, nBytes, readOffset, fileSize);
+    ssize_t result = GetStreamingClient(mountInfo).ReadFile(path, buf, nBytes, readOffset, fileSize, version);
     if (result < 0)
     {
         LOG_ERROR("StreamingClient read returned error for fd={} mountName={} path={} nBytes={} readOffset={}",
@@ -695,17 +698,19 @@ ssize_t ContentHandler::HandlePRead(int fd, void *buf, size_t nBytes, off64_t of
 
     const std::string path = fdIt->second->RemotePath;
     off64_t fileSize = fdIt->second->Attributes.size;
+    const std::string version = fdIt->second->Attributes.version;
     MountInfo& mountInfo = GetMountInfo(fdIt->second->MountName);
     openHandlesLock.unlock();
 
-    LOG_DEBUG("Intercepting the pread system call at fd={} mountName={} path={} nBytes={} offset={}",
+    LOG_DEBUG("Intercepting the pread system call at fd={} mountName={} path={} nBytes={} offset={} version={}",
         fd,
         mountInfo.MountName,
         path,
         nBytes,
-        offset);
+        offset,
+        version);
 
-    ssize_t result = GetStreamingClient(mountInfo).ReadFile(path, buf, nBytes, offset, fileSize);
+    ssize_t result = GetStreamingClient(mountInfo).ReadFile(path, buf, nBytes, offset, fileSize, version);
     if (result < 0)
     {
         LOG_ERROR("StreamingClient read returned error for fd={} mountName={} path={} nBytes={} offset={}",
@@ -906,11 +911,12 @@ int ContentHandler::HandleClose(int fd)
 
     const std::string remotePath = fdIt->second->RemotePath;
     const bool isWriteMode = fdIt->second->IsWriteMode;
+    const std::string version = fdIt->second->Attributes.version;
     MountInfo& mountInfo = GetMountInfo(fdIt->second->MountName);
     openHandlesLock.unlock();
 
     // TODO: StreamingClient throws on close errors, change to return codes?
-    GetStreamingClient(mountInfo).Close(remotePath, isWriteMode);
+    GetStreamingClient(mountInfo).Close(remotePath, version, isWriteMode);
 
     openHandlesLock.lock();
     fdIt = m_mapOpenHandles.find(fd);

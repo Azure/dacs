@@ -26,7 +26,8 @@ CacheUploadManager::CacheUploadManager(
       m_maxBufferMemory(maxTotalBufferSize),
       m_keyExpirySeconds(StorageInterceptConfig::GetInstance().GetCacheKeyExpirySeconds()),
       m_keyGroupId(StorageInterceptConfig::GetInstance().GetCacheKeyGroupId()),
-      m_enableSyncUpload(StorageInterceptConfig::GetInstance().GetCacheEnableSyncUpload())
+      m_enableSyncUpload(StorageInterceptConfig::GetInstance().GetCacheEnableSyncUpload()),
+      m_bEnableVersionedCacheKeys(StorageInterceptConfig::GetInstance().IsVersionedCacheKeysEnabled())
 {
     // start worker threads
     if (!m_enableSyncUpload)
@@ -119,12 +120,16 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
         bufferSizeToSend = uploadContext->m_fileData->BufferSize;
     }
 
+    // Derive per-file groupId from version if provided, otherwise fall back to global config groupId
+    const std::string effectiveGroupId = GetEffectiveGroupId(
+        uploadContext->m_strFilePath, uploadContext->m_strVersion);
+
     auto status = m_spCacheClientImpl->Upload(
         uploadContext->m_strCacheKey.c_str(),
         bufferToSend,
         bufferSizeToSend,
         m_keyExpirySeconds,
-        m_keyGroupId.empty() ? nullptr : m_keyGroupId.c_str(),
+        effectiveGroupId.empty() ? nullptr : effectiveGroupId.c_str(),
         metadata.nKeyValuePairs > 0 ? &metadata : nullptr,
         uploadContext->m_encryptionKey.empty() ? nullptr : uploadContext->m_encryptionKey.c_str());
 
@@ -173,14 +178,17 @@ bool CacheUploadManager::Upload(
     std::shared_ptr<const FileData> fileData,
     const std::string& strEncryptionKey,
     std::unique_ptr<::FileAttributes> fileAttributes,
-    bool isWrite)
+    bool isWrite,
+    const std::string& filePath,
+    const std::string& version)
 {
     bool useSync = m_enableSyncUpload || isWrite; // Writes to cache are always sync
 
     if (useSync)
     {
         auto uploadContext = make_unique<UploadContext>(
-            mountName, cacheKey, fileData, strEncryptionKey, move(fileAttributes));
+            mountName, cacheKey, fileData, strEncryptionKey,
+            move(fileAttributes), filePath, version);
         return StartUpload(move(uploadContext));
     }
     else
@@ -198,12 +206,23 @@ bool CacheUploadManager::Upload(
 
             m_uploadBufferMemory += bufferSizeToSend;
             auto uploadContext = make_unique<UploadContext>(
-                mountName, cacheKey, fileData, strEncryptionKey, move(fileAttributes));
+                mountName, cacheKey, fileData, strEncryptionKey,
+                move(fileAttributes), filePath, version);
             m_uploadQueue.push(move(uploadContext));
         }
 
         m_cvQueue.notify_one();
     }
     return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+std::string CacheUploadManager::GetEffectiveGroupId(
+    const std::string& filePath, const std::string& version) const
+{
+    if (m_bEnableVersionedCacheKeys && !version.empty())
+    {
+        return cacheutils::GetSHA256Hex(filePath + ":" + version);
+    }
+    return m_keyGroupId;
 }
 //---------------------------------------------------------------------------------------------------------------------

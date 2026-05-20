@@ -3,6 +3,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "RemoteClientTest.h"
 #include "RemoteClientProvider.h"
+#include "StorageInterceptConfig.h"
 #include "mock/MockRemoteClient.h"
 #include <dirent.h>
 //---------------------------------------------------------------------------------------------------------------------
@@ -131,4 +132,5 @@ TEST_F(RemoteClientTest, GetPropForPrefixToValidPathWithDirDelimiterTest)
     nResult = m_RemoteClient->GetProperties(remoteFilePath, attr);
     ASSERT_NE(nResult, 0);
 }
+//---------------------------------------------------------------------------------------------------------------------
 //---------------------------------------------------------------------------------------------------------------------
