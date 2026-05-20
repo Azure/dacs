@@ -51,6 +51,7 @@ var tc testContext
 var _ = Describe("aks tests", Label("aks"), Serial, func() {
 	BeforeEach(beforeEach)
 	testClusterUpgrade(&tc)
+	testClusterScale(&tc)
 	AfterEach(afterEach)
 })
 

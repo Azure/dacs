@@ -106,6 +106,58 @@ func GetAvailableUpgrades(ctx context.Context, subscription, resourceGroup, clus
 	return utils.GetNonEmptyLines(strings.TrimSpace(output)), nil
 }
 
+// GetDefaultNodePool returns the system node pool for an AKS cluster, or the
+// first node pool if no system node pool is present.
+func GetDefaultNodePool(ctx context.Context, subscription, resourceGroup, clusterName string) (string, error) {
+	cmd := exec.CommandContext(ctx,
+		"az", "aks", "nodepool", "list",
+		"--subscription", subscription,
+		"--resource-group", resourceGroup,
+		"--cluster-name", clusterName,
+		"-o", "json",
+	)
+	output, err := utils.Run(cmd)
+	if err != nil {
+		return "", fmt.Errorf("failed to list node pools for cluster %s: %w", clusterName, err)
+	}
+
+	var nodePools []struct {
+		Name string `json:"name"`
+		Mode string `json:"mode"`
+	}
+	if err := json.Unmarshal([]byte(output), &nodePools); err != nil {
+		return "", fmt.Errorf("failed to parse node pool JSON for cluster %s: %w", clusterName, err)
+	}
+	if len(nodePools) == 0 {
+		return "", fmt.Errorf("no node pools found for cluster %s", clusterName)
+	}
+	for _, nodePool := range nodePools {
+		if strings.EqualFold(nodePool.Mode, "System") {
+			return nodePool.Name, nil
+		}
+	}
+	return nodePools[0].Name, nil
+}
+
+// ScaleNodePool scales an AKS node pool to the requested node count.
+func ScaleNodePool(ctx context.Context, subscription, resourceGroup, clusterName, nodepool string, count int, log logr.Logger) error {
+	log.Info("Scaling AKS nodepool", "cluster", clusterName, "nodepool", nodepool, "count", count)
+	cmd := exec.CommandContext(ctx,
+		"az", "aks", "nodepool", "scale",
+		"--subscription", subscription,
+		"--resource-group", resourceGroup,
+		"--cluster-name", clusterName,
+		"--name", nodepool,
+		"--node-count", fmt.Sprintf("%d", count),
+	)
+	_, err := utils.Run(cmd)
+	if err != nil {
+		return fmt.Errorf("failed to scale node pool %s for cluster %s to %d nodes: %w", nodepool, clusterName, count, err)
+	}
+	log.Info("AKS nodepool scale completed", "cluster", clusterName, "nodepool", nodepool, "count", count)
+	return nil
+}
+
 // UpgradeCluster upgrades the AKS cluster to the specified Kubernetes version.
 func UpgradeCluster(ctx context.Context, subscription, resourceGroup, clusterName, version string, log logr.Logger) error {
 	log.Info("Upgrading AKS cluster", "cluster", clusterName, "targetVersion", version)
