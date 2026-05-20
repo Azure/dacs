@@ -37,7 +37,8 @@ class MockRemoteClient : public IRemoteClient
         /*[in]*/ off64_t blockId) override;
     
     int CommitBlocksForUpload(
-        /*[in]*/ const std::string& remotePath) override;
+        /*[in]*/ const std::string& remotePath,
+        /*[in]*/ const std::string& version) override;
 
   private:
     const std::string m_strFsRoot;

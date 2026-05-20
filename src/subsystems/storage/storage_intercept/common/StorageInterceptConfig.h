@@ -150,6 +150,9 @@ class StorageInterceptConfig
         bool IsRemoteWriteAsyncEnabled();
         uint32_t GetRemoteAsyncWriteFileConcurrency();
 
+        // Feature flag for versioned cache keys
+        bool IsVersionedCacheKeysEnabled();
+
         // Getters for cache server discovery
         bool IsCacheServerDiscoveryEnabled();
         uint32_t CacheServerDiscoveryIntervalInSeconds();

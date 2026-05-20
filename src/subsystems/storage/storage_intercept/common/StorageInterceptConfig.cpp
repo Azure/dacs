@@ -1041,6 +1041,14 @@ bool StorageInterceptConfig::IsRemoteWriteAsyncEnabled()
         true);
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::IsVersionedCacheKeysEnabled()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameEnableVersionedCacheKeys,
+        true);
+}
+//---------------------------------------------------------------------------------------------------------------------
 uint32_t StorageInterceptConfig::GetRemoteAsyncWriteFileConcurrency()
 {
     return StorageInterceptConfig::GetOptionalConfigUint32(

@@ -89,7 +89,8 @@ int AdlsClient::StageBlocksForUpload(
 }
 //---------------------------------------------------------------------------------------------------------------------
 int AdlsClient::CommitBlocksForUpload(
-  /*[in]*/ const std::string& remotePath)
+  /*[in]*/ const std::string& remotePath,
+  /*[in]*/ const std::string& version)
 {
   throw RemoteClientException("Adls backend does not currently have support for write operations");
 }

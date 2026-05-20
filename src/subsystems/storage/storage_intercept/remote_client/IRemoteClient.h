@@ -38,7 +38,8 @@ class IRemoteClient
       /*[in]*/ off64_t blockId) = 0;
     
     virtual int CommitBlocksForUpload(
-      /*[in]*/ const std::string& remotePath) = 0;
+      /*[in]*/ const std::string& remotePath,
+      /*[in]*/ const std::string& version) = 0;
 
     virtual ~IRemoteClient() {};
 };

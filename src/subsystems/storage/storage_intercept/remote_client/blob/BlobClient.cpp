@@ -593,13 +593,20 @@ int BlobClient::StageBlocksForUpload(
 }
 //---------------------------------------------------------------------------------------------------------------------
 int BlobClient::CommitBlocksForUpload(
-    /*[in]*/ const std::string& remotePath)
+    /*[in]*/ const std::string& remotePath,
+    /*[in]*/ const std::string& version)
 {
     std::shared_ptr<azBlobClient_t> blobClient = GetBlobClient(remotePath);
     const std::string blobPath = GetBlobName(remotePath);
     const std::string containerName = GetContainerName(remotePath);
 
     std::vector<std::pair<std::string, std::string>> metadata;
+    if (!version.empty())
+    {
+        metadata.push_back({StorageInterceptConstants::BlobMetadataKeyVersion, version});
+        LOG_DEBUG("CommitBlocksForUpload: setting metadata dacsfileversion={} for blob={}",
+            version, remotePath);
+    }
     std::vector<azBlockItem_t> blockList;
     
     {

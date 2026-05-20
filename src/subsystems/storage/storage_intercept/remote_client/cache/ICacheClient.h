@@ -14,6 +14,7 @@ class ICacheClient
         virtual cacheutils::CacheStatus DownloadSync(
             /*[in] */ const std::string& mountName,
             /*[in] */ const std::string& filePath,
+            /*[in] */ const std::string& version,
             /*[in] */ off64_t fileOffset,
             /*[in] */ uint64_t startOffset,
             /*[in] */ uint64_t length,
@@ -23,6 +24,7 @@ class ICacheClient
         virtual bool Upload(
             /*[in] */ const std::string& mountName,
             /*[in] */ const std::string& filePath,
+            /*[in] */ const std::string& version,
             /*[in] */ off64_t fileOffset,
             /*[in] */ std::shared_ptr<const FileData> fileData,
             /*[in] */ bool isWrite) = 0;

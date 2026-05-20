@@ -34,9 +34,10 @@ class StreamingClient
         ssize_t ReadFile(
             /*[in] */ const std::string& remotePath,
             /*[out]*/ void *buf,
-            /*[in] */ size_t readSize,
+            /*[in] */ size_t readSize,            
             /*[in] */ off64_t readOffset,
-            /*[in] */ off64_t fileSize);
+            /*[in] */ off64_t fileSize,
+            /*[in] */ const std::string& version);
 
         ssize_t WriteFile(
             /*[in] */ const std::string& remotePath,
@@ -55,6 +56,7 @@ class StreamingClient
 
         void Close(
             /*[in] */ const std::string& remotePath,
+            /*[in]*/ const std::string& version,
             /*[in]*/ const bool isWriteMode);
 
         // APIs to handle shared state when a process is forked (invoked by ContentHandler)
@@ -88,14 +90,17 @@ class StreamingClient
         {
             RemoteUploadContext(
                 const std::string& remotePath,
-                const off64_t fileSize)
+                const off64_t fileSize,
+                const std::string& version)
                 : m_strRemotePath(remotePath)
                 , m_fileSize(fileSize)
+                , m_version(version)
             {
             }
 
             const std::string                   m_strRemotePath;
             const off64_t                       m_fileSize;
+            const std::string                   m_version;
         };
 
         const std::string                  m_strMountName;
@@ -193,11 +198,15 @@ class StreamingClient
         // Switch to enable zero-copy read
         const bool                         m_bEnableZeroCopy;
 
+        // Switch to enable versioned cache keys
+        const bool                         m_bEnableVersionedCacheKeys;
+
         // Wrapper to call ReadChunkImpl() and update the counters tracking read chunk concurrency
         std::shared_ptr<const FileData> ReadChunk(
             /*[in] */ const std::string& remotePath,
             /*[in] */ off64_t chunkOffset,
-            /*[in] */ void* pUserBuf);
+            /*[in] */ void* pUserBuf,
+            /*[in] */ const std::string& version);
 
         /*
          * Helper to read chunk at given offset.
@@ -209,7 +218,8 @@ class StreamingClient
         std::shared_ptr<const FileData> ReadChunkImpl(
             /*[in] */ const std::string& remotePath,
             /*[in] */ off64_t chunkOffset,
-            /*[in] */ void* pUserPassedbuffer);
+            /*[in] */ void* pUserPassedbuffer,
+            /*[in] */ const std::string& version);
 
         // Helper function to read chunk and copy the relevant part to user provided buffer.
         // Returns the number of bytes copied into buffer, -1 in case of error.
@@ -218,7 +228,8 @@ class StreamingClient
             /*[in] */ off64_t chunkOffset,
             /*[in] */ void* pUserPassedbuffer,
             /*[in] */ size_t bufSize,
-            /*[in] */ size_t chunkCopyOffset);
+            /*[in] */ size_t chunkCopyOffset,
+            /*[in] */ const std::string& version);
 
         // Attempt sub-chunk fast path for small reads. Returns bytes copied on success,
         // or std::nullopt if caller should fall through to the full-chunk path.
@@ -227,7 +238,8 @@ class StreamingClient
             /*[in] */ off64_t chunkOffset,
             /*[in] */ void* pUserBuf,
             /*[in] */ size_t bufSize,
-            /*[in] */ size_t chunkCopyOffset);
+            /*[in] */ size_t chunkCopyOffset,
+            /*[in] */ const std::string& version);
 
         // Probe the cache server with a retry loop. Returns the final CacheStatus.
         // On SUCCESS, readLength is set and metrics are recorded.
@@ -238,7 +250,8 @@ class StreamingClient
             /*[in] */ uint64_t startOffset,
             /*[in] */ uint64_t length,
             /*[in] */ char* buffer,
-            /*[out]*/ uint64_t& readLength);
+            /*[out]*/ uint64_t& readLength,
+            /*[in] */ const std::string& version);
 
         // Download a full chunk from blob storage. Returns bytes read, or -1 on error.
         ssize_t DownloadFullChunkFromBlob(
@@ -251,14 +264,16 @@ class StreamingClient
             /*[in] */ const std::string& remotePath,
             /*[in] */ void *pUserPassedbuffer,
             /*[in] */ size_t totalReadSize,
-            /*[in] */ off64_t readOffset);
+            /*[in] */ off64_t readOffset,
+            /*[in] */ const std::string& version);
 
         // Function to serve read by parallely downloading the required chunks.
         ssize_t ReadChunksParallel(
             /*[in] */ const std::string& remotePath,
             /*[in] */ void *pUserPassedbuffer,
             /*[in] */ size_t totalReadSize,
-            /*[in] */ off64_t readOffset);
+            /*[in] */ off64_t readOffset,
+            /*[in] */ const std::string& version);
 
         // Function to ensure all chunks in prefetch window(s) overlapping with current read are populated in the
         // prefetch cache. This is called only when large prefetch optimization is enabled.
@@ -266,7 +281,8 @@ class StreamingClient
             /*[in] */ const std::string& remotePath,
             /*[in] */ size_t totalReadSize,
             /*[in] */ off64_t readOffset,
-            /*[in] */ off64_t fileSize);
+            /*[in] */ off64_t fileSize,
+            /*[in] */ const std::string& version);
 
         // Function to be called before starting any chunk operation.
         // It increments the counter for concurrent read chunks and waits till the concurrency is below the allowed
@@ -281,15 +297,24 @@ class StreamingClient
         bool WriteChunkToCacheImpl(
             /*[in] */ const std::string& filePath,
             /*[in] */ const off64_t chunkOffset,
-            /*[in] */ const std::shared_ptr<const FileData> fileData);
+            /*[in] */ const std::shared_ptr<const FileData> fileData,
+            /*[in] */ const std::string& version);
 
         // Helper functions to flush upload cache to remote store
-        bool WriteChunksToRemoteStore(/*[in]*/ const std::string& remotePath, /*[in]*/ const off64_t fileSize);
-        bool WriteChunksToRemoteStoreImpl(/*[in]*/ const std::string& remotePath, /*[in]*/ const off64_t fileSize, /*[in]*/ bool copyFromCacheToRemote);
+        bool WriteChunksToRemoteStore(
+            /*[in]*/ const std::string& remotePath,
+            /*[in]*/ const off64_t fileSize,
+            /*[in]*/ const std::string& version);
+        bool WriteChunksToRemoteStoreImpl(
+            /*[in]*/ const std::string& remotePath,
+            /*[in]*/ const off64_t fileSize,
+            /*[in]*/ bool copyFromCacheToRemote,
+            /*[in]*/ const std::string& version);
         std::future<bool> WriteChunkToRemoteStoreFromCacheAsync(
             /*[in] */ const std::string& remotePath,
             /*[in] */ const off64_t chunkOffset,
-            /*[in] */ const size_t chunkSize);
+            /*[in] */ const size_t chunkSize,
+            /*[in] */ const std::string& version);
         std::future<bool> WriteChunkToRemoteStoreFromUploadCacheAsync(
             /*[in] */ const std::string& remotePath,
             /*[in] */ const off64_t chunkOffset,

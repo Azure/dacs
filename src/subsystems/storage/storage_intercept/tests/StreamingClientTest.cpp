@@ -24,23 +24,34 @@ class InMemoryCacheClient : public ICacheClient
 public:
     struct DownloadCall {
         std::string filePath;
+        std::string version;
         off64_t fileOffset;
         uint64_t startOffset;
         uint64_t length;
     };
 
+    struct UploadCall {
+        std::string filePath;
+        std::string version;
+        off64_t fileOffset;
+        bool isWrite;
+    };
+
     cacheutils::CacheStatus DownloadSync(
         const std::string& /*mountName*/,
         const std::string& filePath,
+        const std::string& version,
         off64_t fileOffset,
         uint64_t startOffset,
         uint64_t length,
         char* buffer,
         uint64_t& readLength) override
     {
-        m_downloadCalls.push_back({filePath, fileOffset, startOffset, length});
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_downloadCalls.push_back({filePath, version, fileOffset, startOffset, length});
 
-        std::string key = filePath + ":" + std::to_string(fileOffset);
+        // Include version in store key so different versions have separate cache entries
+        std::string key = filePath + ":" + version + ":" + std::to_string(fileOffset);
         auto it = m_store.find(key);
         if (it == m_store.end())
             return cacheutils::CacheStatus::NOTFOUND_LOCKED;
@@ -61,18 +72,21 @@ public:
     bool Upload(
         const std::string& /*mountName*/,
         const std::string& filePath,
+        const std::string& version,
         off64_t fileOffset,
         std::shared_ptr<const FileData> fileData,
-        bool /*isWrite*/) override
+        bool isWrite) override
     {
-        std::string key = filePath + ":" + std::to_string(fileOffset);
+        std::lock_guard<std::mutex> lock(m_mutex);
+        std::string key = filePath + ":" + version + ":" + std::to_string(fileOffset);
         m_store[key] = fileData;
-        m_uploadCalls.push_back(key);
+        m_uploadCalls.push_back({filePath, version, fileOffset, isWrite});
         return true;
     }
 
+    mutable std::mutex m_mutex; // Guards m_store, m_downloadCalls, m_uploadCalls against concurrent std::async calls in WriteChunksToCache
     std::vector<DownloadCall> m_downloadCalls;
-    std::vector<std::string> m_uploadCalls;  // keys of uploaded chunks
+    std::vector<UploadCall> m_uploadCalls;
     std::map<std::string, std::shared_ptr<const FileData>> m_store;
 };
 //---------------------------------------------------------------------------------------------------------------------
@@ -105,6 +119,13 @@ void StreamingClientTest::SetUp()
         "",
         m_cacheClient,
         std::make_shared<InMemoryAttributesCache>());
+
+    // Get the file version for the test file (etag or dacsfileversion) — used by all read tests
+    FileAttributes setupAttrs;
+    if (m_spStreamingClient->GetProperties(m_strRemoteFilePath, setupAttrs) == 0)
+    {
+        m_strFileVersion = setupAttrs.version;
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StreamingClientTest::BufferEqualsInRange(
@@ -155,14 +176,15 @@ void StreamingClientTest::PerformReadTest(size_t bufferSize,
         readBuf.data(),
         readBuf.size(),
         offset, /* offset */
-        REMOTE_FILE_SIZE);
+        REMOTE_FILE_SIZE,
+        m_strFileVersion);
     ASSERT_EQ(nBytesRead, expectedBytesRead);
     // Data integrity check
     ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, offset, 0, nBytesRead)));
 
     ASSERT_EQ(m_spStreamingClient->GetReadChunksZeroCopy(), expectedZeroCopyReads);
     // Close the file, forcing to purge the cache
-    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    m_spStreamingClient->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(StreamingClientTest, RootDirPathTest)
@@ -198,18 +220,6 @@ TEST_F(StreamingClientTest, RootDirPathTest)
     ASSERT_EQ(attr.isDir, true);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(StreamingClientTest, GetPropertiesVersionTest)
-{
-    /* Verify GetProperties on a file returns a non-empty version (etag or dacsfileversion) */
-    FileAttributes fileAttr;
-    int nResult = m_spStreamingClient->GetProperties(
-        m_strRemoteFilePath,
-        fileAttr
-    );
-    ASSERT_EQ(nResult, 0);
-    ASSERT_EQ(fileAttr.isDir, false);
-    ASSERT_FALSE(fileAttr.version.empty());
-}
 //---------------------------------------------------------------------------------------------------------------------
 // BEGIN: Test cases for streaming client with zero copy disabled
 //---------------------------------------------------------------------------------------------------------------------
@@ -406,7 +416,7 @@ TEST_F(StreamingClientTest, ReadFileTinyReadsSubChunkTest)
     // server in serverless CI) to the full-chunk path, which populates PrefetchCache.
     std::vector<char> readBuf(50);
     ssize_t nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 50);
     ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 0, 0, nBytesRead)));
 
@@ -415,12 +425,12 @@ TEST_F(StreamingClientTest, ReadFileTinyReadsSubChunkTest)
 
     // Second read of same region should be a sub-chunk PrefetchCache hit
     nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 50);
     ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 0, 0, nBytesRead)));
     ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkAfterWarmup, 1u);
     ASSERT_GE(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 1u);
-    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    m_spStreamingClient->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(StreamingClientTest, ReadFileSubChunkAtOffsetTest)
@@ -431,7 +441,7 @@ TEST_F(StreamingClientTest, ReadFileSubChunkAtOffsetTest)
     // First read to populate PrefetchCache for chunk 0
     std::vector<char> readBuf(512);
     ssize_t nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 100, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 100, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 512);
 
     // No Close() — keep PrefetchCache populated
@@ -439,12 +449,12 @@ TEST_F(StreamingClientTest, ReadFileSubChunkAtOffsetTest)
 
     // Second read at the same offset should hit sub-chunk PrefetchCache path
     nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 100, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 100, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 512);
     ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 100, 0, nBytesRead)));
     ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkAfterWarmup, 1u);
     ASSERT_GE(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 1u);
-    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    m_spStreamingClient->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(StreamingClientTest, ReadFileFullChunkBypassesSubChunkTest)
@@ -457,16 +467,16 @@ TEST_F(StreamingClientTest, ReadFileFullChunkBypassesSubChunkTest)
 
     // First read to populate cache
     ssize_t nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, static_cast<ssize_t>(DEFAULT_STREAMING_CHUNK_SIZE));
-    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    m_spStreamingClient->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 
     // Second read — full chunk size is not less than m_nChunkSize, should not use sub-chunk
     nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, static_cast<ssize_t>(DEFAULT_STREAMING_CHUNK_SIZE));
     ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 0u);
-    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    m_spStreamingClient->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(StreamingClientTest, ReadFileSubChunkDisabledWithEncryptionTest)
@@ -482,15 +492,15 @@ TEST_F(StreamingClientTest, ReadFileSubChunkDisabledWithEncryptionTest)
     // First small read to populate PrefetchCache
     std::vector<char> readBuf(50);
     ssize_t nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 50);
 
     // Second read — sub-chunk should NOT activate when encryption is enabled
     nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 50);
     ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 0u);
-    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    m_spStreamingClient->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(StreamingClientTest, ReadFileSubChunkDisabledWithChecksumTest)
@@ -506,15 +516,15 @@ TEST_F(StreamingClientTest, ReadFileSubChunkDisabledWithChecksumTest)
     // First small read to populate PrefetchCache
     std::vector<char> readBuf(50);
     ssize_t nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 50);
 
     // Second read — sub-chunk should NOT activate when checksum validation is enabled
     nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 50);
     ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 0u);
-    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    m_spStreamingClient->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(StreamingClientTest, ReadFileMultipleSubChunkHitsTest)
@@ -525,7 +535,7 @@ TEST_F(StreamingClientTest, ReadFileMultipleSubChunkHitsTest)
     // Warmup read to populate PrefetchCache for chunk 0
     std::vector<char> readBuf(256);
     ssize_t nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 256);
 
     // No Close() — keep PrefetchCache populated
@@ -536,7 +546,7 @@ TEST_F(StreamingClientTest, ReadFileMultipleSubChunkHitsTest)
     {
         size_t offset = i * 256;
         nBytesRead = m_spStreamingClient->ReadFile(
-            m_strRemoteFilePath, readBuf.data(), readBuf.size(), offset, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), offset, REMOTE_FILE_SIZE, m_strFileVersion);
         ASSERT_EQ(nBytesRead, 256);
         ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, offset, 0, nBytesRead)));
     }
@@ -544,7 +554,7 @@ TEST_F(StreamingClientTest, ReadFileMultipleSubChunkHitsTest)
     // All 5 reads should have been sub-chunk PrefetchCache hits
     ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkAfterWarmup, 5u);
     ASSERT_GE(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 5u);
-    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    m_spStreamingClient->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(StreamingClientTest, ReadFileSubChunkPrefetchCacheHitTest)
@@ -559,7 +569,7 @@ TEST_F(StreamingClientTest, ReadFileSubChunkPrefetchCacheHitTest)
     // since bufSize >= threshold) and populate PrefetchCache.
     std::vector<char> warmBuf(DEFAULT_STREAMING_CHUNK_SIZE);
     ssize_t nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(), 0, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, static_cast<ssize_t>(DEFAULT_STREAMING_CHUNK_SIZE));
 
     uint64_t subChunkAfterFirst = m_spStreamingClient->GetReadChunksSubChunk();
@@ -569,7 +579,7 @@ TEST_F(StreamingClientTest, ReadFileSubChunkPrefetchCacheHitTest)
     // Second small read on the same chunk — should hit PrefetchCache sub-chunk path
     std::vector<char> readBuf(128);
     nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 128);
     ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 0, 0, nBytesRead)));
 
@@ -578,7 +588,7 @@ TEST_F(StreamingClientTest, ReadFileSubChunkPrefetchCacheHitTest)
     // PrefetchCache counter should have incremented (from the sub-chunk prefetch-cache hit)
     ASSERT_GT(m_spStreamingClient->GetReadChunksPrefetchCache(), prefetchBefore);
 
-    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    m_spStreamingClient->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(StreamingClientTest, ReadFileSubChunkCacheServerPathTest)
@@ -597,16 +607,16 @@ TEST_F(StreamingClientTest, ReadFileSubChunkCacheServerPathTest)
         "", mockCache, std::make_shared<InMemoryAttributesCache>());
 
     // Purge any stale PrefetchCache entries from prior tests for this file
-    client->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    client->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 
     // Warmup: full-chunk read populates the in-memory cache via Upload
     std::vector<char> warmBuf(DEFAULT_STREAMING_CHUNK_SIZE);
     ssize_t nBytesRead = client->ReadFile(
-        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(), 0, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, static_cast<ssize_t>(DEFAULT_STREAMING_CHUNK_SIZE));
 
     // Close purges PrefetchCache so the next read must go to the cache server
-    client->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    client->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 
     size_t callsBefore = mockCache->m_downloadCalls.size();
     uint64_t subChunkBefore = client->GetReadChunksSubChunk();
@@ -614,7 +624,7 @@ TEST_F(StreamingClientTest, ReadFileSubChunkCacheServerPathTest)
     // Small sub-chunk read at offset 100, size 512
     std::vector<char> readBuf(512);
     nBytesRead = client->ReadFile(
-        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 100, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 100, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 512);
 
     // Verify the cache server received a sub-chunk download request
@@ -629,7 +639,7 @@ TEST_F(StreamingClientTest, ReadFileSubChunkCacheServerPathTest)
     // Verify data correctness
     ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 100, 0, 512)));
 
-    client->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    client->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(StreamingClientTest, ReadFileSubChunkColdPathTest)
@@ -647,7 +657,7 @@ TEST_F(StreamingClientTest, ReadFileSubChunkColdPathTest)
         "", mockCache, std::make_shared<InMemoryAttributesCache>());
 
     // Purge any stale PrefetchCache entries
-    client->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    client->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 
     size_t uploadsBefore = mockCache->m_uploadCalls.size();
     uint64_t subChunkBefore = client->GetReadChunksSubChunk();
@@ -655,7 +665,7 @@ TEST_F(StreamingClientTest, ReadFileSubChunkColdPathTest)
     // Small sub-chunk read at offset 100, size 512 — cache is empty (cold)
     std::vector<char> readBuf(512);
     ssize_t nBytesRead = client->ReadFile(
-        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 100, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 100, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 512);
 
     // Verify the sub-chunk counter incremented (cold path still counts as sub-chunk)
@@ -668,12 +678,12 @@ TEST_F(StreamingClientTest, ReadFileSubChunkColdPathTest)
     ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 100, 0, 512)));
 
     // Verify cache is now populated — a second sub-chunk read should hit the cache
-    client->Close(m_strRemoteFilePath, false /* isWriteMode */);  // purge PrefetchCache
+    client->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);  // purge PrefetchCache
     size_t callsBefore = mockCache->m_downloadCalls.size();
 
     std::vector<char> readBuf2(256);
     nBytesRead = client->ReadFile(
-        m_strRemoteFilePath, readBuf2.data(), readBuf2.size(), 200, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, readBuf2.data(), readBuf2.size(), 200, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 256);
 
     // This second read should hit the cache (SUCCESS, not NOTFOUND_LOCKED)
@@ -684,7 +694,7 @@ TEST_F(StreamingClientTest, ReadFileSubChunkColdPathTest)
 
     ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf2, 200, 0, 256)));
 
-    client->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    client->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(StreamingClientTest, ReadFileSubChunkZeroByteTest)
@@ -694,16 +704,16 @@ TEST_F(StreamingClientTest, ReadFileSubChunkZeroByteTest)
     // Warmup: populate PrefetchCache for chunk 0
     std::vector<char> warmBuf(DEFAULT_STREAMING_CHUNK_SIZE);
     ssize_t nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(), 0, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, static_cast<ssize_t>(DEFAULT_STREAMING_CHUNK_SIZE));
 
     // Zero-byte read — should return 0 without crashing
     char dummy = 0;
     nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath, &dummy, 0, 0, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, &dummy, 0, 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 0);
 
-    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    m_spStreamingClient->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(StreamingClientTest, ReadFileSubChunkNearEOFTest)
@@ -715,7 +725,7 @@ TEST_F(StreamingClientTest, ReadFileSubChunkNearEOFTest)
                                    * DEFAULT_STREAMING_CHUNK_SIZE;
     std::vector<char> warmBuf(DEFAULT_STREAMING_CHUNK_SIZE);
     ssize_t nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(), lastChunkOffset, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(), lastChunkOffset, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, static_cast<ssize_t>(DEFAULT_STREAMING_CHUNK_SIZE));
 
     uint64_t subChunkBefore = m_spStreamingClient->GetReadChunksSubChunk();
@@ -724,14 +734,14 @@ TEST_F(StreamingClientTest, ReadFileSubChunkNearEOFTest)
     const size_t nearEOFOffset = REMOTE_FILE_SIZE - 100;
     std::vector<char> readBuf(512);
     nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath, readBuf.data(), readBuf.size(), nearEOFOffset, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), nearEOFOffset, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 100);
     ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, nearEOFOffset, 0, nBytesRead)));
 
     // The read should have taken the sub-chunk PrefetchCache path
     ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 1u);
 
-    m_spStreamingClient->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    m_spStreamingClient->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(StreamingClientTest, ReadFileSubChunkBoundaryStraddleTest)
@@ -748,21 +758,20 @@ TEST_F(StreamingClientTest, ReadFileSubChunkBoundaryStraddleTest)
         "", mockCache, std::make_shared<InMemoryAttributesCache>());
 
     // Purge any stale PrefetchCache entries
-    client->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    client->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 
     // Warmup: read chunk 0 and chunk 1 fully to populate the in-memory cache
     std::vector<char> warmBuf(DEFAULT_STREAMING_CHUNK_SIZE);
     ssize_t nBytesRead = client->ReadFile(
-        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(), 0, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, static_cast<ssize_t>(DEFAULT_STREAMING_CHUNK_SIZE));
 
     nBytesRead = client->ReadFile(
-        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(),
-        DEFAULT_STREAMING_CHUNK_SIZE, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(), DEFAULT_STREAMING_CHUNK_SIZE, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, static_cast<ssize_t>(DEFAULT_STREAMING_CHUNK_SIZE));
 
     // Close purges PrefetchCache — next read must go through the cache server
-    client->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    client->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 
     size_t downloadsBefore = mockCache->m_downloadCalls.size();
     size_t uploadsBefore   = mockCache->m_uploadCalls.size();
@@ -775,7 +784,7 @@ TEST_F(StreamingClientTest, ReadFileSubChunkBoundaryStraddleTest)
 
     std::vector<char> readBuf(straddleReadSize);
     nBytesRead = client->ReadFile(
-        m_strRemoteFilePath, readBuf.data(), readBuf.size(), straddleOffset, REMOTE_FILE_SIZE);
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), straddleOffset, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, static_cast<ssize_t>(straddleReadSize));
 
     // Verify data correctness
@@ -803,7 +812,7 @@ TEST_F(StreamingClientTest, ReadFileSubChunkBoundaryStraddleTest)
     // Sub-chunk counter incremented by 2 (one per chunk portion)
     ASSERT_EQ(client->GetReadChunksSubChunk() - subChunkBefore, 2u);
 
-    client->Close(m_strRemoteFilePath, false /* isWriteMode */);
+    client->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 // END: Test cases for streaming client with sub-chunk read optimization
@@ -864,25 +873,26 @@ TEST_F(StreamingClientTest, WriteWholeFileTest)
     ASSERT_EQ(nBytesWritten, writeData->BufferSize);
 
     // Close the file to flush the writes
-    m_spStreamingClient->Close(writeFileName, true /* isWriteMode */);
+    m_spStreamingClient->Close(writeFileName, "" /* version */, true /* isWriteMode */);
 
-    // Read back the file to verify data integrity
+    // Get the generated version for the written file
+    FileAttributes writeAttrs;
+    m_spStreamingClient->GetProperties(writeFileName, writeAttrs);
+    ASSERT_FALSE(writeAttrs.version.empty());
+
+    // Read back the file to verify data integrity — use the generated version
     std::shared_ptr<FileData> readData = std::make_shared<FileData>(
         0,
         writeData->BufferSize,
         nullptr,
         false /* setToZeros */);
     ssize_t nBytesRead = m_spStreamingClient->ReadFile(
-        writeFileName,
-        readData->Buffer.get(),
-        readData->BufferSize,
-        0 /* offset */,
-        REMOTE_FILE_SIZE);
+        writeFileName, readData->Buffer.get(), readData->BufferSize, 0 /* offset */, REMOTE_FILE_SIZE, writeAttrs.version);
     ASSERT_EQ(nBytesRead, writeData->BufferSize);
     ASSERT_TRUE(FileDataEquals(writeData, readData));
 
     // Close the file
-    m_spStreamingClient->Close(writeFileName, false /* isWriteMode */);
+    m_spStreamingClient->Close(writeFileName, "" /* version */, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClientTest::WriteAppendsTest(
@@ -905,17 +915,18 @@ void StreamingClientTest::WriteAppendsTest(
     ASSERT_EQ(totalBytesWritten, writeData->BufferSize);
 
     // Close the file to flush the writes
-    m_spStreamingClient->Close(remotePath, true /* isWriteMode */);
+    m_spStreamingClient->Close(remotePath, "" /* version */, true /* isWriteMode */);
 
-    // Get properties to verify file size updated
+    // Get properties to verify file size updated and version generated
     FileAttributes attributes;
     int nResult = m_spStreamingClient->GetProperties(
         remotePath,
         attributes /* [out] attributes */);
     ASSERT_EQ(nResult, 0);
     ASSERT_EQ(attributes.size, writeData->BufferSize);
+    ASSERT_FALSE(attributes.version.empty());
 
-    // Read back the file to verify data integrity
+    // Read back the file to verify data integrity — use the generated version
     std::shared_ptr<FileData> readData = std::make_shared<FileData>(
         0,
         writeData->BufferSize,
@@ -926,10 +937,11 @@ void StreamingClientTest::WriteAppendsTest(
         readData->Buffer.get(),
         readData->BufferSize,
         0 /* offset */,
-        writeData->BufferSize);
+        writeData->BufferSize,
+        attributes.version);
     ASSERT_EQ(nBytesRead, writeData->BufferSize);
     ASSERT_TRUE(FileDataEquals(writeData, readData));
-    m_spStreamingClient->Close(remotePath, false /* isWriteMode */);
+    m_spStreamingClient->Close(remotePath, "" /* version */, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(StreamingClientTest, WriteFileAppendsAtChunkBoundaryTest)
@@ -994,7 +1006,12 @@ TEST_F(StreamingClientTest, WriteSparseFileTest)
     ASSERT_EQ(nBytesWrittenSecondHalf, writeData->BufferSize / 2);
 
     // Close the file to flush the writes
-    m_spStreamingClient->Close(writeFileName, true /* isWriteMode */);
+    m_spStreamingClient->Close(writeFileName, "" /* version */, true /* isWriteMode */);
+
+    // Get the generated version for the written file
+    FileAttributes sparseAttrs;
+    m_spStreamingClient->GetProperties(writeFileName, sparseAttrs);
+    ASSERT_FALSE(sparseAttrs.version.empty());
 
     // Read back the file to verify data integrity
     std::shared_ptr<FileData> readData = std::make_shared<FileData>(
@@ -1003,11 +1020,7 @@ TEST_F(StreamingClientTest, WriteSparseFileTest)
         nullptr,
         false /* setToZeros */);
     ssize_t nBytesRead = m_spStreamingClient->ReadFile(
-        writeFileName,
-        readData->Buffer.get(),
-        readData->BufferSize,
-        0 /* offset */,
-        REMOTE_FILE_SIZE);
+        writeFileName, readData->Buffer.get(), readData->BufferSize, 0 /* offset */, REMOTE_FILE_SIZE, sparseAttrs.version);
     ASSERT_EQ(nBytesRead, REMOTE_FILE_SIZE);
 
     // Verify first half
@@ -1027,7 +1040,7 @@ TEST_F(StreamingClientTest, WriteSparseFileTest)
             0, writeData->BufferSize / 2, writeData->Buffer.get() + writeData->BufferSize / 2, false),
         std::make_shared<FileData>(
             0, writeData->BufferSize / 2, readData->Buffer.get() + writeData->BufferSize + holeSize, false)));
-    m_spStreamingClient->Close(writeFileName, false /* isWriteMode */);
+    m_spStreamingClient->Close(writeFileName, "" /* version */, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(StreamingClientTest, WriteFileLastAppendWithinChunkBoundary)
@@ -1063,5 +1076,184 @@ TEST_F(StreamingClientTest, WriteFileLastAppendWithinChunkBoundary)
     // via GetProperties, and reads back the full file for data integrity check.
     // Without the fix, the GetProperties size assertion or data integrity check fails.
     WriteAppendsTest(writeFileName, writeData, appendSize);
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Versioned cache key tests - verify version flows through StreamingClient to cache client calls
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, WriteReadEndToEndVersionedKeyTest)
+{
+    // End-to-end test: Write → Close (generates version) → GetProperties (gets version)
+    // → ReadFile with version → verify data integrity AND verify the generated version
+    // was used in cache Upload/Download calls.
+    OverrideConfig(StorageInterceptConstants::ConfigNameWriteEnable, "true");
+    OverrideConfig(StorageInterceptConstants::ConfigNameWriteEnableRemoteAsync, "false");
+    OverrideConfig(StorageInterceptConstants::ConfigNameCacheEnable, "true");
+    OverrideConfig(StorageInterceptConstants::ConfigNameEnableVersionedCacheKeys, "true");
+
+    auto mockCache = std::make_shared<InMemoryCacheClient>();
+    auto attrCache = std::make_shared<InMemoryAttributesCache>();
+    auto client = std::make_shared<StreamingClient>("", mockCache, attrCache);
+
+    std::string writeFileName = "e2eVersionTest" + GenerateRandomString(4);
+    auto writeData = GetRandDataBuffer(REMOTE_FILE_SIZE);
+
+    // Write the file
+    ssize_t nBytesWritten = client->WriteFile(
+        writeFileName, writeData->Buffer.get(), writeData->BufferSize, 0);
+    ASSERT_EQ(nBytesWritten, writeData->BufferSize);
+
+    // Close → generates version UUID, uploads chunks to cache with versioned keys
+    client->Close(writeFileName, "" /* version */, true /* isWriteMode */);
+
+    // Verify version was generated and stored in attr cache
+    FileAttributes attrs;
+    int nResult = client->GetProperties(writeFileName, attrs);
+    ASSERT_EQ(nResult, 0);
+    ASSERT_FALSE(attrs.version.empty());
+    ASSERT_EQ(attrs.size, writeData->BufferSize);
+    const std::string generatedVersion = attrs.version;
+
+    // Verify all cache Upload calls during Close used the generated version
+    ASSERT_GT(mockCache->m_uploadCalls.size(), 0u);
+    for (const auto& uploadCall : mockCache->m_uploadCalls)
+    {
+        ASSERT_EQ(uploadCall.version, generatedVersion);
+        ASSERT_TRUE(uploadCall.isWrite);
+    }
+
+    // Read back the file using the generated version
+    std::shared_ptr<FileData> readData = std::make_shared<FileData>(
+        0, writeData->BufferSize, nullptr, false);
+    ssize_t nBytesRead = client->ReadFile(
+        writeFileName, readData->Buffer.get(), readData->BufferSize,
+        0, writeData->BufferSize, generatedVersion);
+    ASSERT_EQ(nBytesRead, writeData->BufferSize);
+
+    // Verify data integrity
+    ASSERT_TRUE(FileDataEquals(writeData, readData));
+
+    // Verify read DownloadSync calls also used the generated version
+    bool foundVersionedDownload = false;
+    for (const auto& downloadCall : mockCache->m_downloadCalls)
+    {
+        if (downloadCall.version == generatedVersion)
+        {
+            foundVersionedDownload = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(foundVersionedDownload);
+
+    client->Close(writeFileName, "" /* version */, false /* isWriteMode */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, WriteReadWithVersionedKeysDisabledTest)
+{
+    // Verify that when enableVersionedCacheKeys is false, write-close does NOT generate a version
+    // and cache upload/download calls use empty version (pre-PR2 behavior).
+    OverrideConfig(StorageInterceptConstants::ConfigNameWriteEnable, "true");
+    OverrideConfig(StorageInterceptConstants::ConfigNameWriteEnableRemoteAsync, "false");
+    OverrideConfig(StorageInterceptConstants::ConfigNameCacheEnable, "true");
+    OverrideConfig(StorageInterceptConstants::ConfigNameEnableVersionedCacheKeys, "false");
+
+    auto mockCache = std::make_shared<InMemoryCacheClient>();
+    auto attrCache = std::make_shared<InMemoryAttributesCache>();
+    auto client = std::make_shared<StreamingClient>("", mockCache, attrCache);
+
+    std::string writeFileName = "noVersionTest" + GenerateRandomString(4);
+    auto writeData = GetRandDataBuffer(REMOTE_FILE_SIZE);
+
+    ssize_t nBytesWritten = client->WriteFile(
+        writeFileName, writeData->Buffer.get(), writeData->BufferSize, 0);
+    ASSERT_EQ(nBytesWritten, writeData->BufferSize);
+
+    client->Close(writeFileName, "" /* version */, true /* isWriteMode */);
+
+    // Version should be empty — no UUID generated when flag is off
+    FileAttributes attrs;
+    int nResult = client->GetProperties(writeFileName, attrs);
+    ASSERT_EQ(nResult, 0);
+    ASSERT_TRUE(attrs.version.empty());
+
+    // All cache Upload calls should have empty version
+    ASSERT_GT(mockCache->m_uploadCalls.size(), 0u);
+    for (const auto& uploadCall : mockCache->m_uploadCalls)
+    {
+        ASSERT_TRUE(uploadCall.version.empty());
+    }
+
+    client->Close(writeFileName, "" /* version */, false /* isWriteMode */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, DifferentVersionsCacheSeparatelyTest)
+{
+    // Verify that reading the same file with different versions results in separate cache entries.
+    // With different versions, the cache key differs, so v2 misses even after v1 populated the cache.
+    OverrideConfig(StorageInterceptConstants::ConfigNameCacheEnable, "true");
+
+    auto mockCache = std::make_shared<InMemoryCacheClient>();
+    auto client = std::make_shared<StreamingClient>(
+        "", mockCache, std::make_shared<InMemoryAttributesCache>());
+
+    client->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
+
+    // Read with version v1 — cold miss, fetches from blob, uploads to cache
+    std::vector<char> readBuf(DEFAULT_STREAMING_CHUNK_SIZE);
+    client->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE, "version-v1");
+    client->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
+
+    size_t uploadsAfterV1 = mockCache->m_uploadCalls.size();
+    ASSERT_GT(uploadsAfterV1, 0u);
+
+    // Verify version-v1 was passed through to Upload calls
+    for (size_t i = 0; i < uploadsAfterV1; i++)
+    {
+        ASSERT_EQ(mockCache->m_uploadCalls[i].version, "version-v1");
+    }
+
+    // Read with version v2 — should miss cache again (different versioned key)
+    client->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE, "version-v2");
+
+    // Should have new upload calls for v2 (cache miss → fetch from blob → upload)
+    ASSERT_GT(mockCache->m_uploadCalls.size(), uploadsAfterV1);
+
+    // Verify version-v2 was passed through to the new Upload calls
+    for (size_t i = uploadsAfterV1; i < mockCache->m_uploadCalls.size(); i++)
+    {
+        ASSERT_EQ(mockCache->m_uploadCalls[i].version, "version-v2");
+    }
+
+    // Verify DownloadSync calls also received the correct versions
+    bool foundV1Download = false, foundV2Download = false;
+    for (const auto& call : mockCache->m_downloadCalls)
+    {
+        if (call.version == "version-v1") foundV1Download = true;
+        if (call.version == "version-v2") foundV2Download = true;
+    }
+    ASSERT_TRUE(foundV1Download);
+    ASSERT_TRUE(foundV2Download);
+
+    client->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, GetPropertiesReturnsVersionFromAttrCacheTest)
+{
+    // Verify that GetProperties returns version from attributes cache (populated by listdir or prior open).
+    // This tests the attr cache → fd.Attributes.version → ReadFile flow.
+    FileAttributes fileAttr;
+    int nResult = m_spStreamingClient->GetProperties(m_strRemoteFilePath, fileAttr);
+    ASSERT_EQ(nResult, 0);
+    ASSERT_EQ(fileAttr.isDir, false);
+
+    // For blob-backed files, version should be non-empty (dacsfileversion or etag fallback)
+    ASSERT_FALSE(fileAttr.version.empty());
+
+    // A second GetProperties should hit the attributes cache and return the same version
+    FileAttributes fileAttr2;
+    nResult = m_spStreamingClient->GetProperties(m_strRemoteFilePath, fileAttr2);
+    ASSERT_EQ(nResult, 0);
+    ASSERT_EQ(fileAttr.version, fileAttr2.version);
 }
 //---------------------------------------------------------------------------------------------------------------------

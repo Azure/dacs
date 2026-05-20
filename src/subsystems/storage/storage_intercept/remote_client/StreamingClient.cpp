@@ -99,6 +99,7 @@ StreamingClient::StreamingClient(
     , m_nReadMax{}
     , m_bStopLogging(false)
     , m_bEnableZeroCopy(StorageInterceptConfig::GetInstance().GetEnableZeroCopy(mountName))
+    , m_bEnableVersionedCacheKeys(StorageInterceptConfig::GetInstance().IsVersionedCacheKeysEnabled())
 {
     SetClients(cacheClient, attributesCache);
 
@@ -260,8 +261,12 @@ ssize_t StreamingClient::ReadFile(
     void *pUserBuf,
     size_t readSize,
     off64_t readOffset,
-    off64_t fileSize)
+    off64_t fileSize,
+    const std::string& version)
 {
+    LOG_DEBUG("ReadFile: remotePath={} version={} readOffset={} readSize={}",
+        remotePath, version, readOffset, readSize);
+
     UpdateReadStats(readSize, false);
 
     if (readOffset >= fileSize)
@@ -282,11 +287,11 @@ ssize_t StreamingClient::ReadFile(
     if (m_bEnableLargePrefetch
         && readSize < m_nPrefetchWindowSize)
     {
-        EnsurePrefetchCacheWindowPopulated(remotePath, readSize, readOffset, fileSize);
+        EnsurePrefetchCacheWindowPopulated(remotePath, readSize, readOffset, fileSize, version);
 
         // All data for this read is now in prefetchCache,
         // reading chunks parallely won't speed-up as there won't be remote store calls.
-        ssize_t readBytes = ReadChunksSequential(remotePath, pUserBuf, readSize, readOffset);
+        ssize_t readBytes = ReadChunksSequential(remotePath, pUserBuf, readSize, readOffset, version);
         UpdateReadStats(readBytes, true);
         LogReadIO(remotePath, readOffset, readSize, readBytes);
         return readBytes;
@@ -296,13 +301,13 @@ ssize_t StreamingClient::ReadFile(
     // read required chunks in parallel.
     if (m_bEnableChunkOpParallelism && readSize > m_nChunkSize)
     {
-        ssize_t readBytes = ReadChunksParallel(remotePath, pUserBuf, readSize, readOffset);
+        ssize_t readBytes = ReadChunksParallel(remotePath, pUserBuf, readSize, readOffset, version);
         UpdateReadStats(readBytes, true);
         LogReadIO(remotePath, readOffset, readSize, readBytes);
         return readBytes;
     }
 
-    ssize_t readBytes = ReadChunksSequential(remotePath, pUserBuf, readSize, readOffset);
+    ssize_t readBytes = ReadChunksSequential(remotePath, pUserBuf, readSize, readOffset, version);
     UpdateReadStats(readBytes, true);
     LogReadIO(remotePath, readOffset, readSize, readBytes);
     return readBytes;
@@ -399,7 +404,8 @@ ssize_t StreamingClient::ReadChunksSequential(
     const std::string& remotePath,
     void *pUserBuf,
     size_t totalReadSize,
-    off64_t readOffset)
+    off64_t readOffset,
+    const std::string& version)
 {
     ssize_t nBytesRead = 0;
     const size_t readEnd = readOffset + totalReadSize;
@@ -433,7 +439,8 @@ ssize_t StreamingClient::ReadChunksSequential(
                 chunkOffset,
                 (char*)pUserBuf + bufOffset,
                 bufSizeForChunkCopy,
-                chunkCopyOffset);
+                chunkCopyOffset,
+                version);
 
         if (bytesReadIntoBuffer < 0)
         {
@@ -462,7 +469,8 @@ ssize_t StreamingClient::ReadChunksParallel(
     const std::string& remotePath,
     void *pUserBuf,
     size_t totalReadSize,
-    off64_t readOffset)
+    off64_t readOffset,
+    const std::string& version)
 {
     const size_t readEnd = readOffset + totalReadSize;
 
@@ -501,7 +509,8 @@ ssize_t StreamingClient::ReadChunksParallel(
             chunkOffset,
             (char*)pUserBuf + bufOffset,
             bufSizeForChunkCopy,
-            chunkCopyOffset);
+            chunkCopyOffset,
+            std::ref(version));
 
         bufOffset += bufSizeForChunkCopy;
         chunkOffset += m_nChunkSize;
@@ -594,9 +603,10 @@ int StreamingClient::GetProperties(
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::Close(
     const std::string& remotePath,
+    const std::string& version,
     const bool isWriteMode)
 {
-    PrefetchCache::GetInstance().PurgeAll(GetCacheFilePath(remotePath));
+    PrefetchCache::GetInstance().PurgeAll(GetCacheFilePath(remotePath), version);
 
     // If the file was opened in write mode, we need to do two additional things
     // 1. Upload the chunks to the cache server if caching is enabled
@@ -608,13 +618,24 @@ void StreamingClient::Close(
             "Close called in write mode when write support is not enabled");
 
         const off64_t fileSize = UploadCache::GetInstance().GetFileSize(GetCacheFilePath(remotePath));
+
+        // Generate a new version for write (when versioned cache keys are enabled)
+        std::string writeVersion;
+        if (m_bEnableVersionedCacheKeys)
+        {
+            writeVersion = StorageInterceptUtils::GenerateUUID();
+        }
+        LOG_INFO("Generated write version={} for remotePath={} isVersionedKeysEnabled={}",
+            writeVersion, remotePath, m_bEnableVersionedCacheKeys);
+
         struct timespec curTimeSpec;
         clock_gettime(CLOCK_REALTIME, &curTimeSpec);
         FileAttributes postWriteFileAttributes;
         postWriteFileAttributes.isDir = false;
         postWriteFileAttributes.size = fileSize;
         postWriteFileAttributes.mTime = curTimeSpec;
-        postWriteFileAttributes.aTime = curTimeSpec;        
+        postWriteFileAttributes.aTime = curTimeSpec;
+        postWriteFileAttributes.version = writeVersion;        
         LOG_INFO("Closing file in write mode. remotePath={} fileSize={}", remotePath, fileSize);
 
         if(!WriteChunksToCache(remotePath, postWriteFileAttributes))
@@ -627,7 +648,7 @@ void StreamingClient::Close(
             }
         }
 
-        if(!WriteChunksToRemoteStore(remotePath, fileSize))
+        if(!WriteChunksToRemoteStore(remotePath, fileSize, writeVersion))
         {
             // Treat blob write error as fatal.
             // Note: The data may have been written to cache successfully, if cache write is enabled.
@@ -645,7 +666,8 @@ ssize_t StreamingClient::ReadChunkAndCopyToBuffer(
     off64_t chunkOffset,
     void* pUserBuf,
     size_t bufSize,
-    size_t chunkCopyOffset)
+    size_t chunkCopyOffset,
+    const std::string& version)
 {
     // Sub-chunk fast path: for small reads on cache hits, request only the needed bytes
     // instead of fetching the entire chunk and copying a slice.
@@ -653,7 +675,7 @@ ssize_t StreamingClient::ReadChunkAndCopyToBuffer(
         && !m_bEncryptionEnabled
         && !m_bChecksumValidationEnabled)
     {
-        auto subChunkResult = TrySubChunkRead(remotePath, chunkOffset, pUserBuf, bufSize, chunkCopyOffset);
+        auto subChunkResult = TrySubChunkRead(remotePath, chunkOffset, pUserBuf, bufSize, chunkCopyOffset, version);
         if (subChunkResult.has_value())
         {
             return subChunkResult.value();
@@ -669,7 +691,8 @@ ssize_t StreamingClient::ReadChunkAndCopyToBuffer(
         
     std::shared_ptr<const FileData> readChunkData = ReadChunk(remotePath,
                                                                   chunkOffset,
-                                                                  bCanZeroCopyPathBeTaken ? pUserBuf : nullptr);
+                                                                  bCanZeroCopyPathBeTaken ? pUserBuf : nullptr,
+                                                                  version);
     if (!readChunkData)
     {
         LOG_ERROR("Read chunk failed. remotePath={} chunkOffset={}",
@@ -715,7 +738,8 @@ CacheStatus StreamingClient::ProbeCacheServerWithRetry(
     uint64_t startOffset,
     uint64_t length,
     char* buffer,
-    uint64_t& readLength)
+    uint64_t& readLength,
+    const std::string& version)
 {
     CacheStatus cacheStatus = CacheStatus::NOTFOUND;
     auto cacheClient = std::atomic_load(&m_spCacheClient);
@@ -741,6 +765,7 @@ CacheStatus StreamingClient::ProbeCacheServerWithRetry(
         cacheStatus = cacheClient->DownloadSync(
             m_strMountName,
             cacheFilePath,
+            version,
             chunkOffset,
             startOffset,
             length,
@@ -813,13 +838,14 @@ std::optional<ssize_t> StreamingClient::TrySubChunkRead(
     off64_t chunkOffset,
     void* pUserBuf,
     size_t bufSize,
-    size_t chunkCopyOffset)
+    size_t chunkCopyOffset,
+    const std::string& version)
 {
     const std::string cacheFilePath = GetCacheFilePath(remotePath);
 
     // Check PrefetchCache first — memcpy from RAM is cheaper than a cache-server round-trip
     std::shared_ptr<const FileData> prefetchResult =
-        PrefetchCache::GetInstance().Get(cacheFilePath, chunkOffset);
+        PrefetchCache::GetInstance().Get(cacheFilePath, chunkOffset, version);
     if (prefetchResult && chunkCopyOffset < prefetchResult->BufferSize)
     {
         const size_t availableBytes = prefetchResult->BufferSize - chunkCopyOffset;
@@ -841,7 +867,7 @@ std::optional<ssize_t> StreamingClient::TrySubChunkRead(
     uint64_t readLength = 0;
     CacheStatus cacheStatus = ProbeCacheServerWithRetry(
         cacheFilePath, chunkOffset, chunkCopyOffset, bufSize,
-        static_cast<char*>(pUserBuf), readLength);
+        static_cast<char*>(pUserBuf), readLength, version);
 
     if (cacheStatus == CacheStatus::SUCCESS)
     {
@@ -871,7 +897,7 @@ std::optional<ssize_t> StreamingClient::TrySubChunkRead(
     {
         auto cacheClient = std::atomic_load(&m_spCacheClient);
         LOG_DEBUG("Sub-chunk: uploading to cache server. file={} offset={}", remotePath, chunkOffset);
-        bool bRet = cacheClient->Upload(m_strMountName, cacheFilePath, chunkOffset, remoteReadData, false /* isWrite */);
+        bool bRet = cacheClient->Upload(m_strMountName, cacheFilePath, version, chunkOffset, remoteReadData, false /* isWrite */);
         if (!bRet)
         {
             LOG_DEBUG("Sub-chunk: failed to upload to cache. file={} offset={}", remotePath, chunkOffset);
@@ -879,7 +905,7 @@ std::optional<ssize_t> StreamingClient::TrySubChunkRead(
     }
 
     // Populate PrefetchCache with the full chunk
-    PrefetchCache::GetInstance().Put(cacheFilePath, remoteReadData);
+    PrefetchCache::GetInstance().Put(cacheFilePath, remoteReadData, version);
 
     // Extract sub-chunk bytes (handle short reads near EOF)
     const size_t availableBytes = (remoteReadData->BufferSize > chunkCopyOffset)
@@ -901,11 +927,13 @@ std::optional<ssize_t> StreamingClient::TrySubChunkRead(
 std::shared_ptr<const FileData> StreamingClient::ReadChunk(
     const std::string& remotePath,
     off64_t chunkOffset,
-    void* pUserBuf)
+    void* pUserBuf,
+    const std::string& version)
 {
     std::shared_ptr<const FileData> result = ReadChunkImpl(remotePath,
                                                                chunkOffset,
-                                                               pUserBuf);
+                                                               pUserBuf,
+                                                               version);
 
     PostChunkOpComplete();
 
@@ -920,7 +948,8 @@ std::shared_ptr<const FileData> StreamingClient::ReadChunk(
 std::shared_ptr<const FileData> StreamingClient::ReadChunkImpl(
     const std::string& remotePath,
     off64_t chunkOffset,
-    void* pUserBuf)
+    void* pUserBuf,
+    const std::string& version)
 {
     if ((chunkOffset % m_nChunkSize) != 0)
     {
@@ -934,7 +963,7 @@ std::shared_ptr<const FileData> StreamingClient::ReadChunkImpl(
     // Even if zero-copy is enabled, we will still try to fetch from prefetch cache
     // to avoid unnecessary remote storage/cache server calls, as memcopy is cheaper than network calls.
     std::shared_ptr<const FileData> prefetchLookupResult =
-        PrefetchCache::GetInstance().Get(cacheFilePath, chunkOffset);
+        PrefetchCache::GetInstance().Get(cacheFilePath, chunkOffset, version);
     if (prefetchLookupResult)
     {
         m_nReadChunksPrefetchCache++;
@@ -956,7 +985,7 @@ std::shared_ptr<const FileData> StreamingClient::ReadChunkImpl(
     uint64_t readLength = 0;
     CacheStatus cacheStatus = ProbeCacheServerWithRetry(
         cacheFilePath, chunkOffset, 0, m_nChunkSize,
-        remoteReadData->Buffer.get(), readLength);
+        remoteReadData->Buffer.get(), readLength, version);
 
     if (cacheStatus == CacheStatus::SUCCESS)
     {
@@ -1020,7 +1049,7 @@ std::shared_ptr<const FileData> StreamingClient::ReadChunkImpl(
     if (cacheClient && cacheStatus == CacheStatus::NOTFOUND_LOCKED)
     {
         LOG_DEBUG("Uploading to cache server. file: {}, offset: {}", remotePath, chunkOffset);
-        bool bRet = cacheClient->Upload(m_strMountName, cacheFilePath, chunkOffset, bufferForCacheUpload, false /* isWrite */);
+        bool bRet = cacheClient->Upload(m_strMountName, cacheFilePath, version, chunkOffset, bufferForCacheUpload, false /* isWrite */);
         if (!bRet)
         {
             // Not taking any action on failure as this is only a best effort service
@@ -1030,7 +1059,7 @@ std::shared_ptr<const FileData> StreamingClient::ReadChunkImpl(
 
     // Put to pre-fetch cache
     LOG_DEBUG("Uploading to prefetch cache. file: {}, offset: {}", remotePath, chunkOffset);
-    PrefetchCache::GetInstance().Put(cacheFilePath, bufferForCacheUpload);
+    PrefetchCache::GetInstance().Put(cacheFilePath, bufferForCacheUpload, version);
 
     return remoteReadData;
 }
@@ -1039,14 +1068,15 @@ void StreamingClient::EnsurePrefetchCacheWindowPopulated(
     const std::string& remotePath,
     size_t readSize,
     off64_t readOffset,
-    off64_t fileSize)
+    off64_t fileSize,
+    const std::string& version)
 {    
     const std::string cacheFilePath = GetCacheFilePath(remotePath);
     off64_t startWindowOffset = readOffset - (readOffset % m_nPrefetchWindowSize);
     off64_t endOffset = readOffset + readSize;
     off64_t endWindowOffset = endOffset - (endOffset % m_nPrefetchWindowSize);
 
-    const std::set<off64_t> cachedOffsets = PrefetchCache::GetInstance().GetCachedOffsets(cacheFilePath);
+    const std::set<off64_t> cachedOffsets = PrefetchCache::GetInstance().GetCachedOffsets(cacheFilePath, version);
 
     // check cached offsets to see how much of prefetch window(s) is already in cache
     off64_t prefetchStart = startWindowOffset;
@@ -1085,7 +1115,7 @@ void StreamingClient::EnsurePrefetchCacheWindowPopulated(
             if (nPurged >= nPurgeNeeded) break;
         }
 
-        PrefetchCache::GetInstance().PurgeOffsets(cacheFilePath, offsetsToPurge);
+        PrefetchCache::GetInstance().PurgeOffsets(cacheFilePath, offsetsToPurge, version);
     }
 
     // Download the uncached chunks parallely in order to populate into pre-fetch cache
@@ -1121,7 +1151,8 @@ void StreamingClient::EnsurePrefetchCacheWindowPopulated(
             this,
             std::ref(remotePath),
             chunkOffset,
-            nullptr)); // pUserBuf is NULL as we are not using it for prefetch cache population.
+            nullptr, // pUserBuf is NULL as we are not using it for prefetch cache population.
+            std::ref(version)));
     }
 
     // Wait for all the async read chunks to complete
@@ -1198,6 +1229,7 @@ bool StreamingClient::WriteChunksToCache(const std::string& remotePath, const Fi
     auto cacheClient = std::atomic_load(&m_spCacheClient);
     const std::string cacheFilePath = GetCacheFilePath(remotePath);
     const off64_t fileSize = attributes.size;
+    const std::string& version = attributes.version;
 
     // Always update attributes cache even if cache client is not configured
     // This ensures GetProperties returns correct values for newly written files
@@ -1251,7 +1283,8 @@ bool StreamingClient::WriteChunksToCache(const std::string& remotePath, const Fi
                 this,
                 std::ref(cacheFilePath),
                 chunkOffset,
-                writeData));
+                writeData,
+                version));
 
             chunkOffset += writeData->BufferSize;
         }
@@ -1290,7 +1323,8 @@ bool StreamingClient::WriteChunksToCache(const std::string& remotePath, const Fi
 bool StreamingClient::WriteChunkToCacheImpl(
     const std::string& filePath,
     const off64_t chunkOffset,
-    const std::shared_ptr<const FileData> fileData)
+    const std::shared_ptr<const FileData> fileData,
+    const std::string& version)
 {
     bool ret = false;
     auto cacheClient = std::atomic_load(&m_spCacheClient);
@@ -1299,6 +1333,7 @@ bool StreamingClient::WriteChunkToCacheImpl(
         ret = cacheClient->Upload(
             m_strMountName,
             filePath,
+            version,
             chunkOffset,
             fileData,
             true /* isWrite */);
@@ -1316,7 +1351,10 @@ bool StreamingClient::WriteChunkToCacheImpl(
     return ret;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool StreamingClient::WriteChunksToRemoteStore(const std::string& remotePath, const off64_t fileSize)
+bool StreamingClient::WriteChunksToRemoteStore(
+    const std::string& remotePath,
+    const off64_t fileSize,
+    const std::string& version)
 {
     if (!m_bEnableRemoteWrite)
     {
@@ -1326,20 +1364,30 @@ bool StreamingClient::WriteChunksToRemoteStore(const std::string& remotePath, co
 
     if(m_bEnableRemoteWriteAsync)
     {
+        // Capture version now — the map entry will be erased after Close() returns,
+        // but the async worker needs it later for CommitBlocksForUpload and cache reads.
         std::unique_lock<std::mutex> lock(m_mutexQueue);
-        m_uploadQueue.push(RemoteUploadContext(remotePath, fileSize));
+        m_uploadQueue.push(RemoteUploadContext(remotePath, fileSize, version));
         lock.unlock();
         m_cvQueue.notify_one();
     }
     else
     {
-        return WriteChunksToRemoteStoreImpl(remotePath, fileSize, false /* copyFromCacheToRemote */);
+        return WriteChunksToRemoteStoreImpl(
+            remotePath,
+            fileSize,
+            false /* copyFromCacheToRemote */,
+            version);
     }
 
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool StreamingClient::WriteChunksToRemoteStoreImpl(const std::string& remotePath, const off64_t fileSize, bool copyFromCacheToRemote)
+bool StreamingClient::WriteChunksToRemoteStoreImpl(
+    const std::string& remotePath,
+    const off64_t fileSize,
+    bool copyFromCacheToRemote,
+    const std::string& version)
 {
     // Upload any chunks to the remote store
     time_t writeStartTime = time(NULL);
@@ -1365,7 +1413,8 @@ bool StreamingClient::WriteChunksToRemoteStoreImpl(const std::string& remotePath
                     WriteChunkToRemoteStoreFromCacheAsync(
                         remotePath,
                         chunkOffset,
-                        chunkSize));
+                        chunkSize,
+                        version));
             }
             else
             {
@@ -1398,7 +1447,7 @@ bool StreamingClient::WriteChunksToRemoteStoreImpl(const std::string& remotePath
     if(ret)
     {
         // This is not a chunk operation so no need to check for concurrency limits
-        int result = std::atomic_load(&m_spRemoteClient)->CommitBlocksForUpload(remotePath);
+        int result = std::atomic_load(&m_spRemoteClient)->CommitBlocksForUpload(remotePath, version);
         if(result < 0)
         {
             LOG_ERROR("Failed to commit blocks for upload to remote store, path={}", remotePath);
@@ -1456,7 +1505,8 @@ std::future<bool> StreamingClient::WriteChunkToRemoteStoreFromUploadCacheAsync(
 std::future<bool> StreamingClient::WriteChunkToRemoteStoreFromCacheAsync(
     const std::string& remotePath,
     off64_t chunkOffset,
-    size_t chunkSize /* this will be chunk size, except for last chunk */)
+    size_t chunkSize /* this will be chunk size, except for last chunk */,
+    const std::string& version)
 {
     // This function gets called only for async uploads, which can be low priority
     // Note: StageChunk() will call PostChunkOpComplete()
@@ -1482,6 +1532,7 @@ std::future<bool> StreamingClient::WriteChunkToRemoteStoreFromCacheAsync(
     CacheStatus cacheStatus = cacheClient->DownloadSync(
         m_strMountName,
         cacheFilePath,
+        version,
         chunkOffset,
         0,
         chunkSize,
@@ -1557,7 +1608,11 @@ void StreamingClient::WriteRemoteAsyncUploadWorker()
         m_uploadQueue.pop();
         queueLock.unlock();
 
-        if(!WriteChunksToRemoteStoreImpl(remoteUploadContext.m_strRemotePath, remoteUploadContext.m_fileSize, true /* copyFromCacheToRemote */))
+        if(!WriteChunksToRemoteStoreImpl(
+            remoteUploadContext.m_strRemotePath,
+            remoteUploadContext.m_fileSize,
+            true /* copyFromCacheToRemote */,
+            remoteUploadContext.m_version))
         {
             LOG_ERROR("Failed to write chunks to remote store, path={}", remoteUploadContext.m_strRemotePath);
         }

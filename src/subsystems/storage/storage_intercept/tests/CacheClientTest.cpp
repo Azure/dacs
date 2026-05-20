@@ -7,6 +7,7 @@
 #include "LocalFSCacheClient.h"
 #include "CacheUtils.h"
 #include "StorageInterceptConfig.h"
+#include "StorageInterceptUtils.h"
 #include <algorithm>
 #include <cctype>
 #include <vector>
@@ -75,6 +76,7 @@ TEST_F(CacheClientTest, SimpleUploadDownloadTest)
         GTEST_SKIP();
     }
 
+    string version = StorageInterceptUtils::GenerateUUID();
     uint64_t dataRead = 0;
     CacheStatus cacheStatus;
     bool bRetVal;
@@ -82,36 +84,36 @@ TEST_F(CacheClientTest, SimpleUploadDownloadTest)
     // Test 4MB file
     std::vector<char> outBuffer(1024*1024*4);
     string strFileName = GetRandFilename();
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
 
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND);
 
     // repeat not found
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND);
 
     auto dataBuffer = GetRandDataBuffer(1024*1024*4);
-    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer, false /*isWrite*/);
+    bRetVal = m_cacheClient->Upload("", strFileName, version, 0, dataBuffer, false /*isWrite*/);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
     // TODO: make this deterministic
     sleep(1);
 
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(dataRead, 1024*1024*4);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
     // repeat download
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(dataRead, 1024*1024*4);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, 0, outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, 0, outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(dataRead, 1024*1024*4);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
@@ -124,6 +126,7 @@ TEST_F(CacheClientTest, DifferentFileSizesUploadDownloadTest)
         GTEST_SKIP();
     }
 
+    string version = StorageInterceptUtils::GenerateUUID();
     uint64_t dataRead = 0;
     CacheStatus cacheStatus;
     bool bRetVal;
@@ -131,21 +134,21 @@ TEST_F(CacheClientTest, DifferentFileSizesUploadDownloadTest)
     // 1 byte file test
     std::vector<char> outBuffer(1);
     string strFileName = GetRandFilename();
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
 
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND);
 
     auto dataBuffer = GetRandDataBuffer(1);
-    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer, false /*isWrite*/);
+    bRetVal = m_cacheClient->Upload("", strFileName, version, 0, dataBuffer, false /*isWrite*/);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
     // TODO: make this deterministic
     sleep(1);
 
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(dataRead, 1);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
@@ -153,21 +156,21 @@ TEST_F(CacheClientTest, DifferentFileSizesUploadDownloadTest)
     // 4MB - 1 byte file test
     outBuffer.resize(1024*1024*4 - 1);
     strFileName = GetRandFilename();
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
 
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND);
 
     dataBuffer = GetRandDataBuffer(1024*1024*4 - 1);
-    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer, false /*isWrite*/);
+    bRetVal = m_cacheClient->Upload("", strFileName, version, 0, dataBuffer, false /*isWrite*/);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
     // TODO: make this deterministic
     sleep(1);
 
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(dataRead, 1024*1024*4 - 1);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
@@ -175,21 +178,21 @@ TEST_F(CacheClientTest, DifferentFileSizesUploadDownloadTest)
     // 4MB + 1 byte file test
     outBuffer.resize(1024*1024*4 + 1);
     strFileName = GetRandFilename();
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
 
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND);
 
     dataBuffer = GetRandDataBuffer(1024*1024*4 + 1);
-    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer, false /*isWrite*/);
+    bRetVal = m_cacheClient->Upload("", strFileName, version, 0, dataBuffer, false /*isWrite*/);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
     // TODO: make this deterministic
     sleep(1);
 
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(dataRead, 1024*1024*4 + 1);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
@@ -200,21 +203,21 @@ TEST_F(CacheClientTest, DifferentFileSizesUploadDownloadTest)
     {
         outBuffer.resize(1024*1024*10);
         strFileName = GetRandFilename();
-        cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+        cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
         ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
 
-        cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+        cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
         ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND);
 
         dataBuffer = GetRandDataBuffer(1024*1024*10);
-        bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer, false /*isWrite*/);
+        bRetVal = m_cacheClient->Upload("", strFileName, version, 0, dataBuffer, false /*isWrite*/);
         ASSERT_EQ(bRetVal, true);
 
         // wait for async upload to complete 
         // TODO: make this deterministic
         sleep(1);
 
-        cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+        cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
         ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
         ASSERT_EQ(dataRead, 1024*1024*10);
         AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
@@ -228,27 +231,28 @@ TEST_F(CacheClientTest, ZeroSizeUploadDownloadTest)
         GTEST_SKIP();
     }
 
+    string version = StorageInterceptUtils::GenerateUUID();
     uint64_t dataRead = 0;
     CacheStatus cacheStatus;
     bool bRetVal;
     std::vector<char> outBuffer(100);
     
     string strFileName = GetRandFilename();
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
 
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND);
 
     auto dataBuffer = GetRandDataBuffer(0);
-    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer, false /*isWrite*/);
+    bRetVal = m_cacheClient->Upload("", strFileName, version, 0, dataBuffer, false /*isWrite*/);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
     // TODO: make this deterministic
     sleep(1);
 
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(dataRead, 0);
 }
@@ -261,45 +265,43 @@ TEST_F(CacheClientTest, PartialDownloadTest)
         GTEST_SKIP();
     }
 
+    string version = StorageInterceptUtils::GenerateUUID();
     uint64_t dataRead = 0;
     CacheStatus cacheStatus;
     bool bRetVal;
     std::vector<char> outBuffer(1024*1024*4);
 
     string strFileName = GetRandFilename();
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
 
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND);
 
     auto dataBuffer = GetRandDataBuffer(1024*1024*4);
-    bRetVal = m_cacheClient->Upload("", strFileName, 0, dataBuffer, false /*isWrite*/);
+    bRetVal = m_cacheClient->Upload("", strFileName, version, 0, dataBuffer, false /*isWrite*/);
     ASSERT_EQ(bRetVal, true);
 
     // wait for async upload to complete 
     // TODO: make this deterministic
     sleep(1);
 
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(dataRead, 1024*1024*4);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 0, 5, outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, 5, outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(dataRead, 5);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 5, 25, outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 5, 25, outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(dataRead, 25);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get() + 5, dataRead);
 
-    cacheStatus = m_cacheClient->DownloadSync(
-        "",
-        strFileName,
-        0,
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0,
         1024*1024*4 - 1,
         outBuffer.size(),
         outBuffer.data(),
@@ -308,12 +310,11 @@ TEST_F(CacheClientTest, PartialDownloadTest)
     ASSERT_EQ(dataRead, 1);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get() + 1024*1024*4 - 1, dataRead);
 
-    cacheStatus = m_cacheClient->DownloadSync(
-        "", strFileName, 0, 1024*1024*4, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 1024*1024*4, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(dataRead, 0);
 
-    cacheStatus = m_cacheClient->DownloadSync("", strFileName, 0, 999, outBuffer.size(), outBuffer.data(), dataRead);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 999, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
     ASSERT_EQ(dataRead, 1024*1024*4 - 999);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get() + 999, dataRead);
@@ -326,6 +327,7 @@ TEST_F(CacheClientTest, ParallelUploadDownloadTest)
         GTEST_SKIP();
     }
 
+    string version = StorageInterceptUtils::GenerateUUID();
     uint64_t dataRead = 0;
     CacheStatus cacheStatus;
     bool bRetVal;
@@ -348,11 +350,10 @@ TEST_F(CacheClientTest, ParallelUploadDownloadTest)
     vector<unique_ptr<thread>> testThreads;
     for (int i = 0; i < numFiles; ++i)
     {
-        auto t = make_unique<thread>([i, &outBuffer, &fileNames, this]() {
+        auto t = make_unique<thread>([i, &outBuffer, &fileNames, &version, this]() {
             uint64_t dataRead = 0;
             auto cacheStatus =
-                this->m_cacheClient->DownloadSync(
-                    "", fileNames[i], 0, 0, outBuffer[i].size(), outBuffer[i].data(), dataRead);
+                this->m_cacheClient->DownloadSync("", fileNames[i], version, 0, 0, outBuffer[i].size(), outBuffer[i].data(), dataRead);
             ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
         });
         testThreads.push_back(move(t));
@@ -366,8 +367,8 @@ TEST_F(CacheClientTest, ParallelUploadDownloadTest)
     // upload all files in parallel
     for (int i = 0; i < numFiles; ++i)
     {
-        auto t = make_unique<thread>([i, &dataBuffer, &fileNames, this]() {
-            bool bRetVal = this->m_cacheClient->Upload("", fileNames[i], 0, dataBuffer[i], false /*isWrite*/);
+        auto t = make_unique<thread>([i, &dataBuffer, &fileNames, &version, this]() {
+            bool bRetVal = this->m_cacheClient->Upload("", fileNames[i], version, 0, dataBuffer[i], false /*isWrite*/);
             ASSERT_EQ(bRetVal, true);
         });
         testThreads.push_back(move(t));
@@ -385,11 +386,10 @@ TEST_F(CacheClientTest, ParallelUploadDownloadTest)
     // download all files in parallel
     for (int i = 0; i < numFiles; ++i)
     {
-        auto t = make_unique<thread>([i, &dataBuffer, &outBuffer, &fileNames, this]() {
+        auto t = make_unique<thread>([i, &dataBuffer, &outBuffer, &fileNames, &version, this]() {
             uint64_t dataRead = 0;
             auto cacheStatus =
-                this->m_cacheClient->DownloadSync(
-                    "", fileNames[i], 0, 0, outBuffer[i].size(), outBuffer[i].data(), dataRead);
+                this->m_cacheClient->DownloadSync("", fileNames[i], version, 0, 0, outBuffer[i].size(), outBuffer[i].data(), dataRead);
             ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
             ASSERT_EQ(dataRead, dataBuffer[i]->BufferSize);
             AssertEqArray<char>(outBuffer[i].data(), dataBuffer[i]->Buffer.get(), dataRead);
@@ -410,18 +410,19 @@ TEST_F(CacheClientTest, TestUploadLockExpiry)
         GTEST_SKIP();
     }
 
+    string version = StorageInterceptUtils::GenerateUUID();
+
     // Only one (first) client out of many should get LOCKED status for a file
     vector<unique_ptr<thread>> testThreads;
     string strFileName = GetRandFilename();
     std::atomic_uint_fast32_t numLocks = 0;
     for (int i = 0; i < 20; ++i)
     {
-        auto t = make_unique<thread>([&strFileName, &numLocks, this]() {
+        auto t = make_unique<thread>([&strFileName, &numLocks, &version, this]() {
             std::vector<char> outBuffer(1024*1024*4);
             uint64_t dataRead = 0;
             auto cacheStatus =
-                this->m_cacheClient->DownloadSync(
-                    "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+                this->m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
             ASSERT_TRUE(cacheStatus == CacheStatus::NOTFOUND_LOCKED || cacheStatus == CacheStatus::NOTFOUND);
             if (cacheStatus == CacheStatus::NOTFOUND_LOCKED)
             {
@@ -448,8 +449,7 @@ TEST_F(CacheClientTest, TestUploadLockExpiry)
         std::vector<char> outBuffer(1024*1024*4);
         uint64_t dataRead = 0;
         auto cacheStatus =
-            this->m_cacheClient->DownloadSync(
-                "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+            this->m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
         ASSERT_TRUE(cacheStatus == CacheStatus::NOTFOUND_LOCKED || cacheStatus == CacheStatus::NOTFOUND);
         if (cacheStatus == CacheStatus::NOTFOUND_LOCKED)
         {
@@ -467,13 +467,11 @@ TEST_F(CacheClientTest, TestUploadLockExpiry)
     std::vector<char> outBuffer(1024*1024*4);
     uint64_t dataRead = 0;
     auto cacheStatus =
-        this->m_cacheClient->DownloadSync(
-            "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+        this->m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_TRUE(cacheStatus == CacheStatus::NOTFOUND);
 
     cacheStatus =
-        this->m_cacheClient->DownloadSync(
-            "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+        this->m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_TRUE(cacheStatus == CacheStatus::NOTFOUND);
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -485,25 +483,26 @@ TEST_F(CacheClientTest, TestAvoidRemoteDownloadLoopWithUploadSuccessful)
         GTEST_SKIP();
     }
 
+    string version = StorageInterceptUtils::GenerateUUID();
+
     // Test 4MB file
     std::vector<char> outBuffer(1024*1024*4);
     string strFileName = GetRandFilename();
 
-    unique_ptr<thread> t1 = make_unique<thread>([&outBuffer, &strFileName, this]() {
+    unique_ptr<thread> t1 = make_unique<thread>([&outBuffer, &strFileName, &version, this]() {
         uint64_t dataRead = 0;
         auto cacheStatus =
-            this->m_cacheClient->DownloadSync(
-                "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+            this->m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
         ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
 
         this_thread::sleep_for(chrono::seconds(30));
         auto dataBuffer = GetRandDataBuffer(1024*1024*4);
         bool bRetVal =
-            m_cacheClient->Upload("", strFileName, 0, dataBuffer, false /*isWrite*/);
+            m_cacheClient->Upload("", strFileName, version, 0, dataBuffer, false /*isWrite*/);
         ASSERT_EQ(bRetVal, true);
     });
 
-    unique_ptr<thread> t2 = make_unique<thread>([&outBuffer, &strFileName, this]() {
+    unique_ptr<thread> t2 = make_unique<thread>([&outBuffer, &strFileName, &version, this]() {
         this_thread::sleep_for(chrono::seconds(2));
         uint64_t dataRead = 0;
         CacheStatus cacheStatus = CacheStatus::NOTFOUND;
@@ -516,8 +515,7 @@ TEST_F(CacheClientTest, TestAvoidRemoteDownloadLoopWithUploadSuccessful)
                 this_thread::sleep_for(chrono::seconds(2));
             }
 
-            cacheStatus = this->m_cacheClient->DownloadSync(
-                "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+            cacheStatus = this->m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
 
             nIteration++;
         }
@@ -539,19 +537,20 @@ TEST_F(CacheClientTest, TestAvoidRemoteDownloadLoopWithLeaseExpiry)
         GTEST_SKIP();
     }
 
+    string version = StorageInterceptUtils::GenerateUUID();
+
     // Test 4MB file
     std::vector<char> outBuffer(1024*1024*4);
     string strFileName = GetRandFilename();
 
-    unique_ptr<thread> t1 = make_unique<thread>([&outBuffer, &strFileName, this]() {
+    unique_ptr<thread> t1 = make_unique<thread>([&outBuffer, &strFileName, &version, this]() {
         uint64_t dataRead = 0;
         auto cacheStatus =
-            this->m_cacheClient->DownloadSync(
-                "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+            this->m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
         ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
     });
 
-    unique_ptr<thread> t2 = make_unique<thread>([&outBuffer, &strFileName, this]() {
+    unique_ptr<thread> t2 = make_unique<thread>([&outBuffer, &strFileName, &version, this]() {
         this_thread::sleep_for(chrono::seconds(2));
         uint64_t dataRead = 0;
         CacheStatus cacheStatus = CacheStatus::NOTFOUND;
@@ -564,8 +563,7 @@ TEST_F(CacheClientTest, TestAvoidRemoteDownloadLoopWithLeaseExpiry)
                 this_thread::sleep_for(chrono::seconds(2));
             }
 
-            cacheStatus = this->m_cacheClient->DownloadSync(
-                "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+            cacheStatus = this->m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
 
             nIteration++;
         }
@@ -586,19 +584,20 @@ TEST_F(CacheClientTest, TestAvoidRemoteDownloadLoopWithoutLeaseExpiry)
         GTEST_SKIP();
     }
 
+    string version = StorageInterceptUtils::GenerateUUID();
+
     // Test 4MB file
     std::vector<char> outBuffer(1024*1024*4);
     string strFileName = GetRandFilename();
 
-    unique_ptr<thread> t1 = make_unique<thread>([&outBuffer, &strFileName, this]() {
+    unique_ptr<thread> t1 = make_unique<thread>([&outBuffer, &strFileName, &version, this]() {
         uint64_t dataRead = 0;
         auto cacheStatus =
-            this->m_cacheClient->DownloadSync(
-                "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+            this->m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
         ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
     });
 
-    unique_ptr<thread> t2 = make_unique<thread>([&outBuffer, &strFileName, this]() {
+    unique_ptr<thread> t2 = make_unique<thread>([&outBuffer, &strFileName, &version, this]() {
         this_thread::sleep_for(chrono::seconds(2));
         uint64_t dataRead = 0;
         CacheStatus cacheStatus = CacheStatus::NOTFOUND;
@@ -611,8 +610,7 @@ TEST_F(CacheClientTest, TestAvoidRemoteDownloadLoopWithoutLeaseExpiry)
                 this_thread::sleep_for(chrono::seconds(2));
             }
 
-            cacheStatus = this->m_cacheClient->DownloadSync(
-                "", strFileName, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+            cacheStatus = this->m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
 
             nIteration++;
         }
@@ -623,5 +621,56 @@ TEST_F(CacheClientTest, TestAvoidRemoteDownloadLoopWithoutLeaseExpiry)
 
     t1->join();
     t2->join();
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(CacheClientTest, VersionedUploadDownloadTest)
+{
+    if (this->m_cacheClient == nullptr)
+    {
+        GTEST_SKIP();
+    }
+
+    uint64_t dataRead = 0;
+    CacheStatus cacheStatus;
+    bool bRetVal;
+
+    std::vector<char> outBuffer(1024*1024*4);
+    string strFileName = GetRandFilename();
+    string version1 = StorageInterceptUtils::GenerateUUID();
+    string version2 = StorageInterceptUtils::GenerateUUID();
+
+    // Upload same file with version1
+    auto dataBufferV1 = GetRandDataBuffer(1024*1024*4);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version1, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
+
+    bRetVal = m_cacheClient->Upload("", strFileName, version1, 0, dataBufferV1, false /*isWrite*/);
+    ASSERT_EQ(bRetVal, true);
+    sleep(1);
+
+    // Upload same file with version2 (different data)
+    auto dataBufferV2 = GetRandDataBuffer(1024*1024*4);
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version2, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
+
+    bRetVal = m_cacheClient->Upload("", strFileName, version2, 0, dataBufferV2, false /*isWrite*/);
+    ASSERT_EQ(bRetVal, true);
+    sleep(1);
+
+    // Download version1 — should get version1 data
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version1, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
+    ASSERT_EQ(dataRead, 1024*1024*4);
+    AssertEqArray<char>(outBuffer.data(), dataBufferV1->Buffer.get(), dataRead);
+
+    // Download version2 — should get version2 data
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, version2, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
+    ASSERT_EQ(dataRead, 1024*1024*4);
+    AssertEqArray<char>(outBuffer.data(), dataBufferV2->Buffer.get(), dataRead);
+
+    // Download with empty version — should be a separate cache miss
+    cacheStatus = m_cacheClient->DownloadSync("", strFileName, "" /* no version */, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
+    ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
 }
 //---------------------------------------------------------------------------------------------------------------------

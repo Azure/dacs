@@ -23,27 +23,35 @@ class PrefetchCache
 {
     // Friends for testing
     FRIEND_TEST(PrefetchCacheTest, PrefetchCachePutGetPurgeTest);
+    FRIEND_TEST(PrefetchCacheTest, PrefetchCacheVersionAwareTest);
 
     public:
 
         /* Singleton */
         static PrefetchCache& GetInstance();
 
-        std::set<off64_t> GetCachedOffsets(/*[in]*/  const std::string& path) const;
+        std::set<off64_t> GetCachedOffsets(
+            /*[in]*/  const std::string& path,
+            /*[in]*/  const std::string& version = "") const;
 
         std::shared_ptr<const FileData> Get(
             /*[in]*/  const std::string& path,
-            /*[in]*/  off64_t offset) const;
+            /*[in]*/  off64_t offset,
+            /*[in]*/  const std::string& version = "") const;
 
         void Put(
             /*[in]*/ const std::string& path,
-            /*[in]*/ std::shared_ptr<const FileData> buffer);
+            /*[in]*/ std::shared_ptr<const FileData> buffer,
+            /*[in]*/ const std::string& version = "");
 
         void PurgeOffsets(
             /*[in] */ const std::string& path,
-            /*[in] */ const std::vector<off64_t>& offsetsToPurge);
+            /*[in] */ const std::vector<off64_t>& offsetsToPurge,
+            /*[in] */ const std::string& version = "");
 
-        void PurgeAll(/*[in] */ const std::string& path);
+        void PurgeAll(
+            /*[in] */ const std::string& path,
+            /*[in] */ const std::string& version = "");
 
         // Limits on max entries per file and overall.
         const uint32_t    MAX_ENTRIES_PER_FILE;
@@ -56,7 +64,12 @@ class PrefetchCache
 
         static std::string GetCacheKey(
             /*[in]*/  const std::string& path,
-            /*[in]*/  off64_t offset);
+            /*[in]*/  off64_t offset,
+            /*[in]*/  const std::string& version = "");
+
+        static std::string GetPathKey(
+            /*[in]*/  const std::string& path,
+            /*[in]*/  const std::string& version = "");
 
         std::map<std::string, std::shared_ptr<const FileData>>        m_mapBuffers;
         std::map<std::string, std::set<off64_t>>                      m_mapCachedOffsets;
