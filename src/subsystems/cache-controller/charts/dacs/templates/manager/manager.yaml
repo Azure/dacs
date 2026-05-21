@@ -8,7 +8,7 @@ metadata:
     name: {{ include "chart.fullname" . }}-manager
     namespace: {{ .Release.Namespace }}
 spec:
-    replicas: 1
+    replicas: {{ .Values.manager.replicas }}
     selector:
         matchLabels:
             app.kubernetes.io/name: {{ include "chart.name" . }}
@@ -31,7 +31,7 @@ spec:
                     - --metrics-bind-address=0
                     {{- end }}
                     - --health-probe-bind-address=:8081
-                    - --leader-elect
+                    - --leader-elect={{ gt (int .Values.manager.replicas) 1 }}
                     - --namespace={{ .Release.Namespace }}
                     {{- range .Values.manager.extraArgs }}
                     - {{ . }}

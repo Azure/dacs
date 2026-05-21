@@ -35,7 +35,7 @@ helm install dacs ./charts/dacs \
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `manager.replicas` | Number of controller replicas | `1` |
+| `manager.replicas` | Number of controller replicas. Leader election is enabled automatically when `> 1`. | `1` |
 | `manager.image.repository` | Controller image repository | `dacs/dacs` |
 | `manager.image.tag` | Controller image tag | `latest` |
 | `manager.image.pullPolicy` | Image pull policy | `IfNotPresent` |
