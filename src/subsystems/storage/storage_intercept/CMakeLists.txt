@@ -56,7 +56,9 @@ target_link_libraries(StorageIntercept StorageLibcDlsymWrapper ${CommonDeps})
 target_link_options(StorageIntercept PRIVATE ${HIDE_STATIC_SYMBOLS_FLAGS})
 
 # cache storage client library called directly without LD_PRELOAD (from python package for example)
-add_library(StorageDirect SHARED ${STORAGE_INTERCEPT_SOURCES_INTERCEPTOR})
+# No dlsym wrapper needed here.
+add_library(StorageDirect SHARED ${STORAGE_INTERCEPT_SOURCES_INTERCEPTOR}
+        ./interceptors/BlobSiWrapper.cpp)
 add_dependencies(StorageDirect StorageLibcDirectWrapper ${STORAGE_CORE_DEPS})
 target_link_libraries(StorageDirect StorageLibcDirectWrapper ${CommonDeps})
 target_link_options(StorageDirect PRIVATE ${HIDE_STATIC_SYMBOLS_FLAGS})
@@ -95,7 +97,10 @@ enable_testing()
 
 file(GLOB STORAGE_INTERCEPT_SOURCES_TEST
         ./remote_client/*cpp ./remote_client/adls/*cpp
-        ./remote_client/blob/*cpp ./remote_client/mock/*cpp ./handlers/*cpp ./common/*.cpp ./remote_client/cache/* ./tests/*cpp)
+        ./remote_client/blob/*cpp ./remote_client/mock/*cpp ./handlers/*cpp ./common/*.cpp ./remote_client/cache/* ./tests/*cpp
+        ./interceptors/BlobSiWrapper.cpp
+        ./interceptors/CacheClientInterface.cpp
+        ./interceptors/StorageInterceptorImpl.cpp)
 
 add_executable(StorageInterceptUnitTests ${STORAGE_INTERCEPT_SOURCES_TEST})
 
@@ -111,7 +116,8 @@ target_include_directories(StorageInterceptUnitTests PRIVATE
         ./remote_client/blob
         ./remote_client/mock
         ./remote_client/cache
-        ./handlers)
+        ./handlers
+        ./interceptors)
 
 add_dependencies(StorageInterceptUnitTests
         StorageCommon
@@ -144,3 +150,4 @@ add_test(NAME StorageInterceptUnitTests
 
 # Storage Intercept integration test
 add_subdirectory(./integration_tests/)
+
