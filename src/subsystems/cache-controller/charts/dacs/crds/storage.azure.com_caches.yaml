@@ -30,6 +30,9 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
+    - jsonPath: .status.discoveryURL
+      name: Discovery URL
+      type: string
     - jsonPath: .spec.serverSizeInGB
       name: Size(GB)
       priority: 1
@@ -333,6 +336,11 @@ spec:
                 description: Desired number of cache server pods
                 format: int32
                 type: integer
+              discoveryURL:
+                description: |-
+                  The discovery URL for the cache.
+                  Pass this to cache client to connect to cache.
+                type: string
               scaling:
                 description: |-
                   Scaling reports the state of the scaling normalizer's stabilization

@@ -389,6 +389,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 
 func (r *CacheReconciler) reconcileServices(ctx context.Context, cache *storagev1.Cache) error {
 	log := logf.FromContext(ctx)
+	discoveryServiceName := getDiscoveryServiceName(cache)
 	services := []struct {
 		name         string
 		templatePath string
@@ -405,7 +406,7 @@ func (r *CacheReconciler) reconcileServices(ctx context.Context, cache *storagev
 			}{Name: cache.Name, Namespace: cache.Namespace, Port: int(*cache.Spec.Port), MetricsPort: int(*cache.Spec.MetricsPort)},
 		},
 		{
-			name:         cache.Name + storagev1.DiscoverySuffix,
+			name:         discoveryServiceName,
 			templatePath: "templates/cacheserver-discovery-service.yaml",
 			values: struct {
 				Name      string
@@ -580,8 +581,15 @@ func (r *CacheReconciler) setFinalConditions(ctx context.Context, h *statushelpe
 		log.V(1).Info("Cache status set", "desiredServers", *desired, "readyReplicas", readyReplicas)
 	}
 
+	// Set the DiscoveryURL in the status
+	cache.Status.DiscoveryURL = fmt.Sprintf("%s.%s.svc.cluster.local", getDiscoveryServiceName(cache), cache.Namespace)
+
 	// Ready is True only when all sub-conditions are True; otherwise False.
 	h.SetReady()
+}
+
+func getDiscoveryServiceName(cache *storagev1.Cache) string {
+	return cache.Name + storagev1.DiscoverySuffix
 }
 
 // setReplicasReady fetches the StatefulSet, sets the ReplicasReady condition
