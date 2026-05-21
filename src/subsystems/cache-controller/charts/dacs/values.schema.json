@@ -10,7 +10,7 @@
         "replicas": {
           "type": "integer",
           "minimum": 1,
-          "description": "Number of controller replicas"
+          "description": "Number of controller replicas. Leader election is enabled automatically when > 1."
         },
         "namespace": {
           "type": "string",
