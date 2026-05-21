@@ -6,6 +6,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -204,6 +205,16 @@ var _ = Describe("Cache Controller", func() {
 			Expect(updatedCache.Spec.Storage.Ephemeral).NotTo(BeNil(), "webhook should set default Ephemeral")
 			Expect(*updatedCache.Spec.Storage.Ephemeral).To(BeTrue(), "Ephemeral should be true as set in test")
 
+			By("Verifying that cache status has discovery URL set")
+			Eventually(func() string {
+				updatedCache := &storagev1.Cache{}
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: cacheName, Namespace: resourceNamespace}, updatedCache)
+				if err != nil {
+					return ""
+				}
+				return updatedCache.Status.DiscoveryURL
+			}, timeout, pollInterval).Should(Equal(fmt.Sprintf("%s-discovery.%s.svc.cluster.local", cacheName, resourceNamespace)))
+
 			By("verifying the Cache status has Ready condition")
 			Eventually(func() bool {
 				updatedCache := &storagev1.Cache{}
@@ -274,6 +285,16 @@ var _ = Describe("Cache Controller", func() {
 
 			By("verifying the CacheServer Discovery ConfigMap is created with correct server count")
 			Eventually(func() string { return getConfigMapServerCountByName(cacheName) }, timeout, pollInterval).Should(Equal("3"))
+
+			By("verifying the CacheServer Discovery URL is set in the status")
+			Eventually(func() string {
+				updatedCache := &storagev1.Cache{}
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: cacheName, Namespace: resourceNamespace}, updatedCache)
+				if err != nil {
+					return ""
+				}
+				return updatedCache.Status.DiscoveryURL
+			}, timeout, pollInterval).Should(Equal(fmt.Sprintf("%s-discovery.%s.svc.cluster.local", cacheName, resourceNamespace)))
 
 			By("verifying status conditions")
 			Eventually(func(g Gomega) {

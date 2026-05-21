@@ -246,6 +246,11 @@ type CacheStatus struct {
 	// Current number of cache server pods
 	// +optional
 	CurrentServers *int32 `json:"currentServers,omitempty"`
+
+	// The discovery URL for the cache.
+	// Pass this to cache client to connect to cache.
+	// +optional
+	DiscoveryURL string `json:"discoveryURL,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -255,6 +260,7 @@ type CacheStatus struct {
 // +kubebuilder:printcolumn:name="Current",type=integer,JSONPath=`.status.currentServers`
 // +kubebuilder:printcolumn:name="Desired",type=integer,JSONPath=`.status.desiredServers`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+// +kubebuilder:printcolumn:name="Discovery URL",type=string,JSONPath=`.status.discoveryURL`
 // +kubebuilder:printcolumn:name="Size(GB)",type=integer,JSONPath=`.spec.serverSizeInGB`,priority=1
 // +kubebuilder:printcolumn:name="Memory(MB)",type=integer,JSONPath=`.spec.memoryLimitMB`,priority=1
 // +kubebuilder:printcolumn:name="Threads",type=integer,JSONPath=`.spec.serverThreads`,priority=1
