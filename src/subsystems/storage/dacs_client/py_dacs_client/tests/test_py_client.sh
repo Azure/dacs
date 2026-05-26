@@ -109,14 +109,62 @@ function generate_datetime_suffix() {
 ORIGNAL_DIR=$(pwd)
 cd $SCRIPT_DIR/..
 
-# copy the intercept library to package directory
-arch_dir_name=$([[ "${BUILD_ARCH}" == *"x64"* ]] || [[ "${BUILD_ARCH}" == "amd64" ]] && echo "amd64" || echo "arm64")
-# Copy directly to the py_dacs_client module directory (where we are now after cd)
-cp -v $REPOSITORY_ROOT/bin/$BUILD_CONFIGURATION/${arch_dir_name}/native-storage/storage/libStorageDirect.so ./libStorageDirect.so
+# -----------------------------------------------
+# Test mode: source (default) or wheel
+# -----------------------------------------------
+# - source: use libStorageDirect.so from bin/ and the source tree's
+#   py_dacs_client/ directly. Fast dev iteration.
+# - wheel:  install the built wheel and run sample modules from the installed
+#   package. This is what the CI pipeline uses.
+DACS_TEST_MODE="${DACS_TEST_MODE:-source}"
+echo "DACS test mode: $DACS_TEST_MODE"
 
-# Set up PYTHONPATH so Python can find the py_dacs_client module
-export PYTHONPATH="${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client:${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client/py_dacs_client:${PYTHONPATH}"
-echo "PYTHONPATH set to: $PYTHONPATH"
+if [ "$DACS_TEST_MODE" = "wheel" ]; then
+    DACS_DIST_DIR="${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client/dist"
+    WHEEL_PATH="${DACS_WHEEL:-}"
+    if [ -z "$WHEEL_PATH" ] && [ -d "$DACS_DIST_DIR" ]; then
+        WHEEL_PATH=$(ls -1 "$DACS_DIST_DIR"/*manylinux*.whl 2>/dev/null | head -1)
+        if [ -z "$WHEEL_PATH" ]; then
+            WHEEL_PATH=$(ls -1 "$DACS_DIST_DIR"/*.whl 2>/dev/null | head -1)
+        fi
+    fi
+    if [ -z "$WHEEL_PATH" ] || [ ! -f "$WHEEL_PATH" ]; then
+        echo "ERROR: DACS_TEST_MODE=wheel but no dacs-client wheel found in $DACS_DIST_DIR."
+        echo "Build one first via .pipelines/scripts/build/build-python-package.sh"
+        echo "or set DACS_WHEEL=/path/to/wheel.whl"
+        exit 1
+    fi
+    # Drop stale source-tree libStorageDirect.so so the wheel's copy wins.
+    rm -f ./libStorageDirect.so
+
+    # Install into an ephemeral venv so the persistent CI runner stays clean.
+    DACS_WHEEL_VENV="$(mktemp -d -t dacs-wheel-venv-XXXXXX)"
+    trap 'rm -rf "$DACS_WHEEL_VENV"' EXIT
+    echo "Creating ephemeral venv: $DACS_WHEEL_VENV"
+    python3 -m venv "$DACS_WHEEL_VENV"
+    # shellcheck disable=SC1091
+    source "$DACS_WHEEL_VENV/bin/activate"
+    pip install --upgrade pip wheel >/dev/null
+
+    echo "Installing dacs-client wheel: $WHEEL_PATH"
+    # Install with the [test] extra so pytest + azure-storage-blob + blobfile
+    # (declared in pyproject.toml) come along automatically. The hard
+    # azure-identity runtime dep is pulled in by the wheel itself.
+    pip install --force-reinstall "${WHEEL_PATH}[test]"
+    echo "Installed package location:"
+    python3 -c "import py_dacs_client, os; print('  py_dacs_client ->', os.path.dirname(py_dacs_client.__file__))"
+else
+    if [ "$DACS_TEST_MODE" != "source" ]; then
+        echo "WARNING: unknown DACS_TEST_MODE=$DACS_TEST_MODE, falling back to 'source'"
+    fi
+    # copy the intercept library to package directory
+    arch_dir_name=$([[ "${BUILD_ARCH}" == *"x64"* ]] || [[ "${BUILD_ARCH}" == "amd64" ]] && echo "amd64" || echo "arm64")
+    cp -v $REPOSITORY_ROOT/bin/$BUILD_CONFIGURATION/${arch_dir_name}/native-storage/storage/libStorageDirect.so ./libStorageDirect.so
+
+    # Set up PYTHONPATH so Python can find the py_dacs_client module from the source tree.
+    export PYTHONPATH="${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client:${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client/py_dacs_client:${PYTHONPATH}"
+    echo "PYTHONPATH set to: $PYTHONPATH"
+fi
 
 # Enable SAS token if provided
 if [[ -n "${STORAGE_INTCPT_SAS_TOKEN}" ]]; then
@@ -133,7 +181,7 @@ echo "========================================="
 echo "Test 1: Static Cache Server List"
 echo "========================================="
 
-python3 $SCRIPT_DIR/../sample/dacs_client_test.py --nBlobs 10 --blobSizeToBeRead 33554432 --blobNamePattern "${DATETIME_SUFFIX}"
+python3 -m py_dacs_client.dacs_client_test --nBlobs 10 --blobSizeToBeRead 33554432 --blobNamePattern "${DATETIME_SUFFIX}"
 
 echo "========================================="
 echo "Test 2: Cache Server Discovery API"
@@ -153,7 +201,7 @@ export CACHE_DISCOVERY_URL="127.0.0.1"
 # Unset static server list to force discovery usage
 unset CACHE_SERVER_LIST
 
-python3 $SCRIPT_DIR/../sample/dacs_client_test.py --nBlobs 10 --blobSizeToBeRead 33554432 --blobNamePattern "${DATETIME_SUFFIX}"
+python3 -m py_dacs_client.dacs_client_test --nBlobs 10 --blobSizeToBeRead 33554432 --blobNamePattern "${DATETIME_SUFFIX}"
 
 # Cleanup discovery env vars
 unset CACHE_DISCOVERY_URL
@@ -163,6 +211,7 @@ export CACHE_SERVER_LIST="127.0.0.1"
 
 # cleanup
 stop_cache_server
+# Clean up the source-tree symlink/copy (only present in source mode)
 rm -f ./libStorageDirect.so
 
 # go back to original directory

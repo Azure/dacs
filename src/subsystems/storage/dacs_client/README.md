@@ -30,7 +30,16 @@ Install the latest DACS Cache Client package from the official feed.
 
 **Package:** internal-reference-removed
 
-The package includes platform-specific wheels for both amd64 and arm64. `pip` automatically selects the correct wheel for your platform.
+The package is published as `manylinux` wheels for both `x86_64` (amd64) and `aarch64` (arm64). The wheels are repaired with [`auditwheel`](https://github.com/pypa/auditwheel) so that all required native shared libraries (e.g. `libcurl`, `libssl`, `libjsoncpp`, `libuuid`, etc.) are bundled inside the wheel. `pip` automatically selects the correct wheel for your platform.
+
+Wheel filenames look like:
+
+```
+dacs_client_official-<version>-py3-none-manylinux_X_Y_x86_64.whl
+dacs_client_official-<version>-py3-none-manylinux_X_Y_aarch64.whl
+```
+
+The exact `manylinux_X_Y` tag depends on the glibc version of the build image; `pip` will pick the most compatible wheel.
 
 ### Prerequisites to connect to the Feeds
 
@@ -921,25 +930,6 @@ asyncio.run(main())
 
 ## FAQs
 
-### Missing shared library dependencies on Ubuntu 20.04
-
-If Docker images give errors like:
-
-```
-OSError: libjsoncpp.so.1: cannot open shared object file: No such file or directory
-```
-
-Run the following before installing the package:
-
-```bash
-sudo apt-get update && \
-sudo apt-get install -y --no-install-recommends -o Dpkg::Options::="--force-confdef" libssl-dev libcurl4-openssl-dev curl libjsoncpp-dev uuid-dev ibverbs-providers && \
-ln -sf /usr/lib/x86_64-linux-gnu/libjsoncpp.so.1.9.5 /usr/lib/x86_64-linux-gnu/libjsoncpp.so.1 && \
-wget https://nz2.archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb && \
-dpkg -i libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb || sudo apt-get install -f -y && \
-python3 -m pip install --no-cache-dir requests
-```
-
 ### Missing native library at runtime
 
 If you see:
@@ -967,38 +957,90 @@ The benchmark deploys dacs clients as a DaemonSet across your AKS cluster and me
 
 ## To Build
 
+The wheel is built by the helper script `.pipelines/scripts/build/build-python-package.sh` which is invoked by the Azure DevOps pipeline. It can also be run locally.
+
+### Prerequisites
+
+1. Build the native components first so that `libStorageDirect.so` exists at one of the paths `setup.py` looks for:
+   - `bin/Debug/<arch>/native-storage/storage/libStorageDirect.so`
+   - `bin/Release/<arch>/native-storage/storage/libStorageDirect.so`
+
+   ```bash
+   make build BUILD_TYPE=Release
+   ```
+
+2. Install the Python build dependencies. On modern distros (Ubuntu 23.04+, Debian 12+) Python is "externally managed" per PEP 668, so do this inside a virtualenv:
+
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   python3 -m pip install --upgrade pip setuptools wheel packaging auditwheel
+   sudo apt-get install -y patchelf   # required by auditwheel
+   ```
+
+### Build via the helper script (recommended)
+
 ```bash
-docker run -it --entrypoint /bin/bash -v /mnt/c/CodeBase/DACS/src/subsystems/storage:/storage mcr.microsoft.com/vscode/devcontainers/python:3.11
+export PYTHON_PACKAGE_VERSION=0.9.0.20260521.1   # SemVer: 0.9.0.YYYYMMDDN
+export PACKAGE_CHANNEL=dev                       # 'official' or 'dev'
+export BUILD_ARCHITECTURE=amd64                  # 'amd64' or 'arm64' (auto-detected if unset)
 
-#Install Azure CLI and Login, if below setup.py fails
-#curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-#az login
-
-cd /storage/dacs_client
-python setup.py bdist_wheel
-ls -al dist/
+./.pipelines/scripts/build/build-python-package.sh
+ls -al src/subsystems/storage/dacs_client/dist/
 ```
+
+The script:
+
+1. Substitutes the `0.9.0-PLACEHOLDER` value in `setup.py` with `PYTHON_PACKAGE_VERSION` and the `dacs_cache_PLACEHOLDER` name in `pyproject.toml` with `dacs-client-${PACKAGE_CHANNEL}`.
+2. Runs `python setup.py bdist_wheel`, producing a wheel named `dacs_client_<channel>-<version>-py3-none-linux_{x86_64,aarch64}.whl`.
+3. Restores `setup.py` and `pyproject.toml` from git.
+4. Runs `auditwheel repair` on the produced wheel. This bundles all required native shared libraries into the wheel and re-tags it as `manylinux_X_Y_{x86_64,aarch64}`.
+5. Deletes the unrepaired `linux_*` wheel so only the `manylinux` wheel is published.
+
+The final artifact in `dist/` looks like (the `manylinux_X_Y` tag is set by `auditwheel` based on the build image's glibc, e.g. `manylinux_2_31` on Ubuntu 20.04):
+
+```
+dacs_client_official-0.9.0.20260521.1-py3-none-manylinux_X_Y_x86_64.whl
+```
+
+### Build manually
+
+```bash
+cd src/subsystems/storage/dacs_client
+export BUILD_ARCHITECTURE=amd64
+export BUILD_CHANNEL=official
+# Inside the venv from the prerequisites step above, replace placeholders first:
+# sed -i "s/0.9.0-PLACEHOLDER/0.9.0.20260521.1/" setup.py
+# sed -i 's/dacs_cache_PLACEHOLDER/dacs-client-official/' pyproject.toml
+python3 setup.py bdist_wheel
+python3 -m auditwheel repair dist/*.whl -w dist/
+ls -al dist/
+# Don't forget to restore: git checkout setup.py pyproject.toml
+```
+
+> Note: `BUILD_ARCHITECTURE` and `BUILD_CHANNEL` are **required** by `setup.py`. They determine:
+> - the package name (`dacs-client-official` vs `dacs-client-dev`), and
+> - the wheel platform tag (`linux_x86_64` vs `linux_aarch64`) before `auditwheel` re-tags it.
 
 ## To Publish
 
-```
-To make a release with updated version, ensure to change VERSION in setup.py.
-    /src/subsystems/storage/dacs_client/setup.py
+Publishing is performed by the Azure DevOps pipeline, which uploads the repaired `manylinux` wheels for both `amd64` and `arm64` to the `DACS-Feed`. To publish manually for testing:
 
-This would help to generate the whl with version starting as "{distribution}-{version}.(-{build tag})?"
+```bash
+# Configure .pypirc
+cat > ~/.pypirc <<'EOF'
+[distutils]
+Index-servers = DACS-Feed
 
-Configure the .pypirc file
-    [distutils]
-    Index-servers = DACS-Feed
+[DACS-Feed]
+Repository = internal-reference-removed
+Username = <feed-username>
+Password = <PAT>
+EOF
 
-    [DACS-Feed]
-    Repository = internal-reference-removed
-    Username = <feed-username>
-    Password = <PAT>
-
-cd /storage/dacs_client/
+cd src/subsystems/storage/dacs_client/
 python3 -m pip install --upgrade twine
-python3 -m twine upload --repository DACS-Feed dist/* --config ./.pypirc
+python3 -m twine upload --repository DACS-Feed dist/*.whl
 ```
 
 ## To Test

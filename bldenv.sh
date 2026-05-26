@@ -88,6 +88,8 @@ docker run \
     --env AZURE_TENANT_ID \
     --env AZURE_FEDERATED_TOKEN \
     --env BUILD_ARCH \
+    --env DACS_TEST_MODE \
+    --env DACS_WHEEL \
     -v /etc/group:/etc/group:ro \
     -v /etc/passwd:/etc/passwd:ro \
     -v /etc/shadow:/etc/shadow:ro \
