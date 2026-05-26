@@ -110,16 +110,15 @@ func cacheServerKQL(start, end time.Time, namespace, clusterResourceID string) s
 }
 
 func controllerKQL(start, end time.Time, namespace, clusterResourceID string) string {
-	_ = namespace
 	return fmt.Sprintf(
 		`ContainerLogV2
 | where _ResourceId =~ "%s"
 | where TimeGenerated between (datetime(%s) .. datetime(%s))
-| where PodNamespace == "cache-controller-system"
+| where PodNamespace == "%s"
 | where PodName startswith "dacs-manager"
 | project TimeGenerated, PodName, LogMessage, LogSource
 | order by TimeGenerated asc`,
-		clusterResourceID, kqlTime(start), kqlTime(end),
+		clusterResourceID, kqlTime(start), kqlTime(end), namespace,
 	)
 }
 

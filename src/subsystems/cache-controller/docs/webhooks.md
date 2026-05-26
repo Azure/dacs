@@ -181,8 +181,8 @@ kubectl get mutatingwebhookconfigurations cache-controller-mutating-webhook-conf
 
 ```bash
 # Check controller logs
-kubectl logs -n cache-controller-system deploy/cache-controller-controller-manager -c manager
+kubectl logs -n cache-system deploy/cache-controller-controller-manager -c manager
 
 # Look for webhook-related errors
-kubectl logs -n cache-controller-system deploy/cache-controller-controller-manager -c manager | grep -i webhook
+kubectl logs -n cache-system deploy/cache-controller-controller-manager -c manager | grep -i webhook
 ```

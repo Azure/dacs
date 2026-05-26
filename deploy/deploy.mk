@@ -165,7 +165,7 @@ DACS_CACHE_CHART_PATH ?= src/subsystems/cache-controller/charts/dacs
 DACS_CACHE_CHART_REPO ?= charts/dacs
 DACS_CACHE_CHART_BASE_VERSION ?= $(shell grep '^version:' $(DACS_CACHE_CHART_PATH)/Chart.yaml | awk '{print $$2}')
 DACS_CACHE_CHART_VERSION ?= $(DACS_CACHE_CHART_BASE_VERSION)-$(BUILD_NUMBER)
-DACS_CACHE_NAMESPACE ?= cache-controller-system
+DACS_CACHE_NAMESPACE ?= cache-server
 
 define helm_install
 $(HELM_BIN) upgrade --install cache-server ./helm/cache-server \
@@ -242,24 +242,20 @@ helm-uninstall: helm ## Uninstall cache-server chart.
 ##@ DACS Cache Controller Helm (New Controller)
 
 define helm_install_dacs_cache
-kubectl create namespace $(HELM_NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
 $(HELM_BIN) upgrade --install dacs ./$(DACS_CACHE_CHART_PATH) \
 	--namespace $(DACS_CACHE_NAMESPACE) --create-namespace \
 	--set manager.image.repository=$(1) \
 	--set manager.image.tag=$(2) \
-	--set cache.namespace=$(HELM_NAMESPACE) \
 	--set cache.enabled=true \
 	--wait --timeout 5m --atomic $(HELM_ARGS)
 endef
 
 define helm_install_dacs_cache_remote
-kubectl create namespace $(HELM_NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
 $(HELM_BIN) upgrade --install dacs oci://$(DOCKER_REGISTRY)/$(DACS_CACHE_CHART_REPO) \
 	--version $(DACS_CACHE_CHART_VERSION) \
 	--namespace $(DACS_CACHE_NAMESPACE) --create-namespace \
 	--set manager.image.repository=$(CACHE_CONTROLLER_IMG) \
 	--set manager.image.tag=$(IMAGE_TAG) \
-	--set cache.namespace=$(HELM_NAMESPACE) \
 	--set cache.enabled=true \
 	--wait --timeout 5m --atomic $(HELM_ARGS)
 endef

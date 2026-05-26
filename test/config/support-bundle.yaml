@@ -30,6 +30,6 @@ spec:
     # Collect cache-controller logs
     - logs:
         name: cache-controller-logs
-        namespace: cache-controller-system
+        namespace: cache-server
         selector:
           - app.kubernetes.io/name=dacs
