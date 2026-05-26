@@ -57,6 +57,7 @@ echo ""
 
 # Update VERSION in setup.py with the calculated version
 SETUP_FILE="setup.py"
+PYPROJECT_FILE="pyproject.toml"
 
 # Extract placeholder version from setup.py (should be '0.9.0-PLACEHOLDER')
 ORIGINAL_VERSION=$(grep "^VERSION = " "$SETUP_FILE" | cut -d "'" -f 2)
@@ -70,6 +71,11 @@ sed "s/VERSION = '${ORIGINAL_VERSION}'/VERSION = '${PYTHON_PACKAGE_VERSION}'/" "
 mv "${SETUP_FILE}.tmp" "$SETUP_FILE"
 
 echo "Version updated in setup.py: $ORIGINAL_VERSION → $PYTHON_PACKAGE_VERSION"
+
+# Replace channel placeholder in pyproject.toml so project name matches setup.py
+PACKAGE_NAME="dacs-client-${PACKAGE_CHANNEL}"
+sed -i "s/^name = \"dacs_cache_PLACEHOLDER\"/name = \"${PACKAGE_NAME}\"/" "$PYPROJECT_FILE"
+echo "Name updated in pyproject.toml: dacs_cache_PLACEHOLDER → ${PACKAGE_NAME}"
 echo ""
 
 # Clean previous builds
@@ -81,9 +87,9 @@ if ! $PYTHON_CMD -m pip --version &> /dev/null; then
   $PYTHON_CMD -m ensurepip --default-pip 2>/dev/null || { sudo apt-get update && sudo apt-get install -y python3-pip; }
 fi
 
-# Install build dependencies
+# Install build dependencies (patchelf is installed via the CI setup script; auditwheel calls it)
 echo "Installing build dependencies..."
-$PYTHON_CMD -m pip install --upgrade pip setuptools wheel packaging -q
+$PYTHON_CMD -m pip install --upgrade pip setuptools wheel packaging auditwheel -q
 
 # Export architecture and channel for setup.py to use
 export BUILD_ARCHITECTURE="$BUILD_ARCH"
@@ -94,9 +100,9 @@ echo "Building Python wheel..."
 $PYTHON_CMD setup.py bdist_wheel
 BUILD_EXIT_CODE=$?
 
-# Restore original setup.py
-if ! git checkout setup.py 2>/dev/null; then
-  echo "Warning: Could not restore setup.py from git. You may need to revert manually."
+# Restore original setup.py and pyproject.toml
+if ! git checkout setup.py pyproject.toml 2>/dev/null; then
+  echo "Warning: Could not restore setup.py / pyproject.toml from git. You may need to revert manually."
 fi
 
 if [ $BUILD_EXIT_CODE -ne 0 ]; then
@@ -111,6 +117,44 @@ if [ ! -d "dist" ] || [ -z "$(ls -A dist/*.whl 2>/dev/null)" ]; then
 fi
 
 echo ""
+echo "----------------------------------------------"
+echo "Running auditwheel repair"
+echo "----------------------------------------------"
+
+# Find the single wheel produced by build
+WHEEL_COUNT=$(find dist/ -maxdepth 1 -name '*.whl' | wc -l)
+if [ "$WHEEL_COUNT" -ne 1 ]; then
+  echo "Error: Expected exactly 1 wheel in dist/, found $WHEEL_COUNT"
+  ls -1 dist/*.whl 2>/dev/null
+  exit 1
+fi
+ORIGINAL_WHEEL=$(find dist/ -maxdepth 1 -name '*.whl' -print -quit)
+echo "Wheel: $ORIGINAL_WHEEL"
+echo ""
+
+# Show what manylinux policy the wheel qualifies for
+echo "auditwheel show:"
+$PYTHON_CMD -m auditwheel show "$ORIGINAL_WHEEL" || true
+echo ""
+
+echo "Repairing wheel..."
+$PYTHON_CMD -m auditwheel repair "$ORIGINAL_WHEEL" -w dist/
+
+# auditwheel creates a new wheel with manylinux tag alongside the original.
+# Remove the original linux_* wheel so only the repaired one is published.
+if [ -f "$ORIGINAL_WHEEL" ] && echo "$ORIGINAL_WHEEL" | grep -qv "manylinux"; then
+  REPAIRED_WHEEL=$(find dist/ -maxdepth 1 -name '*manylinux*.whl' -print -quit)
+  if [ -n "$REPAIRED_WHEEL" ]; then
+    echo "Removing unrepaired wheel: $(basename "$ORIGINAL_WHEEL")"
+    rm "$ORIGINAL_WHEEL"
+  fi
+fi
+
+echo ""
+echo "auditwheel repair complete. Repaired wheel:"
+ls -1 dist/*.whl | sed 's/^/  /'
+
+echo ""
 echo "=============================================="
 echo "✅ Build Complete!"
 echo "=============================================="
@@ -121,5 +165,12 @@ echo ""
 echo "Package details:"
 ls -lh dist/ | tail -n +2 | awk '{print "  "$9" ("$5")"}'
 echo "=============================================="
+
+echo ""
+echo "Verifying repaired wheel(s) with auditwheel show:"
+for whl in dist/*.whl; do
+  echo "--- $(basename "$whl") ---"
+  $PYTHON_CMD -m auditwheel show "$whl"
+done
 
 exit 0

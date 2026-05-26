@@ -58,63 +58,101 @@ if [ -d "/venv" ]; then
     source /venv/bin/activate
 fi
 
-# Ensure pytest is installed
-if ! command -v pytest &> /dev/null; then
-    echo "Installing pytest..."
-    pip install pytest pytest-timeout pytest-asyncio
+# -----------------------------------------------
+# Test mode: source (default) or wheel
+# -----------------------------------------------
+# - source: PYTHONPATH points at the source tree and libStorageDirect.so is
+#   symlinked from bin/. Fast iteration loop for developers - edits to Python
+#   source are picked up immediately without rebuilding the wheel.
+# - wheel:  installs the built wheel (from dist/ or $DACS_WHEEL) into the
+#   current Python environment and runs tests against the installed package.
+#   This is what the CI pipeline uses so packaging regressions (missing data
+#   files, broken auditwheel repair, etc.) are caught before publish.
+DACS_TEST_MODE="${DACS_TEST_MODE:-source}"
+echo "DACS test mode: $DACS_TEST_MODE"
+
+PY_CLIENT_SRC_DIR="${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client/py_dacs_client"
+
+if [ "$DACS_TEST_MODE" = "wheel" ]; then
+    # ---- wheel mode -----------------------------------------------------
+    DACS_DIST_DIR="${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client/dist"
+    WHEEL_PATH="${DACS_WHEEL:-}"
+    if [ -z "$WHEEL_PATH" ] && [ -d "$DACS_DIST_DIR" ]; then
+        WHEEL_PATH=$(ls -1 "$DACS_DIST_DIR"/*manylinux*.whl 2>/dev/null | head -1)
+        if [ -z "$WHEEL_PATH" ]; then
+            WHEEL_PATH=$(ls -1 "$DACS_DIST_DIR"/*.whl 2>/dev/null | head -1)
+        fi
+    fi
+    if [ -z "$WHEEL_PATH" ] || [ ! -f "$WHEEL_PATH" ]; then
+        echo "ERROR: DACS_TEST_MODE=wheel but no dacs-client wheel found."
+        echo "Expected a wheel in: $DACS_DIST_DIR"
+        echo "Build one first via .pipelines/scripts/build/build-python-package.sh"
+        echo "or set DACS_WHEEL=/path/to/wheel.whl"
+        exit 1
+    fi
+
+    # Belt-and-braces: make sure no stale source-tree libStorageDirect.so
+    # shadows the one bundled inside the installed wheel.
+    if [ -L "${PY_CLIENT_SRC_DIR}/libStorageDirect.so" ] || [ -f "${PY_CLIENT_SRC_DIR}/libStorageDirect.so" ]; then
+        echo "Removing stale ${PY_CLIENT_SRC_DIR}/libStorageDirect.so so the installed wheel's copy is used"
+        rm -f "${PY_CLIENT_SRC_DIR}/libStorageDirect.so"
+    fi
+
+    # Install into an ephemeral venv so we don't leak state into the runner's
+    # system Python (the CI agent's workspace is persistent across jobs).
+    DACS_WHEEL_VENV="$(mktemp -d -t dacs-wheel-venv-XXXXXX)"
+    trap 'rm -rf "$DACS_WHEEL_VENV"' EXIT
+    echo "Creating ephemeral venv: $DACS_WHEEL_VENV"
+    python3 -m venv "$DACS_WHEEL_VENV"
+    # shellcheck disable=SC1091
+    source "$DACS_WHEEL_VENV/bin/activate"
+    pip install --upgrade pip wheel >/dev/null
+
+    echo "Installing dacs-client wheel: $WHEEL_PATH"
+    # Install the wheel and let pip resolve its declared runtime deps
+    # (see pyproject.toml [project.dependencies]). The [test] extra adds
+    # pytest + azure-* which are only needed to run the test suite.
+    pip install --force-reinstall "${WHEEL_PATH}[test]"
+
+    echo "Installed package location:"
+    python3 -c "import py_dacs_client, os; print('  py_dacs_client ->', os.path.dirname(py_dacs_client.__file__))"
 else
-    # Ensure pytest-timeout is installed
-    if ! pip show pytest-timeout &> /dev/null 2>&1; then
-        echo "Installing pytest-timeout..."
-        pip install pytest-timeout
+    # ---- source mode (developer default) --------------------------------
+    if [ "$DACS_TEST_MODE" != "source" ]; then
+        echo "WARNING: unknown DACS_TEST_MODE=$DACS_TEST_MODE, falling back to 'source'"
     fi
-    # Ensure pytest-asyncio is installed
-    if ! pip show pytest-asyncio &> /dev/null 2>&1; then
-        echo "Installing pytest-asyncio..."
-        pip install pytest-asyncio
-    fi
-fi
 
-# Install Azure SDK for test blob cleanup (used by conftest.py pytest_sessionfinish)
-# These packages are needed to delete test blobs after tests complete
-if ! pip show azure-storage-blob &> /dev/null 2>&1; then
-    echo "Installing Azure SDK for test cleanup..."
-    pip install azure-storage-blob azure-identity
-fi
+    # Source-mode: we don't install the wheel, so we still need to install the
+    # runtime + test deps directly. Keep this list in sync with pyproject.toml
+    # ([project.dependencies] + [project.optional-dependencies].test).
+    pip show blobfile        &> /dev/null 2>&1 || pip install blobfile
+    pip show pytest          &> /dev/null 2>&1 || pip install pytest
+    pip show pytest-timeout  &> /dev/null 2>&1 || pip install pytest-timeout
+    pip show pytest-asyncio  &> /dev/null 2>&1 || pip install pytest-asyncio
+    pip show azure-identity  &> /dev/null 2>&1 || pip install "azure-identity>=1.12.0"
+    pip show azure-storage-blob &> /dev/null 2>&1 || pip install azure-storage-blob
 
-# Install blobfile for patcher tests
-if ! pip show blobfile &> /dev/null 2>&1; then
-    echo "Installing blobfile for patcher tests..."
-    pip install blobfile
-fi
+    # PYTHONPATH so Python finds py_dacs_client from the source tree.
+    export PYTHONPATH="${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client:${PY_CLIENT_SRC_DIR}:${PYTHONPATH}"
 
-# Set up environment for tests
-# Add both the py_dacs_client directory (for direct imports) and its parent (for package imports)
-export PYTHONPATH="${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client:${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client/py_dacs_client:${PYTHONPATH}"
-
-# Set up library paths for native binaries
-NATIVE_LIB_PATH="${REPOSITORY_ROOT}/bin/${BUILD_TYPE}/${BUILD_ARCH}/native-storage/storage"
-echo "Native Lib Path: $NATIVE_LIB_PATH"
-if [ -d "$NATIVE_LIB_PATH" ]; then
-    export LD_LIBRARY_PATH="${NATIVE_LIB_PATH}:${LD_LIBRARY_PATH}"
-    echo "Added native library path: $NATIVE_LIB_PATH"
-    
-    # Create symlinks for native libraries in the py_dacs_client directory
-    # The Python module expects the libraries in its own directory
-    PY_CLIENT_DIR="${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client/py_dacs_client"
-    
-    # Symlink libStorageDirect.so
-    LIB_DIRECT_SOURCE="${NATIVE_LIB_PATH}/libStorageDirect.so"
-    LIB_DIRECT_TARGET="${PY_CLIENT_DIR}/libStorageDirect.so"
-    
-    if [ -f "$LIB_DIRECT_SOURCE" ] && [ ! -f "$LIB_DIRECT_TARGET" ]; then
-        echo "Creating symlink for libStorageDirect.so..."
-        ln -sf "$LIB_DIRECT_SOURCE" "$LIB_DIRECT_TARGET"
-        echo "Symlinked: $LIB_DIRECT_TARGET -> $LIB_DIRECT_SOURCE"
-    elif [ -f "$LIB_DIRECT_TARGET" ]; then
-        echo "libStorageDirect.so already exists at $LIB_DIRECT_TARGET"
+    # Symlink libStorageDirect.so from bin/ into the source tree so the loader
+    # finds it next to py_dacs_client/.
+    NATIVE_LIB_PATH="${REPOSITORY_ROOT}/bin/${BUILD_TYPE}/${BUILD_ARCH}/native-storage/storage"
+    echo "Native Lib Path: $NATIVE_LIB_PATH"
+    if [ -d "$NATIVE_LIB_PATH" ]; then
+        export LD_LIBRARY_PATH="${NATIVE_LIB_PATH}:${LD_LIBRARY_PATH}"
+        LIB_DIRECT_SOURCE="${NATIVE_LIB_PATH}/libStorageDirect.so"
+        LIB_DIRECT_TARGET="${PY_CLIENT_SRC_DIR}/libStorageDirect.so"
+        if [ -f "$LIB_DIRECT_SOURCE" ] && [ ! -e "$LIB_DIRECT_TARGET" ]; then
+            ln -sf "$LIB_DIRECT_SOURCE" "$LIB_DIRECT_TARGET"
+            echo "Symlinked: $LIB_DIRECT_TARGET -> $LIB_DIRECT_SOURCE"
+        elif [ -e "$LIB_DIRECT_TARGET" ]; then
+            echo "libStorageDirect.so already present at $LIB_DIRECT_TARGET"
+        else
+            echo "WARNING: libStorageDirect.so not found at $LIB_DIRECT_SOURCE"
+        fi
     else
-        echo "WARNING: libStorageDirect.so not found at $LIB_DIRECT_SOURCE"
+        echo "WARNING: native lib path not found: $NATIVE_LIB_PATH (run a native build first)"
     fi
 fi
 
@@ -162,16 +200,34 @@ echo "PYTHONPATH: ${PYTHONPATH:-not set}"
 echo ""
 
 # Check if native libraries exist and are valid
-PY_CLIENT_DIR="${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client/py_dacs_client"
 echo "=== Native Library Check ==="
-
-if [ -f "${PY_CLIENT_DIR}/libStorageDirect.so" ]; then
-    echo "libStorageDirect.so exists"
-    ls -la "${PY_CLIENT_DIR}/libStorageDirect.so"
-    file "${PY_CLIENT_DIR}/libStorageDirect.so" 2>&1 || echo "file command failed"
-    ldd "${PY_CLIENT_DIR}/libStorageDirect.so" 2>&1 || echo "ldd command failed"
+if [ "$DACS_TEST_MODE" = "wheel" ]; then
+    INSTALLED_PKG_DIR=$(python3 -c "import py_dacs_client, os; print(os.path.dirname(py_dacs_client.__file__))" 2>/dev/null || echo "")
+    if [ -n "$INSTALLED_PKG_DIR" ]; then
+        echo "py_dacs_client installed at: $INSTALLED_PKG_DIR"
+        LIB_PATH="${INSTALLED_PKG_DIR}/libStorageDirect.so"
+    else
+        echo "ERROR: py_dacs_client is not importable - wheel install likely failed"
+        LIB_PATH=""
+    fi
 else
-    echo "WARNING: libStorageDirect.so NOT FOUND at ${PY_CLIENT_DIR}"
+    LIB_PATH="${PY_CLIENT_SRC_DIR}/libStorageDirect.so"
+fi
+if [ -n "$LIB_PATH" ] && [ -f "$LIB_PATH" ]; then
+    echo "libStorageDirect.so exists at $LIB_PATH"
+    ls -la "$LIB_PATH"
+    if command -v file >/dev/null 2>&1; then
+        file "$LIB_PATH" 2>&1 || echo "file command failed"
+    else
+        echo "file command not installed; skipping"
+    fi
+    if command -v ldd >/dev/null 2>&1; then
+        ldd "$LIB_PATH" 2>&1 || echo "ldd command failed"
+    else
+        echo "ldd command not installed; skipping"
+    fi
+elif [ -n "$LIB_PATH" ]; then
+    echo "WARNING: libStorageDirect.so NOT FOUND at $LIB_PATH"
 fi
 echo ""
 

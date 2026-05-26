@@ -35,60 +35,41 @@ class CustomPackageLogic(install):
     def run(self):
         # Packing the required dependencies into the whl package
         print('\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Start custom packaging logic')
-        
+
         # Get architecture from environment variable
         build_arch = os.environ.get('BUILD_ARCHITECTURE')
         print(f"Building for architecture: {build_arch}")
-        
-        entry_file_path = None
-        # Look for configure.py only in build/lib directory
-        build_lib_dir = os.path.join(setup_dir, 'build', 'lib')
-        for root, _, files in os.walk(build_lib_dir):
-            if 'configure.py' in files:
-                entry_file_path = os.path.join(root, 'configure.py')
-                break
-        if entry_file_path:
-            print("Full path of configure.py:", entry_file_path)
-            current_build_folder = os.path.dirname(entry_file_path)
-            print("Current Build folder:", current_build_folder)
 
-            # List the contents of storage directory
-            storage_dir = os.path.join(setup_dir, '../../../..', 'bin/Debug/native-storage/storage')
-            storage_dir = os.path.abspath(storage_dir)
-            print(f"Storage directory path: {storage_dir}")
-            if os.path.isdir(storage_dir):
-                print("Initial Contents of storage directory:")
-                for item in os.listdir(storage_dir):
-                    print(item)
-            else:
-                print(f"{storage_dir} directory does not exist")
+        # Destination is the package dir under self.build_lib so install_lib
+        # picks it up when assembling the wheel.
+        current_build_folder = os.path.join(self.build_lib, 'py_dacs_client')
+        os.makedirs(current_build_folder, exist_ok=True)
+        print("Current Build folder:", current_build_folder)
 
-            # Determine architecture for bin path
-            arch_dir_name = build_arch
+        # For dev machine: Check if the library is in storage/libStorageDirect.so
+        storage_dir = os.path.abspath(os.path.join(setup_dir, '../../../..', 'bin/Debug/native-storage/storage'))
+        libstorage_direct_dev = f'{storage_dir}/libStorageDirect.so'
+        # For new repo: Check if the library is in bin/<config>/<arch>/native-storage/storage
+        libstorage_direct_release = f'{setup_dir}/../../../../bin/Release/{build_arch}/native-storage/storage/libStorageDirect.so'
+        libstorage_direct_debug = f'{setup_dir}/../../../../bin/Debug/{build_arch}/native-storage/storage/libStorageDirect.so'
 
-            # For dev machine: Check if the library is in storage/libStorageDirect.so
-            libstorage_direct_dev = f'{storage_dir}/libStorageDirect.so'
-            # For new repo: Check if the library is in bin/<config>/<arch>/native-storage/storage
-            libstorage_direct_release = f'{setup_dir}/../../../../bin/Release/{arch_dir_name}/native-storage/storage/libStorageDirect.so'
-            libstorage_direct_debug = f'{setup_dir}/../../../../bin/Debug/{arch_dir_name}/native-storage/storage/libStorageDirect.so'
-
-            # Copy libStorageDirect.so
-            if os.path.isfile(libstorage_direct_dev):
-                shutil.copy(libstorage_direct_dev, current_build_folder)
-                print(f"Found & Copied {libstorage_direct_dev} to {current_build_folder}")
-            elif os.path.isfile(libstorage_direct_release):
-                shutil.copy(libstorage_direct_release, current_build_folder)
-                print(f"New Repo (Release): Found & Copied {libstorage_direct_release} to {current_build_folder}")
-            elif os.path.isfile(libstorage_direct_debug):
-                shutil.copy(libstorage_direct_debug, current_build_folder)
-                print(f"New Repo (Debug): Found & Copied {libstorage_direct_debug} to {current_build_folder}")
-            else:
-                print(f"Warning !!! libStorageDirect.so not found in:")
-                print(f"  - {libstorage_direct_dev}")
-                print(f"  - {libstorage_direct_release}")
-                print(f"  - {libstorage_direct_debug}")
-                raise FileNotFoundError(f"libStorageDirect.so not found in any expected location")
-            print('\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> End custom packaging logic')
+        # Copy libStorageDirect.so
+        if os.path.isfile(libstorage_direct_dev):
+            shutil.copy(libstorage_direct_dev, current_build_folder)
+            print(f"Found & Copied {libstorage_direct_dev} to {current_build_folder}")
+        elif os.path.isfile(libstorage_direct_release):
+            shutil.copy(libstorage_direct_release, current_build_folder)
+            print(f"New Repo (Release): Found & Copied {libstorage_direct_release} to {current_build_folder}")
+        elif os.path.isfile(libstorage_direct_debug):
+            shutil.copy(libstorage_direct_debug, current_build_folder)
+            print(f"New Repo (Debug): Found & Copied {libstorage_direct_debug} to {current_build_folder}")
+        else:
+            print(f"Warning !!! libStorageDirect.so not found in:")
+            print(f"  - {libstorage_direct_dev}")
+            print(f"  - {libstorage_direct_release}")
+            print(f"  - {libstorage_direct_debug}")
+            raise FileNotFoundError(f"libStorageDirect.so not found in any expected location")
+        print('\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> End custom packaging logic')
         install.run(self)
 
 with open(os.path.join(setup_dir, 'README.md'), encoding='utf-8') as f:
@@ -129,8 +110,10 @@ setup(
         "py_dacs_client.tests": ["requirements.txt"],
     },
     install_requires=[
-        # Not listing blobfile as a dependency as it is only required for the blobfile adaptor
-        "azure-identity>=1.12.0",
+        # Runtime deps are declared in pyproject.toml ([project.dependencies]
+        # and [project.optional-dependencies]). Keep this list empty so there
+        # is a single source of truth and setuptools does not conflict with
+        # the [project] table.
     ],
     author='Microsoft Corporation',
     author_email='dacs-storage@users.noreply.github.com',

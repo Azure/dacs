@@ -1,10 +1,45 @@
-name = "dacs_cache"
+[project]
+name = "dacs_cache_PLACEHOLDER"
 description = "Python package for DACS Client"
 readme = "README.md"
 requires-python = ">=3.8"
+license-files = ["LICENSES/*"]
+dynamic = ["version"]
+
+# Runtime dependencies of the wheel. Keep this list to packages that
+# py_dacs_client.__init__ (or any module reachable from it without an
+# explicit opt-in import) needs at import time, OR that the bundled native
+# library expects to find in the environment for authentication.
+#
+# azure-identity is listed because the native libStorageDirect.so expects an
+# azure-identity-compatible credential chain in the environment. The Python
+# package itself does not import it, but installing it by default matches the
+# behavior consumers have relied on historically.
+#
+# blobfile is intentionally NOT a hard dep: it is only required if the user
+# opts into the blobfile monkey-patch via
+# `from py_dacs_client.dacs_blobfile_patcher import enable_dacs_backend`.
+# Install with `pip install dacs_cache[blobfile]` to enable that path.
+dependencies = [
+    "azure-identity>=1.12.0",
+]
+
+[project.optional-dependencies]
+blobfile = ["blobfile"]
+test = [
+    "pytest",
+    "pytest-timeout",
+    "pytest-asyncio",
+    "azure-storage-blob",
+    "blobfile",
+]
 
 [build-system]
-requires = ["setuptools", "wheel", "toml", "mashumaro", "msgpack", "torch", "requests"]
+requires = ["setuptools", "wheel"]
+
+
+[tool.setuptools.package-data]
+"py_dacs_client" = ["libStorageDirect.so"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"
