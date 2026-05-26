@@ -21,7 +21,7 @@
 // Tests verify controller-managed resources:
 //   - Cache CR (cache-sample) in test namespace
 //   - StatefulSet, Services, ConfigMaps (owned by Cache CR)
-//   - Controller deployment in cache-controller-system namespace
+//   - Controller deployment in cache-server namespace
 //
 // Tests are ordered and share a single Cache CR deployment for efficiency.
 package e2e
@@ -77,7 +77,7 @@ const (
 	MultiCacheReplicas = int32(1)
 
 	// Controller namespace
-	ControllerNamespace = "cache-controller-system"
+	ControllerNamespace = "cache-server"
 
 	// Scaling test replica counts
 	ScaleUpReplicas   = 3

@@ -18,10 +18,11 @@ import (
 )
 
 const (
-	cacheServerLabelKey   = "app"
-	cacheServerLabelValue = "cacheserver"
-	controllerLabelKey    = "control-plane"
-	controllerLabelValue  = "controller-manager"
+	cacheServerContainerName = "cacheserver"
+	cacheServerLabelKey      = "app"
+	cacheServerLabelValue    = "cacheserver"
+	controllerLabelKey       = "control-plane"
+	controllerLabelValue     = "controller-manager"
 )
 
 // VerifyInfraHealth checks that all cluster nodes have the Ready condition set
@@ -32,12 +33,23 @@ func VerifyInfraHealth(g Gomega, ctx context.Context, k8sClient client.Client, l
 }
 
 // VerifyAppHealth checks application-level health: the cache controller deployment is
-// ready, the Cache CR has a Ready condition, the cacheserver StatefulSet has all
-// replicas ready, and all pods in the cache namespace are running.
+// fully rolled out and ready, the Cache CR has a Ready condition, the cacheserver
+// StatefulSet has completed any rolling update (all replicas updated to the current
+// revision and ready), and all pods in the cache namespace are running. Use inside
+// Eventually to wait for a rollout to settle.
 func VerifyAppHealth(g Gomega, ctx context.Context, k8sClient client.Client, namespace string, log logr.Logger) {
+	VerifyAppHealthWithImage(g, ctx, k8sClient, namespace, "", log)
+}
+
+// VerifyAppHealthWithImage is VerifyAppHealth plus an assertion that the
+// cacheserver StatefulSet's container image equals expectedImage. When
+// expectedImage is empty the image check is skipped (behaves like
+// VerifyAppHealth). Use this inside Eventually to wait for a helm upgrade
+// or rollback to fully roll the StatefulSet to a specific image.
+func VerifyAppHealthWithImage(g Gomega, ctx context.Context, k8sClient client.Client, namespace, expectedImage string, log logr.Logger) {
 	verifyCacheCR(g, ctx, k8sClient, namespace, log)
 	verifyControllerDeployment(g, ctx, k8sClient, namespace, log)
-	verifyStatefulSet(g, ctx, k8sClient, namespace, log)
+	verifyStatefulSet(g, ctx, k8sClient, namespace, expectedImage, log)
 	verifyCachePods(g, ctx, k8sClient, namespace, log)
 }
 
@@ -82,16 +94,30 @@ func verifyControllerDeployment(g Gomega, ctx context.Context, k8sClient client.
 			desired = *deploy.Spec.Replicas
 		}
 		log.Info("Controller deployment", "name", deploy.Name,
-			"ready", deploy.Status.ReadyReplicas, "desired", desired)
+			"ready", deploy.Status.ReadyReplicas,
+			"updated", deploy.Status.UpdatedReplicas,
+			"available", deploy.Status.AvailableReplicas,
+			"desired", desired,
+			"observedGeneration", deploy.Status.ObservedGeneration,
+			"generation", deploy.Generation)
 		g.Expect(deploy.Spec.Replicas).NotTo(BeNil(),
 			"controller deployment %s/%s spec.replicas is nil", deploy.Namespace, deploy.Name)
+		g.Expect(deploy.Status.ObservedGeneration).To(BeNumerically(">=", deploy.Generation),
+			"controller deployment %s/%s rollout not observed: observedGeneration=%d generation=%d",
+			deploy.Namespace, deploy.Name, deploy.Status.ObservedGeneration, deploy.Generation)
+		g.Expect(deploy.Status.UpdatedReplicas).To(Equal(*deploy.Spec.Replicas),
+			"controller deployment %s/%s rollout in progress: %d/%d replicas updated",
+			deploy.Namespace, deploy.Name, deploy.Status.UpdatedReplicas, *deploy.Spec.Replicas)
+		g.Expect(deploy.Status.AvailableReplicas).To(Equal(*deploy.Spec.Replicas),
+			"controller deployment %s/%s not available: %d/%d replicas available",
+			deploy.Namespace, deploy.Name, deploy.Status.AvailableReplicas, *deploy.Spec.Replicas)
 		g.Expect(deploy.Status.ReadyReplicas).To(Equal(*deploy.Spec.Replicas),
 			"controller deployment %s/%s not ready: %d/%d replicas",
 			deploy.Namespace, deploy.Name, deploy.Status.ReadyReplicas, *deploy.Spec.Replicas)
 	}
 }
 
-func verifyStatefulSet(g Gomega, ctx context.Context, k8sClient client.Client, namespace string, log logr.Logger) {
+func verifyStatefulSet(g Gomega, ctx context.Context, k8sClient client.Client, namespace, expectedImage string, log logr.Logger) {
 	var stsList appsv1.StatefulSetList
 	g.Expect(k8sClient.List(ctx, &stsList,
 		client.InNamespace(namespace),
@@ -106,14 +132,54 @@ func verifyStatefulSet(g Gomega, ctx context.Context, k8sClient client.Client, n
 		if sts.Spec.Replicas != nil {
 			desired = *sts.Spec.Replicas
 		}
+
+		image, err := getCacheServerImage(&sts)
+		g.Expect(err).NotTo(HaveOccurred(), "getting cacheserver image from StatefulSet %s/%s", sts.Namespace, sts.Name)
+
 		log.Info("StatefulSet", "name", sts.Name,
-			"ready", sts.Status.ReadyReplicas, "desired", desired)
+			"ready", sts.Status.ReadyReplicas,
+			"updated", sts.Status.UpdatedReplicas,
+			"current", sts.Status.CurrentReplicas,
+			"desired", desired,
+			"currentRevision", sts.Status.CurrentRevision,
+			"updateRevision", sts.Status.UpdateRevision,
+			"observedGeneration", sts.Status.ObservedGeneration,
+			"generation", sts.Generation,
+			"image", image,
+			"expectedImage", expectedImage)
 		g.Expect(sts.Spec.Replicas).NotTo(BeNil(),
 			"statefulset %s/%s spec.replicas is nil", sts.Namespace, sts.Name)
+		g.Expect(sts.Status.ObservedGeneration).To(BeNumerically(">=", sts.Generation),
+			"statefulset %s/%s rollout not observed: observedGeneration=%d generation=%d",
+			sts.Namespace, sts.Name, sts.Status.ObservedGeneration, sts.Generation)
+		g.Expect(sts.Status.UpdateRevision).To(Equal(sts.Status.CurrentRevision),
+			"statefulset %s/%s rollout in progress: currentRevision=%s updateRevision=%s",
+			sts.Namespace, sts.Name, sts.Status.CurrentRevision, sts.Status.UpdateRevision)
+		g.Expect(sts.Status.UpdatedReplicas).To(Equal(*sts.Spec.Replicas),
+			"statefulset %s/%s rollout in progress: %d/%d replicas updated",
+			sts.Namespace, sts.Name, sts.Status.UpdatedReplicas, *sts.Spec.Replicas)
 		g.Expect(sts.Status.ReadyReplicas).To(Equal(*sts.Spec.Replicas),
 			"statefulset %s/%s not ready: %d/%d replicas",
 			sts.Namespace, sts.Name, sts.Status.ReadyReplicas, *sts.Spec.Replicas)
+		if expectedImage != "" {
+			g.Expect(image).To(Equal(expectedImage),
+				"statefulset %s/%s image mismatch: got=%s want=%s",
+				sts.Namespace, sts.Name, image, expectedImage)
+		}
 	}
+}
+
+func getCacheServerImage(sts *appsv1.StatefulSet) (string, error) {
+	if sts == nil {
+		return "", fmt.Errorf("statefulset is nil")
+	}
+	containers := sts.Spec.Template.Spec.Containers
+	for _, c := range containers {
+		if c.Name == cacheServerContainerName {
+			return c.Image, nil
+		}
+	}
+	return "", fmt.Errorf("no container named '%s' found in statefulset %s/%s", cacheServerContainerName, sts.Namespace, sts.Name)
 }
 
 func verifyCachePods(g Gomega, ctx context.Context, k8sClient client.Client, namespace string, log logr.Logger) {

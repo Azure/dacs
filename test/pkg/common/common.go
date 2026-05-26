@@ -32,7 +32,7 @@ const (
 	// trueString is the string representation of a boolean true value.
 	trueString = "true"
 
-	controllerNamespace      = "cache-controller-system"
+	controllerNamespace      = "cache-server"
 	controllerDeploymentName = "dacs-manager"
 	cacheControllerCRDName   = "caches.storage.azure.com"
 

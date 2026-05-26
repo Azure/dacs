@@ -52,6 +52,7 @@ var _ = Describe("aks tests", Label("aks"), Serial, func() {
 	BeforeEach(beforeEach)
 	testClusterUpgrade(&tc)
 	testClusterScale(&tc)
+	testClusterHelmUpgrade(&tc)
 	AfterEach(afterEach)
 })
 
