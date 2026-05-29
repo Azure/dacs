@@ -3,6 +3,7 @@ package verification
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -21,6 +22,8 @@ const (
 	cacheServerContainerName = "cacheserver"
 	cacheServerLabelKey      = "app"
 	cacheServerLabelValue    = "cacheserver"
+	cacheNameLabelKey        = "dacs.azure.com/cache-name"
+	discoveryConfigMountPath = "/serverConfig"
 	controllerLabelKey       = "control-plane"
 	controllerLabelValue     = "controller-manager"
 )
@@ -51,6 +54,7 @@ func VerifyAppHealthWithImage(g Gomega, ctx context.Context, k8sClient client.Cl
 	verifyControllerDeployment(g, ctx, k8sClient, namespace, log)
 	verifyStatefulSet(g, ctx, k8sClient, namespace, expectedImage, log)
 	verifyCachePods(g, ctx, k8sClient, namespace, log)
+	verifyEndpoints(g, ctx, k8sClient, namespace, log)
 }
 
 func verifyCacheCR(g Gomega, ctx context.Context, k8sClient client.Client, namespace string, log logr.Logger) {
@@ -167,6 +171,46 @@ func verifyStatefulSet(g Gomega, ctx context.Context, k8sClient client.Client, n
 				sts.Namespace, sts.Name, image, expectedImage)
 		}
 	}
+}
+
+// verifyEndpoints verifies that the endpoints for each cache server are correctly configured.
+// There is a delay when the configmap is updated and the pods need to pick up the changes for
+// some of the data validations
+func verifyEndpoints(g Gomega, ctx context.Context, k8sClient client.Client, namespace string, log logr.Logger) {
+	var stsList appsv1.StatefulSetList
+	g.Expect(k8sClient.List(ctx, &stsList,
+		client.InNamespace(namespace),
+		client.MatchingLabels{cacheServerLabelKey: cacheServerLabelValue},
+	)).To(Succeed(), "failed to list cacheserver StatefulSets in namespace %s", namespace)
+
+	for _, sts := range stsList.Items {
+		g.Expect(sts.Spec.Replicas).NotTo(BeNil(), "statefulset %s/%s spec.replicas is nil", sts.Namespace, sts.Name)
+		cacheName, ok := sts.Labels[cacheNameLabelKey]
+		g.Expect(ok).To(BeTrue(), "statefulset %s/%s missing label %s", sts.Namespace, sts.Name, cacheNameLabelKey)
+		cmName := cacheName + storagev1.DiscoveryConfigSuffix
+		var cm corev1.ConfigMap
+		g.Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Namespace: sts.Namespace,
+			Name:      cmName,
+		}, &cm)).To(Succeed(), "failed to get discovery ConfigMap %s/%s", sts.Namespace, cmName)
+
+		log.Info("Verifying discovery ConfigMap", "statefulset", sts.Name, "configmap", cmName, "data", cm.Data)
+		for i := 0; i < int(*sts.Spec.Replicas); i++ {
+			podName := fmt.Sprintf("%s-%d", sts.Name, i)
+			for key, expectedValue := range cm.Data {
+				filePath := fmt.Sprintf("%s/%s", discoveryConfigMountPath, key)
+				cmd := exec.CommandContext(ctx, "kubectl", "exec", "-n", sts.Namespace, podName, "--", "cat", filePath)
+				output, err := cmd.CombinedOutput()
+				g.Expect(err).To(Succeed(), "failed to exec cat %s on pod %s: %s", filePath, podName, string(output))
+				gotValue := strings.TrimRight(string(output), "\n")
+				wantValue := strings.TrimRight(expectedValue, "\n")
+				g.Expect(gotValue).To(Equal(wantValue),
+					"ConfigMap %s key %s content mismatch in pod %s: got %q, want %q",
+					cmName, key, podName, gotValue, wantValue)
+			}
+		}
+	}
+	log.Info("All cache server pods have correct discovery ConfigMap content")
 }
 
 func getCacheServerImage(sts *appsv1.StatefulSet) (string, error) {
