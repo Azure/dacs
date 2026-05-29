@@ -361,7 +361,11 @@ async def async_parallel_ordered_result(coro_fn, items, max_concurrent: int):
         yield await task
 
 
-def _initialize_dacs_client_config(intercept_path: str = None, write_mode: Optional[WriteMode] = None) -> None:
+def _initialize_dacs_client_config(
+    intercept_path: str = None,
+    write_mode: Optional[WriteMode] = None,
+    config_dir: str = "/tmp",
+) -> None:
     """Internal API: Initialize DACS client configuration.
 
     This is an internal function and should only be called from within the library.
@@ -369,12 +373,20 @@ def _initialize_dacs_client_config(intercept_path: str = None, write_mode: Optio
     Args:
         intercept_path: Path to the intercept mount point
         write_mode: Write mode configuration.
+        config_dir: Directory for config file (default: /tmp). Useful for testing.
     """
 
     # Use process-specific config path to avoid race conditions in multi-process scenarios
     # The native library reads STORAGE_INTERCEPT_CONFIG_FILEPATH env var to find the config file
+    if not config_dir:
+        raise ValueError("config_dir must be a non-empty path")
+
+    os.makedirs(config_dir, exist_ok=True)
+    if not os.path.isdir(config_dir):
+        raise NotADirectoryError(f"config_dir is not a directory: {config_dir}")
+
     pid = os.getpid()
-    config_path = f"/tmp/storageIntercept.{pid}.config"
+    config_path = os.path.join(config_dir, f"storageIntercept.{pid}.config")
     os.environ["STORAGE_INTERCEPT_CONFIG_FILEPATH"] = config_path
 
     # Check if config file already exists and warn before overwriting
