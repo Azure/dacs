@@ -383,15 +383,17 @@ class _ClientManager:
     _instance: Optional[DACSCacheClient] = None
     _lock = threading.Lock()
     _write_mode: Optional[WriteMode] = None
+    _consistent_mode: bool = False
 
     @classmethod
-    def get_instance(cls, write_mode: Optional[WriteMode] = None) -> DACSCacheClient:
+    def get_instance(cls, write_mode: Optional[WriteMode] = None, consistent_mode: bool = False) -> DACSCacheClient:
         """
         Get or create the singleton DACSCacheClient instance.
         Thread-safe lazy initialization using double-checked locking pattern.
 
         Args:
             write_mode: Write mode configuration for the client
+            consistent_mode: Enable consistent mode
 
         Returns:
             DACSCacheClient: The singleton instance
@@ -400,7 +402,8 @@ class _ClientManager:
             with cls._lock:
                 if cls._instance is None:
                     cls._write_mode = write_mode if write_mode else WriteMode.WRITE_SYNC
-                    cls._instance = DACSCacheClient(write_mode=cls._write_mode)
+                    cls._consistent_mode = consistent_mode
+                    cls._instance = DACSCacheClient(write_mode=cls._write_mode, consistent_mode=cls._consistent_mode)
         return cls._instance
 
     @classmethod
@@ -409,6 +412,7 @@ class _ClientManager:
         with cls._lock:
             cls._instance = None
             cls._write_mode = None
+            cls._consistent_mode = False
 
 
 
@@ -601,28 +605,29 @@ async def write_single(
 
     This matches boostedblob.write_single() signature with optional zero-copy support.
 
-    Note: DACSCacheClient only supports creating new files (O_EXCL flag).
-    Overwriting existing files is not supported.
+    In efficient mode (default), uses O_EXCL — creating new files only.
+    In consistent mode, overwrite=True uses O_TRUNC, overwrite=False uses O_EXCL.
 
     Args:
         path: Azure blob path (str or BasePath)
         data: Data to write (bytes, bytearray, memoryview, or str). Not needed if buffer is provided.
-        overwrite: If True, raise OperationNotSupportedError (not supported)
+        overwrite: If True, overwrite existing file (requires consistent mode).
         buffer: Optional pre-allocated buffer for zero-copy write. If provided,
                 data is written directly from this buffer without copying.
         size: Size of data in the buffer (required if buffer is provided)
 
     Raises:
-        OperationNotSupportedError: If overwrite=True (not supported)
-        DACSExistsError: If file already exists and overwrite=False
+        OperationNotSupportedError: If overwrite=True in efficient mode
+        DACSExistsError: If file already exists and overwrite=False in efficient mode
         DACSStorageError: If write fails
         ValueError: If neither data nor buffer is provided, or buffer without size
     """
-    if overwrite:
+    client = _ClientManager.get_instance()
+
+    if overwrite and not client.consistent_mode:
         raise OperationNotSupportedError(
-            "overwrite=True is not supported by DACSCacheClient. "
-            "Only creating new files is supported. "
-            "Workaround: write to a new path, then rename if supported."
+            "overwrite=True is not supported in efficient mode. "
+            "Enable consistent mode for overwrite support."
         )
 
     # Validate arguments
@@ -630,8 +635,6 @@ async def write_single(
         raise ValueError("size is required when buffer is provided")
     if buffer is None and data is None:
         raise ValueError("Either data or buffer must be provided")
-
-    client = _ClientManager.get_instance()
 
     # Handle BasePath input
     if isinstance(path, BasePath):
@@ -644,7 +647,7 @@ async def write_single(
     # Zero-copy path: write directly from user's buffer
     if buffer is not None:
         try:
-            await client.write_blob(converted_path, buffer, size)
+            await client.write_blob(converted_path, buffer, size, overwrite)
         except DACSError:
             raise
         except Exception as e:
@@ -670,7 +673,7 @@ async def write_single(
         internal_buffer = alloc_buffer(1)  # Minimum allocation
         try:
             try:
-                await client.write_blob(converted_path, internal_buffer, 0)
+                await client.write_blob(converted_path, internal_buffer, 0, overwrite)
             except DACSError:
                 raise
             except Exception as e:
@@ -685,7 +688,7 @@ async def write_single(
         ctypes.memmove(internal_buffer, data_bytes, data_size)
 
         try:
-            await client.write_blob(converted_path, internal_buffer, data_size)
+            await client.write_blob(converted_path, internal_buffer, data_size, overwrite)
         except DACSError:
             raise
         except Exception as e:

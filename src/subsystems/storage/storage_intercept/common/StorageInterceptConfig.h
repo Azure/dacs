@@ -153,6 +153,15 @@ class StorageInterceptConfig
         // Feature flag for versioned cache keys
         bool IsVersionedCacheKeysEnabled();
 
+        // Feature flag for consistent mode
+        bool IsConsistentModeEnabled(const std::string& mountName);
+
+        // Feature flag for garbage collection in consistent mode
+        bool IsGarbageCollectionInConsistentModeEnabled(const std::string& mountName);
+
+        // Derived getter, single source of truth for attr cache + consistent mode logic.
+        bool ShouldEnableAttributesCache(const std::string& mountName);
+
         // Getters for cache server discovery
         bool IsCacheServerDiscoveryEnabled();
         uint32_t CacheServerDiscoveryIntervalInSeconds();

@@ -39,6 +39,8 @@ class RemoteCacheClient : public ICacheClient, public IAttributesCache
             /*[in] */ std::shared_ptr<const FileData> fileData,
             /*[in]*/ bool isWrite) override;
 
+        bool DeleteGroup(const std::string& groupId) override;
+
         cacheutils::CacheStatus Get(
             /*[in] */ const std::string& path,
             /*[out]*/ FileAttributes& fileAttributes) override;

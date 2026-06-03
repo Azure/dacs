@@ -56,7 +56,7 @@ class StreamingClient
 
         void Close(
             /*[in] */ const std::string& remotePath,
-            /*[in]*/ const std::string& version,
+            /*[in]*/ const std::string& existingVersion,
             /*[in]*/ const bool isWriteMode);
 
         // APIs to handle shared state when a process is forked (invoked by ContentHandler)
@@ -201,6 +201,12 @@ class StreamingClient
         // Switch to enable versioned cache keys
         const bool                         m_bEnableVersionedCacheKeys;
 
+        // Switch to enable consistent mode
+        const bool                         m_bEnableConsistentMode;
+
+        // Switch to enable garbage collection (eviction of stale cache chunks) in consistent mode
+        const bool                         m_bEnableGarbageCollectionInConsistentMode;
+
         // Wrapper to call ReadChunkImpl() and update the counters tracking read chunk concurrency
         std::shared_ptr<const FileData> ReadChunk(
             /*[in] */ const std::string& remotePath,
@@ -325,6 +331,11 @@ class StreamingClient
             /*[in] */ const off64_t chunkOffset,
             /*[in] */ std::shared_ptr<FileData> fileData);
         void WriteRemoteAsyncUploadWorker();
+
+        // Evict cached chunks for a specific version of a file
+        void EvictCacheForFileVersion(
+            /*[in]*/ const std::string& remotePath,
+            /*[in]*/ const std::string& version);
 
         // Helper funtions to log stats
         void LongRunningLogStats(const uint32_t);

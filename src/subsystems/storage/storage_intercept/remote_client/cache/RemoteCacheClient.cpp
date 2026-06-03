@@ -374,6 +374,17 @@ void RemoteCacheClient::PutAll(const std::string& pathPrefix,
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool RemoteCacheClient::DeleteGroup(const std::string& groupId)
+{
+    if (groupId.empty())
+    {
+        LOG_DEBUG("GroupId is empty, skipping DeleteGroup");
+        return true;
+    }
+    auto status = m_spCacheClientImpl->DeleteGroup(groupId.c_str());
+    return (status == CacheClientStatus::SUCCESS);
+}
+//---------------------------------------------------------------------------------------------------------------------
 void RemoteCacheClient::LoadMultiMountConfig()
 {
     m_mapEncryptionKey.clear();

@@ -15,6 +15,16 @@ spec:
         dacs.azure.com/test-pod: "true"
     spec:
       restartPolicy: Never
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - cacheserver
+            topologyKey: kubernetes.io/hostname
       containers:
       - name: benchmark
         image: cache-test-client:local
@@ -44,6 +54,7 @@ spec:
             --num-blobs ${NUM_BLOBS:-4} \
             --num-processes ${NUM_PROCESSES:-1} \
             --write-mode ${WRITE_MODE:-write_sync} \
+            ${CONSISTENT_MODE:+--consistent-mode} \
             ${SKIP_WRITE:+--skip-write} \
             ${SKIP_READ:+--skip-read} \
             ${NO_CLEANUP:+--no-cleanup} \

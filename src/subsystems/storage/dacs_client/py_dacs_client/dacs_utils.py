@@ -364,6 +364,7 @@ async def async_parallel_ordered_result(coro_fn, items, max_concurrent: int):
 def _initialize_dacs_client_config(
     intercept_path: str = None,
     write_mode: Optional[WriteMode] = None,
+    consistent_mode: bool = False,
     config_dir: str = "/tmp",
 ) -> None:
     """Internal API: Initialize DACS client configuration.
@@ -373,6 +374,7 @@ def _initialize_dacs_client_config(
     Args:
         intercept_path: Path to the intercept mount point
         write_mode: Write mode configuration.
+        consistent_mode: Enable consistent mode (overwrite support).
         config_dir: Directory for config file (default: /tmp). Useful for testing.
     """
 
@@ -509,5 +511,10 @@ def _initialize_dacs_client_config(
             config_file.write("attributesCacheUseRemoteServer true\n")
         else:
             logger.warning("Cache not configured. Working in Remote Blob mode only.")
-    
+
+        # Consistent mode : supported only in write_sync and write_blob_only modes.
+        if consistent_mode and write_mode in (WriteMode.WRITE_SYNC, WriteMode.WRITE_BLOB_ONLY):
+            config_file.write("enableConsistentMode true\n")
+            logger.info("Consistent mode enabled: overwrite support active")
+
     logger.debug(f"Config file initialized: {config_path}")

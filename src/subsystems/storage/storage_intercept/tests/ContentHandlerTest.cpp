@@ -669,6 +669,72 @@ TEST_F(ContentHandlerTest, OpenWriteModeTest)
     //ASSERT_EQ(closeRet, 0);
 }
 //---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, OpenExclOnFileTest)
+{
+    std::string existingFilePath = m_strInterceptPath + '/' + m_strRemoteFilePath;
+
+    // Enable write support
+    OverrideConfig(StorageInterceptConstants::ConfigNameWriteEnable, "true");
+
+    // --- Efficient mode (default) ---
+
+    // O_EXCL on a new file should succeed
+    std::string newFilePath1 = m_strInterceptPath + '/' + "excl-new-eff-" + GenerateRandomString(4);
+    int fd = ContentHandler::GetInstance().HandleOpen64(newFilePath1.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
+    ASSERT_NE(fd, -1);
+
+    // O_EXCL on an existing file should fail with EEXIST
+    fd = ContentHandler::GetInstance().HandleOpen64(existingFilePath.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
+    ASSERT_EQ(fd, -1);
+    ASSERT_EQ(errno, EEXIST);
+
+    // --- Consistent mode ---
+    OverrideConfig(StorageInterceptConstants::ConfigNameEnableConsistentMode, "true");
+
+    // O_EXCL on a new file should succeed
+    std::string newFilePath2 = m_strInterceptPath + '/' + "excl-new-cm-" + GenerateRandomString(4);
+    fd = ContentHandler::GetInstance().HandleOpen64(newFilePath2.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
+    ASSERT_NE(fd, -1);
+
+    // O_EXCL on an existing file should still fail with EEXIST (even in consistent mode)
+    fd = ContentHandler::GetInstance().HandleOpen64(existingFilePath.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
+    ASSERT_EQ(fd, -1);
+    ASSERT_EQ(errno, EEXIST);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, OpenWriteModeTruncTest)
+{
+    std::string nonExistingFilePath = m_strInterceptPath + '/' + "trunc-test-file-" + GenerateRandomString(4);
+    std::string existingFilePath = m_strInterceptPath + '/' + m_strRemoteFilePath;
+
+    // Enable write support
+    OverrideConfig(StorageInterceptConstants::ConfigNameWriteEnable, "true");
+
+    // --- Efficient mode (default) ---
+
+    // O_TRUNC on a non-existing file should succeed (creates new file, no overwrite conflict)
+    int fd = ContentHandler::GetInstance().HandleOpen64(nonExistingFilePath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    ASSERT_NE(fd, -1);
+
+    // O_TRUNC on an existing file should fail with EEXIST in efficient mode (no consistent mode)
+    fd = ContentHandler::GetInstance().HandleOpen64(existingFilePath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    ASSERT_EQ(fd, -1);
+    ASSERT_EQ(errno, EEXIST);
+
+    // --- Consistent mode ---
+    OverrideConfig(StorageInterceptConstants::ConfigNameEnableConsistentMode, "true");
+    OverrideConfig(StorageInterceptConstants::ConfigNameWriteEnableRemoteAsync, "false");
+
+    // O_TRUNC on a non-existing file should succeed
+    std::string newFilePath = m_strInterceptPath + '/' + "trunc-cm-new-" + GenerateRandomString(4);
+    fd = ContentHandler::GetInstance().HandleOpen64(newFilePath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    ASSERT_NE(fd, -1);
+
+    // O_TRUNC on an existing file should succeed in consistent mode (overwrite allowed)
+    fd = ContentHandler::GetInstance().HandleOpen64(existingFilePath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    ASSERT_NE(fd, -1);
+}
+//---------------------------------------------------------------------------------------------------------------------
 TEST_F(ContentHandlerTest, AccessTest)
 {
     // Access should succeed for existing files when asked for read-only access
@@ -697,5 +763,19 @@ TEST_F(ContentHandlerTest, AccessTest)
 
     retVal = ContentHandler::GetInstance().HandleAccess(nonExistingfilePath.c_str(), W_OK | R_OK);
     ASSERT_EQ(retVal, -1);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, AttrCacheDisabledInConsistentModeTest)
+{
+    // Explicitly enable attr cache (test config may not have it set).
+    OverrideConfig(StorageInterceptConstants::ConfigNameAttributesCacheEnable, "true");
+
+    // ShouldEnableAttributesCache returns false when consistent mode is on, even if attr cache config is true.
+    OverrideConfig(StorageInterceptConstants::ConfigNameEnableConsistentMode, "true");
+    ASSERT_FALSE(StorageInterceptConfig::GetInstance().ShouldEnableAttributesCache(""));
+
+    // And true when consistent mode is off.
+    OverrideConfig(StorageInterceptConstants::ConfigNameEnableConsistentMode, "false");
+    ASSERT_TRUE(StorageInterceptConfig::GetInstance().ShouldEnableAttributesCache(""));
 }
 //---------------------------------------------------------------------------------------------------------------------

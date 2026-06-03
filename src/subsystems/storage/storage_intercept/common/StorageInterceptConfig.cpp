@@ -1038,7 +1038,7 @@ bool StorageInterceptConfig::IsRemoteWriteAsyncEnabled()
     return StorageInterceptConfig::GetOptionalConfigBoolean(
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameWriteEnableRemoteAsync,
-        true);
+        false);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::IsVersionedCacheKeysEnabled()
@@ -1120,5 +1120,29 @@ bool StorageInterceptConfig::IsConsistentHashingEnabled()
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameCacheEnableConsistentHashing,
         true);
+}
+//---------------------------------------------------------------------------------------------------------------------
+//---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::IsConsistentModeEnabled(const std::string& mountName)
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameEnableConsistentMode,
+        false);
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::IsGarbageCollectionInConsistentModeEnabled(const std::string& mountName)
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameEnableGarbageCollectionInConsistentMode,
+        false);
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::ShouldEnableAttributesCache(const std::string& mountName)
+{
+    return GetAttributesCacheEnable(mountName) && !IsConsistentModeEnabled(mountName);
 }
 //---------------------------------------------------------------------------------------------------------------------

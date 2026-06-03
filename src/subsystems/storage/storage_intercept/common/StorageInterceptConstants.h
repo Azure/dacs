@@ -152,5 +152,9 @@ namespace StorageInterceptConstants
 
     // Config constant for versioned cache keys (feature flag)
     const char* const ConfigNameEnableVersionedCacheKeys = "enableVersionedCacheKeys";
+
+    // Config constant for consistent mode
+    const char* const ConfigNameEnableConsistentMode = "enableConsistentMode";
+    const char* const ConfigNameEnableGarbageCollectionInConsistentMode = "enableGarbageCollectionInConsistentMode";
 };
 //---------------------------------------------------------------------------------------------------------------------

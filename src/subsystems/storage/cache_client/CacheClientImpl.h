@@ -98,6 +98,11 @@ class CacheClientImpl
     static std::size_t nDefaultConnectionPoolSize;
     size_t m_nMaxBufferSizeBytes;
 
+    // Delete a group from a single cache server
+    CacheClientStatus DeleteGroupFromServer(
+        /*[in]*/ const std::string& hostname,
+        /*[in]*/ const char* groupID,
+        /*[in]*/ const char* strCorrelationId);
 
     // Friends for testing
     friend class CacheClientTests;

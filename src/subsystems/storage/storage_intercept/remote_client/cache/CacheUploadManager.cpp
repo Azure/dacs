@@ -124,11 +124,15 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
     const std::string effectiveGroupId = GetEffectiveGroupId(
         uploadContext->m_strFilePath, uploadContext->m_strVersion);
 
+    // When groupId is set, lifecycle is managed by DeleteGroup(), expiry is not used.
+    // The server ignores expiry when groupId is present, so avoid sending both.
+    const uint32_t expirySeconds = effectiveGroupId.empty() ? m_keyExpirySeconds : 0;
+
     auto status = m_spCacheClientImpl->Upload(
         uploadContext->m_strCacheKey.c_str(),
         bufferToSend,
         bufferSizeToSend,
-        m_keyExpirySeconds,
+        expirySeconds,
         effectiveGroupId.empty() ? nullptr : effectiveGroupId.c_str(),
         metadata.nKeyValuePairs > 0 ? &metadata : nullptr,
         uploadContext->m_encryptionKey.empty() ? nullptr : uploadContext->m_encryptionKey.c_str());
@@ -221,7 +225,7 @@ std::string CacheUploadManager::GetEffectiveGroupId(
 {
     if (m_bEnableVersionedCacheKeys && !version.empty())
     {
-        return cacheutils::GetSHA256Hex(filePath + ":" + version);
+        return cacheutils::GetGroupIdForFileVersion(filePath, version);
     }
     return m_keyGroupId;
 }

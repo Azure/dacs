@@ -257,6 +257,19 @@ class TestRemoteBlobWrite:
             bytes_written = f.write(test_data)
         assert bytes_written > 0
 
+    def test_write_to_existing_blob_fails_in_efficient_mode(self):
+        """Writing to an existing file should fail in efficient mode."""
+        blob_path = f"{AZURE_BLOB_PATH}/test_write_existing_fail_{id(self)}.txt"
+
+        # Create the file first
+        with bf.DACSBlobfileAdapter(blob_path, "w") as f:
+            f.write("first version")
+
+        # Second write to same path should fail.
+        with pytest.raises(Exception):
+            with bf.DACSBlobfileAdapter(blob_path, "w") as f:
+                f.write("should fail")
+
     def test_write_with_user_buffer_zero_copy(self):
         """Test zero-copy write using user-provided buffer."""
         import asyncio
@@ -1833,11 +1846,11 @@ class TestCopy:
         with pytest.raises(IsADirectoryError):
             bf.copy(src_path, dst_path)
 
-    def test_copy_overwrite_remote_destination_not_supported(self):
-        """Test that overwrite=True raises OperationNotSupportedError for remote destinations."""
+    def test_copy_overwrite_remote_destination_rejected_in_efficient_mode(self):
+        """Test that overwrite=True raises OperationNotSupportedError for remote destinations in efficient mode."""
         import tempfile
 
-        # Test local → remote with overwrite=True
+        # Test local → remote with overwrite=True (should fail in efficient mode)
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
             tmp.write("source content")
             local_src = tmp.name
