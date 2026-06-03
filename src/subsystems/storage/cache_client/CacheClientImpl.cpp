@@ -677,89 +677,108 @@ CacheClientStatus CacheClientImpl::DeleteGroup(/*[in]*/ const char* groupID,
         return CacheClientStatus::INVALID_ARGUMENT;
     }
 
-    // Loop through each server, setup a connection and issue the delete request
+    // Loop through each server and issue the delete request.
+    // Always continue to all servers even if some fail
+    //TODO: parallelize the delete requests to servers to speed up the process.
+    //Also, consider sending the delete request to only the relevant server.
     const std::vector<std::string> cacheServerHostnames = m_spConnectionManager->GetAllCacheServerHostnames();
     for(const std::string& hostname : cacheServerHostnames)
     {
-        Request request;
-        DeleteRequest* deleteGroupRequest = request.mutable_deleterequest();
-        deleteGroupRequest->set_requestid(strCorrelationId);
-        deleteGroupRequest->set_groupid(groupID);
-
-        if(m_bEnableAuth && !AddAuthParams(request, m_strAccountName, m_strAccountKey))
+        auto status = DeleteGroupFromServer(hostname, groupID, strCorrelationId);
+        if (status != CacheClientStatus::SUCCESS)
         {
-            LOG_ERROR_REQID(
-                "Failed to set auth for delete group request for group ID: {}", *deleteGroupRequest, groupID);
-            return CacheClientStatus::AUTH_FAILED;
-        }
-
-        std::unique_ptr<IConnection> connection = move(m_spConnectionManager->GetConnection(hostname));
-
-        if(!connection || !connection.get())
-        {
-            LOG_ERROR_REQID("Couldn't get server connection {}, delete request for groupID: {}",
-                            *deleteGroupRequest,
-                            hostname,
-                            groupID);
-            return CacheClientStatus::INTERNAL_ERROR;
-        }
-
-        if(!SendMessageToRemote(connection.get(), request))
-        {
-            LOG_ERROR_REQID("Couldn't send message to server {}, delete request for groupID: {}",
-                            *deleteGroupRequest,
-                            hostname,
-                            groupID);
-            m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
-            return CacheClientStatus::INTERNAL_ERROR;
-        }
-
-        std::string requestMessage;
-        if(!ReadMessageFromRemote(connection.get(), requestMessage))
-        {
-            LOG_ERROR_REQID("Couldn't read message from server {}, delete request for groupID: {}",
-                            *deleteGroupRequest,
-                            hostname,
-                            groupID);
-            m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
-            return CacheClientStatus::INTERNAL_ERROR;
-        }
-
-        DeleteResponse response;
-        if(!response.ParseFromString(requestMessage))
-        {
-            LOG_ERROR_REQID("Error: Failed to parse protobuf message from server {}, delete request for groupID: {}",
-                            *deleteGroupRequest,
-                            hostname,
-                            groupID);
-            return CacheClientStatus::INTERNAL_ERROR;
-        }
-
-        switch(response.result())
-        {
-        case DeleteResponse::SUCCESS:
-            m_spConnectionManager->ReleaseConnection(hostname, move(connection), false);
-            continue;
-
-        case DeleteResponse::AUTH_FAILED:
-            LOG_ERROR_REQID("Delete request failed due to auth failure for server: {}", *deleteGroupRequest, hostname);
-            return CacheClientStatus::AUTH_FAILED;
-
-        case DeleteResponse::INTERNAL_ERROR:
-            LOG_ERROR_REQID(
-                "Delete request failed due to internal error for server: {}", *deleteGroupRequest, hostname);
-            return CacheClientStatus::INTERNAL_ERROR;
-
-        default:
-            LOG_ERROR_REQID("Delete request failed due to unknown response: {}, for server: {}",
-                            *deleteGroupRequest,
-                            response.result(),
-                            hostname);
-            return CacheClientStatus::INTERNAL_ERROR;
+            LOG_WARN_REQID_STR("DeleteGroup failed for server {}, continuing to next server", strCorrelationId, hostname);
         }
     }
 
     return CacheClientStatus::SUCCESS;
+}
+//---------------------------------------------------------------------------------------------------------------------
+CacheClientStatus CacheClientImpl::DeleteGroupFromServer(
+    const std::string& hostname,
+    const char* groupID,
+    const char* strCorrelationId)
+{
+    Request request;
+    DeleteRequest* deleteGroupRequest = request.mutable_deleterequest();
+    deleteGroupRequest->set_requestid(strCorrelationId);
+    deleteGroupRequest->set_groupid(groupID);
+
+    if(m_bEnableAuth && !AddAuthParams(request, m_strAccountName, m_strAccountKey))
+    {
+        LOG_ERROR_REQID(
+            "Failed to set auth for delete group request for group ID: {}", *deleteGroupRequest, groupID);
+        return CacheClientStatus::AUTH_FAILED;
+    }
+
+    std::unique_ptr<IConnection> connection = move(m_spConnectionManager->GetConnection(hostname));
+
+    if(!connection || !connection.get())
+    {
+        LOG_ERROR_REQID("Couldn't get server connection {}, delete request for groupID: {}",
+                        *deleteGroupRequest,
+                        hostname,
+                        groupID);
+        return CacheClientStatus::INTERNAL_ERROR;
+    }
+
+    if(!SendMessageToRemote(connection.get(), request))
+    {
+        LOG_ERROR_REQID("Couldn't send message to server {}, delete request for groupID: {}",
+                        *deleteGroupRequest,
+                        hostname,
+                        groupID);
+        m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
+        return CacheClientStatus::INTERNAL_ERROR;
+    }
+
+    std::string requestMessage;
+    if(!ReadMessageFromRemote(connection.get(), requestMessage))
+    {
+        LOG_ERROR_REQID("Couldn't read message from server {}, delete request for groupID: {}",
+                        *deleteGroupRequest,
+                        hostname,
+                        groupID);
+        m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
+        return CacheClientStatus::INTERNAL_ERROR;
+    }
+
+    DeleteResponse response;
+    if(!response.ParseFromString(requestMessage))
+    {
+        LOG_ERROR_REQID("Error: Failed to parse protobuf message from server {}, delete request for groupID: {}",
+                        *deleteGroupRequest,
+                        hostname,
+                        groupID);
+        m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
+        return CacheClientStatus::INTERNAL_ERROR;
+    }
+
+    switch(response.result())
+    {
+    case DeleteResponse::SUCCESS:
+        m_spConnectionManager->ReleaseConnection(hostname, move(connection), false);
+        return CacheClientStatus::SUCCESS;
+
+    case DeleteResponse::AUTH_FAILED:
+        LOG_ERROR_REQID("Delete request failed due to auth failure for server: {}", *deleteGroupRequest, hostname);
+        m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
+        return CacheClientStatus::AUTH_FAILED;
+
+    case DeleteResponse::INTERNAL_ERROR:
+        LOG_ERROR_REQID(
+            "Delete request failed due to internal error for server: {}", *deleteGroupRequest, hostname);
+        m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
+        return CacheClientStatus::INTERNAL_ERROR;
+
+    default:
+        LOG_ERROR_REQID("Delete request failed due to unknown response: {}, for server: {}",
+                        *deleteGroupRequest,
+                        response.result(),
+                        hostname);
+        m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
+        return CacheClientStatus::INTERNAL_ERROR;
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(

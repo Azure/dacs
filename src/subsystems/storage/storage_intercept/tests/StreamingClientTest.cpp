@@ -84,9 +84,17 @@ public:
         return true;
     }
 
+    bool DeleteGroup(const std::string& groupId) override
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_deleteGroupCalls.push_back(groupId);
+        return true;
+    }
+
     mutable std::mutex m_mutex; // Guards m_store, m_downloadCalls, m_uploadCalls against concurrent std::async calls in WriteChunksToCache
     std::vector<DownloadCall> m_downloadCalls;
     std::vector<UploadCall> m_uploadCalls;
+    std::vector<std::string> m_deleteGroupCalls;
     std::map<std::string, std::shared_ptr<const FileData>> m_store;
 };
 //---------------------------------------------------------------------------------------------------------------------
@@ -1255,5 +1263,110 @@ TEST_F(StreamingClientTest, GetPropertiesReturnsVersionFromAttrCacheTest)
     nResult = m_spStreamingClient->GetProperties(m_strRemoteFilePath, fileAttr2);
     ASSERT_EQ(nResult, 0);
     ASSERT_EQ(fileAttr.version, fileAttr2.version);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, EvictCacheForFileVersionOnWriteCloseTest)
+{
+    // In consistent mode, Close() with a non-empty version (old version from open) should call
+    // DeleteGroup to evict the old version's cache chunks.
+    OverrideConfig(StorageInterceptConstants::ConfigNameWriteEnable, "true");
+    OverrideConfig(StorageInterceptConstants::ConfigNameWriteEnableRemoteAsync, "false");
+    OverrideConfig(StorageInterceptConstants::ConfigNameCacheEnable, "true");
+    OverrideConfig(StorageInterceptConstants::ConfigNameEnableVersionedCacheKeys, "true");
+    OverrideConfig(StorageInterceptConstants::ConfigNameEnableConsistentMode, "true");
+    OverrideConfig(StorageInterceptConstants::ConfigNameEnableGarbageCollectionInConsistentMode, "true");
+
+    auto mockCache = std::make_shared<InMemoryCacheClient>();
+    auto client = std::make_shared<StreamingClient>("", mockCache, nullptr /* no attr cache in consistent mode */);
+
+    std::string writeFileName = "evictTest" + GenerateRandomString(4);
+    auto writeData = GetRandDataBuffer(REMOTE_FILE_SIZE);
+
+    // Write the file
+    ssize_t nBytesWritten = client->WriteFile(
+        writeFileName, writeData->Buffer.get(), writeData->BufferSize, 0);
+    ASSERT_EQ(nBytesWritten, writeData->BufferSize);
+
+    // Close with a fake old version — simulates overwrite where Open() found an existing file
+    const std::string oldVersion = "old-version-etag-12345";
+    client->Close(writeFileName, oldVersion, true /* isWriteMode */);
+
+    // Verify DeleteGroup was called with a groupId derived from the old version
+    ASSERT_GT(mockCache->m_deleteGroupCalls.size(), 0u);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, EvictCacheForFileVersionSkippedOnEmptyVersionTest)
+{
+    // When version is empty (new file, no old version), DeleteGroup should NOT be called.
+    OverrideConfig(StorageInterceptConstants::ConfigNameWriteEnable, "true");
+    OverrideConfig(StorageInterceptConstants::ConfigNameWriteEnableRemoteAsync, "false");
+    OverrideConfig(StorageInterceptConstants::ConfigNameCacheEnable, "true");
+    OverrideConfig(StorageInterceptConstants::ConfigNameEnableVersionedCacheKeys, "true");
+    OverrideConfig(StorageInterceptConstants::ConfigNameEnableConsistentMode, "true");
+
+    auto mockCache = std::make_shared<InMemoryCacheClient>();
+    auto client = std::make_shared<StreamingClient>("", mockCache, nullptr);
+
+    std::string writeFileName = "noEvictTest" + GenerateRandomString(4);
+    auto writeData = GetRandDataBuffer(REMOTE_FILE_SIZE);
+
+    ssize_t nBytesWritten = client->WriteFile(
+        writeFileName, writeData->Buffer.get(), writeData->BufferSize, 0);
+    ASSERT_EQ(nBytesWritten, writeData->BufferSize);
+
+    // Close with empty version — new file, no old version to evict
+    client->Close(writeFileName, "" /* empty version */, true /* isWriteMode */);
+
+    // DeleteGroup should NOT have been called
+    ASSERT_EQ(mockCache->m_deleteGroupCalls.size(), 0u);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, OverwriteFileTest)
+{
+    // Write V1 → Close → Write V2 (overwrite with old version) → Close → Read back V2.
+    // Tests the full overwrite flow using m_spStreamingClient against actual backend.
+    if (!StorageInterceptConfig::GetInstance().IsWriteSupportEnabled())
+    {
+        GTEST_SKIP();
+    }
+
+    std::string writeFileName = "overwriteTest" + GenerateRandomString(4);
+
+    // Write V1
+    auto v1Data = GetRandDataBuffer(REMOTE_FILE_SIZE);
+    ssize_t nBytesWritten = m_spStreamingClient->WriteFile(
+        writeFileName, v1Data->Buffer.get(), v1Data->BufferSize, 0);
+    ASSERT_EQ(nBytesWritten, v1Data->BufferSize);
+    m_spStreamingClient->Close(writeFileName, "" /* version */, true /* isWriteMode */);
+
+    // Get V1's version
+    FileAttributes v1Attrs;
+    m_spStreamingClient->GetProperties(writeFileName, v1Attrs);
+    ASSERT_FALSE(v1Attrs.version.empty());
+    const std::string v1Version = v1Attrs.version;
+
+    // Write V2 — pass V1's version as the old version (simulates overwrite)
+    auto v2Data = GetRandDataBuffer(REMOTE_FILE_SIZE);
+    nBytesWritten = m_spStreamingClient->WriteFile(
+        writeFileName, v2Data->Buffer.get(), v2Data->BufferSize, 0);
+    ASSERT_EQ(nBytesWritten, v2Data->BufferSize);
+    m_spStreamingClient->Close(writeFileName, v1Version, true /* isWriteMode */);
+
+    // Get V2's version — should be different from V1
+    FileAttributes v2Attrs;
+    m_spStreamingClient->GetProperties(writeFileName, v2Attrs);
+    ASSERT_FALSE(v2Attrs.version.empty());
+    ASSERT_NE(v1Version, v2Attrs.version);
+
+    // Read back — should get V2 data, not V1
+    std::shared_ptr<FileData> readData = std::make_shared<FileData>(
+        0, v2Data->BufferSize, nullptr, false);
+    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
+        writeFileName, readData->Buffer.get(), readData->BufferSize,
+        0, v2Data->BufferSize, v2Attrs.version);
+    ASSERT_EQ(nBytesRead, v2Data->BufferSize);
+    ASSERT_TRUE(FileDataEquals(v2Data, readData));
+
+    m_spStreamingClient->Close(writeFileName, "" /* version */, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------

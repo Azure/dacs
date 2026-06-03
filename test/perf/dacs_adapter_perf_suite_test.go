@@ -25,7 +25,7 @@ const (
 	boostedblobClients = "boostedblob,dacs_boostedblob,dacs_boostedblob_zero_copy"
 )
 
-var testAdapterBenchmark = func(ctx context.Context, clients string) {
+var testAdapterBenchmark = func(ctx context.Context, clients string, consistentMode bool) {
 	Expect(opts.StorageAccount).NotTo(BeEmpty(), "Storage account is required (--storage-account)")
 
 	opts.ResolveDefaults(ctx)
@@ -49,6 +49,10 @@ var testAdapterBenchmark = func(ctx context.Context, clients string) {
 
 	writeMode := opts.WriteMode
 	if writeMode == "" {
+		writeMode = "write_sync"
+	}
+	// Consistent mode requires synchronous writes
+	if consistentMode {
 		writeMode = "write_sync"
 	}
 
@@ -81,6 +85,12 @@ var testAdapterBenchmark = func(ctx context.Context, clients string) {
 		numProcesses:             numProcesses,
 		writeMode:                writeMode,
 		cacheDiscoveryURL:        common.GetDiscoveryURLForCache(cacheName, namespace),
+		consistentMode:           consistentMode,
+	}
+
+	modeLabel := "EFFICIENT"
+	if consistentMode {
+		modeLabel = "CONSISTENT"
 	}
 
 	result, err := config.runBenchmark(ctx)
@@ -88,44 +98,61 @@ var testAdapterBenchmark = func(ctx context.Context, clients string) {
 
 	// Log results
 	log.Info(strings.Repeat("=", 80))
-	log.Info("ADAPTER BENCHMARK RESULTS")
+	log.Info(fmt.Sprintf("ADAPTER BENCHMARK RESULTS (%s MODE)", modeLabel))
 	log.Info(strings.Repeat("=", 80))
 	for clientName, r := range result.Results {
-		log.Info("Result",
+		logFields := []interface{}{
 			"client", clientName,
 			"writeMBps", r.WriteThroughputMBps,
 			"readMBps", r.ReadThroughputMBps,
-		)
+		}
+		if r.OverwriteBytesTransferred > 0 {
+			logFields = append(logFields, "overwriteMBps", r.OverwriteThroughputMBps)
+		}
+		log.Info("Result", logFields...)
 	}
 
 	// Send metrics to Kusto
 	sendAdapterBenchmarkMetrics(ctx, result)
 
 	// Add report entries
+	suffix := ""
+	if consistentMode {
+		suffix = " (consistent)"
+	}
 	for clientName, r := range result.Results {
-		AddReportEntry(clientName+" Write", ReportEntryVisibilityAlways,
+		AddReportEntry(clientName+" Write"+suffix, ReportEntryVisibilityAlways,
 			fmt.Sprintf("%.0f MB/s", r.WriteThroughputMBps))
-		AddReportEntry(clientName+" Read", ReportEntryVisibilityAlways,
+		AddReportEntry(clientName+" Read"+suffix, ReportEntryVisibilityAlways,
 			fmt.Sprintf("%.0f MB/s", r.ReadThroughputMBps))
+		if r.OverwriteBytesTransferred > 0 {
+			AddReportEntry(clientName+" Overwrite"+suffix, ReportEntryVisibilityAlways,
+				fmt.Sprintf("%.0f MB/s", r.OverwriteThroughputMBps))
+		}
 	}
 
 	Expect(len(result.Results)).To(BeNumerically(">", 0), "No benchmark results")
 }
 
-var testBlobfileAdapterBenchmark = func(ctx context.Context) {
-	testAdapterBenchmark(ctx, blobfileClients)
-}
-
-var testBoostedBlobAdapterBenchmark = func(ctx context.Context) {
-	testAdapterBenchmark(ctx, boostedblobClients)
-}
-
 var _ = Describe("Adapter Benchmark", Label("perf", "aks", "adapter"), Ordered, func() {
 	Context("Blobfile Adapter Benchmark", Label("adapter-benchmark-blobfile"), func() {
-		It("should run blobfile adapter throughput benchmark", testBlobfileAdapterBenchmark)
+		It("should run blobfile adapter throughput benchmark", func(ctx context.Context) {
+			testAdapterBenchmark(ctx, blobfileClients, false)
+		})
 	})
 
 	Context("Boostedblob Adapter Benchmark", Label("adapter-benchmark-boostedblob"), func() {
-		It("should run boostedblob adapter throughput benchmark", testBoostedBlobAdapterBenchmark)
+		It("should run boostedblob adapter throughput benchmark", func(ctx context.Context) {
+			testAdapterBenchmark(ctx, boostedblobClients, false)
+		})
+	})
+
+	Context("Consistent Mode Benchmark", Label("adapter-benchmark-consistent"), func() {
+		It("should run blobfile write/overwrite/read in consistent mode", func(ctx context.Context) {
+			testAdapterBenchmark(ctx, "dacs_blobfile,dacs_blobfile_zero_copy", true)
+		})
+		It("should run boostedblob write/overwrite/read in consistent mode", func(ctx context.Context) {
+			testAdapterBenchmark(ctx, "dacs_boostedblob,dacs_boostedblob_zero_copy", true)
+		})
 	})
 })

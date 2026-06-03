@@ -205,6 +205,8 @@ def run_write_process(
     write_mode: str,
     prefix: str,
     client: str = "dacs_blobfile_zero_copy",
+    existing_paths: Optional[List[str]] = None,
+    consistent_mode: bool = False,
 ) -> ProcessResult:
     """Run write benchmark in a subprocess.
     
@@ -217,6 +219,7 @@ def run_write_process(
             - "dacs_boostedblob": dacs boostedblob adapter with memcpy
             - "dacs_boostedblob_zero_copy": dacs boostedblob adapter with zero-copy
         write_mode: DACS write mode (only for dacs clients)
+        existing_paths: If provided, write to these paths (overwrite) instead of generating new ones.
     """
     import asyncio
     import ctypes
@@ -224,12 +227,16 @@ def run_write_process(
     
     blob_size = int(blob_size_gb * GB)
     
-    # Generate paths using the helper function
-    paths = []
-    for i in range(num_blobs):
-        unique_id = uuid.uuid4().hex[:8]
-        blob_name = f"{prefix}/proc_{process_id:02d}/blob_{i:04d}_{unique_id}.bin"
-        paths.append(generate_blob_path(storage_account, container, blob_name, client))
+    # Use existing paths (overwrite) or generate new ones
+    overwrite = existing_paths is not None
+    if existing_paths:
+        paths = existing_paths
+    else:
+        paths = []
+        for i in range(num_blobs):
+            unique_id = uuid.uuid4().hex[:8]
+            blob_name = f"{prefix}/proc_{process_id:02d}/blob_{i:04d}_{unique_id}.bin"
+            paths.append(generate_blob_path(storage_account, container, blob_name, client))
     
     # Prepare data - generate a random pattern for filling blobs.
     # For zero-copy clients the pattern is copied directly into a native buffer,
@@ -279,11 +286,11 @@ def run_write_process(
                 chunk_len = min(PATTERN_SIZE, blob_size - offset)
                 ctypes.memmove(buf_addr + offset, pattern, chunk_len)
             def write_fn(path):
-                with DACSAdapter(path, "wb", write_mode=wm) as f:
+                with DACSAdapter(path, "wb", write_mode=wm, consistent_mode=consistent_mode) as f:
                     f.write(buffer=buffer, size=blob_size)
         else:
             def write_fn(path):
-                with DACSAdapter(path, "wb", write_mode=wm) as f:
+                with DACSAdapter(path, "wb", write_mode=wm, consistent_mode=consistent_mode) as f:
                     f.write(get_data_bytes())
     
     elif is_dacs_client(client) and is_boostedblob_family(client):
@@ -298,6 +305,9 @@ def run_write_process(
                 success=False, paths=[], error=str(e),
             )
         
+        # Initialize singleton with consistent_mode before any write calls
+        tbb._ClientManager.get_instance(consistent_mode=consistent_mode)
+        
         if is_zero_copy(client):
             # Fill native buffer directly in chunks to avoid double memory (5GB Python + 5GB native)
             buffer = alloc_buffer(blob_size)
@@ -306,10 +316,10 @@ def run_write_process(
                 chunk_len = min(PATTERN_SIZE, blob_size - offset)
                 ctypes.memmove(buf_addr + offset, pattern, chunk_len)
             def write_fn(path):
-                asyncio.run(tbb.write.write_single(path, buffer=buffer, size=blob_size))
+                asyncio.run(tbb.write.write_single(path, buffer=buffer, size=blob_size, overwrite=overwrite))
         else:
             def write_fn(path):
-                asyncio.run(tbb.write.write_single(path, get_data_bytes()))
+                asyncio.run(tbb.write.write_single(path, get_data_bytes(), overwrite=overwrite))
     
     elif is_blobfile_family(client):  # baseline blobfile
         try:
@@ -640,6 +650,7 @@ def main():
     parser.add_argument("--num-blobs", type=int, default=4, help="Number of blobs PER PROCESS")
     parser.add_argument("--num-processes", type=int, default=8, help="Number of parallel processes")
     parser.add_argument("--write-mode", default="write_sync", help="DACS write mode")
+    parser.add_argument("--consistent-mode", action="store_true", help="Enable consistent mode (overwrite support)")
     parser.add_argument("--skip-write", action="store_true", help="Skip write phase")
     parser.add_argument("--skip-read", action="store_true", help="Skip read phase")
     parser.add_argument("--no-cleanup", action="store_true", help="Skip cleanup")
@@ -690,14 +701,18 @@ def main():
     total_data_gb = args.num_processes * args.num_blobs * args.blob_size_gb
     blob_size = int(args.blob_size_gb * GB)
     
+    # When consistent mode is active, an overwrite pass is automatically included.
+    consistent_mode = args.consistent_mode
+    
     # Get node identifier for unique paths in multi-node runs
     import socket
     node_id = args.node_id if args.node_id else socket.gethostname()
     prefix = f"dacs_tests/benchmark/{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}/{node_id}"
     
     mode_str = "SINGLE-PROCESS (PROFILING)" if args.single_process else "MULTI-PROCESS"
+    operating_mode = "CONSISTENT" if consistent_mode else "EFFICIENT"
     print("\n" + "=" * 70)
-    print(f"{mode_str} BENCHMARK")
+    print(f"{mode_str} BENCHMARK ({operating_mode} MODE)")
     print("=" * 70)
     print(f"Node ID:         {node_id}")
     if not args.single_process:
@@ -707,6 +722,9 @@ def main():
     print(f"Total Data:      {total_data_gb:.1f} GB")
     print(f"Storage Account: {args.storage_account}")
     print(f"Clients:         {', '.join(clients)}")
+    print(f"Operating Mode:  {operating_mode}")
+    if consistent_mode:
+        print(f"Overwrite:       enabled (auto)")
     print("=" * 70)
     
     # Get NIC speed once (used for all clients)
@@ -725,14 +743,19 @@ def main():
         # Initialize result tracking variables
         successful_writes: List[ProcessResult] = []
         successful_reads: List[ProcessResult] = []
+        successful_overwrites: List[ProcessResult] = []
         total_written = 0
         total_read = 0
+        total_overwritten = 0
         write_duration = 0.0
         read_duration = 0.0
+        overwrite_duration = 0.0
         write_throughput_mbps = 0.0
         write_throughput_gbits = 0.0
         read_throughput_mbps = 0.0
         read_throughput_gbits = 0.0
+        overwrite_throughput_mbps = 0.0
+        overwrite_throughput_gbits = 0.0
         
         # Use unique prefix per client to avoid path clashes
         client_prefix = f"{prefix}/{client}"
@@ -754,7 +777,7 @@ def main():
                 result = run_write_process(
                     0, args.storage_account, args.container,
                     args.blob_size_gb, args.num_blobs, args.write_mode, client_prefix,
-                    client,
+                    client, consistent_mode=consistent_mode,
                 )
                 write_results.append(result)
                 if result.paths:
@@ -770,7 +793,7 @@ def main():
                         executor.submit(
                             run_write_process, i, args.storage_account, args.container,
                             args.blob_size_gb, args.num_blobs, args.write_mode, client_prefix,
-                            client,
+                            client, consistent_mode=consistent_mode,
                         ): i
                         for i in range(args.num_processes)
                     }
@@ -815,6 +838,84 @@ def main():
                 with open(args.paths_file, 'w', encoding='utf-8') as f:
                     json.dump(all_written_paths, f)
                 print(f"Paths saved to {args.paths_file} ({sum(len(p) for p in all_written_paths)} blobs)")
+        
+        # ==================== OVERWRITE PHASE ====================
+        # In consistent mode, re-write the same blob paths with new data to measure overwrite throughput.
+        if consistent_mode and not args.skip_write:
+            flat_paths = [p for paths in all_written_paths for p in paths]
+            if not flat_paths:
+                print("\nNo blobs to overwrite (write phase failed)")
+            else:
+                # Redistribute paths across processes (same as read phase)
+                paths_per_process = [[] for _ in range(args.num_processes)]
+                for i, path in enumerate(flat_paths):
+                    paths_per_process[i % args.num_processes].append(path)
+                
+                print(f"\n{'='*70}")
+                if args.single_process:
+                    print(f"OVERWRITE PHASE - Single process (profiling mode)...")
+                else:
+                    print(f"OVERWRITE PHASE - Launching {args.num_processes} parallel processes...")
+                print(f"{'='*70}")
+                
+                overwrite_start = time.perf_counter()
+                overwrite_results: List[ProcessResult] = []
+                
+                if args.single_process:
+                    result = run_write_process(
+                        0, args.storage_account, args.container,
+                        args.blob_size_gb, args.num_blobs, args.write_mode, client_prefix,
+                        client, existing_paths=flat_paths, consistent_mode=consistent_mode,
+                    )
+                    overwrite_results.append(result)
+                    status = "✓" if result.success else "✗"
+                    print(f"  {status} {result.throughput_mbps:.0f} MB/s ({result.throughput_gbits:.2f} Gbits/s)")
+                    if result.error:
+                        print(f"    Error: {result.error}")
+                else:
+                    with ProcessPoolExecutor(max_workers=args.num_processes) as executor:
+                        futures = {}
+                        for i in range(args.num_processes):
+                            if not paths_per_process[i]:
+                                continue
+                            futures[executor.submit(
+                                run_write_process, i, args.storage_account, args.container,
+                                args.blob_size_gb, len(paths_per_process[i]), args.write_mode,
+                                client_prefix, client, existing_paths=paths_per_process[i],
+                                consistent_mode=consistent_mode,
+                            )] = i
+                        
+                        for future in as_completed(futures):
+                            proc_id = futures[future]
+                            try:
+                                result = future.result()
+                                overwrite_results.append(result)
+                                status = "✓" if result.success else "✗"
+                                print(f"  Process {proc_id:2d}: {status} {result.throughput_mbps:.0f} MB/s ({result.throughput_gbits:.2f} Gbits/s)")
+                                if result.error:
+                                    print(f"    Error: {result.error}")
+                            except Exception as e:
+                                print(f"  Process {proc_id:2d}: ✗ Exception: {e}")
+                
+                overwrite_duration = time.perf_counter() - overwrite_start
+                
+                successful_overwrites = [r for r in overwrite_results if r.success]
+                total_overwritten = sum(r.bytes_transferred for r in successful_overwrites)
+                overwrite_throughput_mbps = (total_overwritten / MB) / overwrite_duration if overwrite_duration > 0 else 0
+                overwrite_throughput_gbits = (overwrite_throughput_mbps * 8) / 1000
+                
+                print(f"\n{'='*70}")
+                print("OVERWRITE RESULTS")
+                print(f"{'='*70}")
+                print(f"Processes Succeeded: {len(successful_overwrites)}/{args.num_processes}")
+                print(f"Total Data Written:  {total_overwritten / GB:.2f} GB")
+                print(f"Wall-Clock Duration: {overwrite_duration:.2f}s")
+                print(f"")
+                print(f"AGGREGATE OVERWRITE THROUGHPUT:")
+                print(f"  {overwrite_throughput_mbps:.0f} MB/s")
+                print(f"  {overwrite_throughput_mbps/1024:.2f} GB/s")
+                print(f"  {overwrite_throughput_gbits:.2f} Gbits/s")
+                print(f"{'='*70}")
         
         # ==================== READ PHASE ====================
         if not args.skip_read:
@@ -930,6 +1031,19 @@ def main():
             else:
                 print()
         
+        if consistent_mode and successful_overwrites:
+            overwrite_throughput_gbps = overwrite_throughput_mbps / 1024
+            overwrite_nic_util = (overwrite_throughput_gbits / nic_speed_gbps * 100) if nic_speed_gbps > 0 else 0
+            print(f"\nOVERWRITE:")
+            print(f"  Total Data:    {total_overwritten / GB:.2f} GB")
+            print(f"  Duration:      {overwrite_duration:.2f}s")
+            print(f"  Throughput:    {overwrite_throughput_mbps:.0f} MB/s | {overwrite_throughput_gbps:.2f} GB/s")
+            print(f"  Network:       {overwrite_throughput_gbits:.2f} Gbits/s", end="")
+            if nic_speed_gbps > 0:
+                print(f" ({overwrite_nic_util:.1f}% of NIC)")
+            else:
+                print()
+        
         print(f"{'='*70}")
         
         # Store results for comparison
@@ -940,6 +1054,9 @@ def main():
             "read_bytes": total_read,
             "read_duration_seconds": read_duration,
             "read_mbps": read_throughput_mbps,
+            "overwrite_bytes": total_overwritten,
+            "overwrite_duration_seconds": overwrite_duration,
+            "overwrite_mbps": overwrite_throughput_mbps,
         }
         
         # Cleanup

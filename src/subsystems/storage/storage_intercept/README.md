@@ -118,6 +118,10 @@ enableWriteRemote [true or false - Enable writes to remote store. default - true
 enableWriteRemoteAsync [true or false - Write to cache first and then async copy to remote store. default - true ]
 remoteAsyncWriteFileConcurrency [Max number of files to async copy from cache to remote store. default - 16 ]
 enableVersionedCacheKeys [true or false - Include file version in cache keys and generate per-file groupIds. default - true]
+enableConsistentMode [true or false - Enable consistent mode with overwrite support. Disables attributes cache (always fetches properties from Azure). 
+Default is false (Default Mode: efficient mode: no overwrite, uses attribute cache if enabled). 
+Requires enableVersionedCacheKeys=true. If writes are enabled(enableWrite=true), requires enableWriteRemote=true and enableWriteRemoteAsync=false.]
+enableGarbageCollectionInConsistentMode [true or false - When consistent mode is enabled, controls whether stale cache chunks from overwritten files are actively deleted. When false, stale chunks are deleted by cache eviction (LRU) to clean up. default - false]
 cacheUseLocalFS [true or false - Enable local ssd cache. default - false (use remote cache server)]
 cacheLocalFSCachePath [local path (use ssd or tmpfs) where the cache chunks have to be stored]
 cacheLocalFSCacheStagingPath [local path (use ssd or tmpfs) used for staging data currently being uploaded]

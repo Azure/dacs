@@ -25,6 +25,12 @@ namespace cacheutils
     bool IsValidLastAccessTime(const char* lastAccessTime);
     std::string GetSHA256Hex(const std::string& message);
 
+    // Compute the cache groupId for a file+version pair.
+    inline std::string GetGroupIdForFileVersion(const std::string& filePath, const std::string& version)
+    {
+        return GetSHA256Hex(filePath + ":" + version);
+    }
+
     // Generate a globally-unique ID. Takes ~4ms for 10K invocations.
     std::string GetCorrelationId();
 

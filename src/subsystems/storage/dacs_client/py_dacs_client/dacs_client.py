@@ -272,7 +272,7 @@ class DACSCacheClient:
         All methods are safe to call concurrently - each operation uses its own file descriptor.
     """
     
-    def __init__(self, executor: concurrent.futures.Executor = None, write_mode: Optional[WriteMode] = None):
+    def __init__(self, executor: concurrent.futures.Executor = None, write_mode: Optional[WriteMode] = None, consistent_mode: bool = False):
         if executor is None:
             self.reset_executor()
         else:
@@ -280,10 +280,11 @@ class DACSCacheClient:
 
         self.intercept_base_path = DEFAULT_INTERCEPT_PATH
         self.write_mode = write_mode
-        logger.debug(f"DACS_Cache_Client:Initializing DACSCacheClient, write_mode:{write_mode}")
+        self.consistent_mode = consistent_mode
+        logger.debug(f"DACS_Cache_Client:Initializing DACSCacheClient, write_mode:{write_mode}, consistent_mode:{consistent_mode}")
 
         # Configure up the DACS client
-        _initialize_dacs_client_config(intercept_path=self.intercept_base_path, write_mode=write_mode)
+        _initialize_dacs_client_config(intercept_path=self.intercept_base_path, write_mode=write_mode, consistent_mode=consistent_mode)
 
         # Metrics to track (no lock needed - see explanation below)
         # These counters are updated without synchronization because:
@@ -445,18 +446,20 @@ class DACSCacheClient:
         self.bytes_read += read_size
         return read_size
 
-    def write_blob_sync(self, blob_path: str, buffer: ctypes.c_void_p, size: int) -> int:
+    def write_blob_sync(self, blob_path: str, buffer: ctypes.c_void_p, size: int, overwrite: bool = False) -> int:
         """
         Write data from a buffer to a blob (synchronous).
 
         Uses managed file handle internally - file opening and closing is handled automatically.
-        Creates the file if it doesn't exist (O_CREAT flag). Uses O_EXCL to fail if exists.
+        overwrite=False: uses O_EXCL to fail if file exists.
+        overwrite=True: uses O_TRUNC to overwrite existing files (requires consistent mode).
         Updates write metrics (num_writes, bytes_written).
 
         Args:
             blob_path: Azure blob path (e.g., az://account/container/path)
             buffer: C buffer containing data to write (allocated with alloc_buffer or ctypes array)
             size: Number of bytes to write
+            overwrite: If True, use O_TRUNC to overwrite existing files
 
         Returns:
             int: Number of bytes actually written
@@ -466,10 +469,10 @@ class DACSCacheClient:
             DACSStorageError: If file open/create operation fails
         """
         open_path = _dacs_get_intercept_file_path(self.intercept_base_path, blob_path)
-        logger.debug(f"DACS_Cache_Client:Writing blob {blob_path} using interception path {open_path} size:{size}")
+        logger.debug(f"DACS_Cache_Client:Writing blob {blob_path} using interception path {open_path} size:{size} overwrite:{overwrite}")
 
-        # Using sync context manager
-        with DACSCacheFileHandle(open_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, self.executor) as cacheFileHandle:
+        flags = os.O_WRONLY | os.O_CREAT | (os.O_TRUNC if overwrite else os.O_EXCL)
+        with DACSCacheFileHandle(open_path, flags, self.executor) as cacheFileHandle:
             write_size = cacheFileHandle.write_sync(buffer, size, 0)
             if write_size != size:
                 logger.error(f"Expected to write {size} bytes but only wrote {write_size} bytes")
@@ -558,10 +561,12 @@ class DACSCacheClient:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self.executor, self.read_blob_sync, blob_path, buffer, size, offset)
 
-    async def write_blob(self, blob_path: str, buffer: ctypes.c_void_p, size: int) -> int:
+    async def write_blob(self, blob_path: str, buffer: ctypes.c_void_p, size: int, overwrite: bool = False) -> int:
         """Async version of write_blob_sync() - runs in executor for non-blocking operation."""
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self.executor, self.write_blob_sync, blob_path, buffer, size)
+        return await loop.run_in_executor(
+            self.executor, self.write_blob_sync, blob_path, buffer, size, overwrite
+        )
 
     async def list_dir(self, blob_path: str) -> AsyncIterator[Dict[str, object]]:
         """

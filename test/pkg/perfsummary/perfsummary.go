@@ -213,12 +213,15 @@ func ParseDACSClientPerfSummary(logs string, writePerfRegx, readPerfRegx *regexp
 
 // DACSAdapterBenchmarkResult holds performance results for a single client from the benchmark.
 type DACSAdapterBenchmarkResult struct {
-	WriteBytesTransferred uint64  `json:"write_bytes"`
-	WriteDurationSeconds  float64 `json:"write_duration_seconds"`
-	WriteThroughputMBps   float64 `json:"write_mbps"`
-	ReadBytesTransferred  uint64  `json:"read_bytes"`
-	ReadDurationSeconds   float64 `json:"read_duration_seconds"`
-	ReadThroughputMBps    float64 `json:"read_mbps"`
+	WriteBytesTransferred     uint64  `json:"write_bytes"`
+	WriteDurationSeconds      float64 `json:"write_duration_seconds"`
+	WriteThroughputMBps       float64 `json:"write_mbps"`
+	ReadBytesTransferred      uint64  `json:"read_bytes"`
+	ReadDurationSeconds       float64 `json:"read_duration_seconds"`
+	ReadThroughputMBps        float64 `json:"read_mbps"`
+	OverwriteBytesTransferred uint64  `json:"overwrite_bytes"`
+	OverwriteDurationSeconds  float64 `json:"overwrite_duration_seconds"`
+	OverwriteThroughputMBps   float64 `json:"overwrite_mbps"`
 }
 
 // DACSAdapterBenchmarkConfig holds the benchmark configuration.
@@ -243,11 +246,18 @@ func (s DACSAdapterBenchmarkSummary) String() string {
 	var result string
 	for client, r := range s.Results {
 		result += fmt.Sprintf(
-			"[%s] Write: %.2f GB in %.2fs (%.0f MB/s), Read: %.2f GB in %.2fs (%.0f MB/s)\n",
+			"[%s] Write: %.2f GB in %.2fs (%.0f MB/s), Read: %.2f GB in %.2fs (%.0f MB/s)",
 			client,
 			float64(r.WriteBytesTransferred)/(1024*1024*1024), r.WriteDurationSeconds, r.WriteThroughputMBps,
 			float64(r.ReadBytesTransferred)/(1024*1024*1024), r.ReadDurationSeconds, r.ReadThroughputMBps,
 		)
+		if r.OverwriteBytesTransferred > 0 {
+			result += fmt.Sprintf(
+				", Overwrite: %.2f GB in %.2fs (%.0f MB/s)",
+				float64(r.OverwriteBytesTransferred)/(1024*1024*1024), r.OverwriteDurationSeconds, r.OverwriteThroughputMBps,
+			)
+		}
+		result += "\n"
 	}
 	return result
 }

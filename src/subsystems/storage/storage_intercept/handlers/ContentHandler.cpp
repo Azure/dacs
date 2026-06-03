@@ -255,7 +255,7 @@ void ContentHandler::SetCacheClients()
     bool attrCacheEnabled = false;
     for (const auto& mountInfo : m_vecMountInfo)
     {
-        if (StorageInterceptConfig::GetInstance().GetAttributesCacheEnable(mountInfo->MountName))
+        if (StorageInterceptConfig::GetInstance().ShouldEnableAttributesCache(mountInfo->MountName))
         {
             attrCacheEnabled = true;
             break;
@@ -404,12 +404,25 @@ int ContentHandler::HandleFClose(void* stream)
     }
 
     const std::string remotePath = fdIt->second->RemotePath;
-    const std::string version = fdIt->second->Attributes.version;
+    const std::string existingVersion = fdIt->second->Attributes.version;
     MountInfo& mountInfo = GetMountInfo(fdIt->second->MountName);
     m_mapOpenHandles.erase(fdIt);
     openHandlesLock.unlock();
 
-    GetStreamingClient(mountInfo).Close(remotePath, version, false /* isWriteMode */);
+    GetStreamingClient(mountInfo).Close(remotePath, existingVersion, false /* isWriteMode */);
+
+    //Clean up m_mapFileToFds (mirrors HandleClose cleanup)
+    openHandlesLock.lock();
+    auto fdListIt = m_mapFileToFds.find(remotePath);
+    if (fdListIt != m_mapFileToFds.end())
+    {
+        fdListIt->second.erase(fd);
+        if (fdListIt->second.empty())
+        {
+            m_mapFileToFds.erase(fdListIt);
+        }
+    }
+    openHandlesLock.unlock();
 
     LOG_DEBUG("Intercepted the fclose system call at fd={} path={} mountName={}",
         fd,
@@ -495,13 +508,14 @@ int ContentHandler::OpenValidatedPathInternal(
             flags);
         return -1;
     }
-    if ((flags & O_WRONLY) && (flags != (O_WRONLY | O_CREAT | O_EXCL)))
+    // Write mode requires O_CREAT plus exactly one of O_EXCL (create-new) or O_TRUNC (overwrite).
+    if ((flags & O_WRONLY) &&
+        flags != (O_WRONLY | O_CREAT | O_EXCL) &&
+        flags != (O_WRONLY | O_CREAT | O_TRUNC))
     {
-        LOG_ERROR("Only (O_WRONLY | O_CREAT | O_EXCL) flags are supported for O_WRONLY open, "
-            "mountName={} path={} flags={}",
-            mountInfo.MountName,
-            relativePath,
-            flags);
+        LOG_ERROR("Unsupported write flags: expected O_WRONLY|O_CREAT with O_EXCL or O_TRUNC."
+            " mountName={} path={} flags={}",
+            mountInfo.MountName, relativePath, flags);
         return -1;
     }
 
@@ -569,13 +583,41 @@ int ContentHandler::OpenValidatedPathInternal(
     }
     else
     {
-        // If O_EXCL is specified with O_CREAT, and the file already exists, open() will fail.
+        // O_EXCL: fail if the file already exists
         if (isWriteMode && (flags & O_CREAT) != 0 && (flags & O_EXCL) != 0)
         {
-            LOG_ERROR("Cannot overwrite an existing file mountName={} path={}",
+            LOG_ERROR("File already exists, cannot open in exclusive mode (O_EXCL)."
+                " mountName={} path={} flags={}",
+                mountInfo.MountName,
+                relativePath,
+                flags);
+            errno = EEXIST;
+            return -1;
+        }
+
+        // O_TRUNC on an existing file: overwrite allowed only in consistent mode
+        if (isWriteMode && (flags & O_TRUNC) != 0)
+        {
+            if (!StorageInterceptConfig::GetInstance().IsConsistentModeEnabled(mountInfo.MountName))
+            {
+                LOG_ERROR("File already exists, cannot overwrite without consistent mode (O_TRUNC)."
+                    " mountName={} path={} flags={}",
+                    mountInfo.MountName,
+                    relativePath,
+                    flags);
+                errno = EEXIST;
+                return -1;
+            }
+
+            // Consistent mode: reset size for correct fstat/lseek behavior.
+            // old version stays in Attributes.version — flows to Close() for PrefetchCache purge and GC.
+            LOG_INFO("Overwrite open (O_TRUNC) on existing file,"
+                " version={} size={} mountName={} path={}",
+                fullFd->Attributes.version,
+                fullFd->Attributes.size,
                 mountInfo.MountName,
                 relativePath);
-            return -1;
+            fullFd->Attributes.size = 0;
         }
     }
 
@@ -911,12 +953,12 @@ int ContentHandler::HandleClose(int fd)
 
     const std::string remotePath = fdIt->second->RemotePath;
     const bool isWriteMode = fdIt->second->IsWriteMode;
-    const std::string version = fdIt->second->Attributes.version;
+    const std::string existingVersion = fdIt->second->Attributes.version;
     MountInfo& mountInfo = GetMountInfo(fdIt->second->MountName);
     openHandlesLock.unlock();
 
     // TODO: StreamingClient throws on close errors, change to return codes?
-    GetStreamingClient(mountInfo).Close(remotePath, version, isWriteMode);
+    GetStreamingClient(mountInfo).Close(remotePath, existingVersion, isWriteMode);
 
     openHandlesLock.lock();
     fdIt = m_mapOpenHandles.find(fd);

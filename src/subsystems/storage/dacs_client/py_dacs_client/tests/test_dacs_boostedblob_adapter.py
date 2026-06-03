@@ -328,12 +328,12 @@ class TestWriteOperations:
         with pytest.raises(Exception):
             run_async(bbb.write.write_single(blob_path, b"second", overwrite=False))
 
-    def test_write_overwrite_not_supported(self):
-        """Test that overwrite=True raises OperationNotSupportedError."""
+    def test_write_overwrite_not_supported_in_efficient_mode(self):
+        """Test that overwrite=True raises OperationNotSupportedError in efficient mode."""
         blob_path = f"{AZURE_BLOB_PATH}/test_write_overwrite_{id(self)}.txt"
         run_async(bbb.write.write_single(blob_path, b"first content"))
         
-        # Overwrite is not supported by DACSCacheClient
+        # Overwrite is not supported in efficient mode (default)
         with pytest.raises(OperationNotSupportedError):
             run_async(bbb.write.write_single(blob_path, b"second content", overwrite=True))
 

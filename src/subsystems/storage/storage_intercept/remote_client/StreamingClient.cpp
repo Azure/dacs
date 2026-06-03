@@ -100,6 +100,8 @@ StreamingClient::StreamingClient(
     , m_bStopLogging(false)
     , m_bEnableZeroCopy(StorageInterceptConfig::GetInstance().GetEnableZeroCopy(mountName))
     , m_bEnableVersionedCacheKeys(StorageInterceptConfig::GetInstance().IsVersionedCacheKeysEnabled())
+    , m_bEnableConsistentMode(StorageInterceptConfig::GetInstance().IsConsistentModeEnabled(mountName))
+    , m_bEnableGarbageCollectionInConsistentMode(StorageInterceptConfig::GetInstance().IsGarbageCollectionInConsistentModeEnabled(mountName))
 {
     SetClients(cacheClient, attributesCache);
 
@@ -133,6 +135,20 @@ StreamingClient::StreamingClient(
         &StreamingClient::LongRunningLogStats,
         this,
         StorageInterceptConfig::GetInstance().GetLogsRefreshIntervalInSeconds());
+
+    if (m_bEnableConsistentMode)
+    {
+        // TODO: Remove versioned keys check once the enableVersionedCacheKeys flag is retired.
+        STORAGE_ASSERT(m_bEnableVersionedCacheKeys,
+            "Consistent mode requires enableVersionedCacheKeys=true");
+        if (m_bEnableWrite)
+        {
+            STORAGE_ASSERT(m_bEnableRemoteWrite,
+                "Consistent mode does not support write-cache-only (enableWriteRemote must be true)");
+            STORAGE_ASSERT(!m_bEnableRemoteWriteAsync,
+                "Consistent mode does not support async remote write (enableRemoteWriteAsync must be false)");
+        }
+    }
 
     if (m_bEnableWrite && m_bEnableRemoteWrite && m_bEnableRemoteWriteAsync)
     {    
@@ -228,7 +244,7 @@ void StreamingClient::SetClients(
         std::atomic_store(&m_spCacheClient, cacheClient);
     }
 
-    if (StorageInterceptConfig::GetInstance().GetAttributesCacheEnable(m_strMountName))
+    if (StorageInterceptConfig::GetInstance().ShouldEnableAttributesCache(m_strMountName))
     {
         std::atomic_store(&m_spAttributesCache, attributesCache);
     }
@@ -603,10 +619,11 @@ int StreamingClient::GetProperties(
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::Close(
     const std::string& remotePath,
-    const std::string& version,
+    const std::string& existingVersion,
     const bool isWriteMode)
 {
-    PrefetchCache::GetInstance().PurgeAll(GetCacheFilePath(remotePath), version);
+    // existingVersion carries the file's version at open time (empty for new files)
+    PrefetchCache::GetInstance().PurgeAll(GetCacheFilePath(remotePath), existingVersion);
 
     // If the file was opened in write mode, we need to do two additional things
     // 1. Upload the chunks to the cache server if caching is enabled
@@ -620,13 +637,13 @@ void StreamingClient::Close(
         const off64_t fileSize = UploadCache::GetInstance().GetFileSize(GetCacheFilePath(remotePath));
 
         // Generate a new version for write (when versioned cache keys are enabled)
-        std::string writeVersion;
+        std::string newWriteVersion;
         if (m_bEnableVersionedCacheKeys)
         {
-            writeVersion = StorageInterceptUtils::GenerateUUID();
+            newWriteVersion = StorageInterceptUtils::GenerateUUID();
         }
         LOG_INFO("Generated write version={} for remotePath={} isVersionedKeysEnabled={}",
-            writeVersion, remotePath, m_bEnableVersionedCacheKeys);
+            newWriteVersion, remotePath, m_bEnableVersionedCacheKeys);
 
         struct timespec curTimeSpec;
         clock_gettime(CLOCK_REALTIME, &curTimeSpec);
@@ -635,7 +652,7 @@ void StreamingClient::Close(
         postWriteFileAttributes.size = fileSize;
         postWriteFileAttributes.mTime = curTimeSpec;
         postWriteFileAttributes.aTime = curTimeSpec;
-        postWriteFileAttributes.version = writeVersion;        
+        postWriteFileAttributes.version = newWriteVersion;        
         LOG_INFO("Closing file in write mode. remotePath={} fileSize={}", remotePath, fileSize);
 
         if(!WriteChunksToCache(remotePath, postWriteFileAttributes))
@@ -648,7 +665,7 @@ void StreamingClient::Close(
             }
         }
 
-        if(!WriteChunksToRemoteStore(remotePath, fileSize, writeVersion))
+        if(!WriteChunksToRemoteStore(remotePath, fileSize, newWriteVersion))
         {
             // Treat blob write error as fatal.
             // Note: The data may have been written to cache successfully, if cache write is enabled.
@@ -658,7 +675,41 @@ void StreamingClient::Close(
 
         // Purge the whole file from upload cache
         UploadCache::GetInstance().Purge(GetCacheFilePath(remotePath));
+
+        // Evict stale cache chunks for the version that was on disk before this write
+        LOG_DEBUG("Attempting Eviction of existing version cache after version update."
+            " remotePath={} existingVersion={} newVersion={}",
+            remotePath,
+            existingVersion,
+            newWriteVersion);
+        if (m_bEnableGarbageCollectionInConsistentMode)
+        {
+            EvictCacheForFileVersion(remotePath, existingVersion);
+        }
     }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void StreamingClient::EvictCacheForFileVersion(
+    const std::string& remotePath,
+    const std::string& version)
+{
+    if (version.empty())
+    {
+        LOG_DEBUG("Version is empty, skipping cache eviction. remotePath={}", remotePath);
+        return;
+    }
+
+    auto cacheClient = std::atomic_load(&m_spCacheClient);
+    if (!cacheClient)
+    {
+        LOG_DEBUG("Cache client is not available, skipping cache eviction. remotePath={}", remotePath);
+        return;
+    }
+
+    const std::string groupId = GetGroupIdForFileVersion(remotePath, version);
+    LOG_DEBUG("Evicting cache for version. remotePath={} version={} groupId={}",
+        remotePath, version, groupId);
+    cacheClient->DeleteGroup(groupId);
 }
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t StreamingClient::ReadChunkAndCopyToBuffer(

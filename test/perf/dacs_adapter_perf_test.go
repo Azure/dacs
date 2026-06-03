@@ -45,6 +45,7 @@ type AdapterBenchmarkConfig struct {
 	numProcesses             int
 	writeMode                string
 	cacheDiscoveryURL        string
+	consistentMode           bool
 }
 
 func (config *AdapterBenchmarkConfig) runBenchmark(ctx context.Context) (*perfsummary.DACSAdapterBenchmarkSummary, error) {
@@ -76,6 +77,10 @@ func (config *AdapterBenchmarkConfig) runBenchmark(ctx context.Context) (*perfsu
 		WithEnv(0, "NUM_PROCESSES", strconv.Itoa(config.numProcesses)).
 		WithEnv(0, "WRITE_MODE", config.writeMode).
 		WithEnvDownwardAPIPodName()
+
+	if config.consistentMode {
+		jobConfig.WithEnv(0, "CONSISTENT_MODE", "true")
+	}
 
 	// Configure credentials: workload identity > SAS token > managed identity
 	if config.workloadIdentityClientID != "" && config.serviceAccountName != "" {
@@ -228,6 +233,35 @@ func sendAdapterBenchmarkMetrics(ctx context.Context, result *perfsummary.DACSAd
 		}
 		if err := kusto.SendPerfMetric(ctx, kusto.DefaultEventHubConfig, readMetric); err != nil {
 			log.Error(err, "Failed to send read metric", "client", clientName)
+		}
+
+		// Send overwrite metric if overwrite phase was run
+		if r.OverwriteBytesTransferred > 0 {
+			overwriteMetric := &kusto.PerfMetric{
+				SuiteID:          suiteUUID,
+				TestName:         fmt.Sprintf("%s/adapter-benchmark/%s/overwrite", specReport.FullText(), clientName),
+				TestGitCommit:    gitCommit,
+				TestGitBranch:    gitBranch,
+				HelmChartVersion: helmInfo.ChartVersion,
+				HelmAppVersion:   helmInfo.AppVersion,
+				TestMetadata: kusto.TestMetadata{
+					ClusterName: clusterName,
+					IsMinikube:  cluster.IsMinikube(),
+				},
+				Result: kusto.AdapterPerfResult{
+					ClientName:            fmt.Sprintf("%s-overwrite", clientName),
+					BlobSizeGB:            result.Config.BlobSizeGB,
+					NumBlobs:              result.Config.NumBlobs,
+					NumProcesses:          result.Config.NumProcesses,
+					WriteMode:             result.Config.WriteMode,
+					TotalBytesTransferred: r.OverwriteBytesTransferred,
+					DurationSeconds:       r.OverwriteDurationSeconds,
+					ThroughputMbps:        r.OverwriteThroughputMBps * 8,
+				},
+			}
+			if err := kusto.SendPerfMetric(ctx, kusto.DefaultEventHubConfig, overwriteMetric); err != nil {
+				log.Error(err, "Failed to send overwrite metric", "client", clientName)
+			}
 		}
 	}
 }

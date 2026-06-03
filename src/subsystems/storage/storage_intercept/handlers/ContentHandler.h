@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include <map>
 #include <mutex>
+#include <atomic>
 #include "DirectoryStream.h"
 #include "FileAttributes.h"
 #include "FileDescriptor.h"

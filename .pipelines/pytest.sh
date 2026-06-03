@@ -156,39 +156,58 @@ else
     fi
 fi
 
-# Define test directories
-TEST_DIRS=(
-    "${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client/py_dacs_client/tests"
-)
+# Test root directory
+TEST_ROOT="${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client/py_dacs_client/tests"
 
-# Directories to exclude from test collection
-EXCLUDE_DIRS=(
-    "blobfile_base_tests"
-)
-
-# Collect all existing test directories
-EXISTING_TEST_DIRS=()
-for dir in "${TEST_DIRS[@]}"; do
-    if [ -d "$dir" ]; then
-        EXISTING_TEST_DIRS+=("$dir")
-        echo "Found test directory: $dir"
-    fi
-done
-
-if [ ${#EXISTING_TEST_DIRS[@]} -eq 0 ]; then
-    echo "No test directories found!"
+if [ ! -d "$TEST_ROOT" ]; then
+    echo "Test directory not found: $TEST_ROOT"
     exit 1
 fi
+echo "Found test directory: $TEST_ROOT"
 
-echo ""
-echo "Running pytest..."
-echo "----------------------------------------"
+# Directories to exclude from the default test run
+EXCLUDE_DIRS=(
+    "blobfile_base_tests"
+    "consistent_mode"
+)
 
 # Build ignore options for excluded directories
 IGNORE_OPTS=""
 for exclude_dir in "${EXCLUDE_DIRS[@]}"; do
-    IGNORE_OPTS="$IGNORE_OPTS --ignore-glob=*/${exclude_dir}/*"
+    IGNORE_OPTS="$IGNORE_OPTS --ignore=${TEST_ROOT}/${exclude_dir}"
 done
+
+# -----------------------------------------------
+# run_pytest: Run a single pytest invocation
+# -----------------------------------------------
+# Usage: run_pytest <label> <xml_suffix> <test_paths...>
+#
+# Common args (timeout, verbosity, traceback, faulthandler) are defined once here.
+# The caller controls which directories/files to run and can set env vars before calling.
+run_pytest() {
+    local label="$1"
+    local xml_suffix="$2"
+    shift 2
+
+    echo ""
+    echo "========================================"
+    echo "Running ${label} tests"
+    echo "========================================"
+
+    local xml_file="${REPOSITORY_ROOT}/pytest-results${xml_suffix:+-${xml_suffix}}.xml"
+
+    python -X faulthandler -m pytest \
+        --timeout=300 \
+        -vv \
+        -s \
+        --tb=long \
+        --junitxml="${xml_file}" \
+        "$@"
+}
+
+echo ""
+echo "Running pytest..."
+echo "----------------------------------------"
 
 # Debug: Print environment and library information
 echo ""
@@ -262,31 +281,30 @@ echo ""
 export PYTHONFAULTHANDLER=1
 export PYTHONMALLOC=debug  # Detects heap misuse (buffer overflows, use-after-free, etc.)
 
-# Run pytest with collected test directories
-# -X faulthandler: Enable faulthandler for native crash tracebacks
-# --timeout=300: 5 minute timeout per test (for integration tests that may be slow)
-# -vv: very verbose output
-# -x: stop on first failure
-# -s: no capture, show stdout/stderr immediately
-# --tb=long: longer traceback format for debugging
-# --junitxml: generate JUnit XML report for CI/CD integration
-# $@: pass through any additional arguments
-echo "=== Running pytest command ==="
-echo "python -X faulthandler -m pytest --timeout=300 -vv -x -s --tb=long --junitxml=${REPOSITORY_ROOT}/pytest-results.xml $IGNORE_OPTS ${EXISTING_TEST_DIRS[@]} $@"
-echo ""
+# -----------------------------------------------
+# Run test groups
+# -----------------------------------------------
+# Each group runs in a separate Python process.
+# To add a new isolated test group:
+#   1. Create a subdirectory under tests/ (e.g., tests/my_mode/)
+#   2. Add the directory name to EXCLUDE_DIRS above
+#   3. Add a run_pytest call below with the required env vars
+# -----------------------------------------------
 
-# Run pytest with faulthandler enabled via -X flag
-python -X faulthandler -m pytest \
-    --timeout=300 \
-    -vv \
-    -s \
-    --tb=long \
-    --junitxml="${REPOSITORY_ROOT}/pytest-results.xml" \
-    $IGNORE_OPTS \
-    "${EXISTING_TEST_DIRS[@]}" \
-    "$@"
+PYTEST_EXIT_CODE=0
 
+# Group 1: Default tests (everything except excluded directories)
+run_pytest "default" "" $IGNORE_OPTS "${TEST_ROOT}" "$@"
 PYTEST_EXIT_CODE=$?
+
+# Group 2: Consistent-mode tests (run in a separate pytest invocation)
+if [ $PYTEST_EXIT_CODE -eq 0 ] && [ -d "${TEST_ROOT}/consistent_mode" ]; then
+    run_pytest "consistent-mode" "consistent-mode" "${TEST_ROOT}/consistent_mode" "$@"
+    CM_EXIT_CODE=$?
+    if [ $CM_EXIT_CODE -ne 0 ]; then
+        PYTEST_EXIT_CODE=$CM_EXIT_CODE
+    fi
+fi
 
 # Check for core dumps
 echo ""

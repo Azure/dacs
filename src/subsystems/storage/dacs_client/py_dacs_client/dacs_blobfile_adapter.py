@@ -93,15 +93,17 @@ class _ClientManager:
     _buffer_manager = None
     _lock = threading.Lock()
     _write_mode = None
+    _consistent_mode = False
 
     @classmethod
-    def get_instance(cls, write_mode: Optional["WriteMode"] = None) -> DACSCacheClient:
+    def get_instance(cls, write_mode: Optional["WriteMode"] = None, consistent_mode: bool = False) -> DACSCacheClient:
         """
         Get or create the singleton DACSCacheClient instance.
         Thread-safe lazy initialization using double-checked locking pattern.
 
         Args:
             write_mode: Write mode configuration for the client
+            consistent_mode: Enable consistent mode
 
         Returns:
             DACSCacheClient: The singleton instance
@@ -110,7 +112,8 @@ class _ClientManager:
             with cls._lock:
                 if cls._instance is None:
                     cls._write_mode = write_mode if write_mode else WriteMode.WRITE_SYNC
-                    cls._instance = DACSCacheClient(write_mode=cls._write_mode)
+                    cls._consistent_mode = consistent_mode
+                    cls._instance = DACSCacheClient(write_mode=cls._write_mode, consistent_mode=cls._consistent_mode)
         return cls._instance
 
     @classmethod
@@ -169,6 +172,7 @@ class DACSBlobfileAdapter:
         cache_dir: Optional[str] = None,
         file_size: Optional[int] = None,
         write_mode: Optional[WriteMode] = None,
+        consistent_mode: bool = False,
     ):
         """
         Open a local or remote file for reading or writing.
@@ -185,6 +189,7 @@ class DACSBlobfileAdapter:
             file_size: size of file (optimization for remote files)
             write_mode: WriteMode enum value for write operations.
                        Defaults to WRITE_SYNC if not provided.
+            consistent_mode: Enable consistent mode.
 
         """
         # Normalize Azure paths to internal format for API parity with native blobfile/boostedblob
@@ -201,9 +206,10 @@ class DACSBlobfileAdapter:
 
         # Set write mode with WRITE_SYNC as default
         self._write_mode = write_mode if write_mode else WriteMode.WRITE_SYNC
+        self._consistent_mode = consistent_mode
 
-        # Get and cache the DACSCacheClient instance with write_mode
-        self._client = _ClientManager.get_instance(write_mode=self._write_mode)
+        # Get and cache the DACSCacheClient instance with write_mode and consistent_mode
+        self._client = _ClientManager.get_instance(write_mode=self._write_mode, consistent_mode=self._consistent_mode)
 
         # Get the BoundedBufferManager for memory-limited buffer allocations
         self._buffer_manager = _ClientManager.get_buffer_manager()
@@ -228,8 +234,7 @@ class DACSBlobfileAdapter:
         if _is_azure_path(self._path):
             # DACS Client has limited write support:
             # - Does NOT support append mode ('a', 'ab') - would require read-modify-write
-            # - Does NOT support overwrite mode for existing files - O_EXCL is used in write_blob
-            # - Only supports creating new files in write mode ('w', 'wb')
+            # - Overwrite of existing files requires enableConsistentMode.
             # Fail early if unsupported modes are used
             if "a" in self._mode:
                 raise OperationNotSupportedError(
@@ -242,11 +247,10 @@ class DACSBlobfileAdapter:
 
             # Determine flags based on mode
             # Read mode: O_RDONLY for reading existing files
-            # Write mode: O_WRONLY | O_CREAT | O_EXCL for creating new files only (no overwrite)
-            # Note: Storage intercept only supports O_EXCL (not O_TRUNC) for write operations
+            # Write mode: O_WRONLY | O_CREAT | O_TRUNC for write/overwrite files.
             flags = os.O_RDONLY
             if "w" in self._mode:
-                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
 
             try:
                 self._file_handle = self._client.get_file_handle_sync(self._path, flags)
@@ -656,7 +660,8 @@ def copy(src: str, dst: str, overwrite: bool = False, return_md5: bool = False,
 
     Supports the following scenarios:
     - Local → Local: Uses shutil.copyfile (supports overwrite)
-    - Local → Remote (az://): Streams through cache layer (overwrite NOT supported)
+    - Local → Remote (az://): Streams through cache layer
+      (overwrite requires consistent mode)
     - Remote (az://) → Local: Streams from cache layer (supports overwrite)
     - Remote (az://) → Remote (az://): NOT supported
 
@@ -664,8 +669,8 @@ def copy(src: str, dst: str, overwrite: bool = False, return_md5: bool = False,
         src: Source file path (local path or az:// URL)
         dst: Destination file path (local path or az:// URL)
         overwrite: If False (default), raises FileExistsError if dst exists.
-                  If True, overwrites existing destination file (only for local→local and remote→local).
-                  NOTE: overwrite=True is NOT supported when destination is remote (az://).
+                  If True, overwrites existing destination file.
+                  For remote destinations, requires consistent mode.
         return_md5: If True, computes and returns MD5 hash of copied data.
 
     Returns:
@@ -675,7 +680,7 @@ def copy(src: str, dst: str, overwrite: bool = False, return_md5: bool = False,
         FileNotFoundError: If source file does not exist.
         FileExistsError: If destination exists and overwrite=False.
         IsADirectoryError: If source or destination is a directory.
-        OperationNotSupportedError: If overwrite=True with remote destination.
+        OperationNotSupportedError: If overwrite=True with remote destination in efficient mode.
         DACSError: For storage-related errors.
     """
     ## Filter requests
@@ -704,11 +709,13 @@ def copy(src: str, dst: str, overwrite: bool = False, return_md5: bool = False,
     
     # Destination check
     if overwrite:
-        # overwrite=True: dst cannot be remote, dst cannot be a directory
         if dst_is_remote:
-            raise OperationNotSupportedError(
-                "copy() with overwrite=True is not supported for remote destinations. "
-            )
+            client = _ClientManager.get_instance()
+            if not client.consistent_mode:
+                raise OperationNotSupportedError(
+                    "copy() with overwrite=True is not supported for remote destinations "
+                    "in efficient mode. Enable consistent mode for overwrite support."
+                )
         try:
             dst_stat = stat(dst)
             if stat_module.S_ISDIR(dst_stat.st_mode):
