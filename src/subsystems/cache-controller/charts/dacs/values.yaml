@@ -24,7 +24,21 @@ manager:
   extraArgs: []
 
   # Additional environment variables
-  env: []
+  env:
+    # Stream the initial LIST as a watch to avoid the startup memory spike.
+    # Requires apiserver >= 1.32; client-go falls back to LIST otherwise.
+    # https://kubernetes.io/docs/reference/using-api/api-concepts/#streaming-lists
+    - name: KUBE_FEATURE_WatchListClient
+      value: "true"
+    # Set the Go runtime memory ceiling so GC sweeps before the cgroup
+    # OOM-kills the container. Sourced from the container's memory limit
+    # via the downward API.
+    - name: GOMEMLIMIT
+      valueFrom:
+        resourceFieldRef:
+          containerName: manager
+          resource: limits.memory
+          divisor: "1"
 
   # Pod-level security settings
   podSecurityContext:
@@ -44,7 +58,7 @@ manager:
   resources:
     limits:
         cpu: 500m
-        memory: 128Mi
+        memory: 512Mi
     requests:
         cpu: 10m
         memory: 64Mi
@@ -70,6 +84,13 @@ crd:
 metrics:
   enable: true
   port: 8443  # Metrics server port
+
+# pprof profiling endpoint. Disabled by default; enable only when debugging.
+# See https://book.kubebuilder.io/reference/pprof-tutorial.html for guidance.
+# Bound to localhost; reach it via `kubectl port-forward`.
+pprof:
+  enable: false
+  port: 8082
 
 # Admission webhooks for defaulting and validation of Cache CRs.
 # When enabled, deploys mutating/validating webhook configurations,
