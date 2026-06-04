@@ -23,13 +23,13 @@ const (
 type AccessMethod string
 
 const (
-	PythonClient  AccessMethod = "python"                // py_dacs_client
-	Blobfile      AccessMethod = "blobfile"             // Azure blobfile SDK
-	BoostedBlob   AccessMethod = "boostedblob"          // Boostedblob-compatible async API via DACSCacheClient
-	Interceptor   AccessMethod = "interceptor"          // LD_PRELOAD storage_intercept
-	RunAIStreamer AccessMethod = "runai_model_streamer" // Run:AI Model Streamer
-	HFDownloader  AccessMethod = "huggingface"           // Hugging Face hub download API
-	StreamClient  AccessMethod = "stream_client"        // Native C++ DACS stream client
+	PythonClient  AccessMethod = "python"        // py_dacs_client
+	Blobfile      AccessMethod = "blobfile"      // Azure blobfile SDK
+	BoostedBlob   AccessMethod = "boostedblob"   // Boostedblob-compatible async API via DACSCacheClient
+	Interceptor   AccessMethod = "interceptor"   // LD_PRELOAD storage_intercept
+	RunAIStreamer AccessMethod = "runaistreamer" // Run:AI Model Streamer
+	HFDownloader  AccessMethod = "huggingface"   // Hugging Face hub download API
+	StreamClient  AccessMethod = "stream_client" // Native C++ DACS stream client
 )
 
 // ScaleProfile defines a model scale for testing, referencing a real HF model.
@@ -118,4 +118,8 @@ type ModelLoadingConfig struct {
 
 	// Cache configuration
 	CacheDiscoveryURL string
+
+	// Run:AI Model Streamer configuration
+	RunAIStreamerConcurrency int // Number of concurrent streams (default: 16)
+	RunAIStreamerBlockSize   int // Read block size in bytes (default: 8MB)
 }
