@@ -6,3 +6,7 @@ scaleUpStabilizationWindow: 15m # Window over which scale-up recommendations are
 scaleDownStabilizationWindow: 15m # Window over which scale-down recommendations are stabilized
 scaleUpTolerancePercent: 10 # Percentage tolerance before triggering a scale-up
 scaleDownTolerancePercent: 10 # Percentage tolerance before triggering a scale-down
+shortTermNodeLossThresholdDuration: 10m # Duration to consider a node loss as short-term
+# Optional: override cache server snapshot cadence (default 300s).
+# To use a smaller cadence, uncomment and set a value, e.g.:
+# cacheServerSnapshotIntervalSeconds: 30

@@ -43,9 +43,10 @@ const (
 	ReasonStatefulSetGetError  = "StatefulSetGetError"
 
 	// PodsScheduled condition reasons.
-	ReasonAllPodsScheduled = "AllPodsScheduled"
-	ReasonPodsStuck        = "PodsStuck"
-	ReasonSchedulingError  = "SchedulingError"
+	ReasonAllPodsScheduled           = "AllPodsScheduled"
+	ReasonPodsStuck                  = "PodsStuck"
+	ReasonPodsWaitingForNodeRecovery = "PodsWaitingForNodeRecovery"
+	ReasonSchedulingError            = "SchedulingError"
 
 	// Shared reasons used across multiple condition types.
 	ReasonNotEvaluated  = "NotEvaluated"

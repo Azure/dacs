@@ -34,8 +34,16 @@ type SchedulerInstruction struct {
 	Reason string `json:"reason"`
 }
 
+// schedulingDecision indicates the action taken by the scheduler for a pending pod.
+type schedulingDecision int
+
+const (
+	decisionBind schedulingDecision = iota
+	decisionWait
+)
+
 // helper function to choose a node to schedule a pod
-func findNodeToSchedule(ctx context.Context, tracker *Tracker, podToSchedule Pod, occupiedNodes nodeList) (targetNode string, reason string) {
+func findNodeToSchedule(ctx context.Context, tracker *Tracker, podToSchedule Pod, occupiedNodes nodeList) (decision schedulingDecision, targetNode string, reason string) {
 	log := logf.FromContext(ctx)
 	log.Info("Looking for a node to schedule pod",
 		"namespace", podToSchedule.Namespace,
@@ -74,7 +82,11 @@ func findNodeToSchedule(ctx context.Context, tracker *Tracker, podToSchedule Pod
 		if lastNodeRunningPodHasNoError {
 			log.Info("Pod was previously running on node, scheduling on the same node",
 				"podName", podToSchedule.PodName, "namespace", podToSchedule.Namespace, "node", lastNodeRunningPod)
-			return lastNodeRunningPod, "Rescheduling pod on the node it was previously running on"
+			return decisionBind, lastNodeRunningPod, "Rescheduling pod on the node it was previously running on"
+		} else if tracker.isNodeLossShortTerm(lastNodeRunningPod) {
+			log.Info("Pod was previously running on node, and node is currently unhealthy but loss is considered short-term, scheduling on the same node",
+				"podName", podToSchedule.PodName, "namespace", podToSchedule.Namespace, "node", lastNodeRunningPod)
+			return decisionWait, lastNodeRunningPod, "waiting for node to recover from short-term loss to reschedule pod"
 		} else {
 			log.Info("Pod was previously running on node, but node is no longer free, schedulable and without recent cacheserver errors",
 				"podName", podToSchedule.PodName, "namespace", podToSchedule.Namespace, "node", lastNodeRunningPod)
@@ -89,7 +101,7 @@ func findNodeToSchedule(ctx context.Context, tracker *Tracker, podToSchedule Pod
 		targetNode := schedulableFreeNodesMatchingAffinityWithoutPodError.getFirstElement()
 
 		log.Info("Scheduling pod on healthy node", "podName", podToSchedule.PodName, "node", targetNode)
-		return targetNode, "Scheduling pod on healthy node"
+		return decisionBind, targetNode, "Scheduling pod on healthy node"
 	}
 
 	// No node without recent cacheserver errors available, try to schedule on a node with errors
@@ -97,7 +109,7 @@ func findNodeToSchedule(ctx context.Context, tracker *Tracker, podToSchedule Pod
 		targetNode := schedulableFreeNodesMatchingAffinity.getFirstElement()
 
 		log.Info("Scheduling pod on node which has recent cacheserver errors", "podName", podToSchedule.PodName, "node", targetNode)
-		return targetNode, "Scheduling pod on healthy node (warning: node has recent cacheserver errors)"
+		return decisionBind, targetNode, "Scheduling pod on healthy node (warning: node has recent cacheserver errors)"
 	}
 
 	// If no eligible node found, return an empty destination node (indicating error) along with reason
@@ -109,7 +121,7 @@ func findNodeToSchedule(ctx context.Context, tracker *Tracker, podToSchedule Pod
 		len(nodesMatchingAffinity), len(schedulableFreeNodesMatchingAffinity),
 		len(occupiedNodes))
 	log.Info(errorStr)
-	return "", errorStr
+	return decisionBind, "", errorStr
 }
 
 // Schedule() processes the cacheserver nodes and pods and returns the ScheduleInstruction
@@ -159,18 +171,38 @@ func schedule(ctx context.Context, tracker *Tracker, cacheKey string) []Schedule
 		}
 
 		// Find a node to schedule the pod
-		targetNode, reason := findNodeToSchedule(ctx, tracker, pendingPod, occupiedNodes)
-		if targetNode != "" {
+		decision, targetNode, reason := findNodeToSchedule(ctx, tracker, pendingPod, occupiedNodes)
+		switch decision {
+		case decisionWait:
+			log.Info("Delaying scheduling of pod due to short-term node loss",
+				"podName", pendingPod.PodName,
+				"namespace", pendingPod.Namespace,
+				"node", targetNode,
+				"reason", reason)
 			occupiedNodes.add(targetNode)
+			continue
+		case decisionBind:
+			if targetNode != "" {
+				log.Info("Scheduling pod on node",
+					"podName", pendingPod.PodName,
+					"namespace", pendingPod.Namespace,
+					"node", targetNode,
+					"reason", reason)
+				occupiedNodes.add(targetNode)
+			} else {
+				log.Info("Error occurred while scheduling pod",
+					"podName", pendingPod.PodName,
+					"namespace", pendingPod.Namespace,
+					"reason", reason)
+			}
+			schedulerInstructions = append(schedulerInstructions, SchedulerInstruction{
+				Type:            BindInstruction,
+				PodName:         pendingPod.PodName,
+				Namespace:       pendingPod.Namespace,
+				DestinationNode: targetNode,
+				Reason:          reason,
+			})
 		}
-
-		schedulerInstructions = append(schedulerInstructions, SchedulerInstruction{
-			Type:            BindInstruction,
-			PodName:         pendingPod.PodName,
-			Namespace:       pendingPod.Namespace,
-			DestinationNode: targetNode,
-			Reason:          reason,
-		})
 	}
 
 	return schedulerInstructions

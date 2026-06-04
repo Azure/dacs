@@ -65,38 +65,32 @@ func testClusterUpgrade(tc *testContext) {
 			g.Expect(err).NotTo(HaveOccurred())
 		}).WithContext(ctx).WithTimeout(2*time.Minute).WithPolling(5*time.Second).Should(Succeed(), "failed to capture post-upgrade pod placement")
 		log.Info("post-upgrade pod placement", "podsByNode", postPodsByNode)
-		// TODO(jlong): the cache-controller's embedded scheduler does not preserve
-		// pod-node stickiness across an AKS rolling upgrade.
-		// Root causes:
-		//   1. scheduler.go L73-77 only re-uses the previous node if it is
-		//      currently schedulable+free; during rolling reimage the previous
-		//      node is cordoned, so the scheduler falls through to the
-		//      round-robin getFirstElement at L88-92 and pods rotate onto
-		//      whichever node was just vacated by a neighbor.
-		//   2. The pod->node history lives on the in-memory tracker; when the
-		//      cache-controller pod itself is evicted during the upgrade, the
-		//      history is lost and every subsequent placement is round-robin.
-		// Until the scheduler is fixed (hold pods Pending for their previous node
-		// to come back, and persist the tracker), we log mismatches as warnings
-		// and fall back to fresh upload/download for data integrity.
+
+		// TODO(jlong): persist tracker across controller restart.
+		// Root cause:
+		//   The pod->node mapping is in-memory only, so when the cache-controller
+		//   pod itself is evicted during the upgrade, the state is lost and every
+		//   subsequent placement is round-robin.
+		// Until the tracker is persisted, we log mismatches as warnings and fall
+		// back to fresh upload/download for data integrity.
 		stickinessViolations := 0
 		for node, prePod := range prePodsByNode {
 			postPod, ok := postPodsByNode[node]
 			if !ok {
 				log.Info("WARNING pod-node stickiness violated: pre-upgrade node no longer hosts a cacheserver pod",
-					"node", node, "prePod", prePod, "TODO", "scheduler should keep cs on its previous node when it returns")
+					"node", node, "prePod", prePod, "TODO", "persist tracker state across cache-controller restarts")
 				stickinessViolations++
 				continue
 			}
 			if postPod != prePod {
 				log.Info("WARNING pod-node stickiness violated: node now hosts a different cacheserver pod",
-					"node", node, "prePod", prePod, "postPod", postPod, "TODO", "scheduler should keep cs on its previous node")
+					"node", node, "prePod", prePod, "postPod", postPod, "TODO", "persist tracker state across cache-controller restarts")
 				stickinessViolations++
 			}
 		}
 		if stickinessViolations > 0 {
 			log.Info("WARNING cache-server scheduler did not preserve pod-node stickiness across AKS upgrade",
-				"violations", stickinessViolations, "TODO", "fix scheduler.go stickiness logic and persist PodMap")
+				"violations", stickinessViolations, "TODO", "persist tracker state across cache-controller restarts")
 		}
 
 		// TODO(jlong): we should not scale, but it can happen right now if cache-controller gets evicted and sees 7 nodes immediately upon restart.

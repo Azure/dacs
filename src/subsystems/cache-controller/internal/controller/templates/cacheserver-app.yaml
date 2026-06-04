@@ -108,6 +108,7 @@ spec:
           export CACHESERVER_PORT={{ .Port }}
           export CACHESERVER_CACHE_PATH={{ .MountSsdPath }}/{{ .Name }}/cache
           export CACHESERVER_CACHE_SIZE_BYTES={{ mulAll .ServerSizeInGB 1024 1024 1024 }}
+          export CACHESERVER_SNAPSHOT_INTERVAL={{ .SnapshotIntervalSeconds }}
           mkdir -p $CACHESERVER_CACHE_PATH
 
           {{- if and .EgressBandwidthInGb }}
