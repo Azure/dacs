@@ -107,6 +107,18 @@ func initLogger(logLevel string) {
 	})
 }
 
+// removeUnusedNodeFields drops bulky Node fields that the controller never reads.
+func removeUnusedNodeFields(obj any) (any, error) {
+	node, ok := obj.(*corev1.Node)
+	if !ok {
+		return obj, nil
+	}
+	node.ManagedFields = nil
+	node.Status.Conditions = nil
+	node.Status.Images = nil
+	return node, nil
+}
+
 // nolint:gocyclo
 func main() {
 	var metricsAddr string
@@ -114,6 +126,7 @@ func main() {
 	var webhookCertPath, webhookCertName, webhookCertKey string
 	var enableLeaderElection bool
 	var probeAddr string
+	var pprofAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var enableWebhooks bool
@@ -127,6 +140,9 @@ func main() {
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	flag.StringVar(&pprofAddr, "pprof-bind-address", "0",
+		"The address the pprof endpoint binds to. Set to '0' to disable (default). "+
+			"Bind to localhost so it is only reachable via `kubectl port-forward`.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
@@ -242,9 +258,11 @@ func main() {
 		Metrics:                metricsServerOptions,
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
+		PprofBindAddress:       pprofAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "e7aa1f26.azure.com",
 		Cache: cache.Options{
+			DefaultTransform: cache.TransformStripManagedFields(),
 			ByObject: map[client.Object]cache.ByObject{
 				&corev1.Pod{}: {
 					Label: controller.CacheServerSelector,
@@ -257,6 +275,10 @@ func main() {
 				},
 				&corev1.ConfigMap{}: {
 					Label: controller.CacheServerSelector,
+				},
+				// Drop unused fields from informer cache.
+				&corev1.Node{}: {
+					Transform: removeUnusedNodeFields,
 				},
 			},
 		},

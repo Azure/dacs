@@ -33,6 +33,11 @@ spec:
                     - --health-probe-bind-address=:8081
                     - --leader-elect={{ gt (int .Values.manager.replicas) 1 }}
                     - --namespace={{ .Release.Namespace }}
+                    {{- if .Values.pprof.enable }}
+                    - --pprof-bind-address=127.0.0.1:{{ .Values.pprof.port }}
+                    {{- else }}
+                    - --pprof-bind-address=0
+                    {{- end }}
                     {{- range .Values.manager.extraArgs }}
                     - {{ . }}
                     {{- end }}
