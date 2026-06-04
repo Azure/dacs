@@ -99,6 +99,17 @@ func (r *Reconciler) Reconcile(ctx context.Context, cache *storagev1.Cache, h *s
 		return nil
 	}
 
+	if waitingCount := r.Tracker.CountPodsAwaitingNodeRecovery(cacheKey); waitingCount > 0 {
+		log.Info("Waiting pods detected due to short-term node loss", "waitingPodCount", waitingCount)
+		h.MarkFalse(storagev1.PodsScheduledCondition, storagev1.ReasonPodsWaitingForNodeRecovery,
+			"%d pod(s) waiting for short-term node loss recovery", waitingCount)
+		// Requeue so that once the short-term loss window expires (and the node
+		// is still unhealthy) the pod is moved to a healthy node. Node recovery
+		// itself is picked up by the Node watch.
+		h.SetRequeueAfter(stuckPodRequeueInterval)
+		return nil
+	}
+
 	h.MarkTrue(storagev1.PodsScheduledCondition, storagev1.ReasonAllPodsScheduled, "All cache server pods are scheduled")
 	return nil
 }

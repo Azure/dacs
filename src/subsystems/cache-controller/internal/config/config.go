@@ -23,17 +23,26 @@ const (
 	ConfEnvPrefix         = "CACHE_CONTROLLER"
 	DefaultConfigFilePath = "./cache-controller-config.yaml"
 
-	DefaultScaleUpStabilizationWindow   = 15 * time.Minute
-	DefaultScaleDownStabilizationWindow = 15 * time.Minute
-	DefaultScaleUpTolerancePercent      = int32(10)
-	DefaultScaleDownTolerancePercent    = int32(10)
+	DefaultScaleUpStabilizationWindow         = 15 * time.Minute
+	DefaultScaleDownStabilizationWindow       = 15 * time.Minute
+	DefaultScaleUpTolerancePercent            = int32(10)
+	DefaultScaleDownTolerancePercent          = int32(10)
+	DefaultShortTermNodeLossThresholdDuration = 10 * time.Minute
+	DefaultCacheServerSnapshotIntervalSeconds = int32(300)
 )
 
 type Config struct {
-	LogLevel                  string            `yaml:"logLevel" mapstructure:"logLevel"`
-	CacheServerImage          string            `yaml:"cacheServerImage" mapstructure:"cacheServerImage"`
-	ImagePullPolicy           corev1.PullPolicy `yaml:"imagePullPolicy" mapstructure:"imagePullPolicy"`
-	PodStuckThresholdDuration time.Duration     `yaml:"podStuckThresholdDuration" mapstructure:"podStuckThresholdDuration"`
+	LogLevel                           string            `yaml:"logLevel" mapstructure:"logLevel"`
+	CacheServerImage                   string            `yaml:"cacheServerImage" mapstructure:"cacheServerImage"`
+	ImagePullPolicy                    corev1.PullPolicy `yaml:"imagePullPolicy" mapstructure:"imagePullPolicy"`
+	PodStuckThresholdDuration          time.Duration     `yaml:"podStuckThresholdDuration" mapstructure:"podStuckThresholdDuration"`
+	ShortTermNodeLossThresholdDuration time.Duration     `yaml:"shortTermNodeLossThresholdDuration" mapstructure:"shortTermNodeLossThresholdDuration"`
+
+	// CacheServerSnapshotIntervalSeconds is the snapshot cadence (in seconds)
+	// passed to the cache server via the CACHESERVER_SNAPSHOT_INTERVAL env var.
+	// Smaller values reduce the data-loss window on a cache server restart at
+	// the cost of more snapshot I/O.
+	CacheServerSnapshotIntervalSeconds int32 `yaml:"cacheServerSnapshotIntervalSeconds" mapstructure:"cacheServerSnapshotIntervalSeconds"`
 
 	// ScaleUpStabilizationWindow is the duration the normalizer requires
 	// desired > current continuously before allowing a scale-up.
@@ -116,6 +125,8 @@ func loadConfigInternal(cfgPath string) (*Config, error) {
 	viper.SetDefault("scaleDownStabilizationWindow", DefaultScaleDownStabilizationWindow)
 	viper.SetDefault("scaleUpTolerancePercent", DefaultScaleUpTolerancePercent)
 	viper.SetDefault("scaleDownTolerancePercent", DefaultScaleDownTolerancePercent)
+	viper.SetDefault("shortTermNodeLossThresholdDuration", DefaultShortTermNodeLossThresholdDuration)
+	viper.SetDefault("cacheServerSnapshotIntervalSeconds", DefaultCacheServerSnapshotIntervalSeconds)
 
 	// If a config file path is provided, try to read it; tolerate not-found
 	if strings.TrimSpace(cfgPath) != "" {
@@ -157,6 +168,9 @@ func (c *Config) validate() error {
 	}
 	if c.ScaleDownStabilizationWindow < 0 {
 		return fmt.Errorf("scaleDownStabilizationWindow must not be negative, got %s", c.ScaleDownStabilizationWindow)
+	}
+	if c.ShortTermNodeLossThresholdDuration < 0 {
+		return fmt.Errorf("shortTermNodeLossThresholdDuration must not be negative, got %s", c.ShortTermNodeLossThresholdDuration)
 	}
 	if c.ScaleUpTolerancePercent < 0 || c.ScaleUpTolerancePercent > 100 {
 		return fmt.Errorf("scaleUpTolerancePercent must be between 0 and 100, got %d", c.ScaleUpTolerancePercent)

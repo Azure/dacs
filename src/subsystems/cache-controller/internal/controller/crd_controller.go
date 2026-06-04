@@ -283,6 +283,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		ServerSizeInGB               int32
 		NodeCacheFolderPath          string
 		UseHostPath                  bool
+		SnapshotIntervalSeconds      int32
 	}
 
 	// Extract values from CRD spec
@@ -341,6 +342,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		ServerSizeInGB:               cache.Spec.ServerSizeInGB,
 		NodeCacheFolderPath:          nodeCachePath,
 		UseHostPath:                  useHostPath,
+		SnapshotIntervalSeconds:      cfg.CacheServerSnapshotIntervalSeconds,
 	}
 	var desired appsv1.StatefulSet
 	if err := renderTemplateInto("templates/cacheserver-app.yaml", values, &desired); err != nil {

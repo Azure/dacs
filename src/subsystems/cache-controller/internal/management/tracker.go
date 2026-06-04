@@ -27,7 +27,8 @@ var podStuckStates = []PodStatus{PodStatusPending, PodStatusFailed, PodStatusUnk
 
 // Tracker configuration
 type TrackerConfig struct {
-	PodStuckThresholdDuration time.Duration
+	PodStuckThresholdDuration          time.Duration
+	ShortTermNodeLossThresholdDuration time.Duration
 }
 
 // Information about cacheserver pod maintained by tracker
@@ -193,6 +194,14 @@ func (t *Tracker) updateNodeMap(nodes []Node) {
 				NodeInfo:        node,
 				PodsStuckEvents: []podStuckEvent{},
 			}
+			if !node.Schedulable {
+				// We are seeing this node for the first time and it is already
+				// cordoned. We don't know when the cordon actually happened, so
+				// pretend it just happened now. This way the scheduler still
+				// treats the loss as short-term for one full window after a
+				// controller restart, instead of giving up on the node right away.
+				nodeInfo.UnschedulableSince = now
+			}
 		} else {
 			wasNodeSchedulable = nodeInfo.NodeInfo.Schedulable
 			nodeInfo.NodeInfo = node
@@ -217,12 +226,20 @@ func (t *Tracker) updateNodeMap(nodes []Node) {
 		}).Debugf("Scheduler processed node %s", node.NodeName)
 	}
 
-	// Remove nodes that are no longer present
+	// Remove nodes that are no longer present, unless they are still inside
+	// the short-term node loss window (e.g. AKS surge upgrade deleted the VM
+	// of a cordoned node), in which case keep the entry so pod stickiness
+	// holds until the replacement VM rejoins or the window expires.
 	for nodeName := range t.State.CurrentNodes {
-		if _, found := currentNodes[nodeName]; !found {
-			log.Infof("Node %s is no longer present. Removing from tracker state", nodeName)
-			delete(t.State.CurrentNodes, nodeName)
+		if _, found := currentNodes[nodeName]; found {
+			continue
 		}
+		if t.isNodeLossShortTerm(nodeName) {
+			log.Infof("Node %s is no longer present but is still within the short-term node loss window. Keeping tracker entry", nodeName)
+			continue
+		}
+		log.Infof("Node %s is no longer present. Removing from tracker state", nodeName)
+		delete(t.State.CurrentNodes, nodeName)
 	}
 }
 
@@ -413,11 +430,15 @@ func (t *Tracker) getStuckPods(cacheKey string) []Pod {
 
 // Get the count of pods which are in a state which is considered for stuck evaluation (e.g. Failed, Unknown, NotReady etc).
 // This includes pods which have not considered stuck yet as they have not crossed the stuck threshold duration.
+// Pods waiting for short-term node loss recovery are not counted as stuck
 func (t *Tracker) GetPodCountInStuckStates(cacheKey string) int {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	count := 0
 	for _, pod := range t.State.PodsByCacheKey[cacheKey] {
+		if t.isPodWaitingForNodeRecovery(pod) {
+			continue
+		}
 		for _, stuckState := range podStuckStates {
 			if pod.State == stuckState {
 				count++
@@ -426,6 +447,36 @@ func (t *Tracker) GetPodCountInStuckStates(cacheKey string) int {
 		}
 	}
 	return count
+}
+
+// CountPodsAwaitingNodeRecovery returns the number of Pending pods waiting for a short-term
+// lost node to recover. The controller uses this to set the PodsScheduled reason
+// to WaitingForNodeRecovery.
+func (t *Tracker) CountPodsAwaitingNodeRecovery(cacheKey string) int {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	count := 0
+	for _, pod := range t.State.PodsByCacheKey[cacheKey] {
+		if t.isPodWaitingForNodeRecovery(pod) {
+			count++
+		}
+	}
+	return count
+}
+
+// isPodWaitingForNodeRecovery returns true when a Pending pod's previous
+// node is still within the short-term loss window. The scheduler keeps such
+// pods on hold rather than placing them elsewhere, so the controller reports
+// them as waiting and the stuck-pods count excludes them.
+func (t *Tracker) isPodWaitingForNodeRecovery(pod Pod) bool {
+	if pod.State != PodStatusPending {
+		return false
+	}
+	lastRunningNode, found := t.getLastRunningNodeForPod(pod.Namespace, pod.PodName)
+	if !found || lastRunningNode == "" {
+		return false
+	}
+	return t.isNodeLossShortTerm(lastRunningNode)
 }
 
 func (t *Tracker) getLastRunningNodeForPod(namespace string, podName string) (string, bool) {
@@ -440,7 +491,8 @@ func (t *Tracker) getLastRunningNodeForPod(namespace string, podName string) (st
 func InitTracker(ctx context.Context, cfg *config.Config) *Tracker {
 	tracker := Tracker{
 		Config: TrackerConfig{
-			PodStuckThresholdDuration: cfg.PodStuckThresholdDuration,
+			PodStuckThresholdDuration:          cfg.PodStuckThresholdDuration,
+			ShortTermNodeLossThresholdDuration: cfg.ShortTermNodeLossThresholdDuration,
 		},
 		State: trackerInternalState{
 			CurrentNodes:   map[string]trackerNodeInfo{},
@@ -458,4 +510,24 @@ func (t *Tracker) updateTracker(ctx context.Context, cacheKey string, nodes []No
 	t.updatePodMap(cacheKey, pods)
 
 	log.Infof("Tracker update complete")
+}
+
+// isNodeLossShortTerm reports whether the node has been unschedulable for less
+// than the configured threshold. When true, the scheduler keeps pods Pending on
+// their previous node instead of moving them, so transient outages like AKS
+// rolling upgrades don't cause pod reshuffling.
+func (t *Tracker) isNodeLossShortTerm(nodeName string) bool {
+	trackerNodeInfo, found := t.State.CurrentNodes[nodeName]
+	if !found {
+		return false
+	}
+
+	if trackerNodeInfo.NodeInfo.Schedulable {
+		return false
+	}
+
+	if time.Since(trackerNodeInfo.UnschedulableSince) < t.Config.ShortTermNodeLossThresholdDuration {
+		return true
+	}
+	return false
 }

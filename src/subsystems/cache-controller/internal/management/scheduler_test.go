@@ -95,10 +95,21 @@ func (pod *Pod) markPodAsRunning(nodeName string) {
 
 func resetTracker() {
 	cfg := &config.Config{
-		PodStuckThresholdDuration: 5 * time.Minute,
+		PodStuckThresholdDuration:          5 * time.Minute,
+		ShortTermNodeLossThresholdDuration: 10 * time.Minute,
 	}
 	newTracker := InitTracker(context.Background(), cfg)
 	tracker = newTracker
+}
+
+// expireShortTermNodeLossWindow backdates the node's UnschedulableSince
+// so the scheduler treats it as long-term lost without waiting in real time.
+func expireShortTermNodeLossWindow(t *testing.T, nodeName string) {
+	t.Helper()
+	info, ok := tracker.State.CurrentNodes[nodeName]
+	assert.Assert(t, ok, "node %s is not tracked", nodeName)
+	info.UnschedulableSince = time.Now().Add(-(tracker.Config.ShortTermNodeLossThresholdDuration + time.Minute))
+	tracker.State.CurrentNodes[nodeName] = info
 }
 
 func getSchedulerInstructions(pods []Pod, nodes []Node) []SchedulerInstruction {
@@ -182,7 +193,7 @@ func TestPodSticksToNode(t *testing.T) {
 	assert.Equal(t, len(schedulerInstructions), 0)
 }
 
-func TestPodMovesWhenNodeRemovedOrCordoned(t *testing.T) {
+func TestPodMovesForLongTermNodeLoss(t *testing.T) {
 	resetTracker()
 
 	// create 6 nodes
@@ -217,6 +228,16 @@ func TestPodMovesWhenNodeRemovedOrCordoned(t *testing.T) {
 	// Cordon node-0, mark pod-0 as pending, and reprocess. Pod-0 should get scheduled to a different node as node-0 is cordoned
 	nodes[0].Schedulable = false
 	pods[0].markPodAsPending()
+
+	// node-0 is still within the short-term node loss window, so pod-0 is held
+	// Pending and no scheduler instruction is emitted yet.
+	schedulerInstructions = getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 0)
+
+	// Push node-0 past the short-term window so it's treated as long-term node
+	// loss. Pod-0 falls back to a different healthy node.
+	expireShortTermNodeLossWindow(t, "node-0")
+
 	schedulerInstructions = getSchedulerInstructions(pods, nodes)
 	assert.Equal(t, len(schedulerInstructions), 1)
 	assertPodScheduledToOneOfNodes(t, schedulerInstructions, "cachens", "cacheserver-0", freeNodes, "Scheduling pod on healthy node")
@@ -343,9 +364,17 @@ func TestContinousStuckPod(t *testing.T) {
 		assert.Equal(t, len(schedulerInstructions), 0)
 	}
 
-	// Mark node-3 as cordoned and pod-1 as pending, and reprocess. Pod-1 should get scheduled on "node-1"
+	// Cordon node-3 and mark pod-1 pending.
 	nodes[3].Schedulable = false
 	pods[1].markPodAsPending()
+
+	// No scheduler instruction emitted as the node-3 is still within the short-term loss window.
+	schedulerInstructions = getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 0)
+
+	// node-3 is now past the short-term loss window and treated as long-term lost.
+	// Pod-1 should be scheduled to node-1 even though it has recent errors.
+	expireShortTermNodeLossWindow(t, "node-3")
 	schedulerInstructions = getSchedulerInstructions(pods, nodes)
 	assert.Equal(t, len(schedulerInstructions), 1)
 	assertPodScheduledToNode(
@@ -414,7 +443,7 @@ func TestTransientStuckPod(t *testing.T) {
 	}
 }
 
-func TestNodeCordon(t *testing.T) {
+func TestPodMovesAfterLongTermCordon(t *testing.T) {
 	resetTracker()
 
 	// create 4 gpu nodes
@@ -430,10 +459,18 @@ func TestNodeCordon(t *testing.T) {
 	schedulerInstructions := getSchedulerInstructions(pods, nodes)
 	assert.Equal(t, len(schedulerInstructions), 0)
 
-	// Mark node-1 as cordoned and pod-1 as pending, and reprocess.
-	// Pod-1 should get scheduled on "node-3", different from "node-1" it was running on previously
+	// Cordon node-1 and mark pod-1 pending
 	nodes[1].Schedulable = false
 	pods[1].markPodAsPending()
+
+	// No scheduler instruction emitted as node-1 is still within the short-term loss window.
+	schedulerInstructions = getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 0)
+
+	// node-3 is now past the short-term loss window and treated as long-term lost.
+	// pod-1 should now move to a different healthy node.
+	expireShortTermNodeLossWindow(t, "node-1")
+
 	schedulerInstructions = getSchedulerInstructions(pods, nodes)
 	assert.Equal(t, len(schedulerInstructions), 1)
 	assertPodScheduledToNode(t, schedulerInstructions, "cachens", "cacheserver-1", "node-3", "Scheduling pod on healthy node")
@@ -603,4 +640,333 @@ func TestStickinessWorksWhenResourcesSufficient(t *testing.T) {
 	schedulerInstructions = getSchedulerInstructions(pods, nodes)
 	assertPodScheduledToNode(t, schedulerInstructions, "azureml", "cacheserver-0", "node-0",
 		"Rescheduling pod on the node it was previously running on")
+}
+
+// TestUpdateNodeMap_DiscoversCordonedNodeAsShortTerm covers what happens when
+// the tracker sees a node for the first time and that node is already
+// cordoned. This is the post controller restart view during an AKS rolling
+// upgrade. The tracker has no record of when the cordon happened, so it should
+// stamp UnschedulableSince to now and treat the node as short term lost.
+func TestUpdateNodeMap_DiscoversCordonedNodeAsShortTerm(t *testing.T) {
+	resetTracker()
+
+	// Two new nodes, one cordoned and one healthy.
+	nodes := CreateMockGpuNodeList(2)
+	nodes[0].Schedulable = false
+	nodes[1].Schedulable = true
+
+	before := time.Now()
+	_ = getSchedulerInstructions(nil, nodes)
+	after := time.Now()
+
+	// Cordoned new node should have UnschedulableSince stamped during the call.
+	info0, ok := tracker.State.CurrentNodes["node-0"]
+	assert.Assert(t, ok, "node-0 should be tracked")
+	assert.Assert(t, !info0.UnschedulableSince.IsZero(),
+		"cordoned new node must have a non zero UnschedulableSince")
+	assert.Assert(t, !info0.UnschedulableSince.Before(before))
+	assert.Assert(t, !info0.UnschedulableSince.After(after))
+
+	// Healthy new node should not have UnschedulableSince populated.
+	info1, ok := tracker.State.CurrentNodes["node-1"]
+	assert.Assert(t, ok, "node-1 should be tracked")
+	assert.Assert(t, info1.UnschedulableSince.IsZero(),
+		"healthy new node must have a zero UnschedulableSince")
+
+	// Node-0 should be classified short term and node-1 should not.
+	assert.Assert(t, tracker.isNodeLossShortTerm("node-0"))
+	assert.Assert(t, !tracker.isNodeLossShortTerm("node-1"))
+
+	// Once the short term window elapses node-0 should flip to long term.
+	expireShortTermNodeLossWindow(t, "node-0")
+	assert.Assert(t, !tracker.isNodeLossShortTerm("node-0"))
+}
+
+// TestPodStickinessForShortTermNodeLoss covers the happy path of short-term node
+// loss. A pod whose node goes briefly unschedulable is held Pending instead of
+// being moved, other pending pods can still be placed on healthy nodes, and when
+// the original node returns the held pod is scheduled back to it.
+func TestPodStickinessForShortTermNodeLoss(t *testing.T) {
+	resetTracker()
+
+	// create 3 nodes
+	nodes := CreateMockGpuNodeList(3)
+
+	// create 1 pod running on node-0
+	pods := []Pod{}
+	pods = append(pods, CreateMockPod("cachens", 0, "node-0", PodStatusRunning, true))
+
+	// Initially pod is running. So, should not get any schedule instructions
+	schedulerInstructions := getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 0)
+
+	// Cordon node-0, mark pod-0 as pending, and reprocess.
+	// Pod-0 should be held pending with no schedule instruction as node-0 is within short-term node loss window
+	nodes[0].Schedulable = false
+	pods[0].markPodAsPending()
+	schedulerInstructions = getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 0)
+
+	// New pods added; they should be scheduled onto the other healthy nodes
+	// while pod-0 stays Pending on node-0.
+	pods = append(pods, CreateMockPod("cachens", 1, "", PodStatusPending, true))
+	pods = append(pods, CreateMockPod("cachens", 2, "", PodStatusPending, true))
+	schedulerInstructions = getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 2)
+
+	freeNodes := nodeList{"node-1": true, "node-2": true}
+	assertPodScheduledToOneOfNodes(t, schedulerInstructions, "cachens", "cacheserver-1", freeNodes, "Scheduling pod on healthy node")
+	pod1Node := getSchedulerInstructionForPod(schedulerInstructions, "cachens", "cacheserver-1").DestinationNode
+	freeNodes.remove(pod1Node)
+	assertPodScheduledToOneOfNodes(t, schedulerInstructions, "cachens", "cacheserver-2", freeNodes, "Scheduling pod on healthy node")
+	pod2Node := getSchedulerInstructionForPod(schedulerInstructions, "cachens", "cacheserver-2").DestinationNode
+
+	// Mark the newly scheduled pods as running so they aren't re-scheduled in
+	// the next reconcile.
+	pods[1].markPodAsRunning(pod1Node)
+	pods[2].markPodAsRunning(pod2Node)
+
+	// Uncordon node-0. Pod-0 should now bind back to its original node.
+	nodes[0].Schedulable = true
+	schedulerInstructions = getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 1)
+	assertPodScheduledToNode(t, schedulerInstructions, "cachens", "cacheserver-0", "node-0",
+		"Rescheduling pod on the node it was previously running on")
+
+	// Mark pod-0 as running again, and reprocess. We should not get any schedule instructions
+	pods[0].markPodAsRunning("node-0")
+	schedulerInstructions = getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 0)
+}
+
+// TestPodMovesAfterWaitedNodeRemoved verifies that when a held pod's previous
+// node is removed from the cluster, the tracker keeps the entry and the
+// scheduler keeps holding the pod while inside the short-term loss window.
+// Only after the window expires is the entry dropped and the pod moved to a
+// healthy node.
+func TestPodMovesAfterWaitedNodeRemoved(t *testing.T) {
+	resetTracker()
+
+	nodes := CreateMockGpuNodeList(3)
+
+	pods := []Pod{}
+	pods = append(pods, CreateMockPod("cachens", 0, "node-0", PodStatusRunning, true))
+
+	schedulerInstructions := getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 0)
+
+	// node-0 is cordoned and pod-0 goes Pending. node-0 is within the short-term node loss window,
+	// so scheduler holds pod-0 and emits no instructions.
+	nodes[0].Schedulable = false
+	pods[0].markPodAsPending()
+
+	schedulerInstructions = getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 0)
+
+	// A subsequent reconcile while node-0 is still cordoned should not change
+	// anything. pod-0 stays Pending, waiting for node-0 to return.
+	schedulerInstructions = getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 0)
+
+	// Now node-0 is removed from the cluster entirely (e.g. AKS surge upgrade
+	// deleted the VM). The tracker must keep the entry and the scheduler must
+	// keep holding pod-0 while still inside the short-term loss window.
+	nodes = append(nodes[:0], nodes[1:]...)
+	schedulerInstructions = getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 0)
+	_, stillTracked := tracker.State.CurrentNodes["node-0"]
+	assert.Assert(t, stillTracked, "node-0 entry must be retained while inside short-term loss window")
+
+	// After the window expires, the entry is dropped and pod-0 is moved to a
+	// healthy node.
+	expireShortTermNodeLossWindow(t, "node-0")
+	freeNodes := nodeList{"node-1": true, "node-2": true}
+
+	schedulerInstructions = getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 1)
+	assertPodScheduledToOneOfNodes(t, schedulerInstructions, "cachens", "cacheserver-0", freeNodes,
+		"Scheduling pod on healthy node")
+	_, stillTrackedAfter := tracker.State.CurrentNodes["node-0"]
+	assert.Assert(t, !stillTrackedAfter, "node-0 entry must be removed after short-term window expires")
+}
+
+// During an AKS rolling upgrade, multiple nodes can be cordoned within a short
+// window. Each pod that was running on a cordoned node should be held Pending
+// independently rather than reshuffled. No bind instructions should be emitted
+// while every previous node is still within the short-term window.
+func TestMultiplePodsHeldDuringRollingUpgrade(t *testing.T) {
+	resetTracker()
+
+	nodes := CreateMockGpuNodeList(5)
+
+	pods := []Pod{}
+	pods = append(pods, CreateMockPod("cachens", 0, "node-0", PodStatusRunning, true))
+	pods = append(pods, CreateMockPod("cachens", 1, "node-1", PodStatusRunning, true))
+	pods = append(pods, CreateMockPod("cachens", 2, "node-2", PodStatusRunning, true))
+
+	schedulerInstructions := getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 0)
+
+	// Three nodes drain at the same time, like during a rolling upgrade.
+	// All three pods go Pending. Their previous nodes are still within the
+	// short-term node loss window, so the scheduler holds all three and emits no instructions.
+	nodes[0].Schedulable = false
+	nodes[1].Schedulable = false
+	nodes[2].Schedulable = false
+	pods[0].markPodAsPending()
+	pods[1].markPodAsPending()
+	pods[2].markPodAsPending()
+
+	schedulerInstructions = getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 0)
+
+	// Reconcile again before any node comes back. The pods are still Pending. The
+	// scheduler does not move them onto the two still-healthy nodes
+	schedulerInstructions = getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 0)
+
+	// As each node comes back, the corresponding pod binds back to it.
+	nodes[0].Schedulable = true
+	schedulerInstructions = getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 1)
+	assertPodScheduledToNode(t, schedulerInstructions, "cachens", "cacheserver-0", "node-0",
+		"Rescheduling pod on the node it was previously running on")
+	pods[0].markPodAsRunning("node-0")
+
+	nodes[1].Schedulable = true
+	nodes[2].Schedulable = true
+	schedulerInstructions = getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 2)
+	assertPodScheduledToNode(t, schedulerInstructions, "cachens", "cacheserver-1", "node-1",
+		"Rescheduling pod on the node it was previously running on")
+	assertPodScheduledToNode(t, schedulerInstructions, "cachens", "cacheserver-2", "node-2",
+		"Rescheduling pod on the node it was previously running on")
+}
+
+// cacheKey used by getSchedulerInstructions; CountPodsAwaitingNodeRecovery is keyed the same way.
+const testCacheKey = "test-ns/test-cache"
+
+// When a pod's node was just cordoned, CountPodsAwaitingNodeRecovery should count
+// that pod so the controller can mark the PodsScheduled condition as waiting.
+func TestCountPodsAwaitingNodeRecovery_PodWaitingOnShortTermLostNode(t *testing.T) {
+	resetTracker()
+
+	nodes := CreateMockGpuNodeList(3)
+	pods := []Pod{CreateMockPod("cachens", 0, "node-0", PodStatusRunning, true)}
+
+	// pod-0 running on node-0.
+	schedulerInstructions := getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 0)
+
+	// Cordon node-0. The scheduler now holds pod-0 Pending.
+	nodes[0].Schedulable = false
+	pods[0].markPodAsPending()
+	schedulerInstructions = getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), 0)
+
+	assert.Equal(t, tracker.CountPodsAwaitingNodeRecovery(testCacheKey), 1)
+}
+
+// Once the short-term node loss window has expired, CountPodsAwaitingNodeRecovery no longer
+// counts the pod. The scheduler has given up holding it and will place it
+// on another node, so the controller should mark it as scheduled or stuck,
+// not waiting.
+func TestCountPodsAwaitingNodeRecovery_WindowExpired(t *testing.T) {
+	resetTracker()
+
+	nodes := CreateMockGpuNodeList(3)
+	pods := []Pod{CreateMockPod("cachens", 0, "node-0", PodStatusRunning, true)}
+
+	getSchedulerInstructions(pods, nodes)
+
+	nodes[0].Schedulable = false
+	pods[0].markPodAsPending()
+	getSchedulerInstructions(pods, nodes)
+
+	// Pod is marked as waiting inside the short-term node loss window.
+	assert.Equal(t, tracker.CountPodsAwaitingNodeRecovery(testCacheKey), 1)
+
+	// Push the cordon past the short-term node loss window; the wait should end.
+	expireShortTermNodeLossWindow(t, "node-0")
+	getSchedulerInstructions(pods, nodes)
+
+	assert.Equal(t, tracker.CountPodsAwaitingNodeRecovery(testCacheKey), 0)
+}
+
+// A pod is in waiting state because its node was just cordoned. If that node
+// is then removed from the cluster while still inside the short-term loss
+// window (e.g. AKS surge upgrade deleted the VM), the tracker keeps the entry
+// and the pod must keep being reported as waiting. Only after the window
+// expires should CountPodsAwaitingNodeRecovery drop it.
+func TestCountPodsAwaitingNodeRecovery_NodeRemovedDuringWait(t *testing.T) {
+	resetTracker()
+
+	nodes := CreateMockGpuNodeList(3)
+	pods := []Pod{CreateMockPod("cachens", 0, "node-0", PodStatusRunning, true)}
+
+	getSchedulerInstructions(pods, nodes)
+
+	nodes[0].Schedulable = false
+	pods[0].markPodAsPending()
+	getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, tracker.CountPodsAwaitingNodeRecovery(testCacheKey), 1)
+
+	// node-0 is removed from the cluster while still inside the window.
+	nodes = append(nodes[:0], nodes[1:]...)
+	getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, tracker.CountPodsAwaitingNodeRecovery(testCacheKey), 1)
+
+	// Push past the window. The entry is dropped and the pod is no longer waiting.
+	expireShortTermNodeLossWindow(t, "node-0")
+	getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, tracker.CountPodsAwaitingNodeRecovery(testCacheKey), 0)
+}
+
+// A Pending pod that has never run before is not in a waiting state; it's
+// just an ordinary new pod awaiting scheduling. CountPodsAwaitingNodeRecovery should not
+// count it. Classifying it as waiting would misrepresent why PodsScheduled
+// is False.
+func TestCountPodsAwaitingNodeRecovery_FreshPendingPodNotWaiting(t *testing.T) {
+	resetTracker()
+
+	nodes := CreateMockGpuNodeList(3)
+	// Cordon one node so the cluster has a node in short-term node loss state;
+	nodes[0].Schedulable = false
+
+	// A brand-new pod that has never been bound to a node.
+	pods := []Pod{CreateMockPod("cachens", 0, "", PodStatusPending, true)}
+	getSchedulerInstructions(pods, nodes)
+
+	assert.Equal(t, tracker.CountPodsAwaitingNodeRecovery(testCacheKey), 0)
+}
+
+// A waiting pod must not be counted as stuck. GetPodCountInStuckStates drives
+// the PodsScheduled reason in the reconciler. If a waiting pod slipped into
+// the stuck count, the controller would set PodsStuck instead of
+// PodsWaitingForNodeRecovery, and the wait state would be invisible to operators.
+func TestGetPodCountInStuckStates_ExcludesWaitingPod(t *testing.T) {
+	resetTracker()
+
+	nodes := CreateMockGpuNodeList(3)
+	pods := []Pod{CreateMockPod("cachens", 0, "node-0", PodStatusRunning, true)}
+
+	getSchedulerInstructions(pods, nodes)
+
+	// Cordon node-0 and mark pod-0 Pending.
+	nodes[0].Schedulable = false
+	pods[0].markPodAsPending()
+	getSchedulerInstructions(pods, nodes)
+
+	// pod-0 is waiting within the short-term node loss window, so it
+	// should be counted by CountPodsAwaitingNodeRecovery and not by stuck states.
+	assert.Equal(t, tracker.CountPodsAwaitingNodeRecovery(testCacheKey), 1)
+	assert.Equal(t, tracker.GetPodCountInStuckStates(testCacheKey), 0)
+
+	// Push past the short-term node loss window. Now the pod is no longer being held
+	// intentionally, so it should count as stuck and not as waiting.
+	expireShortTermNodeLossWindow(t, "node-0")
+	getSchedulerInstructions(pods, nodes)
+
+	assert.Equal(t, tracker.CountPodsAwaitingNodeRecovery(testCacheKey), 0)
+	assert.Equal(t, tracker.GetPodCountInStuckStates(testCacheKey), 1)
 }

@@ -124,7 +124,8 @@ var _ = BeforeSuite(func() {
 		},
 	)
 	tracker := management.InitTracker(ctx, &config.Config{
-		PodStuckThresholdDuration: 5 * time.Minute,
+		PodStuckThresholdDuration:          5 * time.Minute,
+		ShortTermNodeLossThresholdDuration: 10 * time.Minute,
 	})
 	scheduler, err := scheduling.NewReconciler(mgr.GetClient(), tracker)
 	Expect(err).NotTo(HaveOccurred())
