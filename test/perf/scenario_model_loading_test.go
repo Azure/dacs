@@ -29,6 +29,8 @@ func scenarioConfig() scenario.ModelLoadingConfig {
 		WorkloadIdentityClientID: opts.WorkloadIdentityClientID,
 		WorkloadIdentitySA:       opts.WorkloadIdentitySA,
 		CacheDiscoveryURL:        common.GetDiscoveryURLForCache(cacheName, namespace),
+		RunAIStreamerConcurrency: opts.RunAIStreamerConcurrency,
+		RunAIStreamerBlockSize:   opts.RunAIStreamerBlockSize,
 	}
 }
 
@@ -185,7 +187,7 @@ func isValidCombination(method scenario.AccessMethod, cache scenario.CacheMode) 
 	case scenario.HFDownloader:
 		// HF downloader only supports no_cache (downloads from HF directly)
 		return cache == scenario.NoCache
-	case scenario.Blobfile, scenario.BoostedBlob, scenario.PythonClient, scenario.Interceptor, scenario.StreamClient:
+	case scenario.RunAIStreamer, scenario.Blobfile, scenario.BoostedBlob, scenario.PythonClient, scenario.Interceptor, scenario.StreamClient:
 		// These methods support all cache modes (no_cache, cold_cache, warm_cache)
 		return true
 	default:

@@ -40,6 +40,7 @@ var methodScriptFile = map[AccessMethod]string{
 	PythonClient: "workloads/method_python_client.py",
 	Interceptor:   "workloads/method_interceptor.py",
 	HFDownloader:  "workloads/method_hf_downloader.py",
+	RunAIStreamer: "workloads/method_runai_streamer.py",
 }
 
 // ModelLoadingRunner manages execution of model loading scenario jobs.
@@ -159,6 +160,13 @@ func (r *ModelLoadingRunner) buildJob(ctx context.Context, jobName string) (*bat
 	// The interceptor library initializes on first use, so the config must be complete
 	// before any intercepted filesystem call.
 	preCommand := ""
+	if r.Method == RunAIStreamer {
+		// Install RunAI streamer packages at runtime so we can use the standard pipeline image.
+		// torch CPU is needed because FileStreamer uses torch.from_numpy() internally.
+		preCommand = `pip3 install --no-cache-dir runai-model-streamer runai-model-streamer-azure && \
+pip3 install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+`
+	}
 	if r.Method == Interceptor {
 		// Build optional cache config lines for the interceptor config file.
 		// The interceptor uses cacheEnable + cacheServerDiscoveryEnabled/Endpoint
@@ -267,6 +275,32 @@ python3 /tmp/harness.py`, preCommand, string(authScript), string(methodScript), 
 		// DACSCacheClient default ChunkSize is 32MB
 		jc.WithEnv(0, "CACHE_CHUNK_SIZE", "33554432")
 		jc.WithEnv(0, "SI_cacheKeyGroupId", r.Scale.CacheGroupID())
+	}
+
+	// Run:AI Model Streamer: pass concurrency, block size, and cache provider.
+	if r.Method == RunAIStreamer {
+		if r.Config.RunAIStreamerConcurrency > 0 {
+			jc.WithEnv(0, "RUNAI_STREAMER_CONCURRENCY", fmt.Sprintf("%d", r.Config.RunAIStreamerConcurrency))
+		}
+		if r.Config.RunAIStreamerBlockSize > 0 {
+			jc.WithEnv(0, "RUNAI_STREAMER_BLOCK_SIZE", fmt.Sprintf("%d", r.Config.RunAIStreamerBlockSize))
+		}
+		// Debug logging for native lib auth troubleshooting
+		jc.WithEnv(0, "RUNAI_STREAMER_LOG_LEVEL", "debug")
+		jc.WithEnv(0, "RUNAI_STREAMER_LOG_TO_STDERR", "1")
+		jc.WithEnv(0, "AZURE_LOG_LEVEL", "1") // 1=Verbose for C++ Azure SDK
+		// Cache provider: tell RunAI streamer where to find libStorageDirect.so explicitly.
+		// BlobSiWrapper's __attribute__((constructor)) auto-generates the SI config from env vars.
+		if r.Cache != NoCache {
+			jc.WithEnv(0, "RUNAI_STREAMER_EXPERIMENTAL_AZURE_CACHE_LIB", "/app/py_dacs_client/libStorageDirect.so")
+			// BlobSiWrapper reads these env vars to generate the SI config:
+			jc.WithEnv(0, "CACHE_DISCOVERY_URL", r.Config.CacheDiscoveryURL)
+			jc.WithEnv(0, "CACHE_SERVER_PORT", "9065")
+			jc.WithEnv(0, "STORAGE_INTCPT_MOUNT_PATH", "/mnt/dacs_cache")
+		} else {
+			// Explicitly disable cache auto-discovery for no_cache mode
+			jc.WithEnv(0, "RUNAI_STREAMER_EXPERIMENTAL_AZURE_CACHE_ENABLED", "0")
+		}
 	}
 
 	// Configure credentials
