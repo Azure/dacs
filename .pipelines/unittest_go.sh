@@ -2,6 +2,11 @@
 
 set -e
 
+# Run each module in plain module mode. The repo-root go.work excludes the
+# scheduler, so `go tool cover` (run outside `make`) fails for it in workspace
+# mode; cache-controller is self-contained and equally happy in module mode.
+export GOWORK=off
+
 # Optional test pattern (e.g., TestScheduler, TestReconcile)
 TEST_PATTERN="${1:-}"
 
