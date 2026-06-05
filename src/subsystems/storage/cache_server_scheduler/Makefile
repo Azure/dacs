@@ -1,3 +1,7 @@
+# Build in module mode, not workspace mode: the repo-root go.work intentionally
+# excludes this module (cache-controller's k8s.io/* MVS would force-upgrade us).
+export GOWORK = off
+
 # Test setup
 .PHONY: test-setup
 test-setup: fmt vet
