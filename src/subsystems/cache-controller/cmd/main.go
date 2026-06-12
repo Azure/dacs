@@ -41,6 +41,7 @@ import (
 	"github.com/Azure/dacs/cache-controller/internal/management"
 	"github.com/Azure/dacs/cache-controller/internal/scaling"
 	"github.com/Azure/dacs/cache-controller/internal/scheduling"
+	"github.com/Azure/dacs/cache-controller/internal/termination"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -295,8 +296,7 @@ func main() {
 		// LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
-		setupLog.Error(err, "unable to start manager")
-		os.Exit(1)
+		logAndExit(err, "unable to start manager")
 	}
 
 	// Setup certificate rotation for webhooks using cert-controller
@@ -333,8 +333,7 @@ func main() {
 			IsReady:              certSetupFinished,
 			EnableReadinessCheck: true,
 		}); err != nil {
-			setupLog.Error(err, "unable to setup cert rotation")
-			os.Exit(1)
+			logAndExit(err, "unable to setup cert rotation")
 		}
 	} else {
 		setupLog.Info("Webhooks disabled, skipping cert rotation setup")
@@ -346,8 +345,7 @@ func main() {
 	tracker := management.InitTracker(ctx, internalConfig)
 	scheduler, err := scheduling.NewReconciler(mgr.GetClient(), tracker)
 	if err != nil {
-		setupLog.Error(err, "unable to create scheduler reconciler")
-		os.Exit(1)
+		logAndExit(err, "unable to create scheduler reconciler")
 	}
 	reconciler, err := controller.NewCacheReconciler(
 		mgr.GetClient(),
@@ -361,12 +359,10 @@ func main() {
 		scheduler,
 	)
 	if err != nil {
-		setupLog.Error(err, "unable to create reconciler", "controller", "Cache")
-		os.Exit(1)
+		logAndExit(err, "unable to create reconciler", "controller", "Cache")
 	}
 	if err := reconciler.SetupWithManager(ctx, mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Cache")
-		os.Exit(1)
+		logAndExit(err, "unable to create controller", "controller", "Cache")
 	}
 
 	// Setup webhooks after cert rotation is ready
@@ -376,8 +372,7 @@ func main() {
 			setupLog.Info("Certificates ready, registering webhooks")
 
 			if err := (&storagev1.Cache{}).SetupWebhookWithManager(mgr); err != nil {
-				setupLog.Error(err, "unable to create webhook", "webhook", "Cache")
-				os.Exit(1)
+				logAndExit(err, "unable to create webhook", "webhook", "Cache")
 			}
 			setupLog.Info("Webhooks registered successfully")
 		}()
@@ -399,17 +394,32 @@ func main() {
 	}
 
 	if err := mgr.AddHealthzCheck("healthz", checker); err != nil {
-		setupLog.Error(err, "unable to set up health check")
-		os.Exit(1)
+		logAndExit(err, "unable to set up health check")
 	}
 	if err := mgr.AddReadyzCheck("readyz", checker); err != nil {
-		setupLog.Error(err, "unable to set up ready check")
-		os.Exit(1)
+		logAndExit(err, "unable to set up ready check")
 	}
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctx); err != nil {
-		setupLog.Error(err, "problem running manager")
-		os.Exit(1)
+		logAndExit(err, "problem running manager")
+	}
+}
+
+// logAndExit logs the error and exits the program with a non-zero status code.
+// It also writes the error message to the termination message file, if possible.
+// The termination message file is used by Kubernetes to display the last error
+// message as the container's termination reason.
+func logAndExit(err error, msg string, keysAndValues ...any) {
+	logError(err, msg, keysAndValues...)
+	os.Exit(1)
+}
+
+// logError logs the error and writes the error message to the termination
+// message file, if possible.
+func logError(err error, msg string, keysAndValues ...any) {
+	setupLog.Error(err, msg, keysAndValues...)
+	if wErr := termination.WriteMessage(termination.DefaultMessagePath, err, msg, keysAndValues...); wErr != nil {
+		setupLog.Error(wErr, "failed to write termination message")
 	}
 }

@@ -97,6 +97,8 @@ spec:
             cpu: 10m
             memory: 64Mi
         volumeMounts: []
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: FallbackToLogsOnError
       volumes: []
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
