@@ -94,6 +94,8 @@ spec:
                     {{- else }}
                     {}
                     {{- end }}
+                  terminationMessagePath: /dev/termination-log
+                  terminationMessagePolicy: FallbackToLogsOnError
                   {{- if .Values.webhook.enable }}
                   volumeMounts:
                     - mountPath: /tmp/k8s-webhook-server/serving-certs
