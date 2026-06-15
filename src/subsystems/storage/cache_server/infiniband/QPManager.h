@@ -73,14 +73,15 @@ class QPManager
         // Background thread to cleanup stale/old QPs
         std::unique_ptr<std::thread>                                        m_qpCleanupThread;
 
-        // Default LRU expiry time for QPs
-        static constexpr uint32_t DEFAULT_QP_EXPIRY_SECONDS =               1800;
+        // Default LRU expiry time for QPs (5 minutes — reduced from 30 min to prevent
+        // QP table exhaustion on high-churn GB300 clusters where peers die frequently)
+        static constexpr uint32_t DEFAULT_QP_EXPIRY_SECONDS =               300;
 
         // Default percentage of max qp limit beyond which we need to do aggressive qp cleanup
         static constexpr uint32_t DEFAULT_QP_CRITICAL_LIMIT_PERCENT =       50;
 
         // Default wake up timer for QP cleanup thread
-        static constexpr uint32_t DEFAULT_QP_CLEANUP_INTERVAL_SECONDS =     60;
+        static constexpr uint32_t DEFAULT_QP_CLEANUP_INTERVAL_SECONDS =     30;
 
         // QP expiry time. QPs whose LRU time is beyond this time will be destroyed asynchronously
         // TODO: Make this configurable

@@ -167,13 +167,19 @@ bool IBManager::SetupQPConnections(
 
     // Establish one to one qp mapping for client-server communication
     serverQpns.Clear();
+
     for (int qpn = 0; qpn < clientQpns.size(); qpn++)
     {
         shared_ibv_qp qp = m_qpManager->CreateQP(
             m_ibDevice.sendCQ.get(), m_ibDevice.receiveSRQ.get(), m_ibDevice.pd.get());
         if (!qp)
         {
-            LOG_WARN("Failed to create QP");
+            LOG_WARN("Failed to create QP, rolling back {} QPs for client={}", serverQpns.size(), clientLid);
+            for (int i = 0; i < serverQpns.size(); i++)
+            {
+                m_qpManager->DeleteQP(serverQpns.Get(i));
+            }
+            serverQpns.Clear();
             return false;
         }
 
@@ -188,7 +194,12 @@ bool IBManager::SetupQPConnections(
             clientIbPort);
         if (!bRet)
         {
-            LOG_WARN("Failed to setup QP id={}", qp->qp_num);
+            LOG_WARN("Failed to setup QP id={}, rolling back {} QPs for client={}", qp->qp_num, serverQpns.size(), clientLid);
+            for (int i = 0; i < serverQpns.size(); i++)
+            {
+                m_qpManager->DeleteQP(serverQpns.Get(i));
+            }
+            serverQpns.Clear();
             return false;
         }
 
@@ -261,6 +272,22 @@ void IBManager::IBListenerThread()
 
                 // Reclaim the memory buffer
                 PostWrToSRQ(wc.wr_id);
+
+                // Peer death or QP error — move QP to error state and remove from manager
+                // to prevent QP table exhaustion (mlx5 device cap is 2^17 QPs).
+                shared_ibv_qp errQp = m_qpManager->FindQP(wc.qp_num);
+                if (errQp)
+                {
+                    struct ibv_qp_attr qpAttr{};
+                    qpAttr.qp_state = IBV_QPS_ERR;
+                    int rc = ibv_modify_qp(errQp.get(), &qpAttr, IBV_QP_STATE);
+                    if (rc != 0)
+                    {
+                        LOG_WARN("ibv_modify_qp to ERR failed qp={} error={},{}", wc.qp_num, rc, strerror(errno));
+                    }
+                    m_qpManager->DeleteQP(wc.qp_num);
+                    LOG_INFO("Deleted QP on error qp={}", wc.qp_num);
+                }
                 continue;
             }
 
@@ -326,8 +353,10 @@ void IBManager::ProcessRequest(const ibv_wc& wc)
     shared_ibv_qp qp = m_qpManager->FindQP(wc.qp_num);
     if (!qp)
     {
-        // Should not happen
-        LOG_CRITICAL("Received invalid qp={}", wc.qp_num);
+        // QP was already deleted (e.g. peer death detected via error WC while this request was queued).
+        // Reclaim the buffer to avoid exhausting the SRQ buffer pool.
+        LOG_WARN("QP already removed, discarding request qp={}", wc.qp_num);
+        PostWrToSRQ(wc.wr_id);
         return;
     }
 
