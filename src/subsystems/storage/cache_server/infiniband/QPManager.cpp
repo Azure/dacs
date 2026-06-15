@@ -207,30 +207,31 @@ void QPManager::QPCleanupWorker()
 
         LOG_INFO("Active QPs={} before expiry check", m_nActiveQps);
 
-        // Iterate all the LRU caches and remove the expired entries
+        // Iterate all the LRU caches and remove ALL expired entries per bucket
         time_t currentTime = time(NULL);
         for (uint32_t mapBucket = 0; mapBucket < NUM_MAPS; mapBucket++)
         {
             lock_guard lock(m_vQpsMutex[mapBucket]);
-            if (!m_vQpsLruQueue[mapBucket].empty())
+            while (!m_vQpsLruQueue[mapBucket].empty())
             {
                 time_t lruTime = m_vQpsLruQueue[mapBucket].back().lruTime;
-                if (difftime(currentTime, lruTime) >= m_qpInactiveExpirySeconds)
+                if (difftime(currentTime, lruTime) < m_qpInactiveExpirySeconds)
                 {
-
-                    // Expired entry, remove it from the data structures
-                    auto mapIter = m_vQpsMap[mapBucket].find(m_vQpsLruQueue[mapBucket].back().qpNum);
-                    if (mapIter == m_vQpsMap[mapBucket].end())
-                    {
-                        LOG_WARN("qp already removed qp={}", m_vQpsLruQueue[mapBucket].back().qpNum);
-                    }
-                    else
-                    {
-                        m_vQpsMap[mapBucket].erase(mapIter);
-                    }
-
-                    m_vQpsLruQueue[mapBucket].pop_back();
+                    break;
                 }
+
+                // Expired entry, remove it from the data structures
+                auto mapIter = m_vQpsMap[mapBucket].find(m_vQpsLruQueue[mapBucket].back().qpNum);
+                if (mapIter == m_vQpsMap[mapBucket].end())
+                {
+                    LOG_WARN("qp already removed qp={}", m_vQpsLruQueue[mapBucket].back().qpNum);
+                }
+                else
+                {
+                    m_vQpsMap[mapBucket].erase(mapIter);
+                }
+
+                m_vQpsLruQueue[mapBucket].pop_back();
             }
         }
 
