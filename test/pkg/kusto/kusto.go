@@ -149,6 +149,40 @@ type DACSClientPerfResult struct {
 	ReadThroughputGbps   float64 `json:"ReadThroughputGbps"`
 }
 
+// ResilienceOperationResult contains the timing for a single AKS resilience
+// operation (e.g. helm upgrade, helm rollback, AKS cluster upgrade, node-pool
+// scale up/down) as a dynamic column in Kusto.
+type ResilienceOperationResult struct {
+	// Operation identifies the operation measured, e.g. "helm-upgrade",
+	// "helm-rollback", "aks-upgrade", "scale-down", "scale-up".
+	Operation       string  `json:"Operation"`
+	DurationSeconds float64 `json:"DurationSeconds"`
+	// Details holds operation-specific context and is only emitted for
+	// operations that have it (e.g. UpgradeOperationDetails for upgrades,
+	// ScaleOperationDetails for scales).
+	Details any `json:"Details,omitempty"`
+}
+
+// UpgradeOperationDetails holds context specific to upgrade-style operations.
+type UpgradeOperationDetails struct {
+	TargetVersion string `json:"TargetVersion"`
+}
+
+// ScaleOperationDetails holds context specific to scale-style operations.
+type ScaleOperationDetails struct {
+	TargetNodes int `json:"TargetNodes"`
+}
+
+// ResilienceSpecResult records the outcome of an AKS resilience test spec
+// (dynamic column in Kusto) so dashboards can track pass/fail trends.
+type ResilienceSpecResult struct {
+	// Outcome is the spec outcome: "passed", "failed", or "skipped".
+	Outcome         string  `json:"Outcome"`
+	DurationSeconds float64 `json:"DurationSeconds"`
+	// FailureMessage is the spec failure message, set only when Outcome is "failed".
+	FailureMessage string `json:"FailureMessage,omitempty"`
+}
+
 // ScenarioResult contains workload scenario performance results (dynamic column in Kusto).
 type ScenarioResult struct {
 	Scenario         string  `json:"Scenario"`

@@ -14,7 +14,12 @@ import (
 
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
 	akshelpers "github.com/Azure/dacs/test/pkg/aks"
+	"github.com/Azure/dacs/test/pkg/kusto"
 )
+
+// opAKSUpgrade is the operation name used when emitting the per-operation perf
+// metric for this spec.
+const opAKSUpgrade = "aks-upgrade"
 
 func testClusterUpgrade(tc *testContext) {
 	It("should survive an AKS cluster upgrade", Label("aks-upgrade"), func(ctx context.Context) {
@@ -53,9 +58,12 @@ func testClusterUpgrade(tc *testContext) {
 		upgradeStart := metav1.NewMicroTime(time.Now())
 
 		By(fmt.Sprintf("upgrading cluster to version %s", nextVersion))
+		upgradeCallStart := time.Now()
 		err = akshelpers.UpgradeCluster(ctx, tc.subscription, tc.resourceGroupName, tc.managedCluster, nextVersion, log)
 		Expect(err).NotTo(HaveOccurred(), "failed to upgrade AKS cluster")
-		log.Info("AKS upgrade completed", "cluster", tc.managedCluster, "version", nextVersion)
+		upgradeDuration := time.Since(upgradeCallStart)
+		log.Info("AKS upgrade completed", "cluster", tc.managedCluster, "version", nextVersion, "aksUpgradeDuration", upgradeDuration.Seconds())
+		emitOperationMetric(ctx, kusto.ResilienceOperationResult{Operation: opAKSUpgrade, Details: kusto.UpgradeOperationDetails{TargetVersion: nextVersion}}, upgradeDuration)
 
 		By("checking pod-node stickiness")
 		var postPodsByNode map[string]string

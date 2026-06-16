@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	"github.com/onsi/ginkgo/v2/types"
 	. "github.com/onsi/gomega"
@@ -21,17 +22,31 @@ import (
 
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
 	akshelpers "github.com/Azure/dacs/test/pkg/aks"
+	"github.com/Azure/dacs/test/pkg/cluster"
 	"github.com/Azure/dacs/test/pkg/common"
 	"github.com/Azure/dacs/test/pkg/diagnostics"
+	"github.com/Azure/dacs/test/pkg/git"
+	"github.com/Azure/dacs/test/pkg/helm"
 	cachemonitor "github.com/Azure/dacs/test/pkg/kube/cache"
 	"github.com/Azure/dacs/test/pkg/kube/node"
 	"github.com/Azure/dacs/test/pkg/kube/pod"
+	"github.com/Azure/dacs/test/pkg/kusto"
 	"github.com/Azure/dacs/test/pkg/logger"
 	"github.com/Azure/dacs/test/pkg/verification"
 )
 
 // log is the package logger; klog-style format written to GinkgoWriter.
 var log = logger.New()
+
+const (
+	outcomePassed  = "passed"
+	outcomeFailed  = "failed"
+	outcomeSkipped = "skipped"
+)
+
+// suiteUUID is a unique identifier for this test run, generated at startup.
+// It ties together all perf metrics emitted by specs in this suite run.
+var suiteUUID = uuid.New().String()
 
 // testContext holds shared state for AKS resilience tests.
 type testContext struct {
@@ -54,6 +69,7 @@ var _ = Describe("aks tests", Label("aks"), Serial, func() {
 	testClusterScale(&tc)
 	testClusterHelmUpgrade(&tc)
 	AfterEach(afterEach)
+	ReportAfterEach(emitSpecOutcomeMetric)
 })
 
 func beforeEach(ctx context.Context) {
@@ -267,5 +283,67 @@ Kube Events:        %s
 
 	if err := diagnostics.WriteLinksSummary(links, "diagnostic-links.md"); err != nil {
 		log.Info("failed to write diagnostic links summary", "error", err)
+	}
+}
+
+// newResilienceMetricBase builds a *kusto.PerfMetric with the fields common to
+// all AKS resilience metrics (suite ID, git, helm, and cluster metadata).
+// The caller sets the Result field with the appropriate result type.
+func newResilienceMetricBase(ctx context.Context) *kusto.PerfMetric {
+	helmInfo := helm.GetCacheReleaseInfo(ctx, tc.namespace)
+	return &kusto.PerfMetric{
+		SuiteID:          suiteUUID,
+		TestName:         CurrentSpecReport().FullText(),
+		TestGitCommit:    git.GetCommit(ctx),
+		TestGitBranch:    git.GetBranch(ctx),
+		HelmChartVersion: helmInfo.ChartVersion,
+		HelmAppVersion:   helmInfo.AppVersion,
+		TestMetadata: kusto.TestMetadata{
+			ClusterName: tc.managedCluster,
+			IsMinikube:  cluster.IsMinikube(),
+		},
+	}
+}
+
+// emitOperationMetric records the duration of a single resilience operation as
+// a perf metric. Sends are non-fatal: metric emission must never fail a test.
+func emitOperationMetric(ctx context.Context, result kusto.ResilienceOperationResult, duration time.Duration) {
+	result.DurationSeconds = duration.Seconds()
+	metric := newResilienceMetricBase(ctx)
+	metric.Result = result
+	if err := kusto.SendPerfMetric(ctx, kusto.DefaultEventHubConfig, metric); err != nil {
+		log.Error(err, "failed to send resilience operation metric (non-fatal)", "operation", result.Operation)
+	}
+}
+
+// emitSpecOutcomeMetric records the pass/fail/skip outcome and total run time
+// of the current spec as a perf metric so dashboards can track test outcomes.
+// Registered via ReportAfterEach so it runs after the It, all AfterEach nodes,
+// and all DeferCleanups, receiving the final SpecReport - this captures
+// failures that occur in afterEach (post-test verification) as well. Sends are
+// non-fatal.
+func emitSpecOutcomeMetric(ctx SpecContext, report SpecReport) {
+	var outcome string
+	switch {
+	case report.State == types.SpecStateSkipped, report.State == types.SpecStatePending:
+		outcome = outcomeSkipped
+	case report.Failed():
+		outcome = outcomeFailed
+	default:
+		outcome = outcomePassed
+	}
+
+	result := kusto.ResilienceSpecResult{
+		Outcome:         outcome,
+		DurationSeconds: report.RunTime.Seconds(),
+	}
+	if report.Failed() {
+		result.FailureMessage = report.Failure.Message
+	}
+
+	metric := newResilienceMetricBase(ctx)
+	metric.Result = result
+	if err := kusto.SendPerfMetric(ctx, kusto.DefaultEventHubConfig, metric); err != nil {
+		log.Error(err, "failed to send resilience spec outcome metric (non-fatal)", "outcome", outcome)
 	}
 }

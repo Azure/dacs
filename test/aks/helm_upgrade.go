@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	helmhelpers "github.com/Azure/dacs/test/pkg/helm"
+	"github.com/Azure/dacs/test/pkg/kusto"
 	"github.com/Azure/dacs/test/pkg/verification"
 )
 
@@ -28,6 +29,11 @@ const (
 	// .pipelines/scripts/publish/publish-helm-chart.sh, which sets it to
 	// "<registry>/cache-server".
 	cacheServerImageRepoName = "cache-server"
+
+	// opHelmUpgrade and opHelmRollback are the operation names used when
+	// emitting per-operation perf metrics for this spec.
+	opHelmUpgrade  = "helm-upgrade"
+	opHelmRollback = "helm-rollback"
 )
 
 func testClusterHelmUpgrade(tc *testContext) {
@@ -48,6 +54,7 @@ func testClusterHelmUpgrade(tc *testContext) {
 		upgradeDuration, err := helmhelpers.Upgrade(ctx, helmUpgradeRelease, helmUpgradeNamespace, chartRef, version, log)
 		Expect(err).NotTo(HaveOccurred(), "failed to upgrade helm release %s/%s to %s %s", helmUpgradeNamespace, helmUpgradeRelease, chartRef, version)
 		log.Info("helm upgrade completed", "release", helmUpgradeRelease, "namespace", helmUpgradeNamespace, "helmUpgradeDuration", upgradeDuration.Seconds())
+		emitOperationMetric(ctx, kusto.ResilienceOperationResult{Operation: opHelmUpgrade, Details: kusto.UpgradeOperationDetails{TargetVersion: version}}, upgradeDuration)
 
 		postUpgradeReleaseInfo := helmhelpers.GetReleaseInfo(ctx, helmUpgradeNamespace, helmUpgradeRelease)
 		Expect(postUpgradeReleaseInfo.AppVersion).NotTo(Or(BeEmpty(), Equal("<unknown>")), "post-upgrade helm release %s/%s has no usable AppVersion: %q", helmUpgradeNamespace, helmUpgradeRelease, postUpgradeReleaseInfo.AppVersion)
@@ -69,6 +76,7 @@ func testClusterHelmUpgrade(tc *testContext) {
 		rollbackDuration, err := helmhelpers.RollbackToPrevious(ctx, helmUpgradeRelease, helmUpgradeNamespace, log)
 		Expect(err).NotTo(HaveOccurred(), "failed to rollback helm release %s/%s to previous revision", helmUpgradeNamespace, helmUpgradeRelease)
 		log.Info("helm rollback completed", "release", helmUpgradeRelease, "namespace", helmUpgradeNamespace, "helmRollbackDuration", rollbackDuration.Seconds())
+		emitOperationMetric(ctx, kusto.ResilienceOperationResult{Operation: opHelmRollback}, rollbackDuration)
 
 		By("waiting for application health and cacheserver image rollback after rollback")
 		Eventually(func(g Gomega, ctx context.Context) {
