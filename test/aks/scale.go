@@ -15,6 +15,7 @@ import (
 
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
 	akshelpers "github.com/Azure/dacs/test/pkg/aks"
+	"github.com/Azure/dacs/test/pkg/kusto"
 	"github.com/Azure/dacs/test/pkg/verification"
 )
 
@@ -33,6 +34,11 @@ const (
 	// How long to wait for sts status to converge to spec.replicas.
 	// 15m covers image pulls + pod startup on a fresh node.
 	stsStatusSettleTimeout = 15 * time.Minute
+
+	// opScaleDown and opScaleUp are the operation names used when emitting
+	// per-operation perf metrics for this spec.
+	opScaleDown = "scale-down"
+	opScaleUp   = "scale-up"
 )
 
 func testClusterScale(tc *testContext) {
@@ -69,6 +75,11 @@ func testClusterScale(tc *testContext) {
 
 		By(fmt.Sprintf("waiting for cacheserver statefulset to converge to %d replicas", scaleDownTargetNodes))
 		waitForCacheserverReplicas(ctx, tc, scaleDownTargetNodes, downNodeReachedAt)
+		scaleDownDuration := time.Since(scaleDownStart)
+		log.Info("scale-down completed",
+			"targetNodes", scaleDownTargetNodes,
+			"scaleDownDuration", scaleDownDuration.Seconds())
+		emitOperationMetric(ctx, kusto.ResilienceOperationResult{Operation: opScaleDown, Details: kusto.ScaleOperationDetails{TargetNodes: scaleDownTargetNodes}}, scaleDownDuration)
 
 		By(fmt.Sprintf("asserting cache-controller emitted a Scaling event reflecting %d replicas", scaleDownTargetNodes))
 		assertScalingEvent(ctx, tc, scaleStart, scaleDownTargetNodes)
@@ -99,6 +110,11 @@ func testClusterScale(tc *testContext) {
 
 		By(fmt.Sprintf("waiting for cacheserver statefulset to converge to %d replicas", originalNodeCount))
 		waitForCacheserverReplicas(ctx, tc, originalNodeCount, upNodeReachedAt)
+		scaleUpDuration := time.Since(scaleUpStart)
+		log.Info("scale-up completed",
+			"targetNodes", originalNodeCount,
+			"scaleUpDuration", scaleUpDuration.Seconds())
+		emitOperationMetric(ctx, kusto.ResilienceOperationResult{Operation: opScaleUp, Details: kusto.ScaleOperationDetails{TargetNodes: originalNodeCount}}, scaleUpDuration)
 
 		By(fmt.Sprintf("asserting cache-controller emitted a Scaling event reflecting %d replicas", originalNodeCount))
 		assertScalingEvent(ctx, tc, scaleStart, originalNodeCount)
