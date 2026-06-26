@@ -57,7 +57,7 @@ TEST(StorageUtilsTest, TestLogRarelyParallel)
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
         });
-        testThreads.push_back(move(t));
+        testThreads.push_back(std::move(t));
     }
     for (auto &t : testThreads)
     {

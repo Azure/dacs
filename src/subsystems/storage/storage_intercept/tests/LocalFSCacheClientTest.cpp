@@ -327,7 +327,7 @@ TEST_F(LocalFSCacheClientTest, ParallelUploadDownloadTest)
                 this->m_cacheClient->DownloadSync("", fileNames[i], version, 0, 0, outBuffer[i].size(), outBuffer[i].data(), dataRead);
             ASSERT_EQ(cacheStatus, CacheStatus::NOTFOUND_LOCKED);
         });
-        testThreads.push_back(move(t));
+        testThreads.push_back(std::move(t));
     }
     for (auto &t : testThreads)
     {
@@ -342,7 +342,7 @@ TEST_F(LocalFSCacheClientTest, ParallelUploadDownloadTest)
             bool bRetVal = this->m_cacheClient->Upload("", fileNames[i], version, 0, dataBuffer[i], false /*isWrite*/);
             ASSERT_EQ(bRetVal, true);
         });
-        testThreads.push_back(move(t));
+        testThreads.push_back(std::move(t));
     }
     for (auto &t : testThreads)
     {
@@ -365,7 +365,7 @@ TEST_F(LocalFSCacheClientTest, ParallelUploadDownloadTest)
             ASSERT_EQ(dataRead, dataBuffer[i]->BufferSize);
             AssertEqArray<char>(outBuffer[i].data(), dataBuffer[i]->Buffer.get(), dataRead);
         });
-        testThreads.push_back(move(t));
+        testThreads.push_back(std::move(t));
     }
     for (auto &t : testThreads)
     {

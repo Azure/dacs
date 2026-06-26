@@ -305,7 +305,7 @@ CacheClientStatus CacheClientImpl::Upload(
             return CacheClientStatus::INTERNAL_ERROR;
         }
         LOG_DEBUG_REQID("Cache server hostname for file: {} is {}", *uploadRequest, strCacheKey, hostname);
-        std::unique_ptr<IConnection> serverConnection = move(m_spConnectionManager->GetConnection(hostname));
+        std::unique_ptr<IConnection> serverConnection = std::move(m_spConnectionManager->GetConnection(hostname));
         if(serverConnection.get() == nullptr)
         {
             LOG_WARN_REQID("couldn't get server connection, ignoring upload for file: {}", *uploadRequest, strCacheKey);
@@ -325,14 +325,14 @@ CacheClientStatus CacheClientImpl::Upload(
         if(!bRet)
         {
             LOG_WARN_REQID("couldn't send request, ignoring upload for file: {}", *uploadRequest, strCacheKey);
-            m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
         if(nBufferLength > 0 && !cacheutils::WriteAllFinal(serverConnection.get(), pBuffer, nBufferLength))
         {
             LOG_WARN_REQID("couldn't complete write to server, file: {}", *uploadRequest, strCacheKey);
-            m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -340,7 +340,7 @@ CacheClientStatus CacheClientImpl::Upload(
         if(!ReadMessageFromRemote(serverConnection.get(), strResponse))
         {
             LOG_WARN_REQID("couldn't read response from server. file: {}", *uploadRequest, strCacheKey);
-            m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -348,7 +348,7 @@ CacheClientStatus CacheClientImpl::Upload(
         if(!response.ParseFromString(strResponse))
         {
             LOG_WARN_REQID("couldn't parse response from server. file: {}", *uploadRequest, strCacheKey);
-            m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -374,7 +374,7 @@ CacheClientStatus CacheClientImpl::Upload(
             status = CacheClientStatus::INTERNAL_ERROR;
         }
 
-        m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), false);
+        m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), false);
         return status;
     };
 
@@ -479,7 +479,7 @@ CacheClientStatus CacheClientImpl::Download(
         return CacheClientStatus::AUTH_FAILED;
     }
 
-    std::unique_ptr<IConnection> serverConnection = move(m_spConnectionManager->GetConnection(hostname));
+    std::unique_ptr<IConnection> serverConnection = std::move(m_spConnectionManager->GetConnection(hostname));
     if(!serverConnection.get())
     {
         LOG_WARN_REQID("couldn't get server connection, key: {}", *downloadRequest, strCacheKey);
@@ -489,7 +489,7 @@ CacheClientStatus CacheClientImpl::Download(
     if(!SendMessageToRemoteFinal(serverConnection.get(), request))
     {
         LOG_WARN_REQID("couldn't send message to server, key: {}", *downloadRequest, strCacheKey);
-        m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
         return cacheClientStatus;
     }
 
@@ -497,7 +497,7 @@ CacheClientStatus CacheClientImpl::Download(
     if(!ReadMessageFromRemote(serverConnection.get(), responseMessage))
     {
         LOG_WARN_REQID("couldn't read message from server, key: {}", *downloadRequest, strCacheKey);
-        m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
         return cacheClientStatus;
     }
 
@@ -505,7 +505,7 @@ CacheClientStatus CacheClientImpl::Download(
     if(!response.ParseFromString(responseMessage))
     {
         LOG_WARN_REQID("error: Failed to parse protobuf message, key: {}", *downloadRequest, strCacheKey);
-        m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
         return cacheClientStatus;
     }
 
@@ -527,7 +527,7 @@ CacheClientStatus CacheClientImpl::Download(
                            strCacheKey,
                            actualReadLen,
                            *nLength);
-            m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
             return cacheClientStatus;
         }
 
@@ -537,7 +537,7 @@ CacheClientStatus CacheClientImpl::Download(
             {
                 LOG_ERROR_REQID(
                     "actualReadLen > 0 but no read buffer supplied, key: {}", *downloadRequest, strCacheKey);
-                m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
+                m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
                 return cacheClientStatus;
             }
 
@@ -546,7 +546,7 @@ CacheClientStatus CacheClientImpl::Download(
                     actualReadLen))
             {
                 LOG_WARN_REQID("Failed to complete read from server, key: {}", *downloadRequest, strCacheKey);
-                m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), true);
+                m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
                 return cacheClientStatus;
             }
         }
@@ -587,7 +587,7 @@ CacheClientStatus CacheClientImpl::Download(
                                            calculatedChecksum);
 
                             cacheClientStatus = CacheClientStatus::CHECKSUM_MISMATCH;
-                            m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), false);
+                            m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), false);
                             return cacheClientStatus;
                         }
                     }
@@ -644,7 +644,7 @@ CacheClientStatus CacheClientImpl::Download(
         cacheClientStatus = CacheClientStatus::INTERNAL_ERROR;
     }
 
-    m_spConnectionManager->ReleaseConnection(hostname, move(serverConnection), false);
+    m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), false);
     return cacheClientStatus;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -711,7 +711,7 @@ CacheClientStatus CacheClientImpl::DeleteGroupFromServer(
         return CacheClientStatus::AUTH_FAILED;
     }
 
-    std::unique_ptr<IConnection> connection = move(m_spConnectionManager->GetConnection(hostname));
+    std::unique_ptr<IConnection> connection = std::move(m_spConnectionManager->GetConnection(hostname));
 
     if(!connection || !connection.get())
     {
@@ -728,7 +728,7 @@ CacheClientStatus CacheClientImpl::DeleteGroupFromServer(
                         *deleteGroupRequest,
                         hostname,
                         groupID);
-        m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
+        m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), true);
         return CacheClientStatus::INTERNAL_ERROR;
     }
 
@@ -739,7 +739,7 @@ CacheClientStatus CacheClientImpl::DeleteGroupFromServer(
                         *deleteGroupRequest,
                         hostname,
                         groupID);
-        m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
+        m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), true);
         return CacheClientStatus::INTERNAL_ERROR;
     }
 
@@ -750,25 +750,25 @@ CacheClientStatus CacheClientImpl::DeleteGroupFromServer(
                         *deleteGroupRequest,
                         hostname,
                         groupID);
-        m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
+        m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), true);
         return CacheClientStatus::INTERNAL_ERROR;
     }
 
     switch(response.result())
     {
     case DeleteResponse::SUCCESS:
-        m_spConnectionManager->ReleaseConnection(hostname, move(connection), false);
+        m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), false);
         return CacheClientStatus::SUCCESS;
 
     case DeleteResponse::AUTH_FAILED:
         LOG_ERROR_REQID("Delete request failed due to auth failure for server: {}", *deleteGroupRequest, hostname);
-        m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
+        m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), true);
         return CacheClientStatus::AUTH_FAILED;
 
     case DeleteResponse::INTERNAL_ERROR:
         LOG_ERROR_REQID(
             "Delete request failed due to internal error for server: {}", *deleteGroupRequest, hostname);
-        m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
+        m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), true);
         return CacheClientStatus::INTERNAL_ERROR;
 
     default:
@@ -776,7 +776,7 @@ CacheClientStatus CacheClientImpl::DeleteGroupFromServer(
                         *deleteGroupRequest,
                         response.result(),
                         hostname);
-        m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
+        m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), true);
         return CacheClientStatus::INTERNAL_ERROR;
     }
 }
@@ -830,7 +830,7 @@ CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
             return CacheClientStatus::AUTH_FAILED;
         }
 
-        std::unique_ptr<IConnection> connection = move(m_spConnectionManager->GetConnection(hostname));
+        std::unique_ptr<IConnection> connection = std::move(m_spConnectionManager->GetConnection(hostname));
         if(!connection || !connection.get())
         {
             LOG_ERROR_REQID("Couldn't get server connection, access time distribution request for server: {}",
@@ -844,7 +844,7 @@ CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
             LOG_ERROR_REQID("Couldn't send message to server, access time distribution request for server: {}",
                             *lastAccessTimeDistributionRequest,
                             hostname);
-            m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -854,7 +854,7 @@ CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
             LOG_ERROR_REQID("Couldn't read message from server, access time distribution request for server: {}",
                             *lastAccessTimeDistributionRequest,
                             hostname);
-            m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -879,7 +879,7 @@ CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
             {
                 lastAccessTimeDistribution[entry.first] += entry.second;
             }
-            m_spConnectionManager->ReleaseConnection(hostname, move(connection), false);
+            m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), false);
             continue;
 
         case GetCacheLastAccessTimeDistributionResponse::AUTH_FAILED:
@@ -961,7 +961,7 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
             return CacheClientStatus::AUTH_FAILED;
         }
 
-        std::unique_ptr<IConnection> connection = move(m_spConnectionManager->GetConnection(hostname));
+        std::unique_ptr<IConnection> connection = std::move(m_spConnectionManager->GetConnection(hostname));
 
         if(!connection || !connection.get())
         {
@@ -978,7 +978,7 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
                             *deleteByLastAccessTimeRequest,
                             hostname,
                             lastAccessTime);
-            m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -989,7 +989,7 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
                             *deleteByLastAccessTimeRequest,
                             hostname,
                             lastAccessTime);
-            m_spConnectionManager->ReleaseConnection(hostname, move(connection), true);
+            m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -1012,7 +1012,7 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
         switch(response.result())
         {
         case DeleteResponse::SUCCESS:
-            m_spConnectionManager->ReleaseConnection(hostname, move(connection), false);
+            m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), false);
             continue;
 
         case DeleteResponse::AUTH_FAILED:

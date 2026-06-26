@@ -167,7 +167,7 @@ namespace ibutils
                 ibvMtu = portAttr.active_mtu;
                 ibvLid = portAttr.lid;
                 ibvPort = port;
-                ibvContext = move(context);
+                ibvContext = std::move(context);
                 bDeviceFound = true;
                 LOG_INFO("Found active IB device: {},{}:{},{},{},{},{},{},{}",
                     deviceId, (devices.get())[deviceId]->name, port, devAttr.sys_image_guid, portAttr.active_speed,

@@ -37,7 +37,7 @@ CacheUploadManager::CacheUploadManager(
             auto uploadThread = make_unique<thread>([this]() {
                 this->UploadWorker();
             });
-            m_vecUploadThread.push_back(move(uploadThread));
+            m_vecUploadThread.push_back(std::move(uploadThread));
         }
     }
 
@@ -159,7 +159,7 @@ void CacheUploadManager::UploadWorker()
         unique_ptr<UploadContext> uploadContext;
         if (m_uploadQueue.size() > 0)
         {
-            uploadContext = move(m_uploadQueue.front());
+            uploadContext = std::move(m_uploadQueue.front());
             m_uploadQueue.pop();
         }
 
@@ -168,7 +168,7 @@ void CacheUploadManager::UploadWorker()
         if (uploadContext != nullptr)
         {
             size_t bufferSizeToSend = uploadContext->m_fileData.get() ? uploadContext->m_fileData->BufferSize : 0;
-            StartUpload(move(uploadContext));
+            StartUpload(std::move(uploadContext));
             m_uploadBufferMemory -= bufferSizeToSend;
         }
     }
@@ -192,8 +192,8 @@ bool CacheUploadManager::Upload(
     {
         auto uploadContext = make_unique<UploadContext>(
             mountName, cacheKey, fileData, strEncryptionKey,
-            move(fileAttributes), filePath, version);
-        return StartUpload(move(uploadContext));
+            std::move(fileAttributes), filePath, version);
+        return StartUpload(std::move(uploadContext));
     }
     else
     {
@@ -211,8 +211,8 @@ bool CacheUploadManager::Upload(
             m_uploadBufferMemory += bufferSizeToSend;
             auto uploadContext = make_unique<UploadContext>(
                 mountName, cacheKey, fileData, strEncryptionKey,
-                move(fileAttributes), filePath, version);
-            m_uploadQueue.push(move(uploadContext));
+                std::move(fileAttributes), filePath, version);
+            m_uploadQueue.push(std::move(uploadContext));
         }
 
         m_cvQueue.notify_one();
