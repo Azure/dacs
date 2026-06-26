@@ -34,9 +34,9 @@ unordered_map<string, function<unique_ptr<IHashFunction>()>> hashCreators = {
 
 // Strategy name -> Strategy  creator
 unordered_map<string, function<unique_ptr<IHashingStrategy>(unique_ptr<IHashFunction>)>> strategyCreators = {
-    {"static",     [](auto h) { return make_unique<StaticHashingStrategy>(move(h)); }},
-    {"consistent", [](auto h) { return make_unique<ConsistentHashingStrategy>(991, move(h)); }}, //vNodes = 991
-    {"rendezvous", [](auto h) { return make_unique<RendezvousHashingStrategy>(move(h)); }}
+    {"static",     [](auto h) { return make_unique<StaticHashingStrategy>(std::move(h)); }},
+    {"consistent", [](auto h) { return make_unique<ConsistentHashingStrategy>(991, std::move(h)); }}, //vNodes = 991
+    {"rendezvous", [](auto h) { return make_unique<RendezvousHashingStrategy>(std::move(h)); }}
 };
 
 // factories
@@ -63,7 +63,7 @@ std::vector<std::unique_ptr<IHashingStrategy>> CreateAllStrategies(const IHashFu
 
 unique_ptr<IHashingStrategy> CreateStrategy(const string& name, unique_ptr<IHashFunction> hashFunc) {
     auto it = strategyCreators.find(name);
-    return (it != strategyCreators.end()) ? it->second(move(hashFunc)) : nullptr;
+    return (it != strategyCreators.end()) ? it->second(std::move(hashFunc)) : nullptr;
 }
 
 //perf profiling
@@ -103,7 +103,7 @@ void RunSingleBenchmark(unique_ptr<IHashingStrategy> strategy, const HashTestCon
     cout << "Config: " << config.numKeys << " keys, " << config.initialServers << " servers\n\n";
 
     HashingStrategyBenchmark benchmark;
-    auto result = benchmark.RunBenchmark(move(strategy), config);
+    auto result = benchmark.RunBenchmark(std::move(strategy), config);
 
     PrintLoadSummary(result.initialMetrics, "Initial");
     PrintLoadSummary(result.afterAddMetrics, "After Adding " + to_string(config.serversToAdd));
@@ -117,7 +117,7 @@ void RunStrategyComparison(const IHashFunction& hashFunc, const HashTestConfig& 
     auto strategies = CreateAllStrategies(hashFunc);
     for (auto& strategy : strategies) {
         cout << "\n" << string(60, '-') << "\n";
-        RunSingleBenchmark(move(strategy), config);
+        RunSingleBenchmark(std::move(strategy), config);
     }
     
     PrintPerformanceResults(hashFunc, config);
@@ -197,7 +197,7 @@ int main(int argc, char** argv) {
     }
     else if (command == "single" && argc >= 4) {
         auto hashFunc = CreateHashFunction(argv[3]);
-        auto strategy = CreateStrategy(argv[2], move(hashFunc));
+        auto strategy = CreateStrategy(argv[2], std::move(hashFunc));
         
         if (!strategy) {
             cout << "Error: Invalid strategy '" << argv[2] << "' or hash '" << argv[3] << "'\n";
@@ -205,7 +205,7 @@ int main(int argc, char** argv) {
             return 1;
         }
         
-        RunSingleBenchmark(move(strategy), config);
+        RunSingleBenchmark(std::move(strategy), config);
     }
     else {
         cout << "Error: Invalid command\n";

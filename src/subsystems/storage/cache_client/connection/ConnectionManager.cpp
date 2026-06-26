@@ -317,8 +317,8 @@ bool ConnectionManager::InitInfiniband()
     }
 
     LOG_INFO("IB Init successful");
-    m_ibDevice.context = move(context);
-    m_ibDevice.pd = move(pd);
+    m_ibDevice.context = std::move(context);
+    m_ibDevice.pd = std::move(pd);
 
     // Query device capabilities to determine max SGE support
     struct ibv_device_attr devAttr{};
@@ -422,9 +422,9 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(std::unique_p
         }
 
         clientQpns->Add(qp->qp_num);
-        vectorQps.push_back(move(qp));
-        vectorCqs.push_back(move(cq));
-        vectorEventChannels.push_back(move(compChannel));
+        vectorQps.push_back(std::move(qp));
+        vectorCqs.push_back(std::move(cq));
+        vectorEventChannels.push_back(std::move(compChannel));
     }
 
     // serverFd will be auto-closed by socketConnection
@@ -484,7 +484,7 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(std::unique_p
     // Create one to one qp mapping for client-server communication
     for (int qpn = 0; qpn < IB_CONNECTIONS_PER_SERVER; qpn++)
     {
-        auto qp = move(vectorQps[qpn]);
+        auto qp = std::move(vectorQps[qpn]);
         bool bRet = SetupQPForSendAndReceive(
             qp.get(),
             m_ibDevice.port,
@@ -517,11 +517,11 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(std::unique_p
         LOG_DEBUG_REQID("Created IB connection, qp={}", *ibRequest, qp->qp_num);
         bool directMrEnabled = (m_ibDevice.max_sge >= 2);
         std::unique_ptr<IBConnection> ibConnection = make_unique<IBConnection>(
-            move(qp), 
-            move(vectorEventChannels[qpn]),
-            move(vectorCqs[qpn]), 
-            move(mr), 
-            move(mrBufferBlock),
+            std::move(qp), 
+            std::move(vectorEventChannels[qpn]),
+            std::move(vectorCqs[qpn]), 
+            std::move(mr), 
+            std::move(mrBufferBlock),
             directMrEnabled
         );
         if (!PerformIBHandshake(ibConnection.get(), cacheserver))
@@ -534,13 +534,13 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(std::unique_p
         if (qpn < IB_CONNECTIONS_PER_SERVER - 1)
         {
             // Add all but one connections to the re-use pool
-            ReleaseConnection(cacheserver, move(ibConnection), false);
+            ReleaseConnection(cacheserver, std::move(ibConnection), false);
         }
         else
         {
             std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
             m_mapIbSetupStatus[cacheserver] = IBSetupStatus::SUCCESS;
-            return move(ibConnection);           
+            return std::move(ibConnection);           
         }
     }
 
@@ -768,17 +768,17 @@ std::unique_ptr<IConnection> ConnectionManager::GetConnection(const std::string&
         }
         while (!m_mapConnectionQueue[cacheserver].empty())
         {
-            auto serverConnection = move(m_mapConnectionQueue[cacheserver].front());
+            auto serverConnection = std::move(m_mapConnectionQueue[cacheserver].front());
             m_mapConnectionQueue[cacheserver].pop();
             if (serverConnection->IsValidConnection())
             {
                 LOG_DEBUG("Reusing server connection id={}", serverConnection->GetId());
-                return move(serverConnection);
+                return std::move(serverConnection);
             }
         }
     }
 
-    return move(InitFreshConnection(cacheserver));
+    return std::move(InitFreshConnection(cacheserver));
 }
 //---------------------------------------------------------------------------------------------------------------------
 void ConnectionManager::ReleaseConnection(
@@ -798,7 +798,7 @@ void ConnectionManager::ReleaseConnection(
         {
             LOG_DEBUG("Add connection to reuse pool id={}", serverConnection->GetId());
             serverConnection->ResetConnection();
-            m_mapConnectionQueue[cacheserver].push(move(serverConnection));
+            m_mapConnectionQueue[cacheserver].push(std::move(serverConnection));
         }
     }
 }

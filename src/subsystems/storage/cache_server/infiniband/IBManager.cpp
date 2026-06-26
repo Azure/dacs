@@ -109,13 +109,13 @@ bool IBManager::Init()
         return false;
     }
 
-    m_ibDevice.context = move(context);
-    m_ibDevice.pd = move(pd);
-    m_ibDevice.compEventChannel = move(compChannel);
-    m_ibDevice.sendCQ = move(sendCq);
-    m_ibDevice.receiveSRQ = move(receiveSRQ);
-    m_ibDevice.mrBuffer = move(mrBuffer);
-    m_ibDevice.mrBufferBlock = move(mrBufferBlock);
+    m_ibDevice.context = std::move(context);
+    m_ibDevice.pd = std::move(pd);
+    m_ibDevice.compEventChannel = std::move(compChannel);
+    m_ibDevice.sendCQ = std::move(sendCq);
+    m_ibDevice.receiveSRQ = std::move(receiveSRQ);
+    m_ibDevice.mrBuffer = std::move(mrBuffer);
+    m_ibDevice.mrBufferBlock = std::move(mrBufferBlock);
 
     LOG_INFO("Configured IB device: {},{},{},{},{},{}",
         m_ibDevice.port,

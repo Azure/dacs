@@ -71,7 +71,7 @@ CacheStatus LocalAttributesCache::Get(const std::string& path, FileAttributes& f
     getAttributeRequest->set_enablelock(true);
     LOG_DEBUG_REQID("Creating GetAttributeRequest for path: {}", *getAttributeRequest, path);
 
-    auto serverConnection = move(m_spConnectionManager->GetConnection(LOCALHOST));
+    auto serverConnection = std::move(m_spConnectionManager->GetConnection(LOCALHOST));
     if (serverConnection.get() == nullptr)
     {
         LOG_WARN_REQID("couldn't get server connection", *getAttributeRequest);
@@ -81,7 +81,7 @@ CacheStatus LocalAttributesCache::Get(const std::string& path, FileAttributes& f
     if (!SendMessageToRemoteFinal(serverConnection.get(), request))
     {
         LOG_WARN_REQID("couldn't send message to server", *getAttributeRequest);
-        m_spConnectionManager->ReleaseConnection(LOCALHOST, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(LOCALHOST, std::move(serverConnection), true);
         return cacheStatus;
     }
 
@@ -89,7 +89,7 @@ CacheStatus LocalAttributesCache::Get(const std::string& path, FileAttributes& f
     if (!ReadMessageFromRemote(serverConnection.get(), responseMessage))
     {
         LOG_WARN_REQID("couldn't read message from server", *getAttributeRequest);
-        m_spConnectionManager->ReleaseConnection(LOCALHOST, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(LOCALHOST, std::move(serverConnection), true);
         return cacheStatus;
     }
 
@@ -97,7 +97,7 @@ CacheStatus LocalAttributesCache::Get(const std::string& path, FileAttributes& f
     if (!response.ParseFromString(responseMessage))
     {
         LOG_WARN_REQID("error: Failed to parse protobuf message", *getAttributeRequest);
-        m_spConnectionManager->ReleaseConnection(LOCALHOST, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(LOCALHOST, std::move(serverConnection), true);
         return cacheStatus;
     }
 
@@ -132,7 +132,7 @@ CacheStatus LocalAttributesCache::Get(const std::string& path, FileAttributes& f
         cacheStatus = CacheStatus::INTERNAL_ERROR;
     }
 
-    m_spConnectionManager->ReleaseConnection(LOCALHOST, move(serverConnection), false);
+    m_spConnectionManager->ReleaseConnection(LOCALHOST, std::move(serverConnection), false);
     return cacheStatus;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -142,7 +142,7 @@ void LocalAttributesCache::Put(const std::string& path, const FileAttributes& fi
     {
         lock_guard lock(m_mutexQueue);
         auto uploadContext = make_unique<UploadContext>(path, fileAttributes);
-        m_uploadQueue.push(move(uploadContext));
+        m_uploadQueue.push(std::move(uploadContext));
     }
 
     m_cvQueue.notify_one();
@@ -176,7 +176,7 @@ void LocalAttributesCache::PutAll(
             fileAttributes.version = dirEntry.d_version;
             auto uploadContext = make_unique<UploadContext>(
                 StorageInterceptUtils::CombinePath(pathPrefix, dirEntry.d_name), fileAttributes);
-            m_uploadQueue.push(move(uploadContext));
+            m_uploadQueue.push(std::move(uploadContext));
         }
     }
 
@@ -224,7 +224,7 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
     putAttributeRequest->set_requestid(cacheutils::GetCorrelationId());
     while (!uploadQueue.empty())
     {
-        auto queueEntry = move(uploadQueue.front());
+        auto queueEntry = std::move(uploadQueue.front());
         uploadQueue.pop();
         auto fileAttr = putAttributeRequest->add_fileattributes();
         fileAttr->set_filename(queueEntry->m_strCacheKey);
@@ -237,7 +237,7 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
     }
     LOG_DEBUG_REQID("Creating PutAttributeRequest with {} entries", *putAttributeRequest, putAttributeRequest->fileattributes_size());
 
-    auto serverConnection = move(m_spConnectionManager->GetConnection(LOCALHOST));
+    auto serverConnection = std::move(m_spConnectionManager->GetConnection(LOCALHOST));
     if (serverConnection.get() == nullptr)
     {
         LOG_WARN_REQID("couldn't get server connection, ignoring upload", *putAttributeRequest);
@@ -247,7 +247,7 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
     if (!SendMessageToRemoteFinal(serverConnection.get(), request))
     {
         LOG_WARN_REQID("couldn't send request, ignoring upload", *putAttributeRequest);
-        m_spConnectionManager->ReleaseConnection(LOCALHOST, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(LOCALHOST, std::move(serverConnection), true);
         return false;
     }
 
@@ -256,7 +256,7 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
     if (!ReadMessageFromRemote(serverConnection.get(), strResponse))
     {
         LOG_WARN_REQID("couldn't read response from server", *putAttributeRequest);
-        m_spConnectionManager->ReleaseConnection(LOCALHOST, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(LOCALHOST, std::move(serverConnection), true);
         return false;
     }
 
@@ -264,7 +264,7 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
     if (!response.ParseFromString(strResponse))
     {
         LOG_WARN_REQID("couldn't parse GetAttributeResponse from server", *putAttributeRequest);
-        m_spConnectionManager->ReleaseConnection(LOCALHOST, move(serverConnection), true);
+        m_spConnectionManager->ReleaseConnection(LOCALHOST, std::move(serverConnection), true);
         return false;
     }
 
@@ -277,7 +277,7 @@ bool LocalAttributesCache::StartUpload(std::queue<std::unique_ptr<UploadContext>
         LOG_WARN_REQID("Upload attributes to server failed, result: {}",  *putAttributeRequest, response.result());
         // TODO: log entries which failed
     }
-    m_spConnectionManager->ReleaseConnection(LOCALHOST, move(serverConnection), false);
+    m_spConnectionManager->ReleaseConnection(LOCALHOST, std::move(serverConnection), false);
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------

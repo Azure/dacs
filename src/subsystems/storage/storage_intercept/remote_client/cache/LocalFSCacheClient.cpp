@@ -45,7 +45,7 @@ LocalFSCacheClient::LocalFSCacheClient()
         auto uploadThread = make_unique<thread>([this]() {
             this->UploadWorker();
         });
-        m_vecUploadThread.push_back(move(uploadThread));
+        m_vecUploadThread.push_back(std::move(uploadThread));
     }
 
     // max size of 0 means unlimited
@@ -225,7 +225,7 @@ void LocalFSCacheClient::UploadWorker()
 
         unique_ptr<UploadContext> uploadContext;
         if (m_uploadQueue.size() > 0) {
-            uploadContext = move(m_uploadQueue.front());
+            uploadContext = std::move(m_uploadQueue.front());
             m_uploadQueue.pop();
         }
 
@@ -233,7 +233,7 @@ void LocalFSCacheClient::UploadWorker()
         CheckBufferMemory();
         if (uploadContext != nullptr) {
             size_t bufferSize = uploadContext->m_fileData->BufferSize;
-            UploadSync(move(uploadContext));
+            UploadSync(std::move(uploadContext));
             m_uploadBufferMemory -= bufferSize;
         }
     }

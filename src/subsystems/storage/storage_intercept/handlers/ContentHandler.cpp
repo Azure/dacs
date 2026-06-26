@@ -523,7 +523,7 @@ int ContentHandler::OpenValidatedPathInternal(
     fullFd->MountName = mountInfo.MountName;
     fullFd->RemotePath = relativePath;
     fullFd->OpenFlags = flags;
-    fullFd->FileStream = move(fileStream);
+    fullFd->FileStream = std::move(fileStream);
     const bool isWriteMode = ((flags & O_ACCMODE) == O_WRONLY);
     fullFd->IsWriteMode = isWriteMode;
 
@@ -623,7 +623,7 @@ int ContentHandler::OpenValidatedPathInternal(
 
     GetStreamingClient(mountInfo).OpenFile(relativePath);
 
-    int fd = AllotNewFd(move(fullFd));
+    int fd = AllotNewFd(std::move(fullFd));
     if (fd == -1)
     {
         LOG_ERROR("Could not allot new fd for mountName={} relative path={}", mountInfo.MountName, relativePath);
