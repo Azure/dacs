@@ -15,7 +15,7 @@ BlobSiWrapper's __attribute__((constructor)) auto-generates the SI config from e
 
 Environment variables (in addition to standard harness env):
     RUNAI_STREAMER_CONCURRENCY                        - Number of concurrent streams (default: 16)
-    RUNAI_STREAMER_BLOCK_SIZE                         - Read block size in bytes (default: 8MB)
+    RUNAI_STREAMER_BLOCK_SIZE                         - Read block size in bytes (default: 32MB, matches cache chunk size)
     RUNAI_STREAMER_EXPERIMENTAL_AZURE_CACHE_ENABLED   - "0" to disable cache auto-discovery
     CACHE_DISCOVERY_URL                               - Cache server discovery endpoint (read by BlobSiWrapper)
     CACHE_SERVER_PORT                                 - Cache server port (read by BlobSiWrapper, default: 9065)
@@ -95,7 +95,7 @@ def read_shard(shard_url, config):
 
     from runai_model_streamer import FileStreamer, FileChunks
 
-    block_size = int(os.environ.get("RUNAI_STREAMER_BLOCK_SIZE", str(8 * 1024 * 1024)))
+    block_size = int(os.environ.get("RUNAI_STREAMER_BLOCK_SIZE", str(32 * 1024 * 1024)))
 
     # Get file size via blobfile (convert az:// to blobfile's az://account/... format)
     import blobfile
