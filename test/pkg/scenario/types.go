@@ -121,5 +121,5 @@ type ModelLoadingConfig struct {
 
 	// Run:AI Model Streamer configuration
 	RunAIStreamerConcurrency int // Number of concurrent streams (default: 16)
-	RunAIStreamerBlockSize   int // Read block size in bytes (default: 8MB)
+	RunAIStreamerBlockSize   int // Read block size in bytes (default: 32MB, matches cache chunk size)
 }
