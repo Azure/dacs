@@ -10,10 +10,7 @@ metadata:
     app.kubernetes.io/managed-by: {{ .Release.Service }}
 spec:
   scaling:
-    {{- if .Values.cache.scaling.static }}
-    static:
-      numServers: {{ .Values.cache.scaling.static.numServers }}
-    {{- else if .Values.cache.scaling.dynamic }}
+    {{- if .Values.cache.scaling.dynamic }}
     dynamic:
       {{- with .Values.cache.scaling.dynamic }}
       percentageOfNodesToUse: {{ .percentageOfNodesToUse }}
@@ -24,6 +21,9 @@ spec:
       maxServers: {{ .maxServers }}
       {{- end }}
       {{- end }}
+    {{- else if .Values.cache.scaling.static }}
+    static:
+      numServers: {{ .Values.cache.scaling.static.numServers }}
     {{- end }}
   serverSizeInGB: {{ .Values.cache.serverSizeInGB }}
   serverThreads: {{ .Values.cache.serverThreads }}

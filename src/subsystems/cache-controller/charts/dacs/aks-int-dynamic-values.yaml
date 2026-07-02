@@ -19,6 +19,5 @@ cache:
     hostPath:
       nodeCacheFolderPath: /var/lib/ssd/cacheserver
   scaling:
-    static: null
     dynamic:
       percentageOfNodesToUse: 100
