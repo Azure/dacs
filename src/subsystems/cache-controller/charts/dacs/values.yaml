@@ -18,7 +18,7 @@ manager:
   # Cache server image used by controller to create cache server pods
   cacheServerImage:
     repository: acstor/dacs-server
-    tag: ""  # Empty defaults to .Chart.AppVersion (e.g. "local" for dev, build number for published charts)
+    tag: "" # Empty defaults to .Chart.AppVersion (e.g. "local" for dev, build number for published charts)
 
   # Extra arguments to pass to the controller
   extraArgs: []
@@ -134,7 +134,9 @@ cache:
   name: cache-sample
   namespace: ""  # Namespace for Cache CR (empty = Release.Namespace)
   
-  # Scaling configuration (use either static or dynamic, not both)
+  # Scaling configuration (use either static or dynamic, not both).
+  # If `dynamic` is set, it takes precedence over the default `static` below,
+  # so you can enable dynamic scaling without overriding `static` to null.
   scaling:
     static:
       numServers: 2
