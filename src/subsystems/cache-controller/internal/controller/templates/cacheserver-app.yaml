@@ -75,6 +75,8 @@ spec:
           value: "{{ .EvictionMaintainFreeSpace }}"
         - name: CACHESERVER_EVICTION_SIZE_TARGET
           value: "{{ .EvictionSizeTarget }}"
+        - name: CACHESERVER_USE_ZEROCOPY
+          value: "{{- if .UseZeroCopy }}1{{- else }}0{{- end }}"
         resources:
           requests:
             memory: "100Mi"

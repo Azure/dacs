@@ -38,6 +38,9 @@ spec:
                     {{- else }}
                     - --pprof-bind-address=0
                     {{- end }}
+                    {{- if .Values.manager.featureGates }}
+                    - --feature-gates={{ .Values.manager.featureGates }}
+                    {{- end }}
                     {{- range .Values.manager.extraArgs }}
                     - {{ . }}
                     {{- end }}

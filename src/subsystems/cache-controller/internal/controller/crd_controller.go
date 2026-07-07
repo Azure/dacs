@@ -34,6 +34,7 @@ import (
 
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
 	"github.com/Azure/dacs/cache-controller/internal/config"
+	"github.com/Azure/dacs/cache-controller/internal/featuregate"
 	"github.com/Azure/dacs/cache-controller/internal/scaling"
 	"github.com/Azure/dacs/cache-controller/internal/scheduling"
 	"github.com/Azure/dacs/cache-controller/internal/statushelper"
@@ -284,6 +285,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		NodeCacheFolderPath          string
 		UseHostPath                  bool
 		SnapshotIntervalSeconds      int32
+		UseZeroCopy                  bool
 	}
 
 	// Extract values from CRD spec
@@ -343,6 +345,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		NodeCacheFolderPath:          nodeCachePath,
 		UseHostPath:                  useHostPath,
 		SnapshotIntervalSeconds:      cfg.CacheServerSnapshotIntervalSeconds,
+		UseZeroCopy:                  featuregate.Enabled(featuregate.UseZeroCopy),
 	}
 	var desired appsv1.StatefulSet
 	if err := renderTemplateInto("templates/cacheserver-app.yaml", values, &desired); err != nil {

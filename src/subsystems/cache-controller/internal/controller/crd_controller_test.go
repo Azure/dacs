@@ -89,6 +89,23 @@ var _ = Describe("Cache Controller", func() {
 			return ss.Spec.Template.Spec.SchedulerName
 		}
 
+		// Helper to get env var value from the first container of the StatefulSet.
+		// Must only be called after the STS is confirmed to exist (via prior Eventually checks).
+		getStatefulSetEnvVar := func(name, envName string) (string, bool) {
+			statefulSet := &appsv1.StatefulSet{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      name,
+				Namespace: resourceNamespace,
+			}, statefulSet)
+			Expect(err).NotTo(HaveOccurred(), "StatefulSet should already exist at this point")
+			for _, env := range statefulSet.Spec.Template.Spec.Containers[0].Env {
+				if env.Name == envName {
+					return env.Value, true
+				}
+			}
+			return "", false
+		}
+
 		// Helper to get discovery ConfigMap server count by cache name
 		getConfigMapServerCountByName := func(name string) string {
 			configMap := &corev1.ConfigMap{}
@@ -182,6 +199,14 @@ var _ = Describe("Cache Controller", func() {
 
 			By("Verifying the CacheServer StatefulSet has default-scheduler annotation")
 			Eventually(func() string { return getStatefulSetSchedulerByName(cacheName) }, timeout, pollInterval).Should(Equal("default-scheduler"))
+
+			By("verifying CACHESERVER_USE_ZEROCOPY is disabled (feature gate off by default)")
+			// STS already confirmed to exist by prior Eventually checks.
+			// Env var absent or set to "0" both mean disabled.
+			val, found := getStatefulSetEnvVar(cacheName, "CACHESERVER_USE_ZEROCOPY")
+			if found {
+				Expect(val).To(Equal("0"), "CACHESERVER_USE_ZEROCOPY should be '0' when feature gate is disabled")
+			}
 
 			By("verifying the CacheServer Service is created")
 			Eventually(func() error { return serviceExists(cacheName) }, timeout, pollInterval).Should(Succeed())
