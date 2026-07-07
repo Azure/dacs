@@ -38,6 +38,7 @@ import (
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
 	"github.com/Azure/dacs/cache-controller/internal/config"
 	"github.com/Azure/dacs/cache-controller/internal/controller"
+	"github.com/Azure/dacs/cache-controller/internal/featuregate"
 	"github.com/Azure/dacs/cache-controller/internal/management"
 	"github.com/Azure/dacs/cache-controller/internal/scaling"
 	"github.com/Azure/dacs/cache-controller/internal/scheduling"
@@ -174,6 +175,11 @@ func main() {
 		"cache-controller-validating-webhook-configuration",
 		"The name of the ValidatingWebhookConfiguration.")
 
+	var featureGatesRaw string
+	flag.StringVar(&featureGatesRaw, "feature-gates", "",
+		"Comma-separated list of feature gates (e.g. UseZeroCopy=true). "+
+			"See internal/featuregate for available gates.")
+
 	internalConfig := config.GetConfig()
 	setupLog.Info("Configuration loaded", "fullConfig", internalConfig)
 	initLogger(internalConfig.LogLevel)
@@ -185,6 +191,12 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	if err := featuregate.Parse(featureGatesRaw); err != nil {
+		setupLog.Error(err, "unable to parse feature gates")
+		os.Exit(1)
+	}
+	setupLog.Info("Feature gates parsed", "featureGates", featureGatesRaw)
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will

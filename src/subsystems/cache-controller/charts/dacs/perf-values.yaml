@@ -1,6 +1,9 @@
 # Performance test values for the dacs Helm chart
 # Used by the AKS perf test pipeline
 
+manager:
+  featureGates: "UseZeroCopy=true"
+
 cache:
   serverSizeInGB: 1000
   cpuLimit: 4

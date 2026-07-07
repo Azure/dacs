@@ -8,3 +8,4 @@ cacheServer:
   useHostPath: true
   nodeCacheFolderPath: /var/lib/ssd/cacheserver
   enableTrafficControl: false
+  useZeroCopy: true

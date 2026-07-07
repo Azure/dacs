@@ -20,6 +20,9 @@ manager:
     repository: acstor/dacs-server
     tag: "" # Empty defaults to .Chart.AppVersion (e.g. "local" for dev, build number for published charts)
 
+  # Feature gates to enable (e.g. "UseZeroCopy=true,Foo=false")
+  featureGates: ""
+
   # Extra arguments to pass to the controller
   extraArgs: []
 

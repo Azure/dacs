@@ -33,6 +33,7 @@ cacheServer:
   metricsPort: 9096
   useEphemeralStorage: false
   ibResourceCountLimit: 0
+  useZeroCopy: false
   enableTrafficControl: true # If true, traffic control will be enabled for the cacheserver pods
   nodeCacheFolderPath: /var/lib/ssd/cacheserver # required when useEphemeralStorage is false and useHostPath is true.
   nodeSelectorLabelKey: dacs.azure.com/processing-unit
