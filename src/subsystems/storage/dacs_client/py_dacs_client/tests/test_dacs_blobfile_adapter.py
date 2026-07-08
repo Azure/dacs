@@ -1928,8 +1928,9 @@ class TestCopy:
         with bf.DACSBlobfileAdapter(remote_src, "w") as f:
             f.write(test_content)
 
-        # Create temp destination path (file doesn't exist yet)
-        local_dst = tempfile.mktemp(suffix=".txt")
+        # Create temp destination path in an owned temp dir (file doesn't exist yet)
+        local_dst_dir = tempfile.mkdtemp()
+        local_dst = os.path.join(local_dst_dir, "dst.txt")
 
         try:
             # Perform copy
@@ -1942,6 +1943,7 @@ class TestCopy:
         finally:
             if os.path.exists(local_dst):
                 os.unlink(local_dst)
+            os.rmdir(local_dst_dir)
 
     def test_copy_local_to_local(self):
         """Test copying from local file to local destination."""
@@ -1954,7 +1956,8 @@ class TestCopy:
             tmp.write(test_content)
             local_src = tmp.name
 
-        local_dst = tempfile.mktemp(suffix=".txt")
+        local_dst_dir = tempfile.mkdtemp()
+        local_dst = os.path.join(local_dst_dir, "dst.txt")
 
         try:
             # Perform copy
@@ -1968,6 +1971,7 @@ class TestCopy:
             os.unlink(local_src)
             if os.path.exists(local_dst):
                 os.unlink(local_dst)
+            os.rmdir(local_dst_dir)
 
     def test_copy_local_to_local_with_overwrite(self):
         """Test that local→local copy supports overwrite=True."""

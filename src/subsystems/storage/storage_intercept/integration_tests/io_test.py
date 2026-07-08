@@ -99,8 +99,10 @@ def read_folders_in_tarfile(args):
     destDirectory = os.path.join("/tmp/{}".format(randomDirectory))
     os.mkdir(destDirectory)
 
-    # Extract files
-    tarObj.extractall(destDirectory, tarMembersList)
+    # Extract using the built-in 'data' filter, which rejects tar-slip path
+    # traversal (absolute paths, '..', links escaping the destination) from a
+    # malicious or corrupt archive.
+    tarObj.extractall(destDirectory, members=tarMembersList, filter='data')
     for member in tarMembersList:
         extractedTargetPath = os.path.join(destDirectory, member.name)
         print(f'{moduleInfo:<16} Extracted file {member.name} into {extractedTargetPath}')

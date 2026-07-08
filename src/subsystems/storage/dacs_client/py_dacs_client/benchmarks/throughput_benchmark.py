@@ -164,9 +164,9 @@ def normalize_path_for_client(path: str, client: str) -> str:
         return path
     else:
         # blobfile and boostedblob use short form
-        if ".blob.core.windows.net" in path:
+        parts = path.replace("az://", "").split("/", 2)
+        if parts and parts[0].endswith(".blob.core.windows.net"):
             # Convert long form to short form
-            parts = path.replace("az://", "").split("/", 2)
             if len(parts) >= 2:
                 account = parts[0].replace(".blob.core.windows.net", "")
                 container_name = parts[1]
@@ -551,16 +551,22 @@ def _cleanup_with_sas(all_paths: List[str], sas_token: str):
         # Group paths by account/container for efficient batch deletion
         container_blobs: Dict[str, List[str]] = {}
         for path in all_paths:
-            if ".blob.core.windows.net" in path:
-                parts = path.replace("az://", "").split("/", 2)
-                if len(parts) >= 3:
-                    account_host = parts[0]
-                    container_name = parts[1]
-                    blob_path = parts[2]
-                    key = f"{account_host}/{container_name}"
-                    if key not in container_blobs:
-                        container_blobs[key] = []
-                    container_blobs[key].append(blob_path)
+            parts = path.replace("az://", "").split("/", 2)
+            if not parts or len(parts) < 3:
+                continue
+
+            # Support both:
+            # - long-form: az://{account}.blob.core.windows.net/{container}/{blob}
+            # - short-form: az://{account}/{container}/{blob}
+            if parts[0].endswith(".blob.core.windows.net"):
+                account_host = parts[0]
+            else:
+                account_host = f"{parts[0]}.blob.core.windows.net"
+
+            container_name = parts[1]
+            blob_path = parts[2]
+            key = f"{account_host}/{container_name}"
+            container_blobs.setdefault(key, []).append(blob_path)
         
         # Delete blobs by container
         for key, blob_paths in container_blobs.items():
@@ -604,8 +610,8 @@ def _cleanup_with_blobfile(all_paths: List[str]):
         
         for path in all_paths:
             try:
-                if ".blob.core.windows.net" in path:
-                    parts = path.replace("az://", "").split("/", 2)
+                parts = path.replace("az://", "").split("/", 2)
+                if parts and parts[0].endswith(".blob.core.windows.net"):
                     if len(parts) >= 2:
                         account = parts[0].replace(".blob.core.windows.net", "")
                         container_name = parts[1]

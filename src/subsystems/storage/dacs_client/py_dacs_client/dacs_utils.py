@@ -395,7 +395,18 @@ def _initialize_dacs_client_config(
     if os.path.exists(config_path):
         logger.warning(f"Config file {config_path} already exists, overwriting!!!")
 
-    with open(config_path, "w") as config_file:
+    # Create the config file with owner-only (0600) permissions. It can contain
+    # secrets (SAS token, access token, MSI secret), so it must not be readable
+    # by other users on the host. Avoid following symlinks and apply permissions
+    # to the opened file descriptor (not by path).
+    if os.path.lexists(config_path) and os.path.islink(config_path):
+        raise RuntimeError(f"Refusing to write config to symlink path: {config_path}")
+
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(config_path, flags, 0o600)
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w") as config_file:
         config_file.write(f"storagePath {intercept_path}\n")
         config_file.write("type blob\n")
         config_file.write("azBlobDynamicAccount true\n")
