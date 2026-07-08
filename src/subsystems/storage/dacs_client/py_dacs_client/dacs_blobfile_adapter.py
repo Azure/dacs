@@ -16,6 +16,7 @@ import tempfile
 import threading
 from collections import namedtuple
 from typing import Optional, Union, Iterator, List, Any, Tuple
+from urllib.parse import urlparse
 
 import concurrent
 
@@ -81,10 +82,12 @@ logger = logging.getLogger(__name__)
 
 def _is_azure_path(path: str) -> bool:
     """Check if a path is an Azure blob path (az:// or https://<account>.blob.core.windows.net/<container>/<blob>)."""
-    return (
-        path.startswith("az://")
-        or (path.startswith("https://") and ".blob.core.windows.net" in path)
-    )
+    if path.startswith("az://"):
+        return True
+    if path.startswith("https://"):
+        host = urlparse(path).hostname or ""
+        return host.endswith(".blob.core.windows.net")
+    return False
 
 class _ClientManager:
     """Thread-safe singleton manager for DACSCacheClient and BoundedBufferManager instances."""

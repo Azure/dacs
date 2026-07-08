@@ -500,10 +500,10 @@ def run_benchmark(
                     # Convert dacs long format to blobfile short format for cleanup
                     # az://account.blob.core.windows.net/container/path -> az://account/container/path
                     cleanup_path = path
-                    if ".blob.core.windows.net" in path:
+                    parts = path.replace("az://", "").split("/", 2)
+                    if parts and parts[0].endswith(".blob.core.windows.net"):
                         # Extract components from long format
                         # Format: az://account.blob.core.windows.net/container/path
-                        parts = path.replace("az://", "").split("/", 2)
                         if len(parts) >= 2:
                             account = parts[0].replace(".blob.core.windows.net", "")
                             container_name = parts[1]

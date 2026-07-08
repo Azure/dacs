@@ -234,8 +234,9 @@ class AzurePath(BasePath):
         elif parsed_url.scheme == "az":
             # Handle both az://account and az://account.blob.core.windows.net
             netloc = parsed_url.netloc
-            if ".blob.core.windows.net" in netloc:
-                account = netloc.replace(".blob.core.windows.net", "")
+            suffix = ".blob.core.windows.net"
+            if netloc.endswith(suffix):
+                account = netloc[:-len(suffix)]
             else:
                 account = netloc
         else:
