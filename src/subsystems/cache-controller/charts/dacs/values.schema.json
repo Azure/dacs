@@ -47,6 +47,25 @@
               "description": "Cache server image tag (defaults to .Chart.AppVersion)"
             }
           }
+        },
+        "affinity": {
+          "type": "object",
+          "description": "Pod scheduling affinity. Defaults to scheduling only on linux amd64/arm64 nodes, prefer system nodepool, and spread across nodes."
+        },
+        "nodeSelector": {
+          "type": "object",
+          "description": "Node selector for pod scheduling."
+        },
+        "tolerations": {
+          "type": "array",
+          "description": "Pod tolerations. Defaults to tolerating the CriticalAddonsOnly taint.",
+          "items": {
+            "type": "object"
+          }
+        },
+        "priorityClassName": {
+          "type": "string",
+          "description": "PriorityClass for the controller pod. Empty string uses the chart-managed PriorityClass (<fullname>-priority); set a name to use an existing PriorityClass instead."
         }
       }
     },

@@ -1,0 +1,13 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: cache-controller-priority
+  labels:
+    control-plane: controller-manager
+    app.kubernetes.io/name: cache-controller
+    app.kubernetes.io/managed-by: kustomize
+# A PriorityClass's value is immutable once created. To change it you must delete
+# and recreate the PriorityClass (running pods keep their resolved priority).
+value: 100000
+globalDefault: false
+description: "Priority class for the DACS cache controller manager."

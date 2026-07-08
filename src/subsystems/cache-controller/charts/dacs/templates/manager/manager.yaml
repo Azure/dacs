@@ -113,6 +113,19 @@ spec:
               {{- end }}
             serviceAccountName: {{ include "chart.serviceAccountName" . }}
             terminationGracePeriodSeconds: 10
+            priorityClassName: {{ .Values.manager.priorityClassName | default (include "chart.priorityClassName" .) }}
+            {{- with .Values.manager.affinity }}
+            affinity:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+            {{- with .Values.manager.nodeSelector }}
+            nodeSelector:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+            {{- with .Values.manager.tolerations }}
+            tolerations:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
             {{- if .Values.webhook.enable }}
             volumes:
               - name: webhook-cert
