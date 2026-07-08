@@ -44,6 +44,7 @@ helm install dacs ./charts/dacs \
 | `manager.resources.limits.memory` | Memory limit | `128Mi` |
 | `manager.resources.requests.cpu` | CPU request | `10m` |
 | `manager.resources.requests.memory` | Memory request | `64Mi` |
+| `manager.priorityClassName` | PriorityClass for the controller pod. Empty uses the chart-managed `<fullname>-priority` PriorityClass (value `100000`); set a name to use an existing PriorityClass instead. | `""` |
 
 ### Cache Configuration
 

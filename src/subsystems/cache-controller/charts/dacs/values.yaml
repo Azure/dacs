@@ -66,6 +66,45 @@ manager:
         cpu: 10m
         memory: 64Mi
 
+  # Pod scheduling affinity. Defaults to scheduling only on linux amd64/arm64
+  # nodes, and preferring the AKS system nodepool.
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                  - linux
+              - key: kubernetes.io/arch
+                operator: In
+                values:
+                  - amd64
+                  - arm64
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 50
+          preference:
+            matchExpressions:
+              - key: kubernetes.azure.com/mode
+                operator: In
+                values:
+                  - system
+
+  # Node selector for pod scheduling
+  nodeSelector: {}
+
+  # Pod tolerations. Defaults to tolerating the CriticalAddonsOnly taint.
+  tolerations:
+    - key: CriticalAddonsOnly
+      operator: Exists
+
+  # PriorityClass for the controller pod. Leave empty ("") to use the
+  # chart-managed PriorityClass (<fullname>-priority), which the chart creates and
+  # protects from preemption/eviction. Set to a specific name to use an existing
+  # PriorityClass instead (e.g. system-cluster-critical).
+  priorityClassName: ""
+
 # Essential RBAC permissions (required for controller operation)
 # These include ServiceAccount, controller permissions, leader election, and metrics access
 # Note: Essential RBAC is always enabled as it's required for the controller to function

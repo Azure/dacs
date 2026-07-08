@@ -72,6 +72,13 @@ Uses fullname + "-controller-manager" suffix for umbrella chart compatibility.
 {{- end }}
 
 {{/*
+Name of the PriorityClass created and used by the controller manager.
+*/}}
+{{- define "chart.priorityClassName" -}}
+{{- include "chart.fullname" . }}-priority
+{{- end }}
+
+{{/*
 Constructs a full image reference from global.registry, repository, and tag.
 Falls back to appVersion when tag is empty.
 Usage: {{ include "chart.image" (dict "global" .Values.global "repository" "my-image" "tag" "v1.0" "appVersion" .Chart.AppVersion) }}
