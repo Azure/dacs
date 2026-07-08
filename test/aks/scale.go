@@ -2,6 +2,7 @@ package aks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -60,8 +61,7 @@ func testClusterScale(tc *testContext) {
 
 		By(fmt.Sprintf("scaling node pool %s down to %d node(s)", nodepool, scaleDownTargetNodes))
 		scaleDownStart := time.Now()
-		Expect(akshelpers.ScaleNodePool(ctx, tc.subscription, tc.resourceGroupName, tc.managedCluster, nodepool, scaleDownTargetNodes, log)).
-			To(Succeed(), "failed to scale node pool down to %d", scaleDownTargetNodes)
+		scaleNodePoolOrSkip(ctx, tc, nodepool, scaleDownTargetNodes)
 		log.Info("az aks nodepool scale call returned",
 			"direction", "down", "targetNodes", scaleDownTargetNodes,
 			"elapsed", time.Since(scaleDownStart).Round(time.Second).String())
@@ -95,8 +95,7 @@ func testClusterScale(tc *testContext) {
 
 		By(fmt.Sprintf("scaling node pool %s up to %d nodes (original count)", nodepool, originalNodeCount))
 		scaleUpStart := time.Now()
-		Expect(akshelpers.ScaleNodePool(ctx, tc.subscription, tc.resourceGroupName, tc.managedCluster, nodepool, originalNodeCount, log)).
-			To(Succeed(), "failed to scale node pool up to %d", originalNodeCount)
+		scaleNodePoolOrSkip(ctx, tc, nodepool, originalNodeCount)
 		log.Info("az aks nodepool scale call returned",
 			"direction", "up", "targetNodes", originalNodeCount,
 			"elapsed", time.Since(scaleUpStart).Round(time.Second).String())
@@ -119,6 +118,18 @@ func testClusterScale(tc *testContext) {
 		By(fmt.Sprintf("asserting cache-controller emitted a Scaling event reflecting %d replicas", originalNodeCount))
 		assertScalingEvent(ctx, tc, scaleStart, originalNodeCount)
 	})
+}
+
+// scaleNodePoolOrSkip scales the node pool to count, retrying transient az
+// errors inside ScaleNodePool. It skips the spec (rather than failing) when
+// Azure cannot allocate the requested capacity. Any other error fails the spec.
+func scaleNodePoolOrSkip(ctx context.Context, tc *testContext, nodepool string, count int) {
+	GinkgoHelper()
+	err := akshelpers.ScaleNodePool(ctx, tc.subscription, tc.resourceGroupName, tc.managedCluster, nodepool, count, log)
+	if errors.Is(err, akshelpers.ErrCapacity) {
+		Skip(fmt.Sprintf("skipping: Azure could not allocate %d node(s) for node pool %s: %v", count, nodepool, err))
+	}
+	Expect(err).NotTo(HaveOccurred(), "failed to scale node pool %s to %d", nodepool, count)
 }
 
 // assertScalingEvent verifies the cache-controller emitted a Scaling event

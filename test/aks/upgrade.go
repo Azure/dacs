@@ -2,6 +2,7 @@ package aks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -20,6 +21,14 @@ import (
 // opAKSUpgrade is the operation name used when emitting the per-operation perf
 // metric for this spec.
 const opAKSUpgrade = "aks-upgrade"
+
+// postUpgradePlacementTimeout bounds how long we wait for every cacheserver pod
+// to be (re)scheduled to a node after the AKS rolling upgrade. A rolling
+// upgrade reimages nodes one at a time and AKS adds a temporary surge node; the
+// cache-controller scheduler binds the displaced pod onto that surge node,
+// which can take several minutes per node. 20m gives the scheduler room to
+// place the last displaced pod rather than flaking on a transient Pending pod.
+const postUpgradePlacementTimeout = 20 * time.Minute
 
 func testClusterUpgrade(tc *testContext) {
 	It("should survive an AKS cluster upgrade", Label("aks-upgrade"), func(ctx context.Context) {
@@ -60,6 +69,9 @@ func testClusterUpgrade(tc *testContext) {
 		By(fmt.Sprintf("upgrading cluster to version %s", nextVersion))
 		upgradeCallStart := time.Now()
 		err = akshelpers.UpgradeCluster(ctx, tc.subscription, tc.resourceGroupName, tc.managedCluster, nextVersion, log)
+		if errors.Is(err, akshelpers.ErrCapacity) {
+			Skip(fmt.Sprintf("skipping: Azure could not allocate surge capacity for the upgrade: %v", err))
+		}
 		Expect(err).NotTo(HaveOccurred(), "failed to upgrade AKS cluster")
 		upgradeDuration := time.Since(upgradeCallStart)
 		log.Info("AKS upgrade completed", "cluster", tc.managedCluster, "version", nextVersion, "aksUpgradeDuration", upgradeDuration.Seconds())
@@ -71,7 +83,7 @@ func testClusterUpgrade(tc *testContext) {
 			var err error
 			postPodsByNode, err = cacheserverPodsByNode(ctx, tc)
 			g.Expect(err).NotTo(HaveOccurred())
-		}).WithContext(ctx).WithTimeout(2*time.Minute).WithPolling(5*time.Second).Should(Succeed(), "failed to capture post-upgrade pod placement")
+		}).WithContext(ctx).WithTimeout(postUpgradePlacementTimeout).WithPolling(15*time.Second).Should(Succeed(), "failed to capture post-upgrade pod placement")
 		log.Info("post-upgrade pod placement", "podsByNode", postPodsByNode)
 
 		// TODO(jlong): persist tracker across controller restart.
