@@ -216,6 +216,46 @@ void ContentHandler::ClearCacheClients()
     std::atomic_store(&m_spAttributesCache, emptyAttributesCache);
 }
 //---------------------------------------------------------------------------------------------------------------------
+void ContentHandler::HandleShutdown()
+{
+    LOG_INFO("HandleShutdown: closing all managed file handles and releasing cache clients")
+
+    // 1. Close all open file descriptors
+    {
+        std::unique_lock<std::mutex> lock(m_lockOpenHandles);
+        for (auto& [fd, fdPtr] : m_mapOpenHandles)
+        {
+            LOG_INFO("HandleShutdown: closing fd={}", fd);
+        }
+        m_mapOpenHandles.clear();
+        m_mapFileToFds.clear();
+    }
+
+    // 2. Close all open directory streams
+    {
+        std::unique_lock<std::mutex> lock(m_lockDirectoryStreams);
+        m_mapDirectoryStreams.clear();
+    }
+
+    // 3. Tear down streaming clients (each holds refs to cache client)
+    for (auto& mountInfo : m_vecMountInfo)
+    {
+        std::unique_lock<std::mutex> lock(mountInfo->LockStreamingClient);
+        mountInfo->StreamingClientPtr.reset();
+    }
+
+    // 4. Release cache clients — this drops the last shared_ptr refs to
+    //    RemoteCacheClient / ConnectionManager, triggering their destructors
+    //    which tear down IB QPs, close sockets, and stop discovery threads.
+    {
+        std::unique_lock<std::mutex> cacheClientsLock(m_lockCacheClients);
+        ClearCacheClients();
+        m_bCacheClientsInitialized = false;
+    }
+
+    LOG_INFO("HandleShutdown: shutdown complete, cache clients released")
+}
+//---------------------------------------------------------------------------------------------------------------------
 void ContentHandler::SetCacheClients()
 {
     // Check if data cache enabled for at least one mount.

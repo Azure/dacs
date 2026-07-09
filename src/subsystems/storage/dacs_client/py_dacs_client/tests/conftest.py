@@ -32,6 +32,24 @@ print(f"Test session ID: {TEST_SESSION_ID}")
 print(f"Test base blob path: {BASE_BLOB_PATH}")
 
 
+def pytest_collection_modifyitems(items):
+    """Reorder tests so that test_shutdown.py runs last.
+
+    The native shutdown tests call ContentHandler::GetInstance().HandleShutdown()
+    which triggers the C++ singleton constructor and caches the config. Running
+    them last prevents contaminating the config state for other test suites
+    (blobfile/boostedblob adapters) that need write-mode support.
+    """
+    shutdown_tests = []
+    other_tests = []
+    for item in items:
+        if "test_shutdown" in item.nodeid:
+            shutdown_tests.append(item)
+        else:
+            other_tests.append(item)
+    items[:] = other_tests + shutdown_tests
+
+
 def pytest_sessionfinish(session, exitstatus):
     """Clean up all test blobs after all tests complete.
 

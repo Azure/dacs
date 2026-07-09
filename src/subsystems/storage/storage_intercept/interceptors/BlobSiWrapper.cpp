@@ -26,6 +26,7 @@
 #include <unistd.h>
 
 #include "CacheClientInterface.h"
+#include "ContentHandler.h"
 #include "StorageInterceptConstants.h"
 #include "StorageInterceptLogger.h"
 
@@ -347,7 +348,16 @@ static void cleanup_si_config()
 extern "C" __attribute__((visibility("default")))
 void shutdown(void)
 {
-    LOG_INFO("shutdown: graceful shutdown requested, config retained for process lifetime");
+    LOG_INFO("shutdown: graceful shutdown requested, releasing connections and cache clients");
+    try
+    {
+        ContentHandler::GetInstance().HandleShutdown();
+    }
+    catch (...)
+    {
+        LOG_ERROR("shutdown: exception during HandleShutdown (suppressed)");
+    }
+    LOG_INFO("shutdown: graceful shutdown complete, config retained for process lifetime");
 }
 
 extern "C" __attribute__((visibility("default")))

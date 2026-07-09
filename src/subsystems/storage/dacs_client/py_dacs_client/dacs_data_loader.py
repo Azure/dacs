@@ -129,6 +129,9 @@ storage_intercept_lib.readdir.restype = POINTER(DirectoryEntry)
 storage_intercept_lib.closedir.argtypes = [c_void_p]
 storage_intercept_lib.closedir.restype = c_int
 
+storage_intercept_lib.shutdown.argtypes = []
+storage_intercept_lib.shutdown.restype = None
+
 
 # Python wrapper functions for the C functions in the shared library
 class DACSCacheDataLoader:
@@ -171,3 +174,8 @@ class DACSCacheDataLoader:
     def closedir(dirp: c_void_p) -> int:
         logger.debug(f"Entering DACSCacheDataLoader.closedir for dirp {dirp}")
         return storage_intercept_lib.closedir(dirp)
+
+    @staticmethod
+    def shutdown() -> None:
+        logger.debug("Entering DACSCacheDataLoader.shutdown")
+        storage_intercept_lib.shutdown()

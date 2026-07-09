@@ -779,3 +779,102 @@ TEST_F(ContentHandlerTest, AttrCacheDisabledInConsistentModeTest)
     ASSERT_TRUE(StorageInterceptConfig::GetInstance().ShouldEnableAttributesCache(""));
 }
 //---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, HandleShutdownClosesOpenFds)
+{
+    // Clean up any leaked state from prior tests (e.g., OpenWriteModeTest leaks a write fd).
+    ContentHandler::GetInstance().HandleShutdown();
+
+    // Open a file, then call HandleShutdown — the fd should be cleaned up.
+    std::string filePath = m_strInterceptPath + '/' + m_strRemoteFilePath;
+    const int fd = ContentHandler::GetInstance().HandleOpen64(filePath.c_str(), O_RDONLY);
+    ASSERT_NE(fd, -1);
+
+    // Verify fd works before shutdown
+    std::vector<char> readBuf(1024);
+    ssize_t nBytesRead = ContentHandler::GetInstance().HandlePRead(fd, readBuf.data(), 1024, 0);
+    ASSERT_EQ(nBytesRead, 1024);
+
+    // Shutdown should succeed without crashing
+    ContentHandler::GetInstance().HandleShutdown();
+
+    // Verify the client recovers — open a new fd and read successfully
+    const int newFd = ContentHandler::GetInstance().HandleOpen64(filePath.c_str(), O_RDONLY);
+    ASSERT_NE(newFd, -1);
+    nBytesRead = ContentHandler::GetInstance().HandlePRead(newFd, readBuf.data(), 1024, 0);
+    ASSERT_EQ(nBytesRead, 1024);
+    ASSERT_EQ(ContentHandler::GetInstance().HandleClose(newFd), 0);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, HandleShutdownClosesDirStreams)
+{
+    // Clean up any leaked state from prior tests.
+    ContentHandler::GetInstance().HandleShutdown();
+
+    // Open a directory, then call HandleShutdown — the dir stream should be closed.
+    std::string dirPath = m_strInterceptPath + '/' + m_strRemoteDirPath;
+    void* dirp = ContentHandler::GetInstance().HandleOpendir(dirPath.c_str());
+    ASSERT_NE(dirp, nullptr);
+
+    // Shutdown clears all directory streams
+    ContentHandler::GetInstance().HandleShutdown();
+
+    // Verify the client recovers — open a new dir stream and read it
+    void* newDirp = ContentHandler::GetInstance().HandleOpendir(dirPath.c_str());
+    ASSERT_NE(newDirp, nullptr);
+
+    uint32_t entryCount = 0;
+    while (ContentHandler::GetInstance().HandleReaddir(newDirp, true) != NULL)
+    {
+        entryCount++;
+    }
+    ASSERT_GT(entryCount, 0u);
+    ASSERT_EQ(ContentHandler::GetInstance().HandleClosedir(newDirp), 0);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, HandleShutdownThenReinitialize)
+{
+    // Clean up any leaked state from prior tests.
+    ContentHandler::GetInstance().HandleShutdown();
+
+    // Shutdown should allow re-initialization: open → read → shutdown → open → read
+    std::string filePath = m_strInterceptPath + '/' + m_strRemoteFilePath;
+
+    // First cycle: open and read
+    int fd = ContentHandler::GetInstance().HandleOpen64(filePath.c_str(), O_RDONLY);
+    ASSERT_NE(fd, -1);
+    std::vector<char> readBuf(1024);
+    ssize_t nBytesRead = ContentHandler::GetInstance().HandlePRead(fd, readBuf.data(), 1024, 0);
+    ASSERT_EQ(nBytesRead, 1024);
+
+    // Shutdown — tears down cache clients
+    ContentHandler::GetInstance().HandleShutdown();
+
+    // Second cycle: open should lazily re-initialize cache clients
+    fd = ContentHandler::GetInstance().HandleOpen64(filePath.c_str(), O_RDONLY);
+    ASSERT_NE(fd, -1);
+    nBytesRead = ContentHandler::GetInstance().HandlePRead(fd, readBuf.data(), 1024, 0);
+    ASSERT_EQ(nBytesRead, 1024);
+
+    const int closeRet = ContentHandler::GetInstance().HandleClose(fd);
+    ASSERT_EQ(closeRet, 0);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, HandleShutdownIsIdempotent)
+{
+    // Clean up any leaked state from prior tests, then verify double shutdown is safe.
+    ContentHandler::GetInstance().HandleShutdown();
+    ContentHandler::GetInstance().HandleShutdown();
+
+    // Verify we can still use the handler after double shutdown
+    std::string filePath = m_strInterceptPath + '/' + m_strRemoteFilePath;
+    int fd = ContentHandler::GetInstance().HandleOpen64(filePath.c_str(), O_RDONLY);
+    ASSERT_NE(fd, -1);
+
+    std::vector<char> readBuf(1024);
+    ssize_t nBytesRead = ContentHandler::GetInstance().HandlePRead(fd, readBuf.data(), 1024, 0);
+    ASSERT_EQ(nBytesRead, 1024);
+
+    const int closeRet = ContentHandler::GetInstance().HandleClose(fd);
+    ASSERT_EQ(closeRet, 0);
+}
+//---------------------------------------------------------------------------------------------------------------------

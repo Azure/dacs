@@ -279,6 +279,14 @@ class ContentHandler
             /*[in]*/ const char* format,
             /*[out]*/ va_list ap); 
 
+        // Graceful shutdown: close all managed file descriptors and directory
+        // streams, release cache clients (which tears down network connections
+        // including InfiniBand QPs), and reset initialization state.
+        // The singleton itself remains alive so a subsequent open() will
+        // lazily re-initialize the cache clients.
+        // This method is idempotent and thread-safe.
+        void HandleShutdown();
+
         // APIs to handle shared state when a process is forked.
         // Processes which are forked share the system state including memory and open file descriptors.
         // We need to ensure network connections (sockets) are not shared across multiple processes.
