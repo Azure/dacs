@@ -8,6 +8,15 @@
 constexpr int DEFAULT_THREAD_POOL_SIZE = 256;
 constexpr int TCP_BACKLOG_SIZE = 1024;
 constexpr int REQUEST_METADATA_SIZE = 4;
+
+// Maximum size of a framed request protobuf. The 4-byte length prefix is client-supplied
+// and can declare up to ~4 GiB; without a cap, a single peer can force an unbounded
+// allocation before any data is read or validated. Request protobufs carry only metadata
+// (file data is streamed separately); the largest legitimate request is a batched
+// PutAttribute, well under 1 MiB. 4 MiB matches gRPC's default max receive message
+// size and leaves ample headroom.
+constexpr uint32_t MAX_REQUEST_PROTO_SIZE = 4 * 1024 * 1024;
+
 constexpr int DEFAULT_SOCKET_BUF_SIZE = 0;
 constexpr int NUM_MAPS = 50; // Note: changing this value will cause existing snapshots to fail to load
 

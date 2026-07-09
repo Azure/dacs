@@ -35,6 +35,13 @@ bool HandleRequest(IConnection& clientConnection,
     }
 
     uint32_t protoSize = ConvertBytesToInt(metaData, REQUEST_METADATA_SIZE);
+    if (protoSize > MAX_REQUEST_PROTO_SIZE)
+    {
+        LOG_WARN("Rejecting request with invalid protobuf size, id={}, size={}, max={}",
+            clientConnection.GetId(), protoSize, MAX_REQUEST_PROTO_SIZE);
+        return false;
+    }
+
     string requestMessage(protoSize, 0);
     res = ReadBytesToArray(clientConnection, requestMessage.data(), protoSize);
     if (res != protoSize)
