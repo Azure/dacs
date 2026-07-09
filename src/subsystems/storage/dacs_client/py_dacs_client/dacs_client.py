@@ -281,6 +281,7 @@ class DACSCacheClient:
         self.intercept_base_path = DEFAULT_INTERCEPT_PATH
         self.write_mode = write_mode
         self.consistent_mode = consistent_mode
+        self._shutdown = False
         logger.debug(f"DACS_Cache_Client:Initializing DACSCacheClient, write_mode:{write_mode}, consistent_mode:{consistent_mode}")
 
         # Configure up the DACS client
@@ -513,24 +514,48 @@ class DACSCacheClient:
 
     def shutdown_sync(self) -> None:
         """
-        Shutdown the DACS Client and clean up resources (synchronous).
+        Shutdown the DACS Client and release native resources (synchronous).
 
-        Logs final metrics including:
-        - Total reads and bytes read
-        - Total writes and bytes written
-        - Total elapsed time since client initialization
+        Performs the following cleanup:
+        1. Calls native shutdown to close managed file handles, release cache
+           clients (which tears down IB QPs and socket connections to cache
+           servers), and reset initialization state.
+        2. Logs final metrics.
 
-        This should be called before terminating the application.
+        The client is reusable after shutdown — the next I/O call will lazily
+        re-initialize native cache clients and connections. This supports the
+        pattern: init → read/write → shutdown → read/write → shutdown.
+
+        Concurrent calls are safe — the ``_shutdown`` flag prevents re-entrant
+        execution while a shutdown is in progress.
         """
-        logger.debug("DACS_Cache_Client:Shutdown complete")
+        if self._shutdown:
+            logger.debug("DACS_Cache_Client:Shutdown already called, skipping")
+            return
+        self._shutdown = True
+
+        # Release native resources (connections, IB QPs, file handles).
+        # The native ContentHandler singleton stays alive and will lazily
+        # re-initialize cache clients on the next open() call.
+        shutdown_ok = True
+        try:
+            DACSCacheDataLoader.shutdown()
+        except Exception:
+            shutdown_ok = False
+            logger.exception("DACS_Cache_Client:Error during native shutdown")
 
         end_time = time.time()
         elapsed_time = end_time - self.start_time
+        status = "complete" if shutdown_ok else "completed with errors"
         logger.info(
-            f"DACS_Cache_Client:Shutdown complete, "
+            f"DACS_Cache_Client:Shutdown {status}, "
             f"total_reads:{self.num_reads}, total_bytes_read:{self.bytes_read}, elapsed_time:{elapsed_time:.2f} seconds, "
             f"total_writes:{self.num_writes}, total_bytes_written:{self.bytes_written}"
         )
+
+        # Reset shutdown flag so the client can be reused — the next I/O
+        # operation will trigger lazy re-initialization of native resources.
+        self._shutdown = False
 
     # =========================================================================
     # Async Methods (Wrappers around sync methods via run_in_executor)
@@ -581,6 +606,5 @@ class DACSCacheClient:
             yield entry
 
     async def shutdown(self) -> None:
-        """Async version of shutdown_sync() - runs in executor for non-blocking operation."""
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self.executor, self.shutdown_sync)
+        """Async version of shutdown_sync() - calls synchronous shutdown directly since it shuts down the executor."""
+        self.shutdown_sync()
