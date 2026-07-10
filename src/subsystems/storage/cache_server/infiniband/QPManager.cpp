@@ -47,8 +47,10 @@ ibutils::shared_ibv_qp QPManager::CreateQP(ibv_cq* sendCQ, ibv_srq* receiveSRQ, 
     // Setup reliable communication
     qpInitAttr.qp_type = IBV_QPT_RC;
 
-    // There is only one message outstanding at any given time on the connection
-    qpInitAttr.cap.max_send_wr = 1;
+    // There is only one message outstanding at any given time on the connection.
+    // Allow 2 send WRs to absorb the rare overlap when a new request arrives via SRQ
+    // before the previous send's ACK is received (SQ-full → ibv_post_send ENOMEM).
+    qpInitAttr.cap.max_send_wr = 2;
     qpInitAttr.cap.max_recv_wr = 1;
     qpInitAttr.cap.max_send_sge = 1;
     qpInitAttr.cap.max_recv_sge = 1;
