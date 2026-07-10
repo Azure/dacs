@@ -7,6 +7,7 @@
 #include <chrono>
 #include <thread>
 #include <cstring>
+#include <cstdlib>
 #include <errno.h>
 #include <sys/select.h>
 
@@ -704,5 +705,24 @@ TEST_F(ConnectionManagerTests, ConnectionPoolSizeLimit)
     connections.clear();
     
     acceptHelper->Stop();
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ConnectionManagerTests, IsIbZeroCopyEnabledRespectsEnvVar)
+{
+    // Disabled by default when the env var is unset.
+    unsetenv("DACS_ENABLE_IB_ZERO_COPY");
+    EXPECT_FALSE(ConnectionManager::IsIbZeroCopyEnabled());
+
+    // Any value other than "true" stays disabled.
+    setenv("DACS_ENABLE_IB_ZERO_COPY", "false", 1);
+    EXPECT_FALSE(ConnectionManager::IsIbZeroCopyEnabled());
+
+    // Only "true" (case-insensitive) enables it.
+    setenv("DACS_ENABLE_IB_ZERO_COPY", "TRUE", 1);
+    EXPECT_TRUE(ConnectionManager::IsIbZeroCopyEnabled());
+    setenv("DACS_ENABLE_IB_ZERO_COPY", "true", 1);
+    EXPECT_TRUE(ConnectionManager::IsIbZeroCopyEnabled());
+
+    unsetenv("DACS_ENABLE_IB_ZERO_COPY");
 }
 //---------------------------------------------------------------------------------------------------------------------

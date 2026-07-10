@@ -925,6 +925,7 @@ asyncio.run(main())
 | `DACS_PY_CACHE_CLIENT_THREADPOOL_SIZE` | No | Thread pool size for parallel downloads. Defaults to `min(cpu_count * 4, 48)`. |
 | `DACS_PY_CACHE_CLIENT_CHUNK_SIZE` | No | Chunk size in bytes for chunked blob downloads. Defaults to `268435456` (256 MB). |
 | `DACS_DATA_LOG_LEVEL` | No | Logging level (`DEBUG`, `INFO`, `WARNING`, etc.). Defaults to `INFO`. |
+| `DACS_ENABLE_IB_ZERO_COPY` | No | Set to `true` to enable the zero-copy InfiniBand upload path (registers the caller's buffer directly instead of copying it into the send buffer). Disabled by default; falls back to the copy-based path when unset or not `true`. |
 
 ---
 

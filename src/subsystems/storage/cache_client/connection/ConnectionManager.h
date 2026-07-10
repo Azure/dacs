@@ -87,6 +87,8 @@ class ConnectionManager
         // Returns true if the socket is writable within the timeout, false otherwise.
         static bool WaitForSocketWritable(int sockfd, int timeoutMs);
 
+        static bool IsIbZeroCopyEnabled();
+
         bool InitInfiniband();
         std::unique_ptr<IConnection> SetupIBConnections(std::unique_ptr<IConnection> socketConnection, const std::string& cacheserver);
         bool PerformIBHandshake(IConnection* connection, const std::string& cacheserver);
@@ -115,6 +117,8 @@ class ConnectionManager
 
         // Use infiniband if IB ports are available on local device.
         bool                                                                        m_bUseInfiniband;
+        // Whether the zero-copy IB upload path is enabled. 
+        const bool                                                                  m_bIbZeroCopyEnabled;
         std::mutex                                                                  m_lockIBHandshakeStatusMap;
         // Number of infiniband data connections (QPs) to be established using a single control connection.
         const static constexpr int                                                        IB_CONNECTIONS_PER_SERVER = 1;
@@ -146,5 +150,6 @@ class ConnectionManager
     FRIEND_TEST(ConsistentHashingTests, ScaleUpDown);
     FRIEND_TEST(ConsistentHashingTests, DistributionAnalysis);
     FRIEND_TEST(ConnectionManagerTests, WaitForSocketWritableWorksAboveFdSetSize);
+    FRIEND_TEST(ConnectionManagerTests, IsIbZeroCopyEnabledRespectsEnvVar);
 };
 //---------------------------------------------------------------------------------------------------------------------
