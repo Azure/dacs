@@ -9,6 +9,8 @@
 #include "cache.pb.h"
 #include "CacheUtils.h"
 #include <errno.h>
+#include <cstdlib>
+#include <strings.h>
 #include <fcntl.h>
 #include <string>
 #include <netinet/in.h>
@@ -114,6 +116,7 @@ ConnectionManager::ConnectionManager(
     ,  m_cacheDiscoveryEndpoint(cacheDiscoveryEndpoint)
     ,  m_nSocketSndbufSize(nSocketSndbufSize)
     ,  m_nSocketRcvbufSize(nSocketRcvbufSize)
+    ,  m_bIbZeroCopyEnabled(IsIbZeroCopyEnabled())
     ,  m_hashingStrategy(bEnableConsistentHashing 
         ? HashingStrategy::ConsistentHashing
         : HashingStrategy::StaticModuloHashing)
@@ -515,7 +518,8 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(std::unique_p
         }
 
         LOG_DEBUG_REQID("Created IB connection, qp={}", *ibRequest, qp->qp_num);
-        bool directMrEnabled = (m_ibDevice.max_sge >= 2);
+        // Use the zero-copy path only if it's enabled and the device supports 2 SGEs.
+        bool directMrEnabled = (m_ibDevice.max_sge >= 2) && m_bIbZeroCopyEnabled;
         std::unique_ptr<IBConnection> ibConnection = make_unique<IBConnection>(
             std::move(qp), 
             std::move(vectorEventChannels[qpn]),
@@ -711,6 +715,13 @@ bool ConnectionManager::WaitForSocketWritable(int sockfd, int timeoutMs)
         return false;
     }
     return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool ConnectionManager::IsIbZeroCopyEnabled()
+{
+    // disabled by default. Set DACS_ENABLE_IB_ZERO_COPY=true to use the new zero-copy IB upload path.
+    char* env = std::getenv("DACS_ENABLE_IB_ZERO_COPY");
+    return env != NULL && strcasecmp(env, "true") == 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::unique_ptr<IConnection> ConnectionManager::InitFreshConnection(const std::string& cacheserver)
