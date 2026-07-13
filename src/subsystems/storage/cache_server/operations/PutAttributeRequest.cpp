@@ -65,9 +65,6 @@ bool AuthenticateRequest(const PutAttributeRequest& request)
 //---------------------------------------------------------------------------------------------------------------------
 bool HandlePutAttribute(IConnection& clientConnection, const PutAttributeRequest& putAttributeRequest)
 {
-    LOG_DEBUG_REQID("Num entries received: {}, first entry: {}",
-        putAttributeRequest, putAttributeRequest.fileattributes_size(), putAttributeRequest.fileattributes(0).filename());
-
     PutAttributeResponse putAttributeResponse;
     const std::string& requestid = putAttributeRequest.requestid();
     if (!AuthenticateRequest(putAttributeRequest))
@@ -75,6 +72,16 @@ bool HandlePutAttribute(IConnection& clientConnection, const PutAttributeRequest
         LOG_WARN_REQID("Failed to authenticate request", putAttributeRequest);
         putAttributeResponse.set_result(PutAttributeResponse::AUTH_FAILED);
         return SendMessageToRemoteFinal(clientConnection, putAttributeResponse, requestid);
+    }
+
+    if (putAttributeRequest.fileattributes_size() > 0)
+    {
+        LOG_DEBUG_REQID("Num entries received: {}, first entry: {}",
+            putAttributeRequest, putAttributeRequest.fileattributes_size(), putAttributeRequest.fileattributes(0).filename());
+    }
+    else
+    {
+        LOG_DEBUG_REQID("Num entries received: 0", putAttributeRequest);
     }
 
     bool bRet = AttributesManager::GetInstance().PutAttributes(putAttributeRequest);
