@@ -198,15 +198,19 @@ TEST_P(CacheClientTests, UploadSmallFiles)
     ASSERT_EQ(CacheClientStatus::SUCCESS, status);
 
     // With metadata
-    Metadata* pMetadata = new Metadata;
-    pMetadata->arrKeyValuePairs = new KeyValuePair[5];
-    pMetadata->nKeyValuePairs = 5;
-    for(uint32_t i = 0; i < pMetadata->nKeyValuePairs; i++)
+    Metadata metadata;
+    KeyValuePair kvPairs[5];
+    metadata.arrKeyValuePairs = kvPairs;
+    metadata.nKeyValuePairs = 5;
+
+    // Named local: the metadata stores these pointers, so a temporary's c_str() would dangle.
+    auto metadataValue = GetCorrelationId();
+    for(uint32_t i = 0; i < metadata.nKeyValuePairs; i++)
     {
-        pMetadata->arrKeyValuePairs[i].strKey = (char*)(GetCorrelationId().c_str());
-        pMetadata->arrKeyValuePairs[i].strValue = (char*)(GetCorrelationId().c_str());
+        metadata.arrKeyValuePairs[i].strKey = metadataValue.data();
+        metadata.arrKeyValuePairs[i].strValue = metadataValue.data();
     }
-    status = m_cacheClientImpl.Upload(GetCorrelationId().c_str(), pBuffer, nLength, 0, nullptr, pMetadata, nullptr);
+    status = m_cacheClientImpl.Upload(GetCorrelationId().c_str(), pBuffer, nLength, 0, nullptr, &metadata, nullptr);
     ASSERT_EQ(CacheClientStatus::SUCCESS, status);
 
     // With group ID
@@ -429,41 +433,53 @@ TEST_P(CacheClientTests, DownloadFilesWithKeyValuePairs)
     void* pBuffer2 = malloc(nLength);
     uint64_t readLength = 1024;
 
-    Metadata* pMetadata = new Metadata;
-    pMetadata->nKeyValuePairs = 5;
-    pMetadata->arrKeyValuePairs = new KeyValuePair[pMetadata->nKeyValuePairs];
+    KeyValuePair kvPairs[5];
+    string keys[5];
+    string values[5];
+    Metadata metadata;
+    metadata.nKeyValuePairs = 5;
+    metadata.arrKeyValuePairs = kvPairs;
     unordered_map<string, string> metadataMap;
 
     char dynStr[5] = {'a', 'b', 'c', 'd', '\0'};
-    for(uint32_t i = 0; i < pMetadata->nKeyValuePairs; i++)
+    for(uint32_t i = 0; i < metadata.nKeyValuePairs; i++)
     {
         dynStr[0] = 'a' + i;
-        pMetadata->arrKeyValuePairs[i].strKey = strdup(dynStr);
+        keys[i] = dynStr;
         dynStr[0] = 'A' + i;
-        pMetadata->arrKeyValuePairs[i].strValue = strdup(dynStr);
-        metadataMap[string(strdup(pMetadata->arrKeyValuePairs[i].strKey))] =
-            string(strdup(pMetadata->arrKeyValuePairs[i].strValue));
+        values[i] = dynStr;
+        kvPairs[i].strKey = keys[i].data();
+        kvPairs[i].strValue = values[i].data();
+        metadataMap[keys[i]] = values[i];
     }
 
-    auto status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, pMetadata, nullptr);
+    auto status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, &metadata, nullptr);
     ASSERT_EQ(CacheClientStatus::SUCCESS, status);
 
-    Metadata* pDownloadedMetadata = new Metadata;
-    pDownloadedMetadata->nKeyValuePairs = 0;
-    pDownloadedMetadata->arrKeyValuePairs = nullptr;
+    Metadata downloadedMetadata;
+    downloadedMetadata.nKeyValuePairs = 0;
+    downloadedMetadata.arrKeyValuePairs = nullptr;
     unordered_map<string, string> downloadedMetadataMap;
 
-    status = m_cacheClientImpl.Download(filename.c_str(), pBuffer2, &readLength, pDownloadedMetadata, nullptr);
+    status = m_cacheClientImpl.Download(filename.c_str(), pBuffer2, &readLength, &downloadedMetadata, nullptr);
     ASSERT_EQ(CacheClientStatus::SUCCESS, status);
     ASSERT_EQ(readLength, nLength);
     ASSERT_EQ(memcmp(pBuffer, pBuffer2, nLength), 0);
-    ASSERT_EQ(pDownloadedMetadata->nKeyValuePairs, pMetadata->nKeyValuePairs);
-    for(uint32_t i = 0; i < pMetadata->nKeyValuePairs; i++)
+    ASSERT_EQ(downloadedMetadata.nKeyValuePairs, metadata.nKeyValuePairs);
+    for(uint32_t i = 0; i < downloadedMetadata.nKeyValuePairs; i++)
     {
-        downloadedMetadataMap[string(pDownloadedMetadata->arrKeyValuePairs[i].strKey)] =
-            string(pDownloadedMetadata->arrKeyValuePairs[i].strValue);
+        downloadedMetadataMap[string(downloadedMetadata.arrKeyValuePairs[i].strKey)] =
+            string(downloadedMetadata.arrKeyValuePairs[i].strValue);
     }
     ASSERT_EQ(metadataMap, downloadedMetadataMap);
+
+    // arrKeyValuePairs and its strings are allocated by the library; the caller owns them.
+    for(uint32_t i = 0; i < downloadedMetadata.nKeyValuePairs; i++)
+    {
+        free(downloadedMetadata.arrKeyValuePairs[i].strKey);
+        free(downloadedMetadata.arrKeyValuePairs[i].strValue);
+    }
+    delete[] downloadedMetadata.arrKeyValuePairs;
 
     free((void*)pBuffer);
     free((void*)pBuffer2);
@@ -554,15 +570,18 @@ TEST_P(CacheClientTests, DownloadFileWithChecksumMismatch)
     string filename = GetCorrelationId();
     uint64_t nLength = 1024;
     const void* pBuffer = GetRandomBuffer(nLength);
-    Metadata* pMetadata = new Metadata;
-    pMetadata->arrKeyValuePairs = new KeyValuePair[2];
-    pMetadata->nKeyValuePairs = 2;
-    pMetadata->arrKeyValuePairs[0].strKey = strdup("CHUNK_CHECKSUM");
-    pMetadata->arrKeyValuePairs[0].strValue = strdup("1234567890");
-    pMetadata->arrKeyValuePairs[1].strKey = strdup("CHECKSUM_ALGORITHM");
-    pMetadata->arrKeyValuePairs[1].strValue = strdup(std::to_string(static_cast<int>(ChecksumAlgorithm::XXHASH32)).c_str());
 
-    auto status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, pMetadata, nullptr);
+    const std::string algoValue = std::to_string(static_cast<int>(ChecksumAlgorithm::XXHASH32));
+    KeyValuePair kvPairs[2];
+    kvPairs[0].strKey = (char*)"CHUNK_CHECKSUM";
+    kvPairs[0].strValue = (char*)"1234567890";
+    kvPairs[1].strKey = (char*)"CHECKSUM_ALGORITHM";
+    kvPairs[1].strValue = (char*)algoValue.c_str();
+    Metadata metadata;
+    metadata.arrKeyValuePairs = kvPairs;
+    metadata.nKeyValuePairs = 2;
+
+    auto status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, &metadata, nullptr);
     ASSERT_EQ(CacheClientStatus::SUCCESS, status);
 
     void* pBuffer2 = malloc(nLength);
@@ -608,17 +627,20 @@ TEST_P(CacheClientTests, ChecksumValidationDetectsBitFlipCorruptionXXH32)
     
     // Create metadata with the ORIGINAL checksum (calculated before bit flip)
     // This simulates the scenario where checksum was stored before corruption occurred
-    Metadata* pMetadata = new Metadata;
-    pMetadata->arrKeyValuePairs = new KeyValuePair[2];
-    pMetadata->nKeyValuePairs = 2;
-    pMetadata->arrKeyValuePairs[0].strKey = strdup("CHUNK_CHECKSUM");
-    pMetadata->arrKeyValuePairs[0].strValue = strdup(std::to_string(originalChecksum).c_str());
-    pMetadata->arrKeyValuePairs[1].strKey = strdup("CHECKSUM_ALGORITHM");
-    pMetadata->arrKeyValuePairs[1].strValue = strdup(std::to_string(static_cast<int>(ChecksumAlgorithm::XXHASH32)).c_str());
+    const std::string checksumValue = std::to_string(originalChecksum);
+    const std::string algoValue = std::to_string(static_cast<int>(ChecksumAlgorithm::XXHASH32));
+    KeyValuePair kvPairs[2];
+    kvPairs[0].strKey = (char*)"CHUNK_CHECKSUM";
+    kvPairs[0].strValue = (char*)checksumValue.c_str();
+    kvPairs[1].strKey = (char*)"CHECKSUM_ALGORITHM";
+    kvPairs[1].strValue = (char*)algoValue.c_str();
+    Metadata metadata;
+    metadata.arrKeyValuePairs = kvPairs;
+    metadata.nKeyValuePairs = 2;
 
     // Upload the CORRUPTED data with the ORIGINAL (wrong) checksum
     // This simulates data that got corrupted after checksum was calculated
-    status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, pMetadata, nullptr);
+    status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, &metadata, nullptr);
     ASSERT_EQ(CacheClientStatus::SUCCESS, status);
 
     // Try to download with checksum validation - should detect the bit flip
@@ -630,8 +652,6 @@ TEST_P(CacheClientTests, ChecksumValidationDetectsBitFlipCorruptionXXH32)
     free(pBuffer);
     free(pBufferSuccess);
     free(pBuffer2);
-    delete[] pMetadata->arrKeyValuePairs;
-    delete pMetadata;
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_P(CacheClientTests, ChecksumValidationWithCRC32Algorithm)
@@ -645,16 +665,19 @@ TEST_P(CacheClientTests, ChecksumValidationWithCRC32Algorithm)
     uint32_t expectedChecksum = checksumCalculator->CalculateChecksum(pBuffer, nLength);
 
     // Create metadata with CRC32 checksum and algorithm
-    Metadata* pMetadata = new Metadata;
-    pMetadata->arrKeyValuePairs = new KeyValuePair[2];
-    pMetadata->nKeyValuePairs = 2;
-    pMetadata->arrKeyValuePairs[0].strKey = strdup("CHUNK_CHECKSUM");
-    pMetadata->arrKeyValuePairs[0].strValue = strdup(std::to_string(expectedChecksum).c_str());
-    pMetadata->arrKeyValuePairs[1].strKey = strdup("CHECKSUM_ALGORITHM");
-    pMetadata->arrKeyValuePairs[1].strValue = strdup(std::to_string(static_cast<int>(ChecksumAlgorithm::CRC32)).c_str());
+    const std::string checksumValue = std::to_string(expectedChecksum);
+    const std::string algoValue = std::to_string(static_cast<int>(ChecksumAlgorithm::CRC32));
+    KeyValuePair kvPairs[2];
+    kvPairs[0].strKey = (char*)"CHUNK_CHECKSUM";
+    kvPairs[0].strValue = (char*)checksumValue.c_str();
+    kvPairs[1].strKey = (char*)"CHECKSUM_ALGORITHM";
+    kvPairs[1].strValue = (char*)algoValue.c_str();
+    Metadata metadata;
+    metadata.arrKeyValuePairs = kvPairs;
+    metadata.nKeyValuePairs = 2;
 
 
-    auto status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, pMetadata, nullptr);
+    auto status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, &metadata, nullptr);
     ASSERT_EQ(CacheClientStatus::SUCCESS, status);
 
     void* pBuffer2 = malloc(nLength);
@@ -666,8 +689,6 @@ TEST_P(CacheClientTests, ChecksumValidationWithCRC32Algorithm)
 
     free((void*)pBuffer);
     free(pBuffer2);
-    delete[] pMetadata->arrKeyValuePairs;
-    delete pMetadata;
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_P(CacheClientTests, ChecksumValidationDetectsAlgorithmMismatch)
@@ -680,15 +701,18 @@ TEST_P(CacheClientTests, ChecksumValidationDetectsAlgorithmMismatch)
     IChecksumStrategy* checksumStrategy = ChecksumFactory::GetChecksumStrategyInstance(ChecksumAlgorithm::CRC32);
     uint32_t crc32Checksum = checksumStrategy->CalculateChecksum(pBuffer, nLength);
 
-    Metadata* pMetadata = new Metadata;
-    pMetadata->arrKeyValuePairs = new KeyValuePair[2];
-    pMetadata->nKeyValuePairs = 2;
-    pMetadata->arrKeyValuePairs[0].strKey = strdup("CHUNK_CHECKSUM");
-    pMetadata->arrKeyValuePairs[0].strValue = strdup(std::to_string(crc32Checksum).c_str());
-    pMetadata->arrKeyValuePairs[1].strKey = strdup("CHECKSUM_ALGORITHM");
-    pMetadata->arrKeyValuePairs[1].strValue = strdup(std::to_string(static_cast<int>(ChecksumAlgorithm::XXHASH32)).c_str());
+    const std::string checksumValue = std::to_string(crc32Checksum);
+    const std::string algoValue = std::to_string(static_cast<int>(ChecksumAlgorithm::XXHASH32));
+    KeyValuePair kvPairs[2];
+    kvPairs[0].strKey = (char*)"CHUNK_CHECKSUM";
+    kvPairs[0].strValue = (char*)checksumValue.c_str();
+    kvPairs[1].strKey = (char*)"CHECKSUM_ALGORITHM";
+    kvPairs[1].strValue = (char*)algoValue.c_str();
+    Metadata metadata;
+    metadata.arrKeyValuePairs = kvPairs;
+    metadata.nKeyValuePairs = 2;
 
-    auto status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, pMetadata, nullptr);
+    auto status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, &metadata, nullptr);
     ASSERT_EQ(CacheClientStatus::SUCCESS, status);
 
     void* pBuffer2 = malloc(nLength);
@@ -698,8 +722,6 @@ TEST_P(CacheClientTests, ChecksumValidationDetectsAlgorithmMismatch)
 
     free((void*)pBuffer);
     free(pBuffer2);
-    delete[] pMetadata->arrKeyValuePairs;
-    delete pMetadata;
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_P(CacheClientTests, ChecksumValidationEdgeCases)
@@ -710,16 +732,17 @@ TEST_P(CacheClientTests, ChecksumValidationEdgeCases)
 
     // Test case 1: Algorithm key exists but value is empty string
     {
-        Metadata* pMetadata = new Metadata;
-        pMetadata->arrKeyValuePairs = new KeyValuePair[2];
-        pMetadata->nKeyValuePairs = 2;
-        pMetadata->arrKeyValuePairs[0].strKey = strdup("CHUNK_CHECKSUM");
-        pMetadata->arrKeyValuePairs[0].strValue = strdup("123456789");
-        pMetadata->arrKeyValuePairs[1].strKey = strdup("CHECKSUM_ALGORITHM");
-        pMetadata->arrKeyValuePairs[1].strValue = strdup("");  // Empty algorithm value
+        KeyValuePair kvPairs[2];
+        kvPairs[0].strKey = (char*)"CHUNK_CHECKSUM";
+        kvPairs[0].strValue = (char*)"123456789";
+        kvPairs[1].strKey = (char*)"CHECKSUM_ALGORITHM";
+        kvPairs[1].strValue = (char*)"";  // Empty algorithm value
+        Metadata metadata;
+        metadata.arrKeyValuePairs = kvPairs;
+        metadata.nKeyValuePairs = 2;
 
         string testFilename = filename + "_empty_algo";
-        auto status = m_cacheClientImpl.Upload(testFilename.c_str(), pBuffer, nLength, 0, nullptr, pMetadata, nullptr);
+        auto status = m_cacheClientImpl.Upload(testFilename.c_str(), pBuffer, nLength, 0, nullptr, &metadata, nullptr);
         ASSERT_EQ(CacheClientStatus::SUCCESS, status);
 
         void* pBuffer2 = malloc(nLength);
@@ -730,21 +753,20 @@ TEST_P(CacheClientTests, ChecksumValidationEdgeCases)
         ASSERT_EQ(memcmp(pBuffer, pBuffer2, nLength), 0);
 
         free(pBuffer2);
-        delete[] pMetadata->arrKeyValuePairs;
-        delete pMetadata;
     }
 
     // Test case 2: Checksum exists but algorithm key is missing entirely
     {
-        Metadata* pMetadata = new Metadata;
-        pMetadata->arrKeyValuePairs = new KeyValuePair[1];
-        pMetadata->nKeyValuePairs = 1;
-        pMetadata->arrKeyValuePairs[0].strKey = strdup("CHUNK_CHECKSUM");
-        pMetadata->arrKeyValuePairs[0].strValue = strdup("987654321");
+        KeyValuePair kvPairs[1];
+        kvPairs[0].strKey = (char*)"CHUNK_CHECKSUM";
+        kvPairs[0].strValue = (char*)"987654321";
         // No algorithm key at all
+        Metadata metadata;
+        metadata.arrKeyValuePairs = kvPairs;
+        metadata.nKeyValuePairs = 1;
 
         string testFilename = filename + "_missing_algo_key";
-        auto status = m_cacheClientImpl.Upload(testFilename.c_str(), pBuffer, nLength, 0, nullptr, pMetadata, nullptr);
+        auto status = m_cacheClientImpl.Upload(testFilename.c_str(), pBuffer, nLength, 0, nullptr, &metadata, nullptr);
         ASSERT_EQ(CacheClientStatus::SUCCESS, status);
 
         void* pBuffer3 = malloc(nLength);
@@ -755,8 +777,6 @@ TEST_P(CacheClientTests, ChecksumValidationEdgeCases)
         ASSERT_EQ(memcmp(pBuffer, pBuffer3, nLength), 0);
 
         free(pBuffer3);
-        delete[] pMetadata->arrKeyValuePairs;
-        delete pMetadata;
     }
 
     free((void*)pBuffer);
@@ -832,13 +852,13 @@ TEST_P(CacheClientTests, TestDeleteGroup)
 TEST_P(CacheClientTests, TestGetLastAccessTimeDistribution)
 {
     uint64_t distributionBucketSizeInHours;
-    LastAccessTimeDistribution* pLastAccessTimeDistribution = new LastAccessTimeDistribution;
-    pLastAccessTimeDistribution->arrKeyValuePairs = nullptr;
-    pLastAccessTimeDistribution->nKeyValuePairs = 0;
+    LastAccessTimeDistribution lastAccessTimeDistribution;
+    lastAccessTimeDistribution.arrKeyValuePairs = nullptr;
+    lastAccessTimeDistribution.nKeyValuePairs = 0;
 
     // distribution window <= 0
     distributionBucketSizeInHours = 0;
-    auto status = m_cacheClientImpl.GetLastAccessTimeDistribution(distributionBucketSizeInHours, pLastAccessTimeDistribution, nullptr);
+    auto status = m_cacheClientImpl.GetLastAccessTimeDistribution(distributionBucketSizeInHours, &lastAccessTimeDistribution, nullptr);
     ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT, status);
 
     uint64_t nLength = 1024;
@@ -848,10 +868,14 @@ TEST_P(CacheClientTests, TestGetLastAccessTimeDistribution)
     ASSERT_EQ(CacheClientStatus::SUCCESS, status);
     // Valid correlation ID
     distributionBucketSizeInHours = 1;
-    status = m_cacheClientImpl.GetLastAccessTimeDistribution(distributionBucketSizeInHours, pLastAccessTimeDistribution, nullptr);
+    status = m_cacheClientImpl.GetLastAccessTimeDistribution(distributionBucketSizeInHours, &lastAccessTimeDistribution, nullptr);
     ASSERT_EQ(CacheClientStatus::SUCCESS, status);
     // There can be > 1 buckets if the test uploads occured across UTC hour change
-    ASSERT_TRUE(pLastAccessTimeDistribution->nKeyValuePairs >= 1);
+    ASSERT_TRUE(lastAccessTimeDistribution.nKeyValuePairs >= 1);
+
+    // arrKeyValuePairs is allocated by the library; the caller owns it.
+    delete[] lastAccessTimeDistribution.arrKeyValuePairs;
+    free((void*)pBuffer);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_P(CacheClientTests, TestDeleteByLastAccessTime)
