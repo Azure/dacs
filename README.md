@@ -15,23 +15,86 @@ Before starting, ensure you have:
 
 ## Getting Started
 
-### 1. Clone Repository
+### 1. Configure Authentication
+
+When cloning over HTTPS in a headless WSL environment, Git Credential Manager cannot encrypt the Microsoft (MSAL) token cache and falls back to plaintext:
+
+```text
+warning: cannot persist Microsoft authentication token cache securely!
+warning: using plain-text fallback token cache
+```
+
+The steps below install a Secret Service keyring so the token cache is stored securely. Run them once:
+
+```bash
+sudo apt update && sudo apt install -y libicu-dev pass gnupg gnome-keyring libsecret-1-0 libsecret-tools dbus-x11
+
+# Generate a gpg key
+# Use <your_alias>@users.noreply.github.com for the email
+# Accepting the defaults is fine
+gpg --full-generate-key
+
+# Initialize password storage using the gpg-id from above
+pass init <your_alias>@users.noreply.github.com
+
+# Configure .gitconfig
+git config --global credential.credentialStore gpg
+git config --global credential.azreposCredentialType oauth
+git config --global credential.internal-reference-removed true
+
+# Install git credential manager
+GCM_DEB=$(curl -s https://api.github.com/repos/git-ecosystem/git-credential-manager/releases/latest \
+| grep browser_download_url \
+| grep 'gcm-linux-x64.*\.deb' \
+| cut -d '"' -f 4)
+curl -LO "$GCM_DEB"
+sudo apt install -y "./$(basename "$GCM_DEB")"
+unset GCM_DEB
+git-credential-manager configure
+
+# Create your keyring password:
+read -rs -p "New keyring password: " _kr_pw; echo
+eval "$(printf '%s' "$_kr_pw" | gnome-keyring-daemon --unlock --components=secrets)"
+export GNOME_KEYRING_CONTROL SSH_AUTH_SOCK
+unset _kr_pw
+```
+
+**Note:** If you ever need to change/reset your keyring password:
+```bash
+pgrep -au "$USER" gnome-keyring
+kill <PID>
+rm -f ~/.local/share/keyrings/login.keyring ~/.local/share/keyrings/user.keystore
+# Create keyring password (above)
+```
+
+### 2. Configure keyring daemon on login:
+
+Add the following to `~/.profile`:
+
+```bash
+# --- gnome-keyring unlock (WSL) ---
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+  eval "$(dbus-launch --sh-syntax)"
+fi
+# Only prompt if no keyring daemon is already running for this user
+if ! pgrep -u "$USER" -x gnome-keyring-d >/dev/null 2>&1; then
+  read -rs -p "Unlock login keyring: " _kr_pw; echo
+  eval "$(printf '%s' "$_kr_pw" | gnome-keyring-daemon --unlock --components=secrets)"
+  unset _kr_pw
+  export GNOME_KEYRING_CONTROL SSH_AUTH_SOCK
+fi
+# --- end gnome-keyring ---
+
+tty -s && export GPG_TTY=$(tty)
+```
+
+### 3. Clone Repository
 
 ```bash
 cd ~
 git clone https://github.com/Azure/dacs dacs
 cd dacs
 ```
-
-**Authentication:** Git will prompt for credentials. Generate a Personal Access Token (PAT):
-1. Go to [Azure DevOps Personal Access Tokens](internal-reference-removed)
-2. Click "New Token"
-3. Set expiration and select **Code (Read & Write)** scope
-4. Copy the generated token
-5. When prompted:
-   - **Username**: Your Microsoft alias (e.g., `v-john`)
-   - **Password**: Paste the PAT token
-
 **Note for WSL users:** Always clone into the Linux filesystem (`~` or `/home/username`), not Windows paths (`/mnt/c`), for better I/O performance.
 
 ---
