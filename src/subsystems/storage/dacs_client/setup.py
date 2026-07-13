@@ -1,36 +1,15 @@
-from datetime import datetime
+
 import os
-from setuptools import setup
 import shutil
 
-# VERSION is a placeholder that gets replaced at build time by build-python-package.sh
-# The actual version (e.g., 0.9.0.202601148) is SemVer format: 0.9.0.YYYYMMDDN
-# Do not change this placeholder value - it's used by sed to find and replace
-VERSION = '0.9.0-PLACEHOLDER'
+from setuptools import setup
+from setuptools.command.install import install
 
 setup_dir = os.path.abspath(os.path.dirname(__file__))
 print("Current working directory:", setup_dir)
 
-CLASSIFIERS = [
-    'Development Status :: 5 - Production/Stable',
-    'Intended Audience :: Developers',
-    'Intended Audience :: Science/Research',
-    'Programming Language :: Python',
-    'Programming Language :: Python :: 3 :: Only',
-    'Programming Language :: Python :: 3.7',
-    'Programming Language :: Python :: 3.8',
-    'Programming Language :: Python :: 3.9',
-    'Programming Language :: Python :: 3.10',
-    'Programming Language :: Python :: 3.11',
-    'Programming Language :: Python :: 3.12',
-    'Programming Language :: Python :: 3.13',
-    'Operating System :: MacOS',
-    'Operating System :: Microsoft :: Windows',
-    'Operating System :: POSIX :: Linux',
-    'Topic :: Scientific/Engineering'
-]
 
-from setuptools.command.install import install
+
 class CustomPackageLogic(install):
     def run(self):
         # Packing the required dependencies into the whl package
@@ -72,61 +51,5 @@ class CustomPackageLogic(install):
         print('\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> End custom packaging logic')
         install.run(self)
 
-with open(os.path.join(setup_dir, 'README.md'), encoding='utf-8') as f:
-    long_description = f.read()
 
-# Get architecture and channel from environment (both required)
-build_arch = os.environ.get('BUILD_ARCHITECTURE')
-build_channel = os.environ.get('BUILD_CHANNEL')
-
-# Validate required environment variables
-if not build_arch or not build_channel:
-    missing = []
-    if not build_arch:
-        missing.append("BUILD_ARCHITECTURE (e.g., 'amd64' or 'arm64')")
-    if not build_channel:
-        missing.append("BUILD_CHANNEL (e.g., 'official' or 'dev')")
-    raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
-
-# Map architecture to proper wheel platform tags
-platform_tag_map = {
-    'amd64': 'linux_x86_64',
-    'arm64': 'linux_aarch64'
-}
-platform_tag = platform_tag_map.get(build_arch)
-if not platform_tag:
-    raise ValueError(f"Unknown architecture: {build_arch}. Expected 'amd64' or 'arm64'.")
-
-setup(
-    name=f'dacs-client-{build_channel}',
-    version=VERSION,
-    packages=[
-        "py_dacs_client",
-        "py_dacs_client.utils",
-        "py_dacs_client.tests",
-        "py_dacs_client.benchmarks",
-    ],
-    package_data={
-        "py_dacs_client.tests": ["requirements.txt"],
-    },
-    install_requires=[
-        # Runtime deps are declared in pyproject.toml ([project.dependencies]
-        # and [project.optional-dependencies]). Keep this list empty so there
-        # is a single source of truth and setuptools does not conflict with
-        # the [project] table.
-    ],
-    author='Microsoft Corporation',
-    author_email='dacs-storage@users.noreply.github.com',
-    url='internal-reference-removed
-    description='Python package for DACS Client with blobfile-compatible API',
-    long_description=long_description,
-    long_description_content_type='text/markdown',
-    classifiers=CLASSIFIERS,
-    python_requires='>=3.8',
-    cmdclass={'install': CustomPackageLogic},
-    options={
-        'bdist_wheel': {
-            'plat_name': platform_tag
-        }
-    }
-)
+setup(cmdclass={'install': CustomPackageLogic})

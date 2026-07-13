@@ -55,24 +55,23 @@ echo "Python package version: $PYTHON_PACKAGE_VERSION"
 echo "Python package channel: $PACKAGE_CHANNEL"
 echo ""
 
-# Update VERSION in setup.py with the calculated version
-SETUP_FILE="setup.py"
+# Update __version__ in py_dacs_client/__init__.py with the calculated version
+INIT_FILE="py_dacs_client/__init__.py"
 PYPROJECT_FILE="pyproject.toml"
 
-# Extract placeholder version from setup.py (should be '0.9.0-PLACEHOLDER')
-ORIGINAL_VERSION=$(grep "^VERSION = " "$SETUP_FILE" | cut -d "'" -f 2)
+# Extract placeholder version from __init__.py (should be '0.9.0-PLACEHOLDER')
+ORIGINAL_VERSION=$(grep "^__version__ = " "$INIT_FILE" | cut -d '"' -f 2)
 
 if [ "$ORIGINAL_VERSION" != "0.9.0-PLACEHOLDER" ]; then
-  echo "Warning: Expected VERSION = '0.9.0-PLACEHOLDER' in setup.py, found: $ORIGINAL_VERSION"
+  echo "Warning: Expected __version__ = \"0.9.0-PLACEHOLDER\" in $INIT_FILE, found: $ORIGINAL_VERSION"
 fi
 
 # Replace placeholder with actual calculated version
-sed "s/VERSION = '${ORIGINAL_VERSION}'/VERSION = '${PYTHON_PACKAGE_VERSION}'/" "$SETUP_FILE" > "${SETUP_FILE}.tmp"
-mv "${SETUP_FILE}.tmp" "$SETUP_FILE"
+sed -i "s/__version__ = \"${ORIGINAL_VERSION}\"/__version__ = \"${PYTHON_PACKAGE_VERSION}\"/" "$INIT_FILE"
 
-echo "Version updated in setup.py: $ORIGINAL_VERSION → $PYTHON_PACKAGE_VERSION"
+echo "Version updated in $INIT_FILE: $ORIGINAL_VERSION → $PYTHON_PACKAGE_VERSION"
 
-# Replace channel placeholder in pyproject.toml so project name matches setup.py
+# Replace channel placeholder in pyproject.toml
 PACKAGE_NAME="dacs-client-${PACKAGE_CHANNEL}"
 sed -i "s/^name = \"dacs_cache_PLACEHOLDER\"/name = \"${PACKAGE_NAME}\"/" "$PYPROJECT_FILE"
 echo "Name updated in pyproject.toml: dacs_cache_PLACEHOLDER → ${PACKAGE_NAME}"
@@ -89,7 +88,7 @@ fi
 
 # Install build dependencies (patchelf is installed via the CI setup script; auditwheel calls it)
 echo "Installing build dependencies..."
-$PYTHON_CMD -m pip install --upgrade pip setuptools wheel packaging auditwheel -q
+$PYTHON_CMD -m pip install --upgrade build pip setuptools wheel packaging auditwheel -q
 
 # Export architecture and channel for setup.py to use
 export BUILD_ARCHITECTURE="$BUILD_ARCH"
@@ -97,12 +96,14 @@ export BUILD_CHANNEL="$PACKAGE_CHANNEL"
 
 # Build wheel
 echo "Building Python wheel..."
-$PYTHON_CMD setup.py bdist_wheel
+set +e
+$PYTHON_CMD -m build --wheel --no-isolation
 BUILD_EXIT_CODE=$?
+set -e
 
-# Restore original setup.py and pyproject.toml
-if ! git checkout setup.py pyproject.toml 2>/dev/null; then
-  echo "Warning: Could not restore setup.py / pyproject.toml from git. You may need to revert manually."
+# Restore original __init__.py and pyproject.toml
+if ! git checkout "$INIT_FILE" pyproject.toml 2>/dev/null; then
+  echo "Warning: Could not restore $INIT_FILE / pyproject.toml from git. You may need to revert manually."
 fi
 
 if [ $BUILD_EXIT_CODE -ne 0 ]; then
