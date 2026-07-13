@@ -2,6 +2,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # ---------------------------------------------------------
 
+__version__ = "0.9.0-PLACEHOLDER"
+
 __path__ = __import__("pkgutil").extend_path(__path__, __name__)  # type: ignore
 
 # Export common exceptions for easy access
