@@ -379,16 +379,8 @@ void TestInterceptionFallback()
     throw "mkstemp failed";
   }
 
-  struct stat statBuf{};
-  int ret = stat(tmpFileName, &statBuf);
-  if (ret != 0)
-  {
-    std::cout << "stat failed: "<< strerror(errno) <<endl;
-    throw "mkstemp failed";
-  }
-
   struct stat statBuf1{};
-  ret = fstat(fd, &statBuf1);
+  int ret = fstat(fd, &statBuf1);
   if (ret != 0)
   {
     std::cout << "fstat failed: "<< strerror(errno) <<endl;
