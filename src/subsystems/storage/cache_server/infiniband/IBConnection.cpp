@@ -58,7 +58,7 @@ bool IBConnection::FinalizeWrite()
     int rc = ibv_post_send(m_qp.get(), &wr, &bad_wr);
     if (rc != 0)
     {
-        LOG_WARN("ibv_post_send() failed, qp={} addr={} error={},{}", GetId(), wr.wr_id, rc, strerror(errno));
+        LOG_WARN("ibv_post_send() failed, qp={} addr={} error={},{}", GetId(), wr.wr_id, rc, strerror(rc));
         return false;
     }
 
@@ -110,7 +110,7 @@ bool IBConnection::Sendfile(int fileFd, uint64_t fileStartOffset, uint64_t total
     {
         LOG_WARN("Not enough buffer space to complete write. qp={} addr={} buffersize={} writeLen={}",
             GetId(), (uint64_t)m_buffer, IB_BUFFER_SIZE, m_writeOffset + totalLength);
-        return -1;
+        return false;
     }
 
     // loop to serve entire file
