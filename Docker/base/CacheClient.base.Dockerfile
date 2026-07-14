@@ -37,7 +37,12 @@ RUN apt-get update && \
     openssh-client \
     openssh-server && \
     rm -rf /var/lib/apt/lists/* && \
-    apt-get clean
+    apt-get clean && \
+    # The openssh-server postinst auto-generates private host keys at
+    # /etc/ssh/ssh_host_*; drop them in the same layer so they never persist in
+    # the image (secret scanners flag them, and they would be shared across
+    # every container). sshd uses the per-job mounted key instead (see below).
+    rm -f /etc/ssh/ssh_host_*
 
 # Install Python dependencies
 RUN pip3 install --no-cache-dir \
@@ -57,19 +62,23 @@ RUN wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-p
     apt-get clean && \
     rm -f packages-microsoft-prod.deb
 
-# Generate SSH host keys
-RUN ssh-keygen -A
-
-# SSH server config (MPI expects 2222)
-RUN echo "Port 2222" >> /etc/ssh/sshd_config \
-    && echo "StrictModes no" >> /etc/ssh/sshd_config
-
-# SSH client config (for mpirun -> ssh)
-RUN printf "Host *\n\
-    StrictHostKeyChecking no\n\
-    Port 2222\n" > /etc/ssh/ssh_config
-
-RUN mkdir -p /run/sshd
+# SSH setup for the Kubeflow MPI operator, mirroring the operator's own base
+# image (https://github.com/kubeflow/mpi-operator/tree/master/build/base).
+# The operator mounts a per-job SSH key Secret at /root/.ssh and starts each
+# worker with `/usr/sbin/sshd -De` (reads the default /etc/ssh/sshd_config), so:
+#   - point sshd's HostKey at the per-job key instead of baking static
+#     /etc/ssh/ssh_host_* keys (removed above),
+#   - listen on 2222 (the operator's SSH port),
+#   - disable StrictModes and StrictHostKeyChecking and skip known_hosts, since
+#     /root/.ssh is a read-only Secret mount.
+ARG SSH_PORT=2222
+RUN sed -i "s/[ #]\(.*StrictHostKeyChecking \).*/ \1no/" /etc/ssh/ssh_config && \
+    echo "    UserKnownHostsFile /dev/null" >> /etc/ssh/ssh_config && \
+    sed -i "s/[ #]\(.*Port \).*/ \1${SSH_PORT}/" /etc/ssh/ssh_config && \
+    sed -i "s/#\(StrictModes \).*/\1no/" /etc/ssh/sshd_config && \
+    sed -i "s/#\(Port \).*/\1${SSH_PORT}/" /etc/ssh/sshd_config && \
+    echo "HostKey /root/.ssh/id_rsa" >> /etc/ssh/sshd_config && \
+    mkdir -p /var/run/sshd
 
 # Create app directories
 RUN mkdir -p /app/mounts /app/lib /app/_cache /app/_cacheTemp
