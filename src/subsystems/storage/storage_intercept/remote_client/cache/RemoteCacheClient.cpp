@@ -200,7 +200,7 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(const std::string& mount
             free((void*)entryMetadata.arrKeyValuePairs[index].strValue);
         }
 
-        free((void*)(entryMetadata.arrKeyValuePairs));
+        delete[] entryMetadata.arrKeyValuePairs;
         entryMetadata.arrKeyValuePairs = nullptr;
         entryMetadata.nKeyValuePairs = 0;
 
