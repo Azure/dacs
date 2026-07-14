@@ -1,0 +1,13 @@
+[package]
+name = "cache_client_lib_rust_test"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libc = "0.2.0"
+rand = "0.9.4"
+
+[build-dependencies]
+bindgen = "0.65.1"

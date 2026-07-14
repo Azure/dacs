@@ -1,0 +1,400 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: caches.storage.azure.com
+spec:
+  group: storage.azure.com
+  names:
+    kind: Cache
+    listKind: CacheList
+    plural: caches
+    singular: cache
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].message
+      name: Status
+      type: string
+    - jsonPath: .status.currentServers
+      name: Current
+      type: integer
+    - jsonPath: .status.desiredServers
+      name: Desired
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    - jsonPath: .status.discoveryURL
+      name: Discovery URL
+      type: string
+    - jsonPath: .spec.serverSizeInGB
+      name: Size(GB)
+      priority: 1
+      type: integer
+    - jsonPath: .spec.memoryLimitMB
+      name: Memory(MB)
+      priority: 1
+      type: integer
+    - jsonPath: .spec.serverThreads
+      name: Threads
+      priority: 1
+      type: integer
+    - jsonPath: .spec.infinibandResourceLimitCount
+      name: IB Resources
+      priority: 1
+      type: integer
+    - jsonPath: .spec.nodeSelectorKey
+      name: Selector Key
+      priority: 1
+      type: string
+    - jsonPath: .spec.nodeSelectorValue
+      name: Selector Value
+      priority: 1
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: Cache is the Schema for the caches API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of Cache
+            properties:
+              cpuLimit:
+                description: CPU limit per cache server pod (recommended when running
+                  cache on non-dedicated nodes)
+                format: int32
+                minimum: 1
+                type: integer
+              egressBandwidthLimitGbps:
+                description: Egress Bandwidth limit in Gbps (recommended when running
+                  cache on non-dedicated nodes)
+                format: int32
+                minimum: 1
+                type: integer
+              eviction:
+                description: Eviction settings
+                properties:
+                  enableAccessTimeEviction:
+                    default: true
+                    description: Enable accessTime based eviction
+                    type: boolean
+                  evictionMaintainFreeSpace:
+                    default: true
+                    description: Keep a portion of cache space always free even if
+                      all data is within access time window
+                    type: boolean
+                  lastAccessThreshold:
+                    default: 30d
+                    description: Last Access threshold for cache eviction, example
+                      "30d12h41m29s"
+                    type: string
+                  passFrequency:
+                    default: 1h
+                    description: Frequency of running eviction pass, example "1h30m"
+                    type: string
+                  sizeTarget:
+                    default: "80"
+                    description: |-
+                      Target cache utilization percentage after eviction (0-100).
+                      Eviction runs until cache utilization drops to this level.
+                      Must be less than SizeThreshold to avoid continuous eviction cycles.
+                    type: string
+                  sizeThreshold:
+                    default: "90"
+                    description: |-
+                      Size threshold for triggering cache eviction in percentage (0-100).
+                      Eviction starts when cache utilization exceeds this value.
+                    type: string
+                type: object
+              infinibandResourceLimitCount:
+                default: 0
+                description: Infiniband resource limit count (set to 0 to disable
+                  infiniband)
+                format: int32
+                minimum: 0
+                type: integer
+              infinibandResourceLimitName:
+                default: rdma/hca_rdma_infiniband
+                description: Infiniband resource limit name
+                type: string
+              memoryLimitMB:
+                description: Memory limit in MB per cache server pod (recommended
+                  when running cache on non-dedicated nodes)
+                format: int32
+                minimum: 1024
+                type: integer
+              metricsPort:
+                default: 9096
+                description: Metrics port for cache server pods
+                format: int32
+                maximum: 65535
+                minimum: 1
+                type: integer
+              nodeSelectorKey:
+                default: dacs.azure.com/processing-unit
+                description: Node selector label key for cache server pods
+                type: string
+              nodeSelectorValue:
+                default: gpu
+                description: Node selector label value for cache server pods
+                type: string
+              port:
+                default: 9065
+                description: Port for cache server pods
+                format: int32
+                maximum: 65535
+                minimum: 1
+                type: integer
+              scaling:
+                description: |-
+                  Scaling configuration for cache servers
+                  Specify either dynamic or static (mutually exclusive)
+                properties:
+                  dynamic:
+                    description: Dynamic configuration for scaling based on node availability
+                    properties:
+                      maxServers:
+                        description: |-
+                          Maximum number of cache servers to run. The replica count will never
+                          exceed this value regardless of the percentage calculation.
+                        format: int32
+                        maximum: 499
+                        minimum: 1
+                        type: integer
+                      minServers:
+                        description: |-
+                          Minimum number of cache servers to run. If the percentage-based count
+                          falls below this threshold, the replica count is floored to 0 instead
+                          of being clamped up - the cache will not run at all until enough nodes
+                          are available to meet the minimum.
+                        format: int32
+                        maximum: 499
+                        minimum: 1
+                        type: integer
+                      percentageOfNodesToUse:
+                        description: Percentage of available nodes to use for cache
+                          servers
+                        format: int32
+                        maximum: 100
+                        minimum: 1
+                        type: integer
+                    required:
+                    - percentageOfNodesToUse
+                    type: object
+                  static:
+                    description: Static configuration for a fixed number of cache
+                      servers
+                    properties:
+                      numServers:
+                        description: Number of cache server replicas to maintain
+                        format: int32
+                        maximum: 499
+                        minimum: 1
+                        type: integer
+                    required:
+                    - numServers
+                    type: object
+                type: object
+              serverSizeInGB:
+                description: Max allowed cache size in GB per cache server
+                format: int32
+                minimum: 1
+                type: integer
+              serverThreads:
+                description: Number of threads per cache server
+                format: int32
+                minimum: 4
+                type: integer
+              storage:
+                description: Storage configuration for cache data. Default is hostPath
+                  storage with path /var/lib/ssd/cacheserver
+                properties:
+                  ephemeral:
+                    description: Use ephemeral storage for cache data storage
+                    type: boolean
+                  hostPath:
+                    description: Use hostPath volume for cache data storage
+                    properties:
+                      nodeCacheFolderPath:
+                        description: Node cache folder path (used if useHostPath is
+                          true)
+                        type: string
+                    required:
+                    - nodeCacheFolderPath
+                    type: object
+                type: object
+            required:
+            - scaling
+            - serverSizeInGB
+            - serverThreads
+            type: object
+          status:
+            description: status defines the observed state of Cache
+            properties:
+              conditions:
+                description: |-
+                  conditions represent the current state of the Cache resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  All conditions use positive polarity (True = good/healthy). This aligns with the
+                  kstatus convention so that tooling such as `kubectl wait --for=condition=Ready` works
+                  out of the box. See https://github.com/kubernetes-sigs/cli-utils/blob/master/pkg/kstatus/README.md
+
+                  Condition types:
+                  - "Ready": overall readiness derived from all other conditions
+                  - "ReplicasReady": whether the desired number of StatefulSet replicas are running and ready
+                  - "PodsScheduled": whether all cache server pods have been successfully scheduled.
+                    False when pods are stuck pending or scheduling errors occurred.
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              currentServers:
+                description: Current number of cache server pods
+                format: int32
+                type: integer
+              desiredServers:
+                description: Desired number of cache server pods
+                format: int32
+                type: integer
+              discoveryURL:
+                description: |-
+                  The discovery URL for the cache.
+                  Pass this to cache client to connect to cache.
+                type: string
+              scaling:
+                description: |-
+                  Scaling reports the state of the scaling normalizer's stabilization
+                  window. Nil when static scaling is configured or when the scaling
+                  calculation could not be performed.
+                properties:
+                  message:
+                    description: Human-readable summary of the current scaling state.
+                    type: string
+                  stabilizationEnds:
+                    description: |-
+                      When the current stabilization window expires. Nil when
+                      scaling has settled.
+                    format: date-time
+                    type: string
+                  targetServers:
+                    description: |-
+                      The server count the scaling algorithm computed. When a
+                      stabilization window is active this is the count the system
+                      would apply once the window expires. Nil on error paths where
+                      the target could not be determined.
+                    format: int32
+                    type: integer
+                type: object
+            type: object
+        required:
+        - spec
+        type: object
+        x-kubernetes-validations:
+        - message: must specify metadata.name or metadata.generateName
+          rule: has(self.metadata.name) || has(self.metadata.generateName)
+        - message: metadata.name must be at most 53 characters; the controller appends
+            suffixes up to 10 characters to create Service names, which are limited
+            to 63
+          rule: '!has(self.metadata.name) || size(self.metadata.name) <= 53'
+        - message: 'metadata.name must be a valid RFC 1123 DNS label: lowercase alphanumeric
+            and hyphens, must start and end with alphanumeric'
+          rule: '!has(self.metadata.name) || self.metadata.name.matches(''^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'')'
+        - message: metadata.name must not end with '-discovery'; that suffix is reserved
+            for the discovery Service derived from another Cache and would cause a
+            Service name collision
+          rule: '!has(self.metadata.name) || !self.metadata.name.endsWith(''-discovery'')'
+        - message: metadata.generateName must be at most 48 characters; the apiserver
+            appends a 5-char suffix and the controller appends suffixes up to 10 characters
+            to create Service names, which are limited to 63
+          rule: '!has(self.metadata.generateName) || size(self.metadata.generateName)
+            <= 48'
+        - message: 'metadata.generateName must be a valid RFC 1123 DNS label prefix:
+            lowercase alphanumeric and hyphens, must start with alphanumeric'
+          rule: '!has(self.metadata.generateName) || self.metadata.generateName.matches(''^[a-z0-9]([a-z0-9-]*)?$'')'
+    served: true
+    storage: true
+    subresources:
+      status: {}

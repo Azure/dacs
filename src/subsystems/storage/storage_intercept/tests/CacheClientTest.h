@@ -1,0 +1,36 @@
+//---------------------------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.
+// Licensed under the Apache License, Version 2.0.
+//---------------------------------------------------------------------------------------------------------------------
+#pragma once
+#include "TestBase.h"
+#include "FileData.h"
+#include <string>
+#include <atomic>
+#include <vector>
+//---------------------------------------------------------------------------------------------------------------------
+class ICacheClient;
+//---------------------------------------------------------------------------------------------------------------------
+class CacheClientTest : public TestBase
+{
+    protected:
+        CacheClientTest();
+        void SetUp() override;
+
+        std::shared_ptr<ICacheClient>   m_cacheClient;
+        static std::atomic_int          m_fileCount;
+        std::string                     m_strTestId;
+        bool                            m_bRunExtensiveTests;
+
+        std::string GetRandFilename();
+
+        template <typename T>
+        void AssertEqArray(T* left, T* right, int arraySize)
+        {
+            for (int i = 0; i < arraySize; i++)
+            {
+                ASSERT_EQ(left[i], right[i]);
+            }
+        }
+};
+//---------------------------------------------------------------------------------------------------------------------

@@ -1,0 +1,72 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dacs-adapter-benchmark
+  labels:
+    dacs.azure.com/test-pod: "true"
+spec:
+  parallelism: 1
+  completions: 1
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: dacs-adapter-benchmark
+        dacs.azure.com/test-pod: "true"
+    spec:
+      restartPolicy: Never
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - cacheserver
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: benchmark
+        image: cache-test-client:local
+        imagePullPolicy: Always
+        env:
+        - name: CACHE_SERVER_PORT
+          value: "9065"
+        - name: CACHE_DISCOVERY_URL
+          value: "<placeholder>"
+        - name: SI_cacheKeyExpirySeconds
+          value: "1200"
+        - name: SI_cacheIBEnabled
+          value: "false"
+        - name: AZURE_STORAGE_ACCOUNT_NAME
+          value: "<placeholder>"
+        - name: AZURE_USE_IDENTITY
+          value: "1"
+        command: ["/bin/bash", "-ce"]
+        args:
+        - |
+          cd /app/
+          python3 -m py_dacs_client.benchmarks.throughput_benchmark \
+            --storage-account ${AZURE_STORAGE_ACCOUNT_NAME} \
+            --container ${CONTAINER_NAME:-dataset} \
+            --clients ${BENCHMARK_CLIENTS:-dacs_zero_copy} \
+            --blob-size-gb ${BLOB_SIZE_GB:-1} \
+            --num-blobs ${NUM_BLOBS:-4} \
+            --num-processes ${NUM_PROCESSES:-1} \
+            --write-mode ${WRITE_MODE:-write_sync} \
+            ${CONSISTENT_MODE:+--consistent-mode} \
+            ${SKIP_WRITE:+--skip-write} \
+            ${SKIP_READ:+--skip-read} \
+            ${NO_CLEANUP:+--no-cleanup} \
+            ${SINGLE_PROCESS:+--single-process} \
+            ${TEMP_DIR:+--temp-dir $TEMP_DIR} \
+            --verbose \
+            --output /tmp/results.json
+          echo ""
+          echo "=== BENCHMARK_RESULTS_JSON ==="
+          cat /tmp/results.json
+          echo ""
+          echo "=== END_BENCHMARK_RESULTS_JSON ==="

@@ -1,0 +1,27 @@
+{
+    "TestName": "Test throughput of clients connecting to 3 cache servers",
+    "AccountName": "storagetestingstore",
+    "AccountEndpoint": "https://storagetestingstore.blob.core.windows.net",
+    "ContainerName": "datasets",
+    "SASToken": "dummy",
+    "ServerConfig": {
+        "Replicas": 1,
+        "CacheSize": 107374182400,
+        "EphemeralLimit": 110,
+        "CrashInterval": 20
+    },
+    "SequentialTest": true,
+    "SleepInterval": 30,
+    "ClientConfigs": [
+        {
+            "Name": "cppread",
+            "Parallelism": 2,
+            "ServerHostnames": "cacheserver-0.cacheserver.default.svc.cluster.local#cacheserver-1.cacheserver.default.svc.cluster.local#cacheserver-2.cacheserver.default.svc.cluster.local",
+            "KeyExpiry": 0,
+            "Dataset": "books_wiki_en_corpus",
+            "ClientType": "cpp",
+            "IOVerification": true,
+            "GroupId": "group1"
+        }
+    ]
+}

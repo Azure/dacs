@@ -1,0 +1,17 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+# Performance test values for the dacs Helm chart
+# Used by the AKS perf test pipeline
+
+manager:
+  featureGates: "UseZeroCopy=true"
+
+cache:
+  serverSizeInGB: 1000
+  cpuLimit: 4
+  memoryLimitMB: 128000
+  storage:
+    ephemeral: false
+    hostPath:
+      nodeCacheFolderPath: /var/lib/ssd/cacheserver

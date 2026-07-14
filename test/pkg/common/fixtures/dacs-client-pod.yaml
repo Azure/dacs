@@ -1,0 +1,72 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+# Pod for DACS Python Client Tests
+#
+# This manifest runs a Python container with the DACS client library.
+#
+# Uses IMDS-based managed identity (kubelet identity) for Azure authentication.
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dacs-python-client
+  namespace: cache-server
+  labels:
+    app: dacs-python-client
+spec:
+  # Affinity rules to schedule on CPU nodes
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: dacs.azure.com/processing-unit
+            operator: In
+            values:
+            - cpu
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app: dacs-python-client
+          topologyKey: kubernetes.io/hostname
+
+  containers:
+  - name: python-client
+    image: ""  # Set by DACSAdapterTestConfig
+    imagePullPolicy: Always
+    command: ["sleep", "infinity"]
+    
+    env:
+    # Kubelet identity client ID for IMDS auth
+    - name: AZURE_CLIENT_ID
+      value: ""  # Set by DACSAdapterTestConfig
+    # Enable azure-identity for native blobfile/boostedblob
+    - name: AZURE_USE_IDENTITY
+      value: "1"
+    # Cache enabled flag for tests to check
+    - name: CACHE_ENABLED
+      value: "false"  # Set by DACSAdapterTestConfig
+    # Cache server discovery for Python adapter (dacs_utils.py reads these)
+    - name: CACHE_DISCOVERY_URL
+      value: ""  # Set by DACSAdapterTestConfig when cache enabled
+    - name: CACHE_SERVER_PORT
+      value: "9065"  # Default cache server port
+    # Azure blob path for tests
+    - name: AZURE_BLOB_PATH
+      value: ""  # Set by DACSAdapterTestConfig
+    # Test parameters
+    - name: STORAGE_ACCOUNT
+      value: ""  # Set by DACSAdapterTestConfig
+    - name: TEST_CONTAINER
+      value: ""  # Set by DACSAdapterTestConfig
+    # SAS token auth (optional, set by DACSAdapterTestConfig)
+    - name: STORAGE_INTCPT_SAS_TOKEN
+      value: ""
+    - name: USE_SAS_TOKEN
+      value: ""
+
+  restartPolicy: Never

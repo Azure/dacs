@@ -1,0 +1,7 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+## Append samples of your project ##
+resources:
+- storage_v1_cache.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

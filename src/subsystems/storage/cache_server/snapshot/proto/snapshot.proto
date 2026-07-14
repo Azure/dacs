@@ -1,0 +1,31 @@
+//---------------------------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.
+// Licensed under the Apache License, Version 2.0.
+//---------------------------------------------------------------------------------------------------------------------
+syntax = "proto3";
+package snapshot;
+//---------------------------------------------------------------------------------------------------------------------
+message SnapshotEntry
+{
+    string filename = 1;
+    uint64 filesize = 2;
+    map<string, bytes> metadata = 3;
+    uint64 expiryTimestamp = 4;
+    bytes groupId = 5;
+    uint64 accessTimestamp = 6;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message SnapshotBucket
+{
+    repeated SnapshotEntry entries = 1;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message Snapshot
+{
+    uint32 version = 1;
+    string hostname = 2;
+    uint64 saveTimestamp = 3;
+    repeated SnapshotBucket buckets = 4;
+    repeated string toDeleteGroups = 5;
+}
+//---------------------------------------------------------------------------------------------------------------------

@@ -1,0 +1,51 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: scenario-model-loading
+  labels:
+    dacs.azure.com/test-pod: "true"
+spec:
+  parallelism: 1
+  completions: 1
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: scenario-model-loading
+        dacs.azure.com/test-pod: "true"
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: workload
+        image: cache-test-client:local
+        imagePullPolicy: Always
+        env:
+        - name: ACCESS_METHOD
+          value: "blobfile"
+        - name: AZURE_STORAGE_ACCOUNT_NAME
+          value: "<placeholder>"
+        - name: STORAGE_CONTAINER
+          value: "test-data"
+        - name: BLOB_PREFIX
+          value: "<placeholder>"
+        - name: HF_REPO
+          value: "<placeholder>"
+        - name: SCALE_NAME
+          value: "<placeholder>"
+        - name: CACHE_DISCOVERY_URL
+          value: ""
+        - name: AZURE_USE_IDENTITY
+          value: "1"
+        - name: READ_BUFFER_SIZE
+          value: "67108864"
+        command: ["/bin/bash", "-ce"]
+        args:
+        - |
+          cd /app/ || cd /tmp/
+          cat > /tmp/model_loading.py << 'PYTHON_SCRIPT'
+          PYTHON_PLACEHOLDER
+          PYTHON_SCRIPT
+          python3 /tmp/model_loading.py

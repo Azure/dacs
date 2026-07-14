@@ -1,0 +1,369 @@
+//---------------------------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.
+// Licensed under the Apache License, Version 2.0.
+//---------------------------------------------------------------------------------------------------------------------
+syntax = "proto3";
+package cache;
+//---------------------------------------------------------------------------------------------------------------------
+/** 
+ * RPC Mechanism
+ *
+ * Lock API
+ *
+ * Client has to first send a 4 byte buffer containing the proto message length,
+ *         then followed by the "Request" proto message with the appropriate LockFileRequest fields populated.
+ * The server will respond with a 4 byte buffer containing the proto message length and 
+ *         then followed by the LockFileResponse proto message.
+ *
+ * Upload API
+ *
+ * Client has to first send a 4 byte buffer containing the proto message length, 
+ *         then followed by the "Request" proto message with the appropriate UploadRequest fields populated.
+ *         The raw file bytes has to be streamed immediately after the proto buffer is sent.
+ * The server will respond with a 4 byte buffer containing the proto message length and
+ *         then followed by the UploadResponse proto message.
+ * Note: The server might fail-fast and not read the entire upload stream for certain errors,
+ *       in which case client may not receive proper error codes.
+ *       To avoid this we can implement something like HTTP 100 continue semantics,
+ *       but may not be optimal in steady state.
+ * 
+ * Download API
+ *
+ * Client has to first send a 4 byte buffer containing the proto message length,
+ *         then followed by the "Request" proto message with the appropriate DownloadRequest fields populated.
+ * The server will respond with a 4 byte buffer containing the proto message length and
+ *         then followed by the DownloadResponse proto message. 
+ *         If file exists the proto message will be immediately followed by the contents of the file.
+ *
+ * PutAttribute API
+ *
+ * Client has to first send a 4 byte buffer containing the proto message length, 
+ *         then followed by the "Request" proto message with the appropriate PutAttributeRequest fields populated.
+ *         The raw file bytes has to be streamed immediately after the proto buffer is sent.
+ * The server will respond with a 4 byte buffer containing the proto message length and
+ *         then followed by the PutAttributeResponse proto message.
+ * 
+ * GetAttribute API
+ *
+ * Client has to first send a 4 byte buffer containing the proto message length,
+ *         then followed by the "Request" proto message with the appropriate GetAttributeRequest fields populated.
+ * The server will respond with a 4 byte buffer containing the proto message length and
+ *         then followed by the GetAttributeResponse proto message. 
+ *
+ * Delete API
+ *
+ * Client has to first send a 4 byte buffer containing the proto message length,
+ *         then followed by the "Request" proto message with the appropriate DeleteRequest fields populated.
+ * The server will respond with a 4 byte buffer containing the proto message length and
+ *         then followed by the DeleteResponse proto message. 
+ *
+ * Infiniband Init API
+ *
+ * Client has to first send a 4 byte buffer containing the proto message length,
+ *         then followed by the "Request" proto message with the appropriate IBInitRequest fields populated.
+ * The server will respond with a 4 byte buffer containing the proto message length and
+ *         then followed by the IBInitResponse proto message. 
+ *
+ * GetCacheServers API
+ * 
+ * Client has to first send a 4 byte buffer containing the proto message length,
+ *         then followed by the "Request" proto message with the appropriate GetCacheServers fields populated.
+ * The server will respond with a 4 byte buffer containing the proto message length and
+ *         then followed by the GetCacheServersResponse proto message.
+ *
+ */
+//---------------------------------------------------------------------------------------------------------------------
+// Authentication params
+message AuthParams
+{
+    bool enabled = 1;
+    uint32 version = 2;
+    string accountname = 3;
+
+    // Current timestamp, number of seconds since epoch
+    uint32 timestamp = 4;
+
+    // HMACSHA256 signature using account key and message constructed from request parameters
+    bytes signature = 5;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Locking required to coordinate parallel uploads across workers
+// Only the client which succeeds should perform the upload
+message LockFileRequest
+{
+    string requestid = 999;
+    string filename = 1;
+    AuthParams authparams = 2;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message LockFileResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        ALREADY_LOCKED = 1;
+        AUTH_FAILED = 2;
+        INTERNAL_ERROR = 3;
+    }
+    Result result = 1;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Upload the file contents into the cache
+message UploadRequest
+{
+    string requestid = 999;
+    string filename = 1;
+    uint64 filesize = 2;
+
+    // If this is set to false then upload will succeed only if a DownloadRequest was 
+    //     called prior to this with enablelock set
+    bool ignorelock = 3;
+
+    // cache expiry time in seconds, 0 indicates no expiry. If groupid field is also set then this field is ignored (0)
+    uint32 expiryseconds = 4;
+
+    // optional arbitrary key,value pairs which will be persisted and returned when the file is downloaded
+    map<string, bytes> metadata = 5;
+
+    // authentication params required if authentication is enabled for the cache server APIs 
+    AuthParams authparams = 6;
+
+    // optional client managed groupid this key belongs too. Clients need to ensure uniqueness of this id
+    bytes groupid = 7;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message UploadResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        FILE_EXISTS = 1;
+        AUTH_FAILED = 2;
+        INTERNAL_ERROR = 3;
+        BAD_REQUEST = 4;
+    }
+    Result result = 1;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Check and download file from cache
+// Use enablelock to coordinate across multiple workers so that only one worker attempts to populate the cache
+message DownloadRequest
+{
+    string requestid = 999;
+    string filename = 1;
+    uint64 offset = 2;
+
+    // Set length to 0 to fetch entire cached contents 
+    uint64 length = 3;
+    bool enablelock = 4;
+    AuthParams authparams = 5;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message DownloadResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        NOT_FOUND_GOT_LOCK = 1;
+        NOT_FOUND_ALREADY_LOCKED = 2;
+        NOT_FOUND = 3;
+        INVALID_OFFSET_LENGTH = 4;
+        FILENAME_LIMIT_EXCEEDED = 5;
+        AUTH_FAILED = 6;
+        INTERNAL_ERROR = 7;
+    }
+    Result result = 1;
+    uint64 filesize = 2;
+    map<string, bytes> metadata = 3;
+    bool isFullDownload = 4;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Delete file entry from cache
+message DeleteRequest
+{
+    string requestid = 999;
+    oneof type
+    {
+        // TODO: Not yet supported
+        string filename = 1;
+
+        // if groupid is selected, all files belonging to the group will be deleted
+        bytes groupid = 2;
+
+        // if lastaccesstime is selected, all files older than lastaccesstime will be deleted
+        bytes lastaccesstime = 4; 
+    }
+    AuthParams authparams = 3;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message DeleteResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        AUTH_FAILED = 1;
+        INTERNAL_ERROR = 2;
+    }
+    Result result = 1;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message FileAttribute
+{
+    bool isdir = 1;
+    uint64 filesize = 2;
+    uint64 accessedtime = 3;
+    uint64 modifiedtime = 4;
+    string version = 5;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message FileAttributes
+{
+    string filename = 1;
+    FileAttribute fileattribute = 2;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Check and get file atrributes from cache
+// Use enablelock to coordinate across multiple workers so that only one worker attempts to populate the cache
+message GetAttributeRequest
+{
+    string requestid = 999;
+    string filename = 1;
+    bool enablelock = 2;
+    AuthParams authparams = 3;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message GetAttributeResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        NOT_FOUND_GOT_LOCK = 1;
+        NOT_FOUND = 2;
+        AUTH_FAILED = 3;
+        INTERNAL_ERROR = 4;
+    }
+    Result result = 1;
+    FileAttribute fileattribute = 2;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message PutAttributeRequest
+{
+    string requestid = 999;
+    repeated FileAttributes fileattributes = 1;
+    AuthParams authparams = 2;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message PutAttributeResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        AUTH_FAILED = 1;
+        INTERNAL_ERROR = 2;
+    }
+    Result result = 1;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message IBInitRequest
+{
+
+    string requestid = 999;
+
+    // Unique IB device identifier within the infiniband fabric
+    uint32 clientlid = 1;
+
+    // Unique port which is used within the device
+    uint32 clientibport = 2;
+
+    // client packet mtu, needed to synchronize client and server mtu in case they are different
+    uint32 clientmtu = 3;
+
+    // The client created qp identifiers to establish one-one connections with server
+    repeated uint32 clientqpn = 4;
+
+    AuthParams authparams = 5;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message IBInitResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        AUTH_FAILED = 1;
+        IB_NOT_SUPPORTED = 2;
+        INTERNAL_ERROR = 3;
+    }
+    Result result = 1;
+
+    // Unique server IB identifier
+    uint32 serverlid = 2;
+
+    // ib port of the server being used
+    uint32 serveribport = 3;
+
+    // Server supported packet mtu size
+    uint32 servermtu = 4;
+
+    // The server created qp identifiers which is connected to the client qps in the order it was sent in the request
+    repeated uint32 serverqpn = 5;
+}
+//----------------------------------------------------------------------------------------------------------------------
+message GetCacheLastAccessTimeDistributionRequest
+{
+    string requestid = 999;
+    uint64 distributionbucketsizeinhours = 1;
+    AuthParams authparams = 2;
+}
+//-----------------------------------------------------------------------------------------------------------------------
+message GetCacheLastAccessTimeDistributionResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        AUTH_FAILED = 1;
+        INTERNAL_ERROR = 2;
+    }
+    Result result = 1;
+    map<int64, uint64> distributionmap = 2;
+}
+//----------------------------------------------------------------------------------------------------------------------
+message GetCacheServersRequest
+{
+    string requestid = 999;
+}
+//-----------------------------------------------------------------------------------------------------------------------
+message GetCacheServersResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        INTERNAL_ERROR = 1;
+    }
+    Result result = 1;
+
+    // List of cache server addresses
+    repeated string serveraddresses = 2;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message EndMarker
+{
+
+}
+//---------------------------------------------------------------------------------------------------------------------
+message Request
+{
+    oneof type
+    {
+        LockFileRequest lockrequest = 1;
+        UploadRequest uploadrequest = 2;
+        DownloadRequest downloadrequest = 3;
+        GetAttributeRequest getattributerequest = 4;
+        PutAttributeRequest putattributerequest = 5;
+        DeleteRequest deleterequest = 6;
+        IBInitRequest ibinitrequest = 7;
+        GetCacheLastAccessTimeDistributionRequest getcachelastaccesstimedistributionrequest = 8;
+        GetCacheServersRequest getcacheserversrequest = 9;
+        EndMarker endmarker = 10;
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------

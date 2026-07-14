@@ -1,0 +1,104 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+{{- if and .Values.cacheServer.enabled (ne (int .Values.cacheServer.numServers) 0)}}
+{{ $schedulerRoleBindingName := "cacheserver-scheduler" }}
+{{ $cmRoleName := "cacheserver-scheduler-pv-schedulercoordinator-role" }}
+{{ $cmRoleBindingName := "cacheserver-scheduler-pv-schedulercoordinator-rolebinding" }}
+{{- if .Values.cacheServer.identifier }}
+{{ $schedulerRoleBindingName = printf "%s-%s" $schedulerRoleBindingName .Values.cacheServer.identifier }}
+{{ $cmRoleName = printf "%s-%s" $cmRoleName .Values.cacheServer.identifier }}
+{{ $cmRoleBindingName = printf "%s-%s" $cmRoleBindingName .Values.cacheServer.identifier }}
+{{- end }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: cacheserver-scheduler
+  labels:
+    app: cacheserver-scheduler
+    component: cacheserver-scheduler
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $schedulerRoleBindingName }}
+  namespace: {{ .Release.Namespace }}
+subjects:
+- kind: ServiceAccount
+  name: cacheserver-scheduler
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+  name: system:kube-scheduler
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: {{ $cmRoleName }}
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "patch", "update", "create"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $cmRoleBindingName }}
+  namespace: {{ .Release.Namespace }}
+subjects:
+- kind: ServiceAccount
+  name: cacheserver-scheduler
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+  name: {{ $cmRoleName }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cacheserver-scheduler
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: cacheserver-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cacheserver-scheduler
+  template:
+    metadata:
+      labels:
+        app: cacheserver-scheduler
+{{- if .Values.managedById  }}
+        kubernetes.azure.com/managedby: {{ .Values.managedById  }}
+{{- end }}
+    spec:
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      serviceAccount: cacheserver-scheduler
+      containers:
+        - name: cacheserver-scheduler
+          image: "{{ .Values.cacheServer.scheduler.image.repository }}:{{ .Values.cacheServer.scheduler.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.cacheServer.scheduler.image.imagePullPolicy | default "IfNotPresent" }}
+          env:
+          - name: CACHESERVER_SCHEDULER_LOGLEVEL
+            value: {{ .Values.cacheServer.scheduler.debugLevel | quote }}
+          - name: CACHESERVER_SCHEDULER_SCHEDULERPOLLINTERVAL
+            value: {{ .Values.cacheServer.scheduler.schedulerPollInterval | quote }}
+          - name: CACHESERVER_SCHEDULER_PROCESSINGUNITLABELKEY
+            value: {{ .Values.cacheServer.nodeSelectorLabelKey | quote }}
+          - name: CACHESERVER_SCHEDULER_CACHESERVERNAMESPACE
+            value: {{ .Values.cacheServer.scheduler.cacheserverNamespace | default .Release.Namespace | quote }}
+          - name: CACHESERVER_SCHEDULER_ENABLESCHEDULERCOORDINATION
+            value: {{ .Values.cacheServer.scheduler.enableSchedulerCoordination | quote }}
+          - name: CACHESERVER_SCHEDULER_ISHOSTPATHMOUNTENABLED
+            value: {{ .Values.cacheServer.useHostPath | quote }}
+{{- end }}

@@ -1,0 +1,21 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+apiVersion: storage.azure.com/v1
+kind: Cache
+metadata:
+  labels:
+    app.kubernetes.io/name: cache-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: cache-sample
+spec:
+  scaling:
+    static:
+      numServers: 2
+  serverSizeInGB: 100
+  serverThreads: 16
+  cpuLimit: 1
+  memoryLimitMB: 20480
+  egressBandwidthLimitGbps: 10
+  nodeSelectorKey: dacs.azure.com/processing-unit
+  nodeSelectorValue: cpu

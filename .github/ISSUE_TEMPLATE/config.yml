@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Azure/dacs/security/policy
+    about: Please report security vulnerabilities privately as described in our security policy, not as public issues.
+  - name: Question or support
+    url: https://github.com/Azure/dacs/blob/main/SUPPORT.md
+    about: For usage questions and support, see SUPPORT.md.

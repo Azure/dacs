@@ -1,0 +1,55 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+# -- Node selector for system pod assignment.
+nodeSelector:
+  dacs.azure.com/processing-unit: system
+
+### Managed-by label (kubernetes.azure.com/managedby)
+# Lab clusters: 
+# Partner cloud clusters: 
+# Azure clusters: 
+managedById : ""
+
+## Core Components Start
+cacheServer:
+  enabled: true
+  image: 
+    repository: acstor/dacs-server
+    tag: ""
+    imagePullPolicy: IfNotPresent
+  identifier: ""
+  numServers: 3
+  serverSizeInGB: 4
+  serverThreads: 80
+  cpuLimit: 4
+  memoryLimitMB: 3200
+  evictionEnabled: true
+  evictionLastAccessThreshold: 30d
+  evictionSizeThreshold: 90
+  evictionPassFrequency: 1h
+  #Enables eviction to maintain free space on the cache server.
+  evictionMaintainFreeSpace: true
+  evictionSizeTarget: 80
+  mountSsdPath: /host/mnt/ssd0
+  port: 9065
+  metricsPort: 9096
+  useEphemeralStorage: false
+  ibResourceCountLimit: 0
+  useZeroCopy: false
+  enableTrafficControl: true # If true, traffic control will be enabled for the cacheserver pods
+  nodeCacheFolderPath: /var/lib/ssd/cacheserver # required when useEphemeralStorage is false and useHostPath is true.
+  nodeSelectorLabelKey: dacs.azure.com/processing-unit
+  nodeSelectorLabelValues: [ "cpu" ]
+  useHostPath: true # If true, PV/PVC will not be created and cacheserver pods will use hostPath for storage
+  scheduler:
+    enabled: true
+    image:
+      repository: acstor/dacs-scheduler
+      tag: ""
+      imagePullPolicy: IfNotPresent
+    debugLevel: "info"
+    schedulerPollInterval: 15s
+    enableSchedulerCoordination: true
+
+## Core Components end

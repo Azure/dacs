@@ -1,0 +1,56 @@
+///--------------------------------------------------------------------------------------------------------------------
+// Copyright (c) Microsoft Corporation.
+// Licensed under the Apache License, Version 2.0.
+//---------------------------------------------------------------------------------------------------------------------
+#pragma once
+//---------------------------------------------------------------------------------------------------------------------
+#include <stdint.h>
+//---------------------------------------------------------------------------------------------------------------------
+constexpr int DEFAULT_THREAD_POOL_SIZE = 256;
+constexpr int TCP_BACKLOG_SIZE = 1024;
+constexpr int REQUEST_METADATA_SIZE = 4;
+
+// Maximum size of a framed request protobuf. The 4-byte length prefix is client-supplied
+// and can declare up to ~4 GiB; without a cap, a single peer can force an unbounded
+// allocation before any data is read or validated. Request protobufs carry only metadata
+// (file data is streamed separately); the largest legitimate request is a batched
+// PutAttribute, well under 1 MiB. 4 MiB matches gRPC's default max receive message
+// size and leaves ample headroom.
+constexpr uint32_t MAX_REQUEST_PROTO_SIZE = 4 * 1024 * 1024;
+
+constexpr int DEFAULT_SOCKET_BUF_SIZE = 0;
+constexpr int NUM_MAPS = 50; // Note: changing this value will cause existing snapshots to fail to load
+
+// Snapshot related settings
+constexpr bool DefaultSnapshotEnabled = true;
+constexpr bool DefaultWaitForSnapshotConsistencyScan = true;
+constexpr uint32_t DefaultSnapshotIntervalInSeconds = 300;
+constexpr uint32_t SNAPSHOT_VERSION = 1; // Note: Update this only if breaking changes are made to snapshot proto
+constexpr uint32_t SNAPSHOT_MAX_AGE_IN_SECONDS = 7 * 24 * 60 * 60; // 1 week
+
+// Window size for cache expiry cleanup
+constexpr uint32_t DefaultCacheTTLWindowSizeSeconds = 60;
+
+// Eviction related settings
+constexpr uint32_t DefaultEvictionPassFrequencySeconds = 3630; // ~ 1hr
+constexpr uint64_t DefaultEvictionLastAccessThresholdSeconds = 2592000; // 30 days
+constexpr double DefaultEvictionSizeThresholdPecentage = 90; // 90% of cache size
+// 1TB cache size
+constexpr uint64_t DefaultCacheSizeLimitBytes = 1024ull * 1024 * 1024 * 1024; 
+
+// Limit to contain RAM usage
+constexpr uint64_t DefaultAttributeCacheLimit = 10 * 1024 * 1024;
+
+// 4GB limit on individual file size 
+constexpr uint64_t UPLOAD_FILESIZE_LIMIT = (uint64_t)4 * 1024 * 1024 * 1024;
+
+// Linux has filename limit of 255, due to hex encoding we can only support source filenames of length 127
+constexpr int UPLOAD_FILENAME_LIMIT = 127;
+
+// Max amount of data to read & discard from client for invalid uploads (32MiB)
+constexpr uint64_t MaxReadDiscardSizeBytes = (uint64_t) 32 * 1024 * 1024;
+
+// Constants for  getting cache server addresses dynamically
+constexpr char CACHE_SERVER_COUNT_CONFIG_PATH[] = "/serverConfig/cache_server_count";
+constexpr char CACHE_SERVER_ENDPOINT_FORMAT_CONFIG_PATH[] = "/serverConfig/cache_server_endpoint_format";
+//---------------------------------------------------------------------------------------------------------------------

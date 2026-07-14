@@ -1,0 +1,14 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+# Performance test values for the Cache Server Helm chart
+# Used by the AKS perf test pipeline
+
+cacheServer:
+  serverSizeInGB: 1000
+  memoryLimitMB: 128000
+  useEphemeralStorage: false
+  useHostPath: true
+  nodeCacheFolderPath: /var/lib/ssd/cacheserver
+  enableTrafficControl: false
+  useZeroCopy: true

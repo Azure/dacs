@@ -1,0 +1,77 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: perf-client
+  labels:
+    app: perf-client
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 0
+  completions: 1
+  manualSelector: true
+  selector:
+    matchLabels:
+      app: perf-client
+  parallelism: 1
+  template:
+    metadata:
+      labels:
+        app: perf-client
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: dacs.azure.com/processing-unit
+                operator: In
+                values:
+                - cpu
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - cacheserver
+            topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - perf-client
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: job
+        image: cache-test-client:local
+        command: ['/app/PerfClient']
+        args:
+        - '--server-port'
+        - '9065'
+        - '--ib-enabled'
+        - 'false'
+        - '--is-discovery-enabled'
+        - 'true'
+        - '--discovery-endpoint'
+        - 'cacheserver-discovery'
+        - '--connection-pool-size'
+        - '1'
+        - '--num-threads'
+        - '1'
+        - '--data-size-GiB'
+        - '1'
+        - '--prefix'
+        - 'test'
+        - '--mode'
+        - 'upload'
+        - '--num-iterations'
+        - '1'
+      restartPolicy: Never

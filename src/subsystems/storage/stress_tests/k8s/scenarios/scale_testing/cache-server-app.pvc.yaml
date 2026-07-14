@@ -1,0 +1,55 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+# 3-instance cache server with attached managed persistent SSD
+# Deploy on a 3-node cluster. Does not work on AKS with OCI nodes ( no managed disks )
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cacheserver
+spec:
+  selector:
+    matchLabels:
+      app: cacheserver
+  serviceName: cacheserver
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: cacheserver
+    spec:
+      terminationGracePeriodSeconds: 10
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - cacheserver
+            topologyKey: kubernetes.io/hostname
+      imagePullSecrets:
+      - name: regcred
+      containers:
+      - name: cacheserver
+        # When using create and use latest cache-server image from DACS.
+        image: dacs.azurecr.io/public/azureml/amlarc/docker/onebox/cache-server:0.0.56
+        ports:
+        - containerPort: 9065
+          # Cache server big enough to fit entire dataset
+          # The port which the cache server listens on should match the container port exposed
+          # in the line above
+        command: ['/bin/sh', '-c', '/root/CacheServer 9065 /tmp/cache 107374182400']
+        volumeMounts:
+        - name: disk
+          mountPath: /tmp/cache
+  volumeClaimTemplates:
+  - metadata:
+      name: disk
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "managed-csi-premium"
+      resources:
+        requests:
+          storage: 200Gi

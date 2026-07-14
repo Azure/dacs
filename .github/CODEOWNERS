@@ -1,0 +1,13 @@
+# CODEOWNERS for DACS
+#
+# Owners listed here are automatically requested for review when a matching
+# path changes. These are placeholders: replace @Azure/dacs-maintainers and
+# @Azure/dacs-admins with the real maintainer/admin aliases or teams before the
+# repository goes public.
+
+# Default owners for everything in the repo.
+*                    @Azure/dacs-maintainers
+
+# The CODEOWNERS file itself is owned by a smaller admin set so that a global
+# code owner cannot unilaterally rewrite ownership rules.
+/.github/CODEOWNERS   @Azure/dacs-admins

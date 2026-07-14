@@ -1,0 +1,49 @@
+name: Trivy dependency and config scan
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, release-**]
+
+permissions: {}
+
+jobs:
+  scan:
+    name: Filesystem scan (dependencies and misconfig)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      # Temporarily disabled (step-security): harden-runner does not work under
+      # local `act` runs and its egress monitoring is unnecessary there.
+      # - name: Harden Runner
+      #   uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+      #   with:
+      #     egress-policy: audit
+
+      - name: Check out the code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      # Scans the source tree for vulnerable dependencies (go.sum, requirements,
+      # etc.) and Dockerfile/IaC misconfigurations. The built container images are
+      # scanned separately in the CI workflow's image-scan job, which reuses the
+      # images the build already produced instead of rebuilding them here.
+      - name: Run Trivy filesystem scan (dependencies and misconfig)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
+        env:
+          TRIVY_DB_REPOSITORY: "public.ecr.aws/aquasecurity/trivy-db:2"
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'

@@ -1,0 +1,15 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+logLevel: info
+cacheServerImage: "cache-server:local"
+imagePullPolicy: "IfNotPresent"
+podStuckThresholdDuration: 5m # Duration after which a cache pod is considered stuck or healthy after state change
+scaleUpStabilizationWindow: 15m # Window over which scale-up recommendations are stabilized
+scaleDownStabilizationWindow: 15m # Window over which scale-down recommendations are stabilized
+scaleUpTolerancePercent: 10 # Percentage tolerance before triggering a scale-up
+scaleDownTolerancePercent: 10 # Percentage tolerance before triggering a scale-down
+shortTermNodeLossThresholdDuration: 10m # Duration to consider a node loss as short-term
+# Optional: override cache server snapshot cadence (default 300s).
+# To use a smaller cadence, uncomment and set a value, e.g.:
+# cacheServerSnapshotIntervalSeconds: 30

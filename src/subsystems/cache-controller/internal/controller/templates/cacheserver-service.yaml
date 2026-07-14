@@ -1,0 +1,23 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Name }}
+  labels:
+    app: cacheserver
+    dacs.azure.com/cache-name: {{ .Name }}
+  namespace: {{ .Namespace }}
+spec:
+  ports:
+  - name: cacheserver
+    port: {{ .Port }}
+    targetPort: {{ .Port }}
+  - name: metrics
+    port: {{ .MetricsPort }}
+    targetPort: {{ .MetricsPort }}
+  clusterIP: None
+  selector:
+    app: cacheserver
+    dacs.azure.com/cache-name: {{ .Name }}

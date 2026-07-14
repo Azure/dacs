@@ -1,0 +1,7 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+resources:
+- manifests.yaml
+- service.yaml
+- webhook_cert_secret.yaml

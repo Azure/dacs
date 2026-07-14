@@ -1,0 +1,9 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+logLevel: info
+schedulerPollInterval: 15s
+processingUnitLabelKey: dacs.azure.com/processing-unit
+cacheserverNamespace: azureml
+enableSchedulerCoordination: true
+isHostPathMountEnabled: false

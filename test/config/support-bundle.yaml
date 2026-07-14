@@ -1,0 +1,38 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+apiVersion: troubleshoot.sh/v1beta2
+kind: SupportBundle
+metadata:
+  name: cache-server-support-bundle
+spec:
+  collectors:
+    # Collect cluster resources from dacs namespace
+    - clusterResources:
+        namespaces:
+          - cache-server
+
+    # Collect helm release information
+    - helm:
+        namespace: cache-server
+        includeSecrets: false
+        collectValues: true
+
+    # Collect cache-server logs
+    - logs:
+        name: cache-server-logs
+        namespace: cache-server
+
+    # Collect test pod logs (any pod with dacs.azure.com/test-pod=true)
+    - logs:
+        name: test-pod-logs
+        namespace: cache-server
+        selector:
+          - dacs.azure.com/test-pod=true
+
+    # Collect cache-controller logs
+    - logs:
+        name: cache-controller-logs
+        namespace: cache-server
+        selector:
+          - app.kubernetes.io/name=dacs

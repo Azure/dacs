@@ -1,0 +1,68 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: stress-client-%CLIENTNAME%
+spec:
+  parallelism: %PARALLELISM%
+  template:
+    metadata:
+      labels:
+        app: stress-client
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - cacheserver
+            topologyKey: kubernetes.io/hostname
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - stress-client
+            topologyKey: kubernetes.io/hostname
+      imagePullSecrets:
+      - name: regcred
+      containers:
+      - name: job
+        image: dacs.azurecr.io/storage-test-client:stress
+        imagePullPolicy: Always # Using this for testing
+        env:
+        - name: SI_azBlobStorageAccountName
+          value: "%ACCOUNT_NAME%"
+        - name: SI_azBlobSASToken
+          value: "%SAS_TOKEN%"
+        - name: SI_azBlobStorageEndpoint
+          value: "%ACCOUNT_ENDPOINT%"
+        - name: SI_azBlobContainerName
+          value: "%CONTAINER_NAME%"
+        - name: SI_maxConnsPerBlobClient
+          value: "20"
+        - name: SI_chunkDownloadMaxConcurrency
+          value: "20"
+        - name: SI_cacheServerPort
+          value: "9065"
+        - name: SI_cacheServerList
+          value: "%SERVER_HOSTNAMES%"
+        - name: SI_cacheNumUploadThreadsPerProcess
+          value: "2"
+        - name: SI_cacheEnableSyncUpload
+          value: "true"
+        - name: SI_cacheKeyExpirySeconds
+          value: "%KEY_EXPIRY%"
+        - name: SI_cacheKeyGroupId
+          value: "%CACHE_GROUP_ID%"
+        - name: SI_enableReadIOLogs
+          value: "false"
+        - name: SI_logRefreshIntervalInSeconds
+          value: "10"
+        args: ['/usr/bin/python3', '/app/launcher.py', '--storage_path', '/app/mounts/mount0', '--name', '%DATASET%', '--num_workers', '4', '--client_type', '%CLIENT_TYPE%']
+      restartPolicy: Never

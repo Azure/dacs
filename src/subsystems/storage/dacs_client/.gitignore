@@ -1,0 +1,14 @@
+build/
+dacs_client*egg-info/
+*.json
+dist/
+*.egg
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.txt
+.env
+.vscode/
+.idea/

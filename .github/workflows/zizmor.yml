@@ -1,0 +1,53 @@
+name: zizmor
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, release-**]
+  schedule:
+    - cron: '0 1 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      # Temporarily disabled (step-security): harden-runner does not work under
+      # local `act` runs and its egress monitoring is unnecessary there.
+      # - name: Harden Runner
+      #   uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+      #   with:
+      #     egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      # Static analysis of the GitHub Actions workflows and composite actions.
+      # advanced-security: false prints findings to the console and fails the job
+      # on any finding (instead of uploading SARIF to the Security tab), matching
+      # the print-not-upload convention of the other security workflows here.
+      # persona: auditor is the strictest mode - it surfaces every finding class
+      # at all severities and confidences. online-audits: false keeps this
+      # deterministic and runnable under local `act` with no GitHub API token;
+      # every action here is already SHA-pinned, so the online-only audits add
+      # little.
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@192e21d79ab29983730a13d1382995c2307fbcaa # v0.5.7
+        with:
+          version: 1.26.1
+          advanced-security: false
+          online-audits: false
+          persona: auditor

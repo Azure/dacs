@@ -1,0 +1,58 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cache-write-client
+spec:
+  parallelism: 1
+  completions: 1
+  template:
+    metadata:
+      labels:
+        app: cache-write-client
+    spec:
+      restartPolicy: Never
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - cache-write-client
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: write-container
+        image: cache-test-client:local
+        imagePullPolicy: Always
+        env:
+        - name: CACHE_SERVER_PORT
+          value: "9065"
+        - name: CACHE_DISCOVERY_URL
+          value: "<placeholder_for_discovery_url>"
+        - name: SI_cacheKeyExpirySeconds
+          value: "1200"
+        - name: SI_cacheIBEnabled
+          value: "false"
+        - name: AZURE_STORAGE_ACCOUNT_NAME
+          value: "<placeholder_for_storage_account_name>"
+        - name: ASYNC_UPLOAD_WAIT_TIME_SECONDS
+          value: "20"
+        command: ["/bin/bash", "-cxe"]
+        args:
+        - |
+          cd /app/dacs_client/
+          rm /tmp/storageIntercept.config
+          echo "Starting cache client tests..."
+          export AZ_BLOB_DIR=$(echo "az://${AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/writetest/${POD_NAME}/")
+          echo "AZ_BLOB_DIR: $AZ_BLOB_DIR"
+          echo "Running dacs_client_test with 10 blobs, size: 1GB"
+          python3 -m py_dacs_client.sample.dacs_client_test --azBlobDirPath $AZ_BLOB_DIR --nBlobs 10 --blobSizeToBeRead 1073741824
+          echo "dacs_client_test completed"
+          echo "Running dacs_client_download_test..."
+          python3 -m py_dacs_client.sample.dacs_client_download_test
+          echo "dacs_client_download_test completed"
+          echo "Test done"

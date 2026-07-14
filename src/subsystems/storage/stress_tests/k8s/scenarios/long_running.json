@@ -1,0 +1,37 @@
+{
+    "TestName": "Long running server with 1 cpp multithreaded client and 1 python multiprocessed client",
+    "AccountName": "storagetestingstore",
+    "AccountEndpoint": "https://storagetestingstore.blob.core.windows.net",
+    "ContainerName": "datasets",
+    "SASToken": "dummy",
+    "ServerConfig": {
+        "Replicas": 1,
+        "CacheSize": 107374182400,
+        "EphemeralLimit": 110,
+        "CrashInterval": 20
+    },
+    "SequentialTest": true,
+    "SleepInterval": 30,
+    "ClientConfigs": [
+        {
+            "Name": "cppread",
+            "Parallelism": 1,
+            "ServerHostnames": "cacheserver-0.cacheserver.default.svc.cluster.local",
+            "KeyExpiry": 0,
+            "Dataset": "books_wiki_en_corpus",
+            "ClientType": "cpp",
+            "IOVerification": true,
+            "GroupId": "group1"
+        },
+        {
+            "Name": "pyread",
+            "Parallelism": 1,
+            "ServerHostnames": "cacheserver-0.cacheserver.default.svc.cluster.local",
+            "KeyExpiry": 0,
+            "Dataset": "books_wiki_en_corpus",
+            "ClientType": "python",
+            "IOVerification": true,
+            "GroupId": "group1"
+        }
+    ]
+}

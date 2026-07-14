@@ -1,0 +1,198 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["manager"],
+  "properties": {
+    "manager": {
+      "type": "object",
+      "required": ["image"],
+      "properties": {
+        "replicas": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of controller replicas. Leader election is enabled automatically when > 1."
+        },
+        "namespace": {
+          "type": "string",
+          "description": "Namespace for controller (empty = Release.Namespace)"
+        },
+        "image": {
+          "type": "object",
+          "required": ["repository"],
+          "properties": {
+            "repository": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tag": {
+              "type": "string",
+              "description": "Image tag (empty defaults to .Chart.AppVersion)"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": ["Always", "IfNotPresent", "Never"]
+            }
+          }
+        },
+        "cacheServerImage": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Cache server container image repository"
+            },
+            "tag": {
+              "type": "string",
+              "description": "Cache server image tag (defaults to .Chart.AppVersion)"
+            }
+          }
+        },
+        "affinity": {
+          "type": "object",
+          "description": "Pod scheduling affinity. Defaults to scheduling only on linux amd64/arm64 nodes, prefer system nodepool, and spread across nodes."
+        },
+        "nodeSelector": {
+          "type": "object",
+          "description": "Node selector for pod scheduling."
+        },
+        "tolerations": {
+          "type": "array",
+          "description": "Pod tolerations. Defaults to tolerating the CriticalAddonsOnly taint.",
+          "items": {
+            "type": "object"
+          }
+        },
+        "priorityClassName": {
+          "type": "string",
+          "description": "PriorityClass for the controller pod. Empty string uses the chart-managed PriorityClass (<fullname>-priority); set a name to use an existing PriorityClass instead."
+        }
+      }
+    },
+    "cache": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Deploy a Cache CR with the controller"
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+          "description": "Name of the Cache CR (must be DNS-1123 compliant)"
+        },
+        "namespace": {
+          "type": "string",
+          "description": "Namespace for Cache CR (empty = Release.Namespace)"
+        },
+        "serverSizeInGB": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "serverThreads": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "metricsPort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "cpuLimit": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "memoryLimitMB": {
+          "type": "integer",
+          "minimum": 512
+        },
+        "scaling": {
+          "type": "object",
+          "properties": {
+            "static": {
+              "type": "object",
+              "properties": {
+                "numServers": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "dynamic": {
+              "type": "object",
+              "properties": {
+                "minServers": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 99
+                },
+                "maxServers": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 99
+                },
+                "percentageOfNodesToUse": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "rbacHelpers": {
+      "type": "object",
+      "properties": {
+        "enable": {
+          "type": "boolean",
+          "description": "Install convenience admin/editor/viewer roles for CRDs"
+        }
+      }
+    },
+    "crd": {
+      "type": "object",
+      "properties": {
+        "keep": {
+          "type": "boolean",
+          "description": "Keep CRDs when uninstalling chart"
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "enable": {
+          "type": "boolean"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
+      }
+    },
+    "webhook": {
+      "type": "object",
+      "properties": {
+        "enable": {
+          "type": "boolean",
+          "description": "Enable admission webhooks for Cache CR defaulting and validation"
+        },
+        "failurePolicy": {
+          "type": "string",
+          "enum": ["Fail", "Ignore"],
+          "description": "Failure policy for webhook calls"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+apiVersion: v2
+name: dacs-prereq
+description: NVMe RAID setup prerequisites for DACS cache server
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

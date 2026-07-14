@@ -1,0 +1,73 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: storageintercept-client
+  namespace: default
+spec:
+  ttlSecondsAfterFinished: 60
+  manualSelector: true
+  selector:
+    matchLabels:
+      app: storageintercept-client
+  parallelism: 1
+  template:
+    metadata:
+      labels:
+        app: storageintercept-client
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: dacs.azure.com/processing-unit
+                operator: In
+                values:
+                - cpu
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - storageintercept-client
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: job
+        image: cache-test-client:local
+        imagePullPolicy: Never
+        command: ['/bin/bash', '-c']
+        args: 
+          - |
+            # Copy config to expected location
+            cp /config/storageIntercept.config /tmp/storageIntercept.config
+            
+            # Set LD_PRELOAD to use storage intercept library
+            export LD_PRELOAD=/app/lib/libStorageIntercept.so
+            
+            # Run the Python storage client
+            echo "Starting Storage Intercept Client..."
+            echo "Config file contents:"
+            cat /tmp/storageIntercept.config
+            echo ""
+            echo "Running StorageClient.py..."
+            
+            python3 /app/StorageClient.py \
+              --storage_path /mnt/quiverfs \
+              --name small \
+              --num_workers 4 \
+              --read_pattern whole
+        volumeMounts:
+        - name: config
+          mountPath: /config
+      volumes:
+      - name: config
+        configMap:
+          name: storageintercept-config
+      restartPolicy: Never
