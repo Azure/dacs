@@ -242,9 +242,9 @@ void ConnectionManager::UpdateCacheServers(const std::vector<std::string>& vecLa
     }
 
     // Cache server set has changed. Begin updating.
-    LOG_INFO("Updating cache servers:");
-    LOG_INFO("Old set of cache servers: {}", fmt::join(oldCacheServersSet, ", "));
-    LOG_INFO("New set of cache servers: {}", fmt::join(newCacheServersSet, ", "));
+    LOG_INFO("Updating cache server list. Old set: {}, New set: {}",
+        fmt::join(oldCacheServersSet, ", "),
+        fmt::join(newCacheServersSet, ", "));
 
     // Finding deleted cache servers and updating the map accordingly
     std::vector<std::string> eliminatedCacheServers;
@@ -258,20 +258,20 @@ void ConnectionManager::UpdateCacheServers(const std::vector<std::string>& vecLa
                         oldCacheServersSet.begin(), oldCacheServersSet.end(),
                         std::back_inserter(newlyAddedCacheServers));
 
+    LOG_INFO("Eliminated cache servers: {}", fmt::join(eliminatedCacheServers, ", "));
     for (const auto& server : eliminatedCacheServers)
     {
         if (m_mapConnectionQueue.find(server) != m_mapConnectionQueue.end())
         {
-            LOG_INFO("Removing cache server={}", server);
             m_mapConnectionQueue.erase(server);
         }
     }
 
+    LOG_INFO("Newly added cache servers: {}", fmt::join(newlyAddedCacheServers, ", "));
     for (const auto& server : newlyAddedCacheServers)
     {
         if (m_mapConnectionQueue.find(server) == m_mapConnectionQueue.end())
         {
-            LOG_INFO("Adding cache server={}", server);
             m_mapConnectionQueue[server] = std::queue<std::unique_ptr<IConnection>>();
         }
     }
@@ -283,8 +283,7 @@ void ConnectionManager::UpdateCacheServers(const std::vector<std::string>& vecLa
     m_hasher->UpdateServers(m_vecCacheServers);
     LOG_DEBUG("Updated hasher with {} servers", m_vecCacheServers.size());
 
-    LOG_INFO("New list of cache servers: {}", fmt::join(m_vecCacheServers, ", "));
-    LOG_INFO("Cacheservers updated to {} cache servers", nServerNodes);
+    LOG_INFO("New list of cache servers: {}, nServerNodes={}", fmt::join(m_vecCacheServers, ", "), nServerNodes);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool ConnectionManager::InitInfiniband()
@@ -470,7 +469,14 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(std::unique_p
 
     if (response.result() != IBInitResponse::SUCCESS)
     {
-        LOG_WARN_REQID("unexpected response={}", *ibRequest, response.result());
+        if (response.result() == IBInitResponse::IB_NOT_SUPPORTED)
+        {
+            LOG_INFO_REQID("server does not support IB connections", *ibRequest);
+        }
+        else
+        {
+            LOG_WARN_REQID("unexpected response={}", *ibRequest, response.result());
+        }
         std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
         m_mapIbSetupStatus[cacheserver] = IBSetupStatus::FAILURE;
         return socketConnection;
@@ -843,7 +849,7 @@ bool ConnectionManager::PerformIBHandshake(IConnection* connection, const std::s
         return false;
     }
 
-    LOG_INFO("IB handshake successful qp={}, cacheserver={}", connection->GetId(), cacheserver);
+    LOG_DEBUG("IB handshake successful qp={}, cacheserver={}", connection->GetId(), cacheserver);
     m_mapIbHandshakeStatus[cacheserver] = HandshakeStatus::SUCCESS;
     connection->ResetConnection();
     return true;
@@ -917,7 +923,7 @@ std::unique_ptr<std::vector<std::string>> ConnectionManager::FetchLatestCacheSer
         return nullptr;
     }
 
-    LOG_INFO("Sending request to fetch cache servers");
+    LOG_DEBUG("Sending request to fetch cache servers");
     if (!SendMessageToRemoteFinal(serverConnection.get(), request))
     {
         LOG_WARN("Couldn't send message to server for fetching cache servers");
@@ -949,7 +955,7 @@ std::unique_ptr<std::vector<std::string>> ConnectionManager::FetchLatestCacheSer
     {
         vecServers->push_back(serverAddress);
     }
-    LOG_INFO("Discovery api response cache servers - {}", *vecServers);
+    LOG_DEBUG("Discovery api response cache servers - {}", *vecServers);
     return vecServers;
 }
 //---------------------------------------------------------------------------------------------------------------------
