@@ -78,6 +78,80 @@ bool IBConnection::DeregisterExternalMr()
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool IBConnection::WaitForSendWC()
+{
+    bool sendCompleted = false;
+    while (!sendCompleted)
+    {
+        struct pollfd pollFd{};
+        pollFd.fd     = m_eventChannel->fd;
+        pollFd.events = POLLIN;
+        int pollRc = poll(&pollFd, 1, IB_READ_TIMEOUT_MILLIS);
+        if (pollRc <= 0)
+        {
+            LOG_WARN("poll failed/timed out waiting for SEND WC qp={} rc={}", GetId(), pollRc);
+            m_qpError = true;
+            return false;
+        }
+
+        struct ibv_cq* ev_cq = nullptr;
+        void* ev_ctx         = nullptr;
+        if (ibv_get_cq_event(m_eventChannel.get(), &ev_cq, &ev_ctx) != 0)
+        {
+            LOG_WARN("ibv_get_cq_event failed waiting for SEND WC qp={}", GetId());
+            m_qpError = true;
+            return false;
+        }
+        ibv_ack_cq_events(ev_cq, 1);
+
+        int notifyRc = ibv_req_notify_cq(ev_cq, 0);
+        if (notifyRc != 0)
+        {
+            LOG_WARN("ibv_req_notify_cq failed qp={} rc={}", GetId(), notifyRc);
+            m_qpError = true;
+            return false;
+        }
+
+        int nEvents = 0;
+        do
+        {
+            struct ibv_wc wc{};
+            nEvents = ibv_poll_cq(ev_cq, 1, &wc);
+            if (nEvents < 0)
+            {
+                LOG_ERROR("ibv_poll_cq failed waiting for SEND WC qp={}", GetId());
+                m_qpError = true;
+                return false;
+            }
+            if (nEvents == 0)
+            {
+                continue;
+            }
+            if (wc.status != IBV_WC_SUCCESS)
+            {
+                LOG_ERROR("SEND WC failed qp={} error={}", GetId(), ibv_wc_status_str(wc.status));
+                m_qpError = true;
+                return false;
+            }
+            if (wc.opcode == IBV_WC_SEND)
+            {
+                sendCompleted = true;
+                LOG_DEBUG("SEND WC received qp={}", GetId());
+            }
+            // A RECV WC can come here before the send completes, as the server may respond extermely fast.
+            // Note: that server can respond early to Upload requests for error conditions before reading the file data.
+            // If RECV_WC arrives, record the response length so Receive() does not block waiting for another CQ event.
+            else if (wc.opcode == IBV_WC_RECV)
+            {
+                LOG_DEBUG("RECV WC arrived during SEND wait qp={} bytes={}", GetId(), wc.byte_len);
+                m_responseLength = wc.byte_len;
+            }
+        }
+        while (nEvents > 0);
+    }
+    return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool IBConnection::FinalizeWrite()
 {
     if (m_sendAttempted)
@@ -102,7 +176,7 @@ bool IBConnection::FinalizeWrite()
     struct ibv_recv_wr* recv_bad_wr = nullptr;
     int rc = ibv_post_recv(m_qp.get(), &recv_wr, &recv_bad_wr);
     if (rc != 0) {
-        LOG_ERROR("ibv_post_recv() failed qp={} error={},{}", GetId(), rc, strerror(errno));
+        LOG_ERROR("ibv_post_recv() failed qp={} error={},{}", GetId(), rc, strerror(rc));
         m_qpError = true;
         return false;
     }
@@ -123,8 +197,16 @@ bool IBConnection::FinalizeWrite()
     rc = ibv_post_send(m_qp.get(), &wr, &bad_wr);
     if (rc != 0)
     {
-        LOG_WARN("ibv_post_send() failed qp={} error={},{}", GetId(), rc, strerror(errno));
+        LOG_WARN("ibv_post_send() failed qp={} error={},{}", GetId(), rc, strerror(rc));
         m_qpError = true;
+        return false;
+    }
+
+    // ibv_post_send() only enqueues the WR — the HCA may still be DMA-ing from m_mrBuffer
+    // Safer to wait for the SEND WC before returning to caller,
+    // as the caller might free IBConnection (including m_mrBuffer) after this call if connection pool is full or disabled
+    if (!WaitForSendWC())
+    {
         return false;
     }
 
@@ -170,7 +252,7 @@ bool IBConnection::FinalizeWriteWithExternalBuffer(const char* dataBuffer, uint6
     if (!DeregisterExternalMr())
     {
         LOG_ERROR("Failed to deregister previous external MR qp={}", GetId());
-        m_qpError = true;
+        m_qpError = true; // Connection might still be good to use, but being extra cautious. TODO: revisit this later.
         return false;
     }
 
@@ -200,7 +282,7 @@ bool IBConnection::FinalizeWriteWithExternalBuffer(const char* dataBuffer, uint6
     int rc = ibv_post_recv(m_qp.get(), &recv_wr, &recv_bad_wr);
     if (rc != 0)
     {
-        LOG_ERROR("ibv_post_recv() failed qp={} error={},{}", GetId(), rc, strerror(errno));
+        LOG_ERROR("ibv_post_recv() failed qp={} error={},{}", GetId(), rc, strerror(rc));
         DeregisterExternalMr();
         m_qpError = true;
         return false;
@@ -225,9 +307,36 @@ bool IBConnection::FinalizeWriteWithExternalBuffer(const char* dataBuffer, uint6
     rc = ibv_post_send(m_qp.get(), &wr, &bad_wr);
     if (rc != 0)
     {
-        LOG_WARN("ibv_post_send() failed qp={} error={},{}", GetId(), rc, strerror(errno));
-        DeregisterExternalMr();
+        LOG_WARN("ibv_post_send() failed qp={} error={},{}", GetId(), rc, strerror(rc));
+        m_qp.reset(nullptr); // flush/abort all pending WRs first
+        DeregisterExternalMr(); // now safe — no WRs reference the MR
         m_qpError = true;
+        return false;
+    }
+
+    // Wait for the SEND WC before returning so the caller's buffer (dataBuffer) is
+    // safe to free immediately after SendAndFinalize() returns.
+    //
+    // ibv_post_send() only enqueues the WR — the HCA may still be DMA-ing from
+    // dataBuffer when ibv_post_send returns. The SEND WC is generated only after
+    // the HCA has finished reading every byte from dataBuffer and the remote side
+    // has ACK'd the message. Returning before consuming the SEND WC means the
+    // caller can free/reuse dataBuffer while the HCA is still reading it, which
+    // causes the HCA to DMA from freed/reallocated memory and deliver corrupted
+    // data to the server.
+    if (!WaitForSendWC())
+    {
+        LOG_ERROR("Failed to wait for SEND WC qp={}", GetId());
+        m_qp.reset(nullptr); // flush/abort all pending WRs first
+        DeregisterExternalMr(); // now safe — no WRs reference the MR
+        return false;
+    }
+
+    // HCA has finished DMAing from dataBuffer — safe to deregister.
+    if (!DeregisterExternalMr())
+    {
+        LOG_ERROR("Failed to deregister external MR qp={}", GetId());
+        m_qpError = true; // Connection might still be good to use, but being extra cautious. TODO: revisit this later.
         return false;
     }
 
@@ -302,7 +411,7 @@ int IBConnection::Receive(char* buffer, uint64_t size)
             rc = ibv_get_cq_event(m_eventChannel.get(), &ev_cq, &ev_ctx);
             if (rc != 0)
             {
-                LOG_WARN("Failed to get CQ event qp={} error={},{}", GetId(), rc, strerror(errno));
+                LOG_WARN("Failed to get CQ event qp={} error={},{}", GetId(), rc, strerror(rc));
                 m_qpError = true;
                 return -1;
             }
@@ -316,7 +425,7 @@ int IBConnection::Receive(char* buffer, uint64_t size)
             rc = ibv_req_notify_cq(ev_cq, 0);
             if (rc != 0)
             {
-                LOG_ERROR("Failed to request CQ notification qp={} error={},{}", GetId(), rc, strerror(errno));
+                LOG_ERROR("Failed to request CQ notification qp={} error={},{}", GetId(), rc, strerror(rc));
                 m_qpError = true;
                 return -1;
             }

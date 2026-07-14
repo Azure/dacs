@@ -48,6 +48,11 @@ class IBConnection : public IConnection
         // Deregister any externally registered memory region.
         bool DeregisterExternalMr();
 
+        // Poll the CQ until the SEND WC is received. Handles an early-arriving RECV WC
+        // by recording m_responseLength so Receive() does not block again.
+        // Sets m_qpError and returns false on any failure.
+        bool WaitForSendWC();
+
     private:
         // Maximum read timeout
         static constexpr int IB_READ_TIMEOUT_MILLIS = 5000;
