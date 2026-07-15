@@ -3,9 +3,23 @@ FROM mcr.microsoft.com/oss/go/microsoft/golang:1.25 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
+# Redirect the Go caches to /mnt so the BuildKit cache mounts below actually
+# back them (Go's default $HOME cache locations are not mounted).
+ENV GOMODCACHE=/mnt/go-mod-cache
+ENV GOCACHE=/mnt/go-cache
+
 WORKDIR /src
+
+# Download modules in their own layer so it stays cached and is reused as long
+# as go.mod/go.sum are unchanged, independent of source edits.
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/mnt/go-mod-cache \
+    go mod download
+
 # CGO must be enabled so the Microsoft Go crypto backend (FIPS) can build.
-RUN --mount=target=/src,type=bind,source=. --mount=type=cache,target=/mnt/go-cache --mount=type=cache,target=/mnt/go-mod-cache \
+COPY . .
+RUN --mount=type=cache,target=/mnt/go-mod-cache \
+    --mount=type=cache,target=/mnt/go-cache \
     CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -o /cacheserver-scheduler
 
 FROM mcr.microsoft.com/azurelinux/base/core:3.0 AS dependency-install
