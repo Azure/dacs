@@ -7,7 +7,6 @@
 #include "ConnectionUtils.h"
 #include "Constants.h"
 #include "Logger.h"
-#include <fstream>
 #include <iostream>
 #include <stdlib.h>
 #include <unistd.h>
@@ -74,7 +73,8 @@ static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
 //---------------------------------------------------------------------------------------------------------------------
 /**
  * Zero-copy path: receive data from connection directly into a file
- * using splice() (socket -> pipe -> file) entirely in kernel space.
+ * using splice() (socket -> pipe -> file) entirely in kernel space,
+ * with fsync() to ensure data persistence.
  */
 static bool ReadFileDataZeroCopy(/*[in]*/ IConnection& clientConnection,
                         /*[in]*/ const cache::UploadRequest& uploadRequest,
@@ -100,6 +100,7 @@ static bool ReadFileDataZeroCopy(/*[in]*/ IConnection& clientConnection,
         {
             LOG_WARN_REQID("Failed to open temp file: {}, errno: {}:{}",
                            uploadRequest, strTempFileName, errno, strerror(errno));
+            remove(strTempFileName.c_str());
             CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
             SET_RESULT(uploadResponse, eResponseCode, UploadResponse::INTERNAL_ERROR);
             SendMessageToRemoteFinal(clientConnection, uploadResponse, uploadRequest.requestid());
@@ -110,12 +111,27 @@ static bool ReadFileDataZeroCopy(/*[in]*/ IConnection& clientConnection,
         if (bRecvOk)
         {
             totalRead = uploadRequest.filesize();
+
+            // Flush data to persistent storage before the caller renames the temp file.
+            // A crash between close() and rename() only leaves a corrupted temp file,
+            // so that is not a problem. However, a crash immediately after rename()
+            // could potentially leave a partially-written file under the final cache path.
+            if (fsync(fileFd) != 0)
+            {
+                LOG_WARN_REQID("fsync failed for temp file: {}, errno: {}:{}",
+                               uploadRequest, strTempFileName, errno, strerror(errno));
+                bRecvOk = false;
+            }
         }
 
         if (close(fileFd) < 0)
         {
             LOG_WARN_REQID("Error closing temp file: {}, errno: {}:{}",
                            uploadRequest, strTempFileName, errno, strerror(errno));
+            if (bRecvOk)
+            {
+                bRecvOk = false;
+            }
         }
 
         if (!bRecvOk)
@@ -166,7 +182,7 @@ bool ReadFileData(/*[in]*/ IConnection& clientConnection,
                   /*[out]*/ uint64_t& totalRead)
 {
     // Set CACHESERVER_USE_ZEROCOPY=1 to enable splice/Recvfile zero-copy upload path.
-    // Default is disabled (original fstream-based path).
+    // Default is disabled (original buffered-write path).
     static const bool useZeroCopy = []() {
         const char* env = getenv("CACHESERVER_USE_ZEROCOPY");
         bool enabled = (env && std::string(env) == "1");
@@ -185,7 +201,8 @@ bool ReadFileData(/*[in]*/ IConnection& clientConnection,
 }
 //---------------------------------------------------------------------------------------------------------------------
 /**
- * Buffered read-file-data implementation using fstream.
+ * Buffered read-file-data implementation using POSIX write() and fsync()
+ * to ensure data persistence.
  * Extracted into its own function so that the stack buffer is only allocated
  * when this path is actually taken.
  */
@@ -206,15 +223,24 @@ static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
 
     LOG_DEBUG_REQID("Reading file data for file: {}", uploadRequest, uploadRequest.filename());
 
-    // TODO: Verify if sufficient disk space is available for this write and reserve it
-
     const uint64_t writeBufferSize = 4 * 1024 * 1024;
     char buffer[writeBufferSize];
-    std::ofstream fileOutput;
+    int fileFd = -1;
+    bool bWriteError = false;
 
     if (bNoDiscard)
     {
-        fileOutput = std::ofstream(strTempFileName, ofstream::out | ofstream::binary | ofstream::trunc);
+        fileFd = open(strTempFileName.c_str(), O_WRONLY | O_TRUNC);
+        if (fileFd < 0)
+        {
+            LOG_WARN_REQID("Failed to open temp file: {}, errno: {}:{}",
+                           uploadRequest, strTempFileName, errno, strerror(errno));
+            remove(strTempFileName.c_str());
+            CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
+            SET_RESULT(uploadResponse, eResponseCode, UploadResponse::INTERNAL_ERROR);
+            SendMessageToRemoteFinal(clientConnection, uploadResponse, uploadRequest.requestid());
+            return false;
+        }
     }
 
     while (totalRead < uploadRequest.filesize())
@@ -234,9 +260,9 @@ static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
                                uploadRequest.filesize(),
                                totalRead);
 
-                if (bNoDiscard)
+                if (fileFd >= 0)
                 {
-                    fileOutput.close();
+                    close(fileFd);
                     remove(strTempFileName.c_str());
                 }
 
@@ -256,16 +282,67 @@ static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
 
         totalRead += bufferPos;
 
-        if (bNoDiscard)
+        // Write to disk using POSIX write(), handling short writes.
+        // Data persistence is ensured by fsync() after the write loop completes.
+        // On write failure, bWriteError is set so that subsequent iterations of
+        // the outer while loop skip disk writes but continue reading from the
+        // network connection, ensuring the client receives a proper error
+        // response (not a broken pipe).
+        if (bNoDiscard && !bWriteError)
         {
-            fileOutput.write(buffer, bufferPos);
+            ssize_t bytesWritten = 0;
+            while (bytesWritten < bufferPos)
+            {
+                ssize_t w = ::write(fileFd, buffer + bytesWritten, bufferPos - bytesWritten);
+                if (w <= 0)
+                {
+                    if (w < 0 && errno == EINTR)
+                    {
+                        continue;
+                    }
+                    LOG_WARN_REQID("disk write failed for file: {}. errno: {}:{}, Bytes written to disk: {}/{}",
+                                   uploadRequest,
+                                   uploadRequest.filename(),
+                                   errno,
+                                   strerror(errno),
+                                   totalRead - bufferPos + bytesWritten,
+                                   uploadRequest.filesize());
+                    bWriteError = true;
+                    break;
+                }
+                bytesWritten += w;
+            }
         }
     }
 
     if (bNoDiscard)
     {
-        fileOutput.flush();
-        fileOutput.close();
+        // Flush data to persistent storage before the caller renames the temp file.
+        // A crash between close() and rename() only leaves a corrupted temp file,
+        // so that is not a problem. However, a crash immediately after rename()
+        // could potentially leave a partially-written file under the final cache path.
+        if (!bWriteError && fsync(fileFd) != 0)
+        {
+            LOG_WARN_REQID("fsync failed for file: {}. errno: {}:{}",
+                           uploadRequest, uploadRequest.filename(), errno, strerror(errno));
+            bWriteError = true;
+        }
+
+        if (close(fileFd) < 0)
+        {
+            LOG_WARN_REQID("Error closing temp file: {}, errno: {}:{}",
+                           uploadRequest, strTempFileName, errno, strerror(errno));
+            bWriteError = true;
+        }
+
+        if (bWriteError)
+        {
+            remove(strTempFileName.c_str());
+            CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
+            SET_RESULT(uploadResponse, eResponseCode, UploadResponse::INTERNAL_ERROR);
+            SendMessageToRemoteFinal(clientConnection, uploadResponse, uploadRequest.requestid());
+            return false;
+        }
     }
 
     STORAGE_ASSERT(totalRead == uploadRequest.filesize(),

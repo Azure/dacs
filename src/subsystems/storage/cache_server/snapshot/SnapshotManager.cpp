@@ -137,7 +137,7 @@ uint32_t SnapshotManager::GetSnapshotIntervalInSeconds() const
     return snapshot;
 }
 //---------------------------------------------------------------------------------------------------------------------
-void SnapshotManager::SaveSnapshotToFile(const string& fileName, const Snapshot& snapshot)
+bool SnapshotManager::SaveSnapshotToFile(const string& fileName, const Snapshot& snapshot)
 {
     LOG_INFO("Saving snapshot file: {}", fileName);
     TIMER_START(saveSnapshotFile);
@@ -146,29 +146,42 @@ void SnapshotManager::SaveSnapshotToFile(const string& fileName, const Snapshot&
     if (fd < 0)
     {
         LOG_ERROR("Failed to open snapshot file for writing: {}. errno: {}:{}", fileName, errno, strerror(errno));
-        return;
+        return false;
     }
+
+    bool success = true;
 
     if (!snapshot.SerializeToFileDescriptor(fd))
     {
         LOG_ERROR("Failed to write snapshot file: {}", fileName);
-        return;
+        success = false;
     }
 
-    if (fsync(fd) != 0)
+    // Flush data to persistent storage to ensure data persistence.
+    if (success && fsync(fd) != 0)
     {
         LOG_ERROR("Failed to fsync snapshot file: {} errno: {}:{}", fileName, errno, strerror(errno));
-        return;
+        success = false;
     }
 
     if (close(fd) != 0)
     {
         LOG_ERROR("Failed to close snapshot file: {} errno: {}:{}", fileName, errno, strerror(errno));
-        return;
+        success = false;
+    }
+
+    if (!success)
+    {
+        if (remove(fileName.c_str()) != 0)
+        {
+            LOG_ERROR("Failed to remove partial snapshot file: {}. errno: {}:{}", fileName, errno, strerror(errno));
+        }
+        return false;
     }
 
     LOG_INFO("Saved snapshot file: {}", fileName);
     TIMER_STOP_AND_LOG(saveSnapshotFile);
+    return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
 shared_ptr<Snapshot> SnapshotManager::LoadSnapshotOnStartup()
@@ -200,11 +213,21 @@ void SnapshotManager::SaveSnapshot(const Snapshot& snapshot)
     TIMER_START(saveSnapshot);
     const std::string TempSnapshotFilePath = GetSnapshotFolderPath() + "/" + TempSnapshotFileName;
     LOG_INFO("Saving snapshot to temp file: {}", TempSnapshotFilePath);
-    SaveSnapshotToFile(TempSnapshotFilePath, snapshot);
+    if (!SaveSnapshotToFile(TempSnapshotFilePath, snapshot))
+    {
+        LOG_ERROR("Snapshot save failed, skipping rename to current");
+        return;
+    }
 
     const std::string CurrentSnapshotFilePath = GetSnapshotFolderPath() + "/" + CurrentSnapshotFileName;
     LOG_INFO("Renaming temp snapshot {} to current snapshot {}", TempSnapshotFilePath, CurrentSnapshotFilePath);
-    rename(TempSnapshotFilePath.c_str(), CurrentSnapshotFilePath.c_str());
+    if (rename(TempSnapshotFilePath.c_str(), CurrentSnapshotFilePath.c_str()) != 0)
+    {
+        LOG_ERROR("Failed to rename snapshot {} to {}. errno: {}:{}",
+                  TempSnapshotFilePath, CurrentSnapshotFilePath, errno, strerror(errno));
+        remove(TempSnapshotFilePath.c_str());
+        return;
+    }
 
     LOG_INFO("Saved snapshot");
     TIMER_STOP_AND_LOG(saveSnapshot);
