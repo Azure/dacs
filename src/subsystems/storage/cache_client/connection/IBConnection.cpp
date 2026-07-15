@@ -176,7 +176,7 @@ bool IBConnection::FinalizeWrite()
     struct ibv_recv_wr* recv_bad_wr = nullptr;
     int rc = ibv_post_recv(m_qp.get(), &recv_wr, &recv_bad_wr);
     if (rc != 0) {
-        LOG_ERROR("ibv_post_recv() failed qp={} error={},{}", GetId(), rc, strerror(rc));
+        LOG_ERROR("ibv_post_recv() failed qp={} error={}:{}", GetId(), rc, strerror(rc));
         m_qpError = true;
         return false;
     }
@@ -197,7 +197,7 @@ bool IBConnection::FinalizeWrite()
     rc = ibv_post_send(m_qp.get(), &wr, &bad_wr);
     if (rc != 0)
     {
-        LOG_WARN("ibv_post_send() failed qp={} error={},{}", GetId(), rc, strerror(rc));
+        LOG_WARN("ibv_post_send() failed qp={} error={}:{}", GetId(), rc, strerror(rc));
         m_qpError = true;
         return false;
     }
@@ -261,8 +261,12 @@ bool IBConnection::FinalizeWriteWithExternalBuffer(const char* dataBuffer, uint6
                               static_cast<int>(IBV_ACCESS_LOCAL_WRITE));
     if (!m_externalMr)
     {
-        LOG_ERROR("ibv_reg_mr() failed for external buffer qp={} size={} error={},{}",
-                  GetId(), dataSize, errno, strerror(errno));
+        LOG_WARN("ibv_reg_mr() failed for external buffer qp={} size={} errno={}:{}",
+                 GetId(), dataSize, errno, strerror(errno));
+        // ibv_reg_mr failure (e.g. ENOMEM under memory pressure) — fail the connection and let
+        // the upper layer fall back to ethernet/blob. Although the QP itself is still healthy,
+        // we choose to be defensive and not retry via the memcpy path to avoid any risk of
+        // using potentially degraded RDMA resources.
         m_qpError = true;
         return false;
     }
@@ -282,7 +286,7 @@ bool IBConnection::FinalizeWriteWithExternalBuffer(const char* dataBuffer, uint6
     int rc = ibv_post_recv(m_qp.get(), &recv_wr, &recv_bad_wr);
     if (rc != 0)
     {
-        LOG_ERROR("ibv_post_recv() failed qp={} error={},{}", GetId(), rc, strerror(rc));
+        LOG_ERROR("ibv_post_recv() failed qp={} error={}:{}", GetId(), rc, strerror(rc));
         DeregisterExternalMr();
         m_qpError = true;
         return false;
@@ -307,8 +311,10 @@ bool IBConnection::FinalizeWriteWithExternalBuffer(const char* dataBuffer, uint6
     rc = ibv_post_send(m_qp.get(), &wr, &bad_wr);
     if (rc != 0)
     {
-        LOG_WARN("ibv_post_send() failed qp={} error={},{}", GetId(), rc, strerror(rc));
+        LOG_WARN("ibv_post_send() failed qp={} error={}:{}", GetId(), rc, strerror(rc));
         m_qp.reset(nullptr); // flush/abort all pending WRs first
+        // ibv_post_recv() already succeeded so there's an orphaned recv WR in the RQ.
+        // The QP is in an inconsistent state — must be discarded.
         DeregisterExternalMr(); // now safe — no WRs reference the MR
         m_qpError = true;
         return false;
