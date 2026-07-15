@@ -48,6 +48,6 @@ class SnapshotManager
 
         static std::shared_ptr<snapshot::Snapshot> LoadSnapshotFromFile(const std::string& fileName);
 
-        static void SaveSnapshotToFile(const std::string& fileName, const snapshot::Snapshot& snapshot);
+        static bool SaveSnapshotToFile(const std::string& fileName, const snapshot::Snapshot& snapshot);
 };
 //---------------------------------------------------------------------------------------------------------------------
