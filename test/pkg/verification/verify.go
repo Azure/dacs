@@ -22,7 +22,6 @@ const (
 	cacheServerContainerName = "cacheserver"
 	cacheServerLabelKey      = "app"
 	cacheServerLabelValue    = "cacheserver"
-	cacheNameLabelKey        = "dacs.azure.com/cache-name"
 	discoveryConfigMountPath = "/serverConfig"
 	controllerLabelKey       = "control-plane"
 	controllerLabelValue     = "controller-manager"
@@ -185,9 +184,15 @@ func verifyEndpoints(g Gomega, ctx context.Context, k8sClient client.Client, nam
 
 	for _, sts := range stsList.Items {
 		g.Expect(sts.Spec.Replicas).NotTo(BeNil(), "statefulset %s/%s spec.replicas is nil", sts.Namespace, sts.Name)
-		cacheName, ok := sts.Labels[cacheNameLabelKey]
-		g.Expect(ok).To(BeTrue(), "statefulset %s/%s missing label %s", sts.Namespace, sts.Name, cacheNameLabelKey)
-		cmName := cacheName + storagev1.DiscoveryConfigSuffix
+
+		// Resolve the discovery ConfigMap name from the StatefulSet's volume
+		// spec. This handles both controller-managed deployments (where the
+		// name is <cache-name>-discovery-config) and legacy Helm deployments
+		// (where it is hardcoded as cacheserver-discovery-config).
+		cmName := resolveDiscoveryConfigMapName(&sts)
+		g.Expect(cmName).NotTo(BeEmpty(),
+			"statefulset %s/%s: could not find discovery ConfigMap volume (looked for volume mount at %s)",
+			sts.Namespace, sts.Name, discoveryConfigMountPath)
 		var cm corev1.ConfigMap
 		g.Expect(k8sClient.Get(ctx, client.ObjectKey{
 			Namespace: sts.Namespace,
@@ -211,6 +216,37 @@ func verifyEndpoints(g Gomega, ctx context.Context, k8sClient client.Client, nam
 		}
 	}
 	log.Info("All cache server pods have correct discovery ConfigMap content")
+}
+
+// resolveDiscoveryConfigMapName inspects the StatefulSet's pod template to find
+// the ConfigMap backing the discovery config volume mount. It finds the volume
+// mount at discoveryConfigMountPath, then looks up the corresponding volume to
+// extract the ConfigMap name. Returns empty string if not found.
+func resolveDiscoveryConfigMapName(sts *appsv1.StatefulSet) string {
+	// Find which volume name is mounted at the discovery config path.
+	var volumeName string
+	for _, c := range sts.Spec.Template.Spec.Containers {
+		for _, vm := range c.VolumeMounts {
+			if vm.MountPath == discoveryConfigMountPath {
+				volumeName = vm.Name
+				break
+			}
+		}
+		if volumeName != "" {
+			break
+		}
+	}
+	if volumeName == "" {
+		return ""
+	}
+
+	// Look up the volume to get the ConfigMap name.
+	for _, v := range sts.Spec.Template.Spec.Volumes {
+		if v.Name == volumeName && v.ConfigMap != nil {
+			return v.ConfigMap.Name
+		}
+	}
+	return ""
 }
 
 func getCacheServerImage(sts *appsv1.StatefulSet) (string, error) {
