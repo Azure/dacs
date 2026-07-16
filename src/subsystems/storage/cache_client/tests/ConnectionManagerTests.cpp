@@ -4,6 +4,7 @@
 #include "ConnectionManagerTests.h"
 #include "gtest/gtest.h"
 #include "CacheClient.h"
+#include "SocketConnection.h"
 #include <chrono>
 #include <thread>
 #include <cstring>
@@ -724,5 +725,189 @@ TEST_F(ConnectionManagerTests, IsIbZeroCopyEnabledRespectsEnvVar)
     EXPECT_TRUE(ConnectionManager::IsIbZeroCopyEnabled());
 
     unsetenv("DACS_ENABLE_IB_ZERO_COPY");
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Test: SO_RCVTIMEO / SO_SNDTIMEO are set correctly on the socket
+//---------------------------------------------------------------------------------------------------------------------
+// RAII guard to temporarily lower SocketConnection::socketTimeoutMillisMin for faster tests.
+struct ScopedMinTimeout
+{
+    explicit ScopedMinTimeout(uint32_t tempValue)
+        : m_saved(SocketConnection::socketTimeoutMillisMin)
+    {
+        SocketConnection::socketTimeoutMillisMin = tempValue;
+    }
+    ~ScopedMinTimeout() { SocketConnection::socketTimeoutMillisMin = m_saved; }
+private:
+    uint32_t m_saved;
+};
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ConnectionManagerTests, ReceiveTimesOutWhenServerSendsNoData)
+{
+    // Lower the minimum timeout so the test runs in ~500 ms instead of 15 s.
+    ScopedMinTimeout scopedTimeout(500);
+
+    int serverFd = StartMockServer(TEST_PORT);
+    ASSERT_GE(serverFd, 0);
+    // Hold the connection open (without sending) for longer than the recv timeout.
+    auto acceptHelper = StartAcceptThread(serverFd, 3000);
+
+    auto connManager = CreateConnectionManager({LOCALHOST});
+    auto connection = connManager->GetConnection(LOCALHOST);
+    ASSERT_NE(connection, nullptr);
+
+    char buf[64];
+    auto start = std::chrono::steady_clock::now();
+    int result = connection->Receive(buf, sizeof(buf));
+    auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start).count();
+
+    EXPECT_LT(result, 0) << "Receive should time out when server sends no data";
+    EXPECT_GE(elapsedMs, 400) << "Should wait approximately the configured timeout";
+    EXPECT_LE(elapsedMs, 2000) << "Should not block much beyond the timeout";
+
+    acceptHelper->Stop();
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ConnectionManagerTests, RecvTimeoutSocketOptionIsSetAfterReceive)
+{
+    // Verify SO_RCVTIMEO is set to GetTimeoutMillis(N) on the socket after Receive(buf, N).
+    int spFds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, spFds), 0);
+
+    const size_t readSize = 64;
+    const int expectedMs = SocketConnection::GetTimeoutMillis(readSize);
+
+    // Pre-load data so recv() returns immediately.
+    char sendBuf[readSize] = {};
+    ASSERT_EQ((int)write(spFds[1], sendBuf, readSize), (int)readSize);
+
+    {
+        SocketConnection conn(spFds[0]);
+        char recvBuf[readSize];
+        conn.Receive(recvBuf, readSize);
+
+        struct timeval tv{};
+        socklen_t len = sizeof(tv);
+        ASSERT_EQ(getsockopt(spFds[0], SOL_SOCKET, SO_RCVTIMEO, &tv, &len), 0);
+        int actualMs = (int)(tv.tv_sec * 1000 + tv.tv_usec / 1000);
+        EXPECT_EQ(actualMs, expectedMs) << "SO_RCVTIMEO should match GetTimeoutMillis(readSize)";
+    } // SocketConnection destructor closes spFds[0]
+    close(spFds[1]);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ConnectionManagerTests, RecvTimeoutSocketOptionUpdatedForDifferentSize)
+{
+    // Verify SO_RCVTIMEO is updated when the same connection is reused with a different IO size.
+    int spFds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, spFds), 0);
+
+    const size_t smallSize = 64;
+    const size_t largeSize = 10 * 1024 * 1024; // 10 MB
+    const int smallMs = SocketConnection::GetTimeoutMillis(smallSize);
+    const int largeMs = SocketConnection::GetTimeoutMillis(largeSize);
+    ASSERT_NE(smallMs, largeMs) << "Test requires two sizes that produce different timeouts";
+
+    // Pre-load data for both reads. The large read only needs 1 byte so that poll()
+    // returns POLLIN and setsockopt(SO_RCVTIMEO) is reached inside TimedRead before
+    // recv() returns. Without any data, poll() would time out and return early before
+    // the setsockopt call, leaving SO_RCVTIMEO unchanged.
+    char sendBuf[smallSize + 1] = {};
+    ASSERT_EQ((int)write(spFds[1], sendBuf, smallSize + 1), (int)(smallSize + 1));
+
+    {
+        SocketConnection conn(spFds[0]);
+        char recvBuf[smallSize];
+
+        // First read with small size: SO_RCVTIMEO should be set to smallMs.
+        conn.Receive(recvBuf, smallSize);
+
+        struct timeval tvAfterSmall{};
+        socklen_t len = sizeof(tvAfterSmall);
+        ASSERT_EQ(getsockopt(spFds[0], SOL_SOCKET, SO_RCVTIMEO, &tvAfterSmall, &len), 0);
+        const int actualSmallMs = (int)(tvAfterSmall.tv_sec * 1000 + tvAfterSmall.tv_usec / 1000);
+        EXPECT_EQ(actualSmallMs, smallMs)
+            << "SO_RCVTIMEO should be set to GetTimeoutMillis(smallSize) after first receive";
+
+        // Second read requesting largeSize bytes: only 1 byte is available, so recv()
+        // returns 1. That is fine — we only care that setsockopt(SO_RCVTIMEO) was called.
+        char largeBuf[1];
+        conn.Receive(largeBuf, largeSize);
+
+        struct timeval tvAfterLarge{};
+        ASSERT_EQ(getsockopt(spFds[0], SOL_SOCKET, SO_RCVTIMEO, &tvAfterLarge, &len), 0);
+        const int actualLargeMs = (int)(tvAfterLarge.tv_sec * 1000 + tvAfterLarge.tv_usec / 1000);
+        EXPECT_EQ(actualLargeMs, largeMs)
+            << "SO_RCVTIMEO must be updated when IO size changes between receives";
+    }
+    close(spFds[1]);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ConnectionManagerTests, SndTimeoutSocketOptionIsSetAfterSend)
+{
+    // Verify SO_SNDTIMEO is set to GetTimeoutMillis(N) on the socket after Send(buf, N).
+    int spFds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, spFds), 0);
+
+    const size_t writeSize = 64;
+    const int expectedMs = SocketConnection::GetTimeoutMillis(writeSize);
+
+    {
+        SocketConnection conn(spFds[0]);
+        char buf[writeSize] = {};
+        conn.Send(buf, writeSize);
+
+        struct timeval tv{};
+        socklen_t len = sizeof(tv);
+        ASSERT_EQ(getsockopt(spFds[0], SOL_SOCKET, SO_SNDTIMEO, &tv, &len), 0);
+        int actualMs = (int)(tv.tv_sec * 1000 + tv.tv_usec / 1000);
+        EXPECT_EQ(actualMs, expectedMs) << "SO_SNDTIMEO should match GetTimeoutMillis(writeSize)";
+    }
+    close(spFds[1]);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(ConnectionManagerTests, SendTimesOutWhenReceiveBufferFull)
+{
+    // Verify that Send() returns early (bytes written < requested) when the socket
+    // send buffer is full and no one is consuming data from the other end.
+    // The timeout comes from poll(POLLOUT, timeoutMillis) inside TimedWrite.
+    ScopedMinTimeout scopedTimeout(500);
+
+    int spFds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, spFds), 0);
+
+    // Shrink both sides' buffers so the send buffer is easy to fill.
+    const int bufSize = 4096;
+    setsockopt(spFds[0], SOL_SOCKET, SO_SNDBUF, &bufSize, sizeof(bufSize));
+    setsockopt(spFds[1], SOL_SOCKET, SO_RCVBUF, &bufSize, sizeof(bufSize));
+
+    // Fill the send buffer with non-blocking writes until the kernel signals EAGAIN.
+    const int origFlags = fcntl(spFds[0], F_GETFL, 0);
+    ASSERT_GE(origFlags, 0);
+    ASSERT_EQ(fcntl(spFds[0], F_SETFL, origFlags | O_NONBLOCK), 0);
+
+    char fillBuf[4096] = {};
+    while (write(spFds[0], fillBuf, sizeof(fillBuf)) > 0) {}
+    ASSERT_TRUE(errno == EAGAIN || errno == EWOULDBLOCK)
+        << "Expected send buffer to be full after non-blocking writes";
+
+    // Restore blocking mode — SocketConnection expects a blocking socket.
+    ASSERT_EQ(fcntl(spFds[0], F_SETFL, origFlags), 0);
+
+    {
+        SocketConnection conn(spFds[0]);  // takes ownership of spFds[0]
+        char sendData[64] = {};
+
+        auto start = std::chrono::steady_clock::now();
+        int result = conn.Send(sendData, sizeof(sendData));
+        auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start).count();
+
+        // Send could not write all bytes because the buffer was full and timed out.
+        EXPECT_LT(result, (int)sizeof(sendData)) << "Send should not complete when buffer is full";
+        EXPECT_GE(elapsedMs, 400) << "Should wait approximately the configured timeout";
+        EXPECT_LE(elapsedMs, 2000) << "Should not block much beyond the timeout";
+    }  // SocketConnection destructor closes spFds[0]
+    close(spFds[1]);
 }
 //---------------------------------------------------------------------------------------------------------------------
