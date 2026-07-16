@@ -27,3 +27,7 @@ Port of the cache server to run tests against (default is 20000)
 #### TEST_IB
 Values: true or false (default is false).
 Enable Infiniband tests
+
+#### TEST_IB_ONLY
+Values: true or false (default is false).
+Run only Infiniband tests, skipping all other tests (implies TEST_IB=true)

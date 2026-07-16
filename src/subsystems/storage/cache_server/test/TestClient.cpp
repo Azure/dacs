@@ -2144,20 +2144,34 @@ int main(int argc, char *argv[])
         }
     }
 
+    bool runIBOnly = false;
+    char* testIBOnly = std::getenv("TEST_IB_ONLY");
+    if(testIBOnly != nullptr)
+    {
+        if(strcmp(testIBOnly, "true") == 0)
+        {
+            runIBOnly = true;
+            runIBTests = true;
+        }
+    }
+
     if(argc > 1)
     {
         return TestLimits();
     }
 
-    TestLockAPIs();
-    TestUploadDownload();
-    TestAttributeCache();
-    TestParallelism();
-    TestCacheMetadata();
-    TestDeletes();
-    TestDistribution();
-    TestGetCacheServers();
-    TestExpiry();
+    if (!runIBOnly)
+    {
+        TestLockAPIs();
+        TestUploadDownload();
+        TestAttributeCache();
+        TestParallelism();
+        TestCacheMetadata();
+        TestDeletes();
+        TestDistribution();
+        TestGetCacheServers();
+        TestExpiry();
+    }
 
     if (runIBTests)
     {
