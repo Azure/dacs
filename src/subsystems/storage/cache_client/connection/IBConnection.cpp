@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "IBConnection.h"
+#include "ConnectionUtils.h"
 #include "CommonLogger.h"
 #include "StorageLibcApiWrapper.h"
 #include <fcntl.h>
@@ -78,7 +79,7 @@ bool IBConnection::DeregisterExternalMr()
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool IBConnection::WaitForSendWC()
+bool IBConnection::WaitForSendWC(uint64_t bytesSent)
 {
     bool sendCompleted = false;
     while (!sendCompleted)
@@ -86,10 +87,12 @@ bool IBConnection::WaitForSendWC()
         struct pollfd pollFd{};
         pollFd.fd     = m_eventChannel->fd;
         pollFd.events = POLLIN;
-        int pollRc = poll(&pollFd, 1, IB_READ_TIMEOUT_MILLIS);
+        uint64_t timeoutMillis = CalculateTimeoutMillis(bytesSent);
+        int pollRc = poll(&pollFd, 1, timeoutMillis);
         if (pollRc <= 0)
         {
-            LOG_WARN("poll failed/timed out waiting for SEND WC qp={} rc={}", GetId(), pollRc);
+            LOG_WARN("poll failed/timed out waiting for SEND WC qp={} rc={} timeout={}ms",
+                GetId(), pollRc, timeoutMillis);
             m_qpError = true;
             return false;
         }
@@ -205,7 +208,7 @@ bool IBConnection::FinalizeWrite()
     // ibv_post_send() only enqueues the WR — the HCA may still be DMA-ing from m_mrBuffer
     // Safer to wait for the SEND WC before returning to caller,
     // as the caller might free IBConnection (including m_mrBuffer) after this call if connection pool is full or disabled
-    if (!WaitForSendWC())
+    if (!WaitForSendWC(m_writeOffset))
     {
         return false;
     }
@@ -330,7 +333,7 @@ bool IBConnection::FinalizeWriteWithExternalBuffer(const char* dataBuffer, uint6
     // caller can free/reuse dataBuffer while the HCA is still reading it, which
     // causes the HCA to DMA from freed/reallocated memory and deliver corrupted
     // data to the server.
-    if (!WaitForSendWC())
+    if (!WaitForSendWC(dataSize))
     {
         LOG_ERROR("Failed to wait for SEND WC qp={}", GetId());
         m_qp.reset(nullptr); // flush/abort all pending WRs first
@@ -395,7 +398,8 @@ int IBConnection::Receive(char* buffer, uint64_t size)
             struct pollfd pollFd{};
             pollFd.fd = m_eventChannel->fd;
             pollFd.events = POLLIN;
-            int rc = poll(&pollFd, 1, IB_READ_TIMEOUT_MILLIS);
+            uint64_t timeoutMillis = CalculateTimeoutMillis(size);
+            int rc = poll(&pollFd, 1, timeoutMillis);
             if (rc < 0) {
                 LOG_WARN("Failed to poll on event fd={} error={},{}", pollFd.fd, rc, strerror(errno));
                 m_qpError = true;
@@ -404,7 +408,7 @@ int IBConnection::Receive(char* buffer, uint64_t size)
 
             if (rc == 0)
             {
-                LOG_WARN("poll timed out waiting for read event fd={}", pollFd.fd);
+                LOG_WARN("poll timed out waiting for read event fd={} timeout={}ms", pollFd.fd, timeoutMillis);
                 m_qpError = true;
                 return -1;
             }
@@ -508,5 +512,14 @@ int IBConnection::GetId()
 bool IBConnection::IsValidConnection()
 {
     return !m_qpError;
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint64_t IBConnection::CalculateTimeoutMillis(uint64_t ioSizeBytes) const
+{
+    return connectionutils::CalcIoTimeoutMillis(
+        ioSizeBytes,
+        IB_TIMEOUT_MILLIS_PER_MB,
+        IB_MIN_TIMEOUT_MILLIS,
+        IB_MAX_TIMEOUT_MILLIS);
 }
 //---------------------------------------------------------------------------------------------------------------------

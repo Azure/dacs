@@ -51,11 +51,16 @@ class IBConnection : public IConnection
         // Poll the CQ until the SEND WC is received. Handles an early-arriving RECV WC
         // by recording m_responseLength so Receive() does not block again.
         // Sets m_qpError and returns false on any failure.
-        bool WaitForSendWC();
+        bool WaitForSendWC(uint64_t bytesSent);
+
+        // Helper to calculate the timeout for IB operations based on the amount of data to be transferred.
+        uint64_t CalculateTimeoutMillis(uint64_t ioByteCount) const;
 
     private:
-        // Maximum read timeout
-        static constexpr int IB_READ_TIMEOUT_MILLIS = 5000;
+        // Maximum read/write timeout
+        static constexpr uint64_t IB_TIMEOUT_MILLIS_PER_MB = 500; // 0.5 seconds per MB
+        static constexpr uint64_t IB_MIN_TIMEOUT_MILLIS = 5000; // 5 seconds
+        static constexpr uint64_t IB_MAX_TIMEOUT_MILLIS = 100000; // 100 seconds
 
         // Threshold above which we register the caller's buffer directly instead of memcpy
         static constexpr uint64_t DIRECT_REG_THRESHOLD = 4 * 1024 * 1024;

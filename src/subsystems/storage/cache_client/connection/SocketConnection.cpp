@@ -2,29 +2,36 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //---------------------------------------------------------------------------------------------------------------------
 #include "SocketConnection.h"
+#include "ConnectionUtils.h"
 #include "CommonLogger.h"
 #include "StorageLibcApiWrapper.h"
 #include "poll.h"
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netinet/tcp.h>
 #include <string.h>
 #include <errno.h>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
-uint32_t SocketConnection::socketTimeoutMillisMin = 30000;
+uint32_t SocketConnection::socketTimeoutMillisMin = 15000;
+uint32_t SocketConnection::socketTimeoutMillisMax = 120000;
 uint32_t SocketConnection::socketTimeoutMillisPerMB = 2000;
 //---------------------------------------------------------------------------------------------------------------------
 /*static*/ int SocketConnection::GetTimeoutMillis(size_t ioSizeInBytes)
 {
-    constexpr uint32_t ONE_MB = 1048576;
-    return max(socketTimeoutMillisMin,
-               socketTimeoutMillisPerMB * (uint32_t)((ioSizeInBytes + ONE_MB) / ONE_MB));
+    return static_cast<int>(connectionutils::CalcIoTimeoutMillis(
+        static_cast<uint64_t>(ioSizeInBytes),
+        static_cast<uint64_t>(socketTimeoutMillisPerMB),
+        static_cast<uint64_t>(socketTimeoutMillisMin),
+        static_cast<uint64_t>(socketTimeoutMillisMax)));
 }
 //---------------------------------------------------------------------------------------------------------------------
 SocketConnection::SocketConnection(int socketFd)
 : m_socketFd(socketFd)
 , m_sendAttempted(false)
+, m_rcvTimeoutMillis(0)
+, m_sndTimeoutMillis(0)
 {
     ResetConnection();
 }
@@ -119,6 +126,22 @@ ssize_t SocketConnection::TimedRead(void* buf, size_t nByte)
         return -1;
     }
 
+    if (timeoutMillis != m_rcvTimeoutMillis)
+    {
+        struct timeval tv;
+        tv.tv_sec = timeoutMillis / 1000;
+        tv.tv_usec = (timeoutMillis % 1000) * 1000;
+        if (setsockopt(m_socketFd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
+        {
+            LOG_WARN("Failed to set SO_RCVTIMEO, fd={}, errno={}:{}", m_socketFd, errno, strerror(errno));
+        }
+        else
+        {
+            LOG_DEBUG("Updated SO_RCVTIMEO, fd={}, old={}ms, new={}ms", m_socketFd, m_rcvTimeoutMillis, timeoutMillis);
+            m_rcvTimeoutMillis = timeoutMillis;
+        }
+    }
+
     return recv(m_socketFd, buf, nByte, 0);
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -187,6 +210,22 @@ ssize_t SocketConnection::TimedWrite(const void* buf, size_t nByte)
     }
 
     // Ready to write
+    if (socketTimeoutMillis != m_sndTimeoutMillis)
+    {        
+        struct timeval tv;
+        tv.tv_sec = socketTimeoutMillis / 1000;
+        tv.tv_usec = (socketTimeoutMillis % 1000) * 1000;
+        if (setsockopt(m_socketFd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) < 0)
+        {
+            LOG_WARN("Failed to set SO_SNDTIMEO, fd={}, errno={}:{}", m_socketFd, errno, strerror(errno));
+        }
+        else
+        {
+            LOG_DEBUG("Updated SO_SNDTIMEO, fd={}, old={}ms, new={}ms", m_socketFd, m_sndTimeoutMillis, socketTimeoutMillis);
+            m_sndTimeoutMillis = socketTimeoutMillis;
+        }
+    }
+
     uint16_t nAttempts = 0;
     ssize_t written;
     do
@@ -203,6 +242,7 @@ ssize_t SocketConnection::TimedWrite(const void* buf, size_t nByte)
                  errno,
                  strerror(errno));
     }
+
     return written;
 }
 //---------------------------------------------------------------------------------------------------------------------
