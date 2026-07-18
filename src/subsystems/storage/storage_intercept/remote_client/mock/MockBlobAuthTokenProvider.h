@@ -12,6 +12,8 @@ public:
     // Controls whether FetchTokenViaAzureIdentitySDK should simulate success or failure.
     // When set, the mock returns a fake token instead of calling the real SDK.
     bool m_azureIdentitySDKShouldFail = false;
+    // Controls the lifetime (in seconds) of tokens returned by FetchTokenViaAzureIdentitySDK.
+    int m_azureIdentitySDKTokenLifetimeSeconds = 3600;
     TokenInfo FetchTokenViaAzureIdentitySDK() override;
 
 private:
