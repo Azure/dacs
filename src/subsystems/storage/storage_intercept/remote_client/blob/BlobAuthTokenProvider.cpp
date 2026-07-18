@@ -379,13 +379,13 @@ TokenInfo BlobAuthTokenProvider::FetchTokenViaAzureIdentitySDK()
         try
         {
             Azure::Core::Credentials::AccessToken token = credential.GetToken(requestContext, ctx);
+            // Note: AccessToken.ExpiresOn is Azure::DateTime which has different epoch than
+            //       std::chrono::system_clock::time_point, so we convert it.
+            auto expiryTime = static_cast<std::chrono::system_clock::time_point>(token.ExpiresOn);
 
-            LOG_INFO("Successfully fetched access token via {}, expires at: {}",
-                     credentialName, token.ExpiresOn.ToString());
-
-            auto expiresOnDuration = token.ExpiresOn.time_since_epoch();
-            auto expiryTime = std::chrono::system_clock::time_point(
-                std::chrono::duration_cast<std::chrono::system_clock::duration>(expiresOnDuration));
+            LOG_INFO("Successfully fetched access token via {}, expires at: {} seconds since epoch",
+                     credentialName,
+                     std::chrono::duration_cast<std::chrono::seconds>(expiryTime.time_since_epoch()).count());
 
             return TokenInfo{ token.Token, expiryTime };
         }

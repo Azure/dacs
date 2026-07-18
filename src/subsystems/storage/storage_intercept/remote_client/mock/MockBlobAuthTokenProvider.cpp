@@ -75,6 +75,6 @@ TokenInfo MockBlobAuthTokenProvider::FetchTokenViaAzureIdentitySDK()
     thread_local std::mt19937 rng(std::random_device{}());
     std::uniform_int_distribution<int> dist(0, 9999);
     std::string token = "mock-azure-identity-token-" + std::to_string(dist(rng));
-    auto expiryTime = std::chrono::system_clock::now() + std::chrono::seconds(3600);
+    auto expiryTime = std::chrono::system_clock::now() + std::chrono::seconds(m_azureIdentitySDKTokenLifetimeSeconds);
     return { token, expiryTime };
 }

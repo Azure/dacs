@@ -328,6 +328,96 @@ TEST_F(BlobAuthTokenProviderTest, TestGetAccessTokenViaAzureIdentitySDKCached)
     ASSERT_EQ(token1, token2) << "Second call should return the cached Azure Identity SDK token";
 }
 //---------------------------------------------------------------------------------------------------------------------
+TEST_F(BlobAuthTokenProviderTest, TestAzureDateTimeToSystemClockConversion)
+{
+    auto now = std::chrono::system_clock::now();
+    auto nowPlus1Hour = now + std::chrono::hours(1);
+    Azure::DateTime azureDateTime = static_cast<Azure::DateTime>(nowPlus1Hour);
+
+    // Old conversion method (using time_since_epoch)
+    auto oldConversion = std::chrono::system_clock::time_point(
+        std::chrono::duration_cast<std::chrono::system_clock::duration>(azureDateTime.time_since_epoch()));
+    auto timeToExpiryOld = std::chrono::duration_cast<std::chrono::seconds>(oldConversion - now);
+    // The Windows FILETIME epoch is 1601-01-01; Unix epoch is 1970-01-01 (~369 year gap).
+    // On Linux, system_clock::duration is nanoseconds (int64_t). Multiplying the 100ns-tick
+    // value by 100 overflows int64_t, so the wrapped result is ~215 years instead of ~369.
+    // Either way the result is far in the future compared to a correct ~1-hour value.
+    // Threshold is 100 years — well above any correctly-computed expiry (~1h) and well
+    // below the empirically observed overflow result (~215 years = ~6.8e9 seconds).
+    constexpr long long kEpochDiffThresholdSeconds = 100LL * 365 * 24 * 60 * 60;
+    ASSERT_GT(timeToExpiryOld.count(), kEpochDiffThresholdSeconds) <<
+        "Old conversion method should yield a time far in the future";
+
+    // New conversion method (using static_cast)
+    auto newConversion = static_cast<std::chrono::system_clock::time_point>(azureDateTime);
+    auto timeToExpiryNew = std::chrono::duration_cast<std::chrono::seconds>(newConversion - now);
+    ASSERT_NEAR(timeToExpiryNew.count(), 3600, 5) <<
+        "New conversion method should yield a time approximately 1 hour in the future";
+    
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(BlobAuthTokenProviderTest, TestAzureIdentitySDKTokenRefreshedAfterExpiry)
+{
+    MockBlobAuthTokenProvider mockProvider;
+    mockProvider.m_azureIdentitySDKTokenLifetimeSeconds = 5; // short-lived token
+    std::string mountPath = "sdk-expiry";
+    // No MSI or workload identity config → forces AzureIdentitySDK path
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobFederatedTokenFile).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobTenantId).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSIEndpoint).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSISecret).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobIdentityClientId).c_str(), "");
+
+    std::string token1 = mockProvider.GetAccessToken(mountPath);
+    ASSERT_FALSE(token1.empty()) << "Failed to fetch initial Azure Identity SDK token";
+    ASSERT_NE(token1.find("mock-azure-identity-token"), std::string::npos);
+
+    // Wait for the 5-second token to expire
+    std::this_thread::sleep_for(std::chrono::seconds(6));
+
+    std::string token2 = mockProvider.GetAccessToken(mountPath);
+    ASSERT_FALSE(token2.empty()) << "Failed to fetch Azure Identity SDK token after expiry";
+    // If the bug were present, expiryTime would be ~year 2394 and token1 would be returned forever
+    ASSERT_NE(token1, token2) << "Azure Identity SDK token was not refreshed after expiry";
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(BlobAuthTokenProviderTest, TestAzureIdentitySDKTokenRefreshedWhenNearingExpiry)
+{
+    // Override refresh buffer BEFORE constructing the provider — m_tokenRefreshBufferSeconds is
+    // captured from config in the constructor. A prior test may have set it to 2s, which would
+    // make a 605s token never appear "nearing expiry" during the 8s wait window.
+    OverrideConfig(StorageInterceptConstants::ConfigNameTokenRefreshBufferInSeconds, "600");
+    MockBlobAuthTokenProvider mockProvider;
+    // Token lifetime 605s, refresh buffer 600s → nearing expiry after 5s (605-600=5)
+    mockProvider.m_azureIdentitySDKTokenLifetimeSeconds = 605;
+    std::string mountPath = "sdk-near-expiry";
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobFederatedTokenFile).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobTenantId).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSIEndpoint).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSISecret).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobIdentityClientId).c_str(), "");
+
+    std::string token1 = mockProvider.GetAccessToken(mountPath);
+    ASSERT_FALSE(token1.empty()) << "Failed to fetch initial Azure Identity SDK token";
+
+    // Token becomes nearing-expiry after ~5s (605 - 600 = 5s remaining until refresh threshold).
+    // Wait 8s to give margin on slow machines.
+    std::this_thread::sleep_for(std::chrono::seconds(8));
+
+    // Should still return the old token (not yet expired), but background refresh is triggered
+    std::string token2 = mockProvider.GetAccessToken(mountPath);
+    ASSERT_FALSE(token2.empty());
+    ASSERT_EQ(token1, token2) << "Expected cached token while background refresh is in progress";
+
+    // Give the background refresh time to complete
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    std::string token3 = mockProvider.GetAccessToken(mountPath);
+    ASSERT_FALSE(token3.empty());
+    // If the bug were present, token3 would still equal token1 because expiry was never triggered
+    ASSERT_NE(token1, token3) << "Azure Identity SDK token was not refreshed in background when nearing expiry";
+}
+//---------------------------------------------------------------------------------------------------------------------
 // Azure Identity SDK fallback: authentication failure propagates as RemoteClientException
 TEST_F(BlobAuthTokenProviderTest, TestGetAccessTokenViaAzureIdentitySDKFailure)
 {
