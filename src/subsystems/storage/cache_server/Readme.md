@@ -65,3 +65,10 @@ Set to a specific size in bytes to override kernel defaults.
 Values: Receive buffer size in bytes (e.g., 4194304 for 4 MiB)
 Configures SO_RCVBUF on accepted client sockets. Default is 0 (uses kernel defaults).
 Set to a specific size in bytes to override kernel defaults.
+
+### CACHESERVER_TCP_BACKLOG_SIZE
+Values: TCP listen backlog size (positive integer, default is 4096, max is 1048576)
+Configures the backlog argument passed to listen() for the server socket, i.e. the
+maximum number of fully established connections waiting to be accepted (the accept queue).
+Invalid values (non-numeric, <= 0, or greater than 1048576) fall back to the default of 4096.
+Note: the effective accept queue is also bounded by the kernel setting net.core.somaxconn.

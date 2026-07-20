@@ -6,7 +6,8 @@
 #include <stdint.h>
 //---------------------------------------------------------------------------------------------------------------------
 constexpr int DEFAULT_THREAD_POOL_SIZE = 256;
-constexpr int TCP_BACKLOG_SIZE = 1024;
+constexpr int DEFAULT_TCP_BACKLOG_SIZE = 4096;
+constexpr int MAX_TCP_BACKLOG_SIZE = 1048576;
 constexpr int REQUEST_METADATA_SIZE = 4;
 
 // Maximum size of a framed request protobuf. The 4-byte length prefix is client-supplied

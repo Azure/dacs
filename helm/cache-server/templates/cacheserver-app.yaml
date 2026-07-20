@@ -52,6 +52,8 @@ spec:
         env:
         - name: CACHESERVER_THREADPOOL_SIZE
           value: {{ .Values.cacheServer.serverThreads | quote }}
+        - name: CACHESERVER_TCP_BACKLOG_SIZE
+          value: {{ .Values.cacheServer.tcpBacklogSize | quote }}
         - name: TEST_CACHESERVER_ADDR_PORT
           value: {{ .Values.cacheServer.port | quote }}
         - name: CACHESERVER_METRICS_PORT

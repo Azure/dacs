@@ -19,6 +19,7 @@ cacheServer:
   numServers: 3
   serverSizeInGB: 4
   serverThreads: 80
+  tcpBacklogSize: 4096
   cpuLimit: 4
   memoryLimitMB: 3200
   evictionEnabled: true
