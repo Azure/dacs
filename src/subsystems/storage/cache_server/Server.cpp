@@ -28,6 +28,8 @@
 #include <vector>
 #include <fstream>
 #include <errno.h>
+#include <cstdlib>
+#include <limits>
 #include "Metrics.h"
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
@@ -143,6 +145,24 @@ void StartServer(int port)
         socketRcvbufSize = std::stoi(socketRcvbufSizeStr);
     }
 
+    int tcpBacklogSize = DEFAULT_TCP_BACKLOG_SIZE;
+    char* tcpBacklogSizeStr = std::getenv("CACHESERVER_TCP_BACKLOG_SIZE");
+    if (tcpBacklogSizeStr != nullptr && strlen(tcpBacklogSizeStr) > 0)
+    {
+        char* pEndPtr = nullptr;
+        errno = 0;
+        long int nValue = std::strtol(tcpBacklogSizeStr, &pEndPtr, 10);
+        if (errno != 0 || pEndPtr == tcpBacklogSizeStr || *pEndPtr != '\0' ||
+            nValue <= 0 || nValue > MAX_TCP_BACKLOG_SIZE)
+        {
+            LOG_WARN("Invalid CACHESERVER_TCP_BACKLOG_SIZE: {}, using default {}", tcpBacklogSizeStr, tcpBacklogSize);
+        }
+        else
+        {
+            tcpBacklogSize = static_cast<int>(nValue);
+        }
+    }
+
     int server_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket_fd < 0)
     {
@@ -169,7 +189,7 @@ void StartServer(int port)
         exit(-1);
     }
     
-    if (listen(server_socket_fd, TCP_BACKLOG_SIZE) != 0)
+    if (listen(server_socket_fd, tcpBacklogSize) != 0)
     {
         LOG_CRITICAL("Failed to listen on server port: {}, errno: {}:{}", port, errno, strerror(errno));
         close(server_socket_fd);
@@ -198,7 +218,7 @@ void StartServer(int port)
         threads.push_back(thread);
     }
 
-    LOG_INFO("Started server on port: {}, threadpool: {}", port, threadPoolSize);
+    LOG_INFO("Started server on port: {}, threadpool: {}, tcp backlog: {}", port, threadPoolSize, tcpBacklogSize);
 
     // main loop accepting connections 
     while (true)
