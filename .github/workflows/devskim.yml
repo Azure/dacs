@@ -1,0 +1,45 @@
+name: DevSkim
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, release-**]
+  schedule:
+    - cron: '0 1 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  lint:
+    name: DevSkim
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      security-events: write  # upload DevSkim SARIF to the code-scanning / Security tab
+      contents: read  # check out and scan the repository sources
+      actions: read  # read workflow run metadata for the scan
+
+    steps:
+      # Temporarily disabled (step-security); re-enable before public release.
+      # - name: Harden Runner
+      #   uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+      #   with:
+      #     egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Run DevSkim scanner
+        uses: microsoft/DevSkim-Action@4b5047945a44163b94642a1cecc0d93a3f428cc6 # v1.0.16
+
+      - name: Upload DevSkim scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          sarif_file: devskim-results.sarif

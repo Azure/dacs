@@ -1,0 +1,12 @@
+# Pre-commit hooks for DACS. Run locally with `pre-commit run --all-files`; the
+# same set is enforced in CI by .github/workflows/lint.yml. Hook versions are
+# pinned by commit SHA (tag in a trailing comment) for reproducible, auditable
+# runs.
+repos:
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: e3eebf65325ccc992422292cb7a4baee967cf815 # v1.26.1
+    hooks:
+      - id: zizmor
+        args:
+          - --no-progress
+          - --persona=auditor

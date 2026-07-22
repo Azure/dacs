@@ -1,0 +1,69 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, release-**]
+  schedule:
+    - cron: '0 1 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      security-events: write  # write CodeQL SARIF to the code-scanning API
+      contents: read  # check out and analyze the repository sources
+      actions: read  # read workflow run metadata for the analysis
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # C/C++ uses build-mode "none" (build-free scanning, GA since
+        # 2025-10-14, CodeQL CLI 2.23.3+), so no native toolchain or build
+        # container is required. Go keeps "autobuild" to trace a real compile
+        # for the most complete analysis; interpreted languages ignore the mode.
+        include:
+          - language: actions
+            build-mode: none
+          - language: c-cpp
+            build-mode: none
+          - language: go
+            build-mode: autobuild
+          - language: python
+            build-mode: none
+
+    steps:
+      # Temporarily disabled (step-security); re-enable before public release.
+      # - name: Harden Runner
+      #   uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+      #   with:
+      #     egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Autobuild
+        if: matrix.build-mode == 'autobuild'
+        uses: github/codeql-action/autobuild@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          category: "/language:${{matrix.language}}"
