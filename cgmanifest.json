@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json.schemastore.org/component-detection-manifest.json",
+  "version": 1,
+  "registrations": [
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git",
+          "commitHash": "f0dc78d7e6e331b8c6bb2d5283e06aa26883ca7c",
+          "tag": "v3.21.12"
+        }
+      },
+      "developmentDependency": false
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "repositoryUrl": "https://github.com/nlohmann/json.git",
+          "commitHash": "9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03",
+          "tag": "v3.11.3"
+        }
+      },
+      "developmentDependency": false
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "repositoryUrl": "https://github.com/Cyan4973/xxHash.git",
+          "commitHash": "94e5f23e736f2bb67ebdf90727353e65344f9fc0",
+          "tag": "v0.8.0"
+        }
+      },
+      "developmentDependency": false
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "repositoryUrl": "https://github.com/jupp0r/prometheus-cpp.git",
+          "commitHash": "e5fada43131d251e9c4786b04263ce98b6767ba5",
+          "tag": "v1.3.0"
+        }
+      },
+      "developmentDependency": false
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "repositoryUrl": "https://github.com/Azure/azure-storage-cpplite.git",
+          "commitHash": "33a807a3984681a604c41659a4a2030ea81194e7"
+        }
+      },
+      "developmentDependency": false
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "repositoryUrl": "https://github.com/Azure/azure-sdk-for-cpp.git",
+          "commitHash": "610c85d7684f9a384c3e72bb9a41068d41f521d1",
+          "tag": "azure-storage-blobs_12.13.0"
+        }
+      },
+      "developmentDependency": false
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "repositoryUrl": "https://github.com/vaisharma/spdlog.git",
+          "commitHash": "b7dbdb8d6ccec1b7c7a5311718cd5b1754f3a5ed",
+          "tag": "v1.x"
+        }
+      },
+      "developmentDependency": false
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "repositoryUrl": "https://github.com/google/googletest.git",
+          "commitHash": "7f7595f67d366ca0f9d2a5cd60c747a789214b10",
+          "tag": "main"
+        }
+      },
+      "developmentDependency": true
+    },
+    {
+      "component": {
+        "type": "linux",
+        "linux": {
+          "name": "boost",
+          "version": "1.74",
+          "distribution": "ubuntu",
+          "release": "22.04"
+        }
+      },
+      "developmentDependency": false
+    }
+  ]
+}
