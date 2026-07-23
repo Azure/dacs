@@ -80,8 +80,7 @@ jobs:
           - cache-test-client
           - cacheserver-scheduler
           - cache-controller
-        arch: [amd64]
-        # arch: [amd64, arm64]
+        arch: [amd64, arm64]
         include:
           - arch: amd64
             runner: ubuntu-latest
