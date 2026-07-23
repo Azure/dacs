@@ -1,0 +1,33 @@
+name: Upload component image
+description: >-
+  Saves a locally built component image (docker save) to a tarball and uploads
+  it as the dacs-image-<name>-<arch> artifact the test/scan jobs download. Keeps
+  the docker save -> upload-artifact tail and the artifact naming convention in
+  one place instead of duplicating them in every image build job.
+
+inputs:
+  name:
+    description: >-
+      Component image name. Must match the local docker tag (<name>:local) and
+      is used as the dacs-image-<name>-<arch> artifact name.
+    required: true
+  arch:
+    description: Target architecture suffix for the artifact name (e.g. amd64).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Save ${{ inputs.name }} image to a tarball
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.name }}
+      run: docker save -o "/tmp/dacs-image-${IMAGE_NAME}.tar" "${IMAGE_NAME}:local"
+
+    - name: Upload ${{ inputs.name }} image
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: dacs-image-${{ inputs.name }}-${{ inputs.arch }}
+        path: /tmp/dacs-image-${{ inputs.name }}.tar
+        retention-days: 1
+        if-no-files-found: error

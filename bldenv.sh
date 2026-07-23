@@ -90,6 +90,8 @@ docker run \
     --env BUILD_ARCH \
     --env DACS_TEST_MODE \
     --env DACS_WHEEL \
+    --env PYTHON_PACKAGE_VERSION \
+    --env PACKAGE_CHANNEL \
     -v /etc/group:/etc/group:ro \
     -v /etc/passwd:/etc/passwd:ro \
     -v /etc/shadow:/etc/shadow:ro \
