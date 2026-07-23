@@ -1,0 +1,56 @@
+name: Trivy dependency and config scan
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, release-**]
+
+permissions: {}
+
+jobs:
+  scan:
+    name: Filesystem scan (dependencies and misconfig)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write  # upload Trivy SARIF to the code-scanning / Security tab
+      actions: read  # upload-sarif reads workflow run metadata for the scan
+    steps:
+      # Temporarily disabled (step-security); re-enable before public release.
+      # - name: Harden Runner
+      #   uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+      #   with:
+      #     egress-policy: audit
+
+      - name: Check out the code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      # Scans the source tree for vulnerable dependencies (go.sum, requirements,
+      # etc.) and Dockerfile/IaC misconfigurations, then uploads the results as
+      # code-scanning alerts. This scan is report-only (exit-code 0): it surfaces
+      # the full backlog to fix over time without failing the build. New vulnerable
+      # dependencies introduced by a PR are gated separately by the Dependency
+      # Review workflow, which fails only on deps the PR actually adds.
+      - name: Run Trivy filesystem scan (dependencies and misconfig)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          exit-code: '0'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          sarif_file: 'trivy-results.sarif'
