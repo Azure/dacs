@@ -16,7 +16,6 @@
 # We have shifted from pulling Dynamic Managed Identity tokens (via IMDS) to "pushing" pre-generated
 # Access Tokens (via Workload Identity Federation). The 'AzureCLI@2' task authenticates the session
 # and injects the token as 'SI_azBlobAccessToken', which is then consumed by the test configuration.
-# Ref: internal-reference-removed
 #
 # Script Structure:
 # Section 1: Environment Setup and Configuration Detection

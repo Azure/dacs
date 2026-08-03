@@ -41,7 +41,7 @@ func (NodePredicate) Update(e event.UpdateEvent) bool {
 		return true
 	}
 
-	// TODO(jlong): Taint changes are intentionally ignored because neither
+	// Taint changes are intentionally ignored because neither
 	// the scaler nor the scheduler accounts for taints today. Add a taint
 	// comparison here once taint-aware scheduling is implemented.
 

@@ -40,7 +40,6 @@ pass init <your_alias>@users.noreply.github.com
 # Configure .gitconfig
 git config --global credential.credentialStore gpg
 git config --global credential.azreposCredentialType oauth
-git config --global credential.internal-reference-removed true
 
 # Install git credential manager
 GCM_DEB=$(curl -s https://api.github.com/repos/git-ecosystem/git-credential-manager/releases/latest \

@@ -52,8 +52,6 @@ optional-dependencies.test = [
   "pytest-asyncio",
   "pytest-timeout",
 ]
-urls.Repository = "internal-reference-removed"
-
 [tool.setuptools]
 dynamic.version = { attr = "py_dacs_client.__version__" }
 package-data.py_dacs_client = [ "libStorageDirect.so" ]
