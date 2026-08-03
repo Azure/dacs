@@ -1,0 +1,33 @@
+{
+  "properties": {
+    "helpUri": "https://eng.ms/docs/microsoft-security/security/azure-security/cloudai-security-fundamentals-engineering/security-integration/guardian-wiki/microsoft-guardian/general/baselines"
+  },
+  "version": "1.0.0",
+  "baselines": {
+    "default": {
+      "name": "default",
+      "createdDate": "2026-08-03 16:33:07Z",
+      "lastUpdatedDate": "2026-08-03 16:33:07Z"
+    }
+  },
+  "results": {
+    "53788c3bd1523eaabdb7de0250335ffd0e9ae62411a977f7971b4fe7ae54fea9": {
+      "signature": "53788c3bd1523eaabdb7de0250335ffd0e9ae62411a977f7971b4fe7ae54fea9",
+      "alternativeSignatures": [
+        "4d5651ca0945f490a4bc033cf09937a41078234b48ee330b32c09bb342493657",
+        "6e2f52071d06d448c20efa634a17f018ca78d8dc7356e63be2ac65fa082b0946"
+      ],
+      "target": "src/subsystems/storage/storage_intercept/integration_tests/pipeline_test.sh",
+      "line": 699,
+      "uriBaseId": "file:///D:/a/_work/1/s/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "credscan",
+      "ruleId": "CSCAN-MSFT0090",
+      "createdDate": "2026-08-03 16:33:07Z",
+      "expirationDate": "2027-01-20 16:36:01Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-08-03 16:36:01Z"
+    }
+  }
+}
