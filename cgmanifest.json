@@ -88,18 +88,6 @@
         }
       },
       "developmentDependency": true
-    },
-    {
-      "component": {
-        "type": "linux",
-        "linux": {
-          "name": "boost",
-          "version": "1.74",
-          "distribution": "ubuntu",
-          "release": "22.04"
-        }
-      },
-      "developmentDependency": false
     }
   ]
 }
