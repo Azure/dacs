@@ -274,12 +274,11 @@ func generateLogLinks(ctx SpecContext) {
 ========================================
   Diagnostic Links
 ========================================
-ASI:                %s
 Cache Server Logs:  %s
 Controller Logs:    %s
 Kube Events:        %s
 ========================================
-`, links.ASI, links.CacheServerLogs, links.ControllerLogs, links.KubeEvents)
+`, links.CacheServerLogs, links.ControllerLogs, links.KubeEvents)
 
 	if err := diagnostics.WriteLinksSummary(links, "diagnostic-links.md"); err != nil {
 		log.Info("failed to write diagnostic links summary", "error", err)

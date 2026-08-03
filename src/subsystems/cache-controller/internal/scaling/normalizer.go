@@ -67,7 +67,7 @@ type normalizationResult struct {
 // Each CR reconciles independently (keyed by namespace/name), so different CRs
 // access different keys concurrently with no contention.
 //
-// TODO(jlong): stabilization state is lost on controller restart. Persist to
+// Stabilization state is lost on controller restart. Persist to
 // CR status or annotation so the scaling controller does not lose memory of
 // recent recommendations across restarts.
 type normalizer struct {

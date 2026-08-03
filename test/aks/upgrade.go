@@ -86,7 +86,7 @@ func testClusterUpgrade(tc *testContext) {
 		}).WithContext(ctx).WithTimeout(postUpgradePlacementTimeout).WithPolling(15*time.Second).Should(Succeed(), "failed to capture post-upgrade pod placement")
 		log.Info("post-upgrade pod placement", "podsByNode", postPodsByNode)
 
-		// TODO(jlong): persist tracker across controller restart.
+		// Persist tracker across controller restart.
 		// Root cause:
 		//   The pod->node mapping is in-memory only, so when the cache-controller
 		//   pod itself is evicted during the upgrade, the state is lost and every
@@ -113,7 +113,7 @@ func testClusterUpgrade(tc *testContext) {
 				"violations", stickinessViolations, "TODO", "persist tracker state across cache-controller restarts")
 		}
 
-		// TODO(jlong): we should not scale, but it can happen right now if cache-controller gets evicted and sees 7 nodes immediately upon restart.
+		// We should not scale, but it can happen right now if cache-controller gets evicted and sees 7 nodes immediately upon restart.
 		By("checking for cache scaling events during the upgrade window")
 		var events eventsv1.EventList
 		Expect(tc.List(ctx, &events, client.InNamespace(tc.namespace))).To(Succeed(), "failed to list events in %s", tc.namespace)
