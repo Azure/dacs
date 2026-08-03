@@ -126,7 +126,9 @@ stop_cache_server
 
 export CACHESERVER_AUTH_ENABLED="true"
 export CACHESERVER_AUTH_ACCOUNTNAME="us3rn@m3"
-export CACHESERVER_AUTH_ACCOUNTKEY="p@ssw0rd"
+# Generate a random per-run test key; consumed via env by both server and client.
+CACHESERVER_AUTH_ACCOUNTKEY="$(head -c 24 /dev/urandom | base64)"
+export CACHESERVER_AUTH_ACCOUNTKEY
 start_cache_server /dev/null
 sleep 10
 
