@@ -24,6 +24,10 @@ resources:
 extends:
   template: v1/1ES.Unofficial.PipelineTemplate.yml@1ESPipelineTemplates
   parameters:
+    pool:
+      name: 1es-dacs-pool
+      image: 1es-windows-2022
+      os: windows
     sdl:
       sourceAnalysisPool:
         name: 1es-dacs-pool
@@ -33,3 +37,14 @@ extends:
         enabled: true
       credscan:
         enabled: true
+    stages:
+      - stage: Compliance
+        displayName: SDL source analysis
+        jobs:
+          - job: CheckoutForSdl
+            displayName: Check out sources for SDL scan
+            steps:
+              - checkout: self
+                submodules: true
+              - script: echo "Sources checked out. SDL source-analysis tools run in the injected SDLSources stage."
+                displayName: Source checkout marker
