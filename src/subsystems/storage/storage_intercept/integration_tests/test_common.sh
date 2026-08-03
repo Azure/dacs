@@ -28,6 +28,16 @@ SCRIPT_DIR="$( cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 ; pwd -P )"
 SCRIPT_NAME="$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")"
 REPOSITORY_ROOT="$(readlink -f ${SCRIPT_DIR}/../../../../../)"
 
+print_redacted_interception_config() {
+    awk '
+        $1 ~ /(SASToken|AccessToken)$/ {
+            print $1, "<redacted>"
+            next
+        }
+        { print }
+    ' "${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
+}
+
 # 1.2 Cache Server Configuration Constants
 CACHE_SERVER_PORT_RANGE_START=20100
 CACHE_SERVER_PORT_RANGE_LENGTH=10000
@@ -183,7 +193,7 @@ function add_interception_config_blob() {
     fi
 
     echo "Created the storage interception config file. Its contents are =>"
-    eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
+    print_redacted_interception_config
 }
 
 # 2.4 Blob Storage with Local Cache Configuration Generator
@@ -227,7 +237,7 @@ function add_interception_config_blob_with_cache() {
     fi
 
     echo "Created the storage interception config file with cache enabled. Its contents are =>"
-    eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
+    print_redacted_interception_config
 }
 
 # 2.5 Blob Storage with Local Cache and Encryption Configuration Generator
@@ -249,7 +259,7 @@ function add_interception_config_blob_with_cache_encryption() {
     fi
 
     echo "Created the storage interception config file with encryption enabled. Its contents are =>"
-    eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
+    print_redacted_interception_config
 }
 
 # 2.6 Blob Storage with Remote Cache Configuration Generator
@@ -276,7 +286,7 @@ function add_interception_config_blob_with_remote_cache() {
     echo "cacheServerList 127.0.0.1" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
     echo "Created the storage interception config file with remote attribute and data cache enabled. Its contents are =>"
-    eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
+    print_redacted_interception_config
 }
 
 # 2.7 Blob Storage with Local SSD Cache Configuration Generator
@@ -292,7 +302,7 @@ function add_interception_config_blob_with_localssdcache() {
     echo "cacheLocalFSCacheStagingPath ${CACHE_LOCAL_SSD_PATH}/_temp" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
     echo "Created the storage interception config file with local ssd cache enabled. Its contents are =>"
-    eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
+    print_redacted_interception_config
 }
 
 #===============================================================================
