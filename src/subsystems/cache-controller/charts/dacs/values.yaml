@@ -221,7 +221,3 @@ cache:
   # Set count > 0 to enable IB resources on cache server pods
   infinibandResourceLimitCount: 0
   infinibandResourceLimitName: "rdma/hca_rdma_infiniband"
-
-  # Image pull policy for cache server pods (optional)
-  # Controller defaults to Never if not specified; set to IfNotPresent for production
-  # imagePullPolicy: IfNotPresent
