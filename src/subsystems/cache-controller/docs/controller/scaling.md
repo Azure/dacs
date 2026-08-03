@@ -87,8 +87,8 @@ The Cache CRD exposes only the core scaling knobs:
 | Field | Type | Range | Default | Description |
 |-------|------|-------|---------|-------------|
 | `percentageOfNodesToUse` | `int32` | 1-100 | _(required)_ | Percentage of schedulable matching nodes to use |
-| `minServers` | `*int32` | 1-99 | _(nil)_ | Minimum replica count; if desired falls below this, floor to 0 |
-| `maxServers` | `*int32` | 1-99 | _(nil)_ | Maximum replica count cap; must be >= minServers |
+| `minServers` | `*int32` | 1-499 | _(nil)_ | Minimum replica count; if desired falls below this, floor to 0 |
+| `maxServers` | `*int32` | 1-499 | _(nil)_ | Maximum replica count cap; must be >= minServers |
 
 Operator-level config (applies to all Cache CRs):
 
