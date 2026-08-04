@@ -2,12 +2,29 @@
 
 ## Overview
 A stress testing framework for cacheserver/client interactions on kubernetes based clusters. This sub-project is organized as follows:
-1. _Container/_ - contains the dockerfile used to build the stress testing client container image that is used by the stress testing framework. To build the container:
+
+> **Important:** This framework is not ready to run externally without
+> configuration. Its Kubernetes manifests contain fixed image references, and
+> the runners do not replace them. Before running a test, publish the images
+> you built to a registry accessible from the cluster and update every
+> `image:` field in the manifests used by that test. For the standard runners,
+> update `k8s/stress-client.template.yaml` and, for the Linux flow,
+> `k8s/cache-server-app.template.yaml`. Inspect any additional manifest you
+> apply, including scenario-specific files, for its own `image:` fields.
+
+1. _container/_ - contains a legacy standalone container definition. Build the
+    current stress and performance client image through the supported
+    repository flow:
+    ```bash
+    REPOSITORY_ROOT=/path/to/dacs
+    cd "$REPOSITORY_ROOT"
+    make build BUILD_TYPE=Release
+    make images BUILD_TYPE=Release
     ```
-    cd <DACS root>
-    docker build . -f src/subsystems/storage/dacs_client/Dockerfile -t dacs.azurecr.io/storage-test-client:stress
-    ```
-    **Note:** The container image uses a multi-stage build with base images to optimize build times.
+    Run both commands from the repository root. The image build creates
+    `cache-test-client:local`, which contains the stress clients and
+    `PerfClient`. Publish or retag that image using your registry's supported
+    workflow before updating the manifests described above.
 2. _k8s_ - contains the automation scripts, test scenario configurations and kubernetes yaml templates used to launch the stress tests. More details on this later.
 3. _launcher.py_ - Entrypoint for the stress testing client container image. The launcher is responsible for starting up one or many client programs    that read from a specified dataset. That is, each container image launched executes the launcher script, which spawns one or more client programs of the same kind, each processing the same dataset. The launcher accepts four arguments:
     * **--storage_path**: This is the storagePath that the storage interceptor config expects. Any IO performed on this path gets intercepted by the interceptor library.
@@ -25,13 +42,12 @@ A stress testing framework for cacheserver/client interactions on kubernetes bas
 Currently, we support running the test framework on Linux and Windows platforms. There are corresponding bash and powershell scripts that automate the test execution. The scripts are located in the k8s directory.
 
 ### Pre-requisites
-For both Windows/Linux setups, we assume that you have the kubeconfig file for your cluster prepared and ready. If you are not sure how to generate your kubeconfig file, please refer to the azure aks setup guide here: [Azure AKS setup guide](https://learn.microsoft.com/en-us/azure/aks/tutorial-kubernetes-deploy-cluster?tabs=azure-cli)
-
-_Note_: For DACS clusters, you can obtain the kubeconfig file from the corresponding cluster's wiki page.
+For both Windows and Linux, configure a kubeconfig for the target Kubernetes
+cluster before running the scripts. Consult the documentation for your
+Kubernetes provider to obtain credentials.
 
 #### Common Setup
 1. Ensure that kubectl is installed in your system, and present in your PATH environment variable.
-2. (Optional/DACS clusters only) Ensure that kubelogin is installed in your system, and present in your PATH environment variable.
 
 #### For Linux/WSL setup
 1. Install ```jq```:
@@ -47,12 +63,15 @@ Install-Module -Name Az -Repository PSGallery -Force
 
 ### Running a stress test
 #### Linux/WSL
-```
-./launcher.sh <Path to kubeconfig> <Path to scenario config>
+```bash
+REPOSITORY_ROOT=/path/to/dacs
+cd "$REPOSITORY_ROOT/src/subsystems/storage/stress_tests/k8s"
+./launcher.sh /path/to/kubeconfig /path/to/scenario.json
 ```
 #### Windows
-```
-.\AutomateTests.ps1 -KubeConfig <Path to kubeconfig file> -OutputDir <Directory where test output will be stored> -TestConfigFile <Path to test config file>
+```powershell
+Set-Location C:\path\to\dacs\src\subsystems\storage\stress_tests\k8s
+.\AutomateTests.ps1 -KubeConfig C:\path\to\kubeconfig -OutputDir C:\path\to\output -TestConfigFile C:\path\to\scenario.json
 ```
 
 ### Explanation:
