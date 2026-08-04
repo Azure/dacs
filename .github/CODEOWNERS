@@ -1,2 +1,5 @@
-*  @croomes @jmclong  @Azure/dacs-maintainers
+# Existing project maintainers and the project maintainer team.
+* @croomes @jmclong @Azure/dacs-maintainers
+
+# CODEOWNERS changes require direct maintainer review.
 /.github/CODEOWNERS @croomes @jmclong
