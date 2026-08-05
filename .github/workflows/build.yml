@@ -198,13 +198,9 @@ jobs:
   # Build the two C++ component images (cache-server, cache-test-client). These
   # only COPY the prebuilt binaries onto a base image, so they need the compiled
   # build tree (hence `needs: compile`) but not the native-build toolchain image.
-  # Each image builds on its own runner (matrix): it restores the build tree,
-  # stages the binaries into the Docker context, builds its base image locally
-  # from the public Ubuntu mirror (no ACR credentials), then builds the component
-  # image. Plain `docker build` is used (not buildx) so the component's FROM
-  # resolves the just-built local base from the Docker store; the gha cache
-  # backend cannot help here anyway (the local base is not visible to the buildx
-  # container driver, and the COPY-only component layers are cheap).
+  # Each image builds on its own runner (matrix). Buildx/GHA caches the expensive
+  # base per image and architecture; the COPY-only component stays on plain
+  # Docker so its private FROM resolves from the local Docker store.
   images-cpp:
     name: C++ image (${{ matrix.image.name }})
     needs: compile
@@ -233,6 +229,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
       - name: Restore build tree
         uses: ./.github/actions/restore-build
         with:
@@ -251,14 +250,15 @@ jobs:
       # component Dockerfile's FROM defaults to, so the component build below
       # resolves it from the local Docker store instead of pulling from ACR.
       - name: Build ${{ matrix.image.base }} base image
-        env:
-          BASE_IMAGE: ${{ matrix.image.base }}
-          BASE_FILE: ${{ matrix.image.base_file }}
-        run: |
-          docker build \
-            -t "dacs.azurecr.io/${BASE_IMAGE}:latest" \
-            -f "$BASE_FILE" \
-            Docker/base
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: Docker/base
+          file: ${{ matrix.image.base_file }}
+          tags: dacs.azurecr.io/${{ matrix.image.base }}:latest
+          load: true
+          push: false
+          cache-from: type=gha,scope=${{ matrix.image.base }}-${{ inputs.build_arch }}
+          cache-to: type=gha,scope=${{ matrix.image.base }}-${{ inputs.build_arch }},mode=max
 
       - name: Build ${{ matrix.image.name }} image
         working-directory: Docker
