@@ -113,16 +113,13 @@ bool IBConnection::Sendfile(int fileFd, uint64_t fileStartOffset, uint64_t total
         return false;
     }
 
-    // loop to serve entire file
-    if (fileStartOffset > 0)
+    // seek to the specified offset in the file before reading
+    off_t lseekResult = lseek(fileFd, fileStartOffset, SEEK_SET);
+    if (lseekResult != static_cast<off_t>(fileStartOffset))
     {
-        off_t fileOffset = lseek(fileFd, fileStartOffset, SEEK_SET);
-        if (fileOffset != fileStartOffset)
-        {
-            LOG_WARN("Failed to set file offset. fileFd={} error={},{} offset={}/{}",
-                fileFd, errno, strerror(errno), fileStartOffset, fileOffset);
-            return false;
-        }
+        LOG_WARN("Failed to set file offset. fileFd={} error={},{} offset={}/{}",
+            fileFd, errno, strerror(errno), fileStartOffset, lseekResult);
+        return false;
     }
 
     uint64_t totalRead = 0;
