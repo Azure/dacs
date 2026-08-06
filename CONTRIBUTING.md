@@ -14,21 +14,20 @@ This project has adopted the [Microsoft Open Source Code of Conduct](https://ope
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/)
 or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
-## Building and testing
+## Before contributing
 
-DACS builds from a fresh clone using standard tools (Docker, Make). See the
-[README](README.md) for prerequisites and the canonical command list.
+- Search the [existing issues](../../issues) before opening a new one.
+- Use the appropriate issue form for bugs, feature requests, or questions.
+- Review [SECURITY.md](SECURITY.md) before reporting a security vulnerability.
+- Review [SUPPORT.md](SUPPORT.md) for the project's support policy.
 
-- Build (debug): `make build`
-- Build (release): `make build BUILD_TYPE=Release`
-- Run all unit tests: `make test`
-- C++ tests only: `make test-native`
-- Go tests only: `make test-go`
+## Pull requests
 
-## Pull request expectations
-
-- Keep PRs focused and reasonably small; explain the motivation in the description.
-- Ensure the build and unit tests pass before requesting review.
-- New features should include tests.
-- Be responsive to review feedback. A maintainer must not merge a PR until the
-  `license/cla` status check reports that all CLA requirements are met.
+- Keep pull requests focused and explain the motivation and user impact.
+- Link related issues or work items when applicable.
+- Add or update tests for behavior changes.
+- Update user-facing documentation when behavior or public interfaces change.
+- Complete the pull request template and respond to review feedback.
+- Ensure relevant validation passes before requesting review.
+- Do not merge until the `license/cla` status check reports that all CLA
+  requirements are met.
