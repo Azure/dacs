@@ -16,7 +16,6 @@
 # We have shifted from pulling Dynamic Managed Identity tokens (via IMDS) to "pushing" pre-generated
 # Access Tokens (via Workload Identity Federation). The 'AzureCLI@2' task authenticates the session
 # and injects the token as 'SI_azBlobAccessToken', which is then consumed by the test configuration.
-# Ref: internal-reference-removed
 #
 # Script Structure:
 # Section 1: Environment Setup and Configuration Detection
@@ -39,6 +38,16 @@
 SCRIPT_DIR="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 SCRIPT_NAME="$(basename "$(test -L "$0" && readlink "$0" || echo "$0")")"
 REPOSITORY_ROOT="$(readlink -f ${SCRIPT_DIR}/../../../../../)"
+
+print_redacted_interception_config() {
+    awk '
+        $1 ~ /(SASToken|AccessToken)$/ {
+            print $1, "<redacted>"
+            next
+        }
+        { print }
+    ' "${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
+}
 
 # 1.2 Cache Server Configuration Constants
 CACHE_SERVER_PORT_RANGE_START=20100
@@ -209,7 +218,7 @@ function add_interception_config_blob() {
     fi
 
     echo "Created the storage interception config file. Its contents are =>"
-    eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
+    print_redacted_interception_config
 }
 
 # 2.4 Blob Storage with Local Cache Configuration Generator
@@ -255,7 +264,7 @@ function add_interception_config_blob_with_cache() {
     append_cache_request_retry_config
 
     echo "Created the storage interception config file with cache enabled. Its contents are =>"
-    eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
+    print_redacted_interception_config
 }
 
 # 2.5 Blob Storage with Local Cache and Encryption Configuration Generator
@@ -277,7 +286,7 @@ function add_interception_config_blob_with_cache_encryption() {
     fi
 
     echo "Created the storage interception config file with encryption enabled. Its contents are =>"
-    eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
+    print_redacted_interception_config
 }
 
 # 2.6 Blob Storage with Remote Cache Configuration Generator
@@ -306,7 +315,7 @@ function add_interception_config_blob_with_remote_cache() {
     append_cache_request_retry_config
 
     echo "Created the storage interception config file with remote attribute and data cache enabled. Its contents are =>"
-    eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
+    print_redacted_interception_config
 }
 
 # 2.7 Blob Storage with Local SSD Cache Configuration Generator
@@ -324,7 +333,7 @@ function add_interception_config_blob_with_localssdcache() {
     append_cache_request_retry_config
 
     echo "Created the storage interception config file with local ssd cache enabled. Its contents are =>"
-    eval "cat ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}"
+    print_redacted_interception_config
 }
 
 #===============================================================================
@@ -696,7 +705,8 @@ stop_cache_server
 
 export CACHESERVER_AUTH_ENABLED="true"
 export CACHESERVER_AUTH_ACCOUNTNAME="us3rn@m3"
-export CACHESERVER_AUTH_ACCOUNTKEY="p@ssw0rd"
+CACHESERVER_AUTH_ACCOUNTKEY="$(head -c 24 /dev/urandom | base64)"
+export CACHESERVER_AUTH_ACCOUNTKEY
 start_cache_server /dev/null
 sleep 10
 

@@ -2,8 +2,6 @@
 
 This Python library provides interfaces to perform file operations on Azure blobs with caching mechanisms. It includes async operations, a blobfile-compatible synchronous adapter (`DACSBlobfileAdapter`), and a boostedblob-compatible async adapter (`dacs_boostedblob_adapter`).
 
-**Wiki Link:** internal-reference-removed
-
 ## Contents
 
 - [Installation](#installation)
@@ -24,11 +22,7 @@ This Python library provides interfaces to perform file operations on Azure blob
 
 ## Installation
 
-Install the latest DACS Cache Client package from the official feed.
-
-**Feed:** internal-reference-removed
-
-**Package:** internal-reference-removed
+Build the DACS Cache Client wheel from this repository before installation.
 
 The package is published as `manylinux` wheels for both `x86_64` (amd64) and `aarch64` (arm64). The wheels are repaired with [`auditwheel`](https://github.com/pypa/auditwheel) so that all required native shared libraries (e.g. `libcurl`, `libssl`, `libjsoncpp`, `libuuid`, etc.) are bundled inside the wheel. `pip` automatically selects the correct wheel for your platform.
 
@@ -41,43 +35,12 @@ dacs_client_official-<version>-py3-none-manylinux_X_Y_aarch64.whl
 
 The exact `manylinux_X_Y` tag depends on the glibc version of the build image; `pip` will pick the most compatible wheel.
 
-### Prerequisites to connect to the Feeds
-
-Ensure to install the latest version of the Azure Artifacts keyring which depends on .NET. Given below are the steps required for Ubuntu 20.04 linux distribution.
-
-Before you install .NET, run the following commands to add the Microsoft package signing key to your list of trusted keys and add the package repository.
-
-```bash
-wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
-sudo dpkg -i packages-microsoft-prod.deb
-rm packages-microsoft-prod.deb
-```
-
-Install the .NET SDK:
-
-```bash
-sudo apt-get update && sudo apt-get install -y dotnet-sdk-8.0
-```
-
-Install latest version of the Azure Artifacts keyring:
-
-```bash
-python -m pip install --upgrade pip
-pip install keyring artifacts-keyring
-```
-
 ### Install the DACS Cache Client
 
-Once the prerequisites are met to connect to the feed, install the package:
+Install a locally built wheel:
 
 ```bash
-pip install -i internal-reference-removed dacs-client-official
-```
-
-To install a specific version:
-
-```bash
-pip install -i internal-reference-removed dacs-client-official==0.9.0.20260218.4
+python -m pip install dist/dacs_client_official-*.whl
 ```
 
 ---
@@ -1025,24 +988,9 @@ ls -al dist/
 
 ## To Publish
 
-Publishing is performed by the Azure DevOps pipeline, which uploads the repaired `manylinux` wheels for both `amd64` and `arm64` to the `DACS-Feed`. To publish manually for testing:
-
-```bash
-# Configure .pypirc
-cat > ~/.pypirc <<'EOF'
-[distutils]
-Index-servers = DACS-Feed
-
-[DACS-Feed]
-Repository = internal-reference-removed
-Username = <feed-username>
-Password = <PAT>
-EOF
-
-cd src/subsystems/storage/dacs_client/
-python3 -m pip install --upgrade twine
-python3 -m twine upload --repository DACS-Feed dist/*.whl
-```
+The release pipeline produces repaired `manylinux` wheels for both `amd64` and
+`arm64`. Public package publication is configured separately from the source
+tree; do not commit repository credentials or feed URLs.
 
 ## To Test
 

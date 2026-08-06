@@ -25,7 +25,6 @@ type LogLinks struct {
 	CacheServerLogs string
 	ControllerLogs  string
 	KubeEvents      string
-	ASI             string
 }
 
 // GetWorkspaceFromCluster discovers the Log Analytics workspace linked to an
@@ -75,7 +74,7 @@ func parseWorkspaceResourceID(resourceID string) (WorkspaceInfo, error) {
 	return ws, nil
 }
 
-// GenerateLogLinks builds diagnostic deep-links (ADX queries and ASI search)
+// GenerateLogLinks builds diagnostic deep-links for ADX queries
 // scoped to the given time window, namespace, and cluster. The KQL queries
 // are filtered by `_ResourceId` to the AKS cluster's ARM resource ID so logs
 // from other clusters sharing the workspace are excluded.
@@ -92,7 +91,6 @@ func GenerateLogLinks(ws WorkspaceInfo, start, end time.Time, namespace, subscri
 		CacheServerLogs: adxDeepLink(clusterURI, ws.Name, cacheServerKQL(start, end, namespace, clusterResourceID)),
 		ControllerLogs:  adxDeepLink(clusterURI, ws.Name, controllerKQL(start, end, namespace, clusterResourceID)),
 		KubeEvents:      adxDeepLink(clusterURI, ws.Name, kubeEventsKQL(start, end, namespace, clusterResourceID)),
-		ASI:             asiLink(start, end, clusterName),
 	}
 }
 
@@ -149,18 +147,6 @@ func adxDeepLink(clusterURI, database, kql string) string {
 	)
 }
 
-// asiLink builds a URL that opens Azure Service Insights scoped to the given
-// cluster and time range.
-func asiLink(start, end time.Time, clusterName string) string {
-	return fmt.Sprintf(
-		"https://asi.azure.ms/search/services/AKS?searchText=%s&globalFrom=%s&globalTo=%s&resources=%s",
-		url.QueryEscape(clusterName),
-		url.QueryEscape(start.UTC().Format(time.RFC3339)),
-		url.QueryEscape(end.UTC().Format(time.RFC3339)),
-		url.QueryEscape(`["Managed Clusters"]`),
-	)
-}
-
 // WriteLinksSummary writes a markdown file with clickable ADX deep-links.
 // The file is intended for consumption by Azure DevOps pipeline summary
 // (##vso[task.uploadsummary]) so links appear in the pipeline Extensions tab.
@@ -170,8 +156,6 @@ func WriteLinksSummary(links LogLinks, outputPath string) error {
 	}
 
 	content := "## Diagnostic Links\n\n" +
-		"### Azure Service Insights\n\n" +
-		"- [ASI - AKS Cluster Overview](" + links.ASI + ")\n\n" +
 		"### Azure Data Explorer Queries\n\n" +
 		"- [Cache Server Logs (ContainerLogV2)](" + links.CacheServerLogs + ")\n" +
 		"- [Controller Logs (ContainerLogV2)](" + links.ControllerLogs + ")\n" +

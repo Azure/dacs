@@ -17,13 +17,8 @@ BUILD_ARCH="${BUILD_ARCH:-amd64}"
 BUILD_TYPE="${1:-Debug}"
 shift || true  # Shift to get remaining args as pytest arguments
 
-# Identity client ID for managed identity used in the test pipeline
-# This is the user assigned identity used for the azdacs build pool
-# The identity has storage blob data contributor role on storage accounts:
-# - storageinterceptionpr1 
-# - storageinterceptionpr2
-# Reference: internal-reference-removed
-# Allow user to override with USER_VM_AZURE_CLIENT_ID for local development
+# Identity client ID for the managed identity used in the test pipeline.
+# Allow user to override with USER_VM_AZURE_CLIENT_ID for local development.
 if [ -n "${USER_VM_AZURE_CLIENT_ID:-}" ]; then
     export AZURE_CLIENT_ID="$USER_VM_AZURE_CLIENT_ID"
     echo "Using user-provided AZURE_CLIENT_ID from USER_VM_AZURE_CLIENT_ID"

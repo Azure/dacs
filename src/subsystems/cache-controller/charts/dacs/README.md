@@ -36,12 +36,12 @@ helm install dacs ./charts/dacs \
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `manager.replicas` | Number of controller replicas. Leader election is enabled automatically when `> 1`. | `1` |
-| `manager.image.repository` | Controller image repository | `dacs/dacs` |
-| `manager.image.tag` | Controller image tag | `latest` |
+| `manager.image.repository` | Controller image repository | `acstor/dacs-controller` |
+| `manager.image.tag` | Controller image tag; empty uses the chart app version | `""` |
 | `manager.image.pullPolicy` | Image pull policy | `IfNotPresent` |
 | `manager.logLevel` | Controller log level via env (`CACHE_CONTROLLER_LOGLEVEL`) | `info` |
 | `manager.resources.limits.cpu` | CPU limit | `500m` |
-| `manager.resources.limits.memory` | Memory limit | `128Mi` |
+| `manager.resources.limits.memory` | Memory limit | `512Mi` |
 | `manager.resources.requests.cpu` | CPU request | `10m` |
 | `manager.resources.requests.memory` | Memory request | `64Mi` |
 | `manager.priorityClassName` | PriorityClass for the controller pod. Empty uses the chart-managed `<fullname>-priority` PriorityClass (value `100000`); set a name to use an existing PriorityClass instead. | `""` |
@@ -52,15 +52,14 @@ helm install dacs ./charts/dacs \
 |-----------|-------------|---------|
 | `cache.enabled` | Deploy a Cache CR with controller | `false` |
 | `cache.name` | Name of the Cache CR (max 53 chars, RFC 1123 DNS label) | `cache-sample` |
-| `cache.namespace` | Namespace for Cache CR | `cache-server` |
-| `cache.serverImage.repository` | Cache server image repository |  `cache-server` |
-| `cache.serverImage.tag` | Cache server image tag | `latest` |
+| `cache.namespace` | Namespace for Cache CR; empty uses the release namespace | `""` |
 | `cache.scaling.static.numServers` | Number of cache servers | |
 | `cache.scaling.dynamic.percentageOfNodesToUse` | Percentage of nodes to run cache on (1-100) | |
 | `cache.scaling.dynamic.minServers` | Minimum cache servers, 1-499 (desired below this floors to 0) | |
 | `cache.scaling.dynamic.maxServers` | Maximum cache servers, 1-499 (hard cap; must be >= minServers) | |
-| `cache.serverSizeInGB` | Storage per server (GB) | `10` |
-| `cache.serverThreads` | Threads per server | `16` |
+| `cache.serverSizeInGB` | Storage per server (GB), minimum 1 | `4` |
+| `cache.serverThreads` | Threads per server, range 4-128 | `80` |
+| `cache.memoryLimitMB` | Optional memory limit per server, minimum 1024 MB | |
 
 ### RBAC Configuration
 

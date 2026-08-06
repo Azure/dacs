@@ -138,7 +138,6 @@ private:
     {
         // the operation id is always causing log corruption. There is a work item to fix it.
         // meanwhile removing operation id so that we can debug other issues.
-        // internal-reference-removed
         return fmt::format(message, 
             GET_TIME,
             LoggingApi::Getpid(),

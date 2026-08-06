@@ -67,8 +67,4 @@ spec:
   infinibandResourceLimitCount: {{ .Values.cache.infinibandResourceLimitCount | int }}
   infinibandResourceLimitName: {{ .Values.cache.infinibandResourceLimitName | quote }}
   {{- end }}
-  {{- /* Image pull policy for cache server pods */}}
-  {{- with .Values.cache.imagePullPolicy }}
-  imagePullPolicy: {{ . | quote }}
-  {{- end }}
 {{- end }}
