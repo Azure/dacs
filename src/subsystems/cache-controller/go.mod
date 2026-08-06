@@ -3,7 +3,7 @@ module github.com/Azure/dacs/cache-controller
 go 1.25.0
 
 require (
-	github.com/go-logr/logr v1.4.3
+	github.com/go-logr/logr v1.4.4
 	github.com/onsi/ginkgo/v2 v2.27.5
 	github.com/onsi/gomega v1.38.3
 	github.com/open-policy-agent/cert-controller v0.15.0
