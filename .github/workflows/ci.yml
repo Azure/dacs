@@ -162,3 +162,159 @@ jobs:
 
       - name: Run unit tests (native + Go)
         run: make test
+
+  # Run the existing controller and 1 GiB performance suites against the images
+  # produced by the build job. Three Minikube nodes are the minimum needed by
+  # the current multi-cache tests, which schedule three cache-server pods on
+  # unique nodes.
+  integration-test:
+    name: Controller and perf E2E tests (Minikube, ${{ matrix.arch }})
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      MINIKUBE_VERSION: v1.38.1
+    steps:
+      - name: Free disk space for Minikube
+        run: |
+          echo "Disk space before cleanup:"
+          df -h /
+
+          sudo rm -rf -- \
+            /usr/local/lib/android \
+            /usr/local/.ghcup \
+            /usr/share/dotnet \
+            /usr/share/swift
+
+          echo "Disk space after cleanup:"
+          df -h /
+
+      - name: Check out the code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: test/go.mod
+          cache-dependency-path: |
+            test/go.sum
+            src/subsystems/cache-controller/go.sum
+
+      - name: Download cache-controller image
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dacs-image-cache-controller-${{ matrix.arch }}
+          path: /tmp/dacs-images/cache-controller
+
+      - name: Download cache-server image
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dacs-image-cache-server-${{ matrix.arch }}
+          path: /tmp/dacs-images/cache-server
+
+      - name: Download cache-test-client image
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dacs-image-cache-test-client-${{ matrix.arch }}
+          path: /tmp/dacs-images/cache-test-client
+
+      - name: Configure Minikube environment
+        run: echo "MINIKUBE_HOME=${RUNNER_TEMP}/minikube" >> "$GITHUB_ENV"
+
+      - name: Install Minikube
+        env:
+          MINIKUBE_ARCH: ${{ matrix.arch }}
+        run: |
+          curl --fail --location --retry 5 --retry-delay 5 \
+            --output minikube \
+            "https://github.com/kubernetes/minikube/releases/download/${MINIKUBE_VERSION}/minikube-linux-${MINIKUBE_ARCH}"
+          curl --fail --location --retry 5 --retry-delay 5 \
+            --output minikube.sha256 \
+            "https://github.com/kubernetes/minikube/releases/download/${MINIKUBE_VERSION}/minikube-linux-${MINIKUBE_ARCH}.sha256"
+          echo "$(cat minikube.sha256)  minikube" | sha256sum --check
+          sudo install minikube /usr/local/bin/minikube
+          sudo mkdir -p "$MINIKUBE_HOME"
+          sudo chown -R "$(id -u):$(id -g)" "$MINIKUBE_HOME"
+          minikube version
+
+      - name: Create Minikube cluster
+        run: |
+          sed -i \
+            -e 's/^MINIKUBE_NODES=.*/MINIKUBE_NODES=3/' \
+            .pipelines/scripts/k8s/config/local.config
+          make provision TARGET=minikube
+
+      - name: Load images into Minikube
+        run: |
+          mapfile -d '' image_archives \
+            < <(find /tmp/dacs-images -name '*.tar' -print0)
+          if [ "${#image_archives[@]}" -ne 3 ]; then
+            echo "Expected 3 image archives, found ${#image_archives[@]}" >&2
+            exit 1
+          fi
+
+          for image_archive in "${image_archives[@]}"; do
+            minikube image load "$image_archive"
+            rm -- "$image_archive"
+          done
+
+      - name: Deploy DACS
+        run: |
+          make deploy CONTROLLER=new \
+            HELM_ARGS="--set manager.cacheServerImage.repository=cache-server --set manager.cacheServerImage.tag=local"
+
+      - name: Run controller and perf E2E tests
+        run: >-
+          make test-e2e
+          TEST_FILTER='(perf || controller) && !small-chunk'
+          TEST_TIMEOUT=60m
+          EXTRA_TEST_ARGS='--data-size-gib=1'
+
+      - name: Collect failure diagnostics
+        if: failure()
+        continue-on-error: true
+        run: |
+          mkdir -p support-bundles/ci
+          kubectl get pods --all-namespaces -o wide \
+            > support-bundles/ci/pods.txt 2>&1 ||
+            echo "Failed to collect pods" >> support-bundles/ci/pods.txt
+          kubectl get events --all-namespaces \
+            --sort-by='.metadata.creationTimestamp' \
+            > support-bundles/ci/events.txt 2>&1 ||
+            echo "Failed to collect events" >> support-bundles/ci/events.txt
+          kubectl describe pods --all-namespaces \
+            > support-bundles/ci/pod-descriptions.txt 2>&1 ||
+            echo "Failed to describe pods" >> support-bundles/ci/pod-descriptions.txt
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: controller-perf-e2e-results-${{ matrix.arch }}
+          path: |
+            test.xml
+            summary.md
+            support-bundles/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Clean up Minikube
+        if: always()
+        continue-on-error: true
+        run: |
+          status=0
+          make undeploy || status=$?
+          minikube delete || status=$?
+          exit "$status"
