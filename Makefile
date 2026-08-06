@@ -1,4 +1,4 @@
-.PHONY: help build clean test pytest test-go test-native images python-package storage-intercept-client helm-build helm-login helm-push deploy undeploy
+.PHONY: help build clean test pytest test-go test-native test-rust-client test-rust-client-integration images python-package storage-intercept-client helm-build helm-login helm-push deploy undeploy
 
 # Include modular makefiles
 include deploy/deploy.mk
@@ -14,6 +14,8 @@ help:
 	@echo "  make test                          	- Run all unit tests"
 	@echo "  make test TEST=<pattern>           	- Run specific unit tests"
 	@echo "  make pytest                        	- Run Python unit tests (pytest)"
+	@echo "  make test-rust-client              	- Run Rust client unit tests"
+	@echo "  make test-rust-client-integration  	- Run Rust client integration tests"
 	@echo "  make images                        	- Build Docker images"
 	@echo ""
 	@echo "Cluster Provisioning:"
@@ -87,6 +89,14 @@ test-go:
 	else \
 		./.pipelines/unittest_go.sh $(TEST); \
 	fi
+
+test-rust-client:
+	@./bldenv.sh cargo test --manifest-path src/subsystems/storage/rust/dacs_client/Cargo.toml --test unit_tests
+
+test-rust-client-integration:
+	@test -n "$(DACS_TEST_BLOB_PATH)" || { echo "DACS_TEST_BLOB_PATH is required"; exit 1; }
+	@DACS_LIB_PATH="$(DACS_LIB_PATH)" DACS_TEST_BLOB_PATH="$(DACS_TEST_BLOB_PATH)" \
+		./bldenv.sh cargo test --manifest-path src/subsystems/storage/rust/dacs_client/Cargo.toml --test integration_tests -- --test-threads=1
 
 PYTEST_ARGS ?=
 
