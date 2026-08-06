@@ -1,0 +1,74 @@
+name: Bug report
+description: Report a reproducible problem with DACS
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug. Do not include secrets or other sensitive information.
+        Security vulnerabilities must be reported using the process in SECURITY.md, not through a public issue.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Select the component where the problem occurs.
+      options:
+        - CacheServer
+        - CacheClient
+        - Cache controller
+        - Cache server scheduler
+        - Storage interception
+        - Helm or deployment
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the problem and its impact.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest reliable sequence that reproduces the problem.
+      placeholder: |
+        1. Configure ...
+        2. Run ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Describe what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include relevant DACS version or commit, Kubernetes version, operating system, and architecture.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or additional context
+      description: Add sanitized logs, screenshots, or other context. Remove secrets and sensitive data.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I searched existing issues for duplicates.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

@@ -1,0 +1,50 @@
+name: Question
+description: Ask for help using or understanding DACS
+title: "[Question]: "
+labels:
+  - question
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - CacheServer
+        - CacheClient
+        - Cache controller
+        - Cache server scheduler
+        - Storage interception
+        - Helm or deployment
+        - General
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Explain what you are trying to accomplish and where you are blocked.
+    validations:
+      required: true
+  - type: textarea
+    id: attempts
+    attributes:
+      label: What have you tried?
+      description: Describe approaches already attempted and include sanitized errors or logs when useful.
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include relevant DACS version or commit, Kubernetes version, operating system, and architecture.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I searched existing issues for an answer.
+          required: true
+        - label: This question does not disclose a security vulnerability.
+          required: true
