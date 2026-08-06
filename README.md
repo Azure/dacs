@@ -230,7 +230,7 @@ make images                   # Build Docker images (~5 mins)
 
 **First Build Note:** The initial `make build` takes 15-20 minutes because it:
 - Builds the `native-build:dev` Docker image with all dependencies
-- Downloads and compiles external dependencies (protobuf, spdlog, etc.)
+- Downloads and compiles external dependencies (protobuf, fmt, etc.)
 - Compiles all C++ source files
 
 Subsequent builds are incremental and much faster (~2-5 minutes).
