@@ -11,6 +11,7 @@
 #include <queue>
 #include <mutex>
 #include <thread>
+#include <atomic>
 #include <condition_variable>
 #include <infiniband/verbs.h>
 //---------------------------------------------------------------------------------------------------------------------
@@ -66,7 +67,14 @@ class IBManager
         void ProcessRequest(/*[in ]*/ const ibv_wc& wc);
 
         // Post a memory buffer for receiving incoming requests
+        // Safe to call duplicately from same buffer.
         void PostWrToSRQ(/*[in ]*/ uint64_t bufferAddr);
+
+        // Marks a buffer as consumed/removed from the SRQ so it can be re-posted via PostWrToSRQ()
+        void MarkBufferRemovedFromSRQ(/*[in]*/ uint64_t bufferAddr);
+
+        // Returns the index into m_bufferPosted for a given buffer address
+        int BufferIndex(/*[in]*/ uint64_t addr) const;
 
     private:
 
@@ -82,5 +90,9 @@ class IBManager
         std::queue<ibv_wc>                                                  m_ibRequestQueue;
         std::mutex                                                          m_mutexIBRequestQ;
         std::condition_variable                                             m_cvQueue;
+
+        // Per-buffer posted flag: false = available (not in SRQ), true = posted in SRQ.
+        // Guards PostWrToSRQ() against duplicate calls from concurrent code paths.
+        std::atomic<bool> m_bufferPosted[MAX_RECEIVE_BUFFERS]{};
 };
 //---------------------------------------------------------------------------------------------------------------------
