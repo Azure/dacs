@@ -27,8 +27,8 @@ include(GoogleTest)
 include_directories(${GTEST_INCLUDE_DIRS})
 include(CTest)
 
-# The spdlog git hub project for logging and related vars
-include(external/External_spdlog.cmake)
+# The fmt project for formatting and related vars
+include(external/External_fmt.cmake)
 include_directories(${CMAKE_DEP_INSTALL_DIR}/include)
 
 # serialization support through json. It supports json, bson, cbor etc.
