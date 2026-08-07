@@ -76,6 +76,8 @@ const (
 	MultiCacheName     = "cache-multi"
 	MultiCacheReplicas = int32(1)
 
+	RelabelCacheName = "cache-relabel"
+
 	// Controller namespace
 	ControllerNamespace = "cache-server"
 
@@ -624,5 +626,125 @@ var _ = Describe("Cache Controller", Label("e2e", "controller"), Ordered, func()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(discoverySvc.Spec.Selector[CacheNameLabelKey]).To(Equal(CacheCRName))
 		})
+	})
+})
+
+var _ = Describe("Cache Controller node relabeling", Label("e2e", "controller"), Serial, func() {
+	It("should move a cache pod when its node label moves", func(ctx SpecContext) {
+		const (
+			cpuLabelKey       = "dacs.azure.com/processing-unit"
+			cpuLabelValue     = "cpu"
+			nodeSelectorKey   = "dacs.azure.com/relabel-test"
+			nodeSelectorValue = "enabled"
+		)
+
+		var nodeList corev1.NodeList
+		Expect(k8sClient.List(ctx, &nodeList,
+			client.MatchingLabels{cpuLabelKey: cpuLabelValue})).To(Succeed())
+
+		var cachePods corev1.PodList
+		Expect(k8sClient.List(ctx, &cachePods,
+			client.MatchingLabels{CacheServerLabelKey: CacheServerLabelValue})).To(Succeed())
+
+		occupiedNodes := map[string]bool{}
+		for _, pod := range cachePods.Items {
+			occupiedNodes[pod.Spec.NodeName] = true
+		}
+
+		var freeNodes []string
+		for _, node := range nodeList.Items {
+			if occupiedNodes[node.Name] || node.Spec.Unschedulable {
+				continue
+			}
+			for _, condition := range node.Status.Conditions {
+				if condition.Type == corev1.NodeReady && condition.Status == corev1.ConditionTrue {
+					freeNodes = append(freeNodes, node.Name)
+					break
+				}
+			}
+		}
+		Expect(len(freeNodes)).To(BeNumerically(">=", 2), "requires two free, ready CPU cache nodes")
+		sourceNode := freeNodes[0]
+		destinationNode := freeNodes[1]
+
+		DeferCleanup(func(ctx SpecContext) {
+			for _, nodeName := range []string{sourceNode, destinationNode} {
+				var node corev1.Node
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: nodeName}, &node)).To(Succeed())
+				if _, found := node.Labels[nodeSelectorKey]; !found {
+					continue
+				}
+				delete(node.Labels, nodeSelectorKey)
+				Expect(k8sClient.Update(ctx, &node)).To(Succeed())
+			}
+		})
+
+		By(fmt.Sprintf("adding the test label to source node %s", sourceNode))
+		output, err := exec.CommandContext(
+			ctx, "kubectl", "label", "node", sourceNode,
+			nodeSelectorKey+"="+nodeSelectorValue, "--overwrite").CombinedOutput()
+		Expect(err).NotTo(HaveOccurred(), "Failed to label source node: %s", string(output))
+
+		cache := &storagev1.Cache{
+			ObjectMeta: metav1.ObjectMeta{Name: RelabelCacheName, Namespace: namespace},
+			Spec: storagev1.CacheSpec{
+				ServerSizeInGB:    1,
+				ServerThreads:     4,
+				CpuLimit:          ptr.To[int32](1),
+				MemoryLimitMB:     ptr.To[int32](1024),
+				NodeSelectorKey:   ptr.To(nodeSelectorKey),
+				NodeSelectorValue: ptr.To(nodeSelectorValue),
+				Scaling: storagev1.ScalingType{
+					Static: &storagev1.StaticScaleConfig{NumServers: 1},
+				},
+				Storage: &storagev1.StorageConfig{Ephemeral: ptr.To(false)},
+			},
+		}
+		By("creating a cache that selects the test label")
+		Expect(k8sClient.Create(ctx, cache)).To(Succeed())
+		DeferCleanup(func(ctx SpecContext) {
+			err := k8sClient.Delete(ctx, cache)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name: RelabelCacheName, Namespace: namespace,
+				}, &storagev1.Cache{})
+				return errors.IsNotFound(err)
+			}).WithContext(ctx).Should(BeTrue())
+		})
+
+		var originalUID types.UID
+		Eventually(func(g Gomega) {
+			var pods corev1.PodList
+			g.Expect(k8sClient.List(ctx, &pods,
+				client.InNamespace(namespace),
+				client.MatchingLabels{CacheNameLabelKey: RelabelCacheName})).To(Succeed())
+			g.Expect(pods.Items).To(HaveLen(1))
+			g.Expect(pods.Items[0].Status.Phase).To(Equal(corev1.PodRunning))
+			g.Expect(pods.Items[0].Spec.NodeName).To(Equal(sourceNode))
+			originalUID = pods.Items[0].UID
+		}).WithContext(ctx).Should(Succeed())
+
+		By(fmt.Sprintf("moving the test label from %s to %s", sourceNode, destinationNode))
+		output, err = exec.CommandContext(
+			ctx, "kubectl", "label", "node", destinationNode,
+			nodeSelectorKey+"="+nodeSelectorValue, "--overwrite").CombinedOutput()
+		Expect(err).NotTo(HaveOccurred(), "Failed to label destination node: %s", string(output))
+		output, err = exec.CommandContext(
+			ctx, "kubectl", "label", "node", sourceNode,
+			nodeSelectorKey+"-").CombinedOutput()
+		Expect(err).NotTo(HaveOccurred(), "Failed to remove source node label: %s", string(output))
+
+		By("waiting for the cache pod to be recreated on the destination node")
+		Eventually(func(g Gomega) {
+			var pods corev1.PodList
+			g.Expect(k8sClient.List(ctx, &pods,
+				client.InNamespace(namespace),
+				client.MatchingLabels{CacheNameLabelKey: RelabelCacheName})).To(Succeed())
+			g.Expect(pods.Items).To(HaveLen(1))
+			g.Expect(pods.Items[0].UID).NotTo(Equal(originalUID))
+			g.Expect(pods.Items[0].Spec.NodeName).To(Equal(destinationNode))
+			g.Expect(pods.Items[0].Status.Phase).To(Equal(corev1.PodRunning))
+		}).WithContext(ctx).Should(Succeed())
 	})
 })
