@@ -89,6 +89,9 @@ docker run \
     --env AZURE_FEDERATED_TOKEN \
     --env BUILD_ARCH \
     --env DACS_TEST_MODE \
+    --env DACS_LIB_PATH \
+    --env DACS_NATIVE_DIR \
+    --env DACS_TEST_BLOB_PATH \
     --env DACS_WHEEL \
     --env PYTHON_PACKAGE_VERSION \
     --env PACKAGE_CHANNEL \

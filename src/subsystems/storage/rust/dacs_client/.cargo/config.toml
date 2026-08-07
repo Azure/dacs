@@ -1,0 +1,2 @@
+# Cargo uses crates.io by default. Put developer-specific overrides in the
+# user's Cargo configuration rather than committing registry credentials here.

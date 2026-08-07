@@ -51,8 +51,8 @@ add_subdirectory(${CMAKE_DEP_INSTALL_DIR}/cmake ${CMAKE_DEP_INSTALL_DIR} EXCLUDE
 # The GTest git hub project for testing and testing related vars
 include(${CMAKE_EXTERNAL_PROJECT}/gtest_include.cmake)
 
-# The spdlog git hub project for logging and related vars
-include(${CMAKE_EXTERNAL_PROJECT}/spdlog_include.cmake)
+# The fmt project for formatting and related vars
+include(${CMAKE_EXTERNAL_PROJECT}/fmt_include.cmake)
 
 # serialization support through json. It supports json, bson, cbor etc.
 include(${CMAKE_EXTERNAL_PROJECT}/json_include.cmake)
