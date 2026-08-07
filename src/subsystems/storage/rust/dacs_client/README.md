@@ -146,6 +146,15 @@ make test-rust-client-integration
 
 ### Building the package locally
 
+Build the native components and then create a crate containing the matching
+architecture's `libStorageDirect.so`:
+
 ```bash
-cargo build --manifest-path src/subsystems/storage/rust/dacs_client/Cargo.toml
+make build BUILD_TYPE=Release
+make rust-package BUILD_TYPE=Release
 ```
+
+The crate is written to `target/package/` under this directory. GitHub Actions
+builds and tests Rust with the C++ and Go components, then uploads
+`dacs-rust-crate-amd64` and `dacs-rust-crate-arm64` workflow artifacts. The
+workflow does not publish the crate to crates.io or any other registry.

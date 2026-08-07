@@ -1,4 +1,4 @@
-.PHONY: help build clean test pytest test-go test-native test-rust-client test-rust-client-integration images python-package storage-intercept-client helm-build helm-login helm-push deploy undeploy
+.PHONY: help build clean test pytest test-go test-native test-rust-client test-rust-client-integration rust-package images python-package storage-intercept-client helm-build helm-login helm-push deploy undeploy
 
 # Include modular makefiles
 include deploy/deploy.mk
@@ -16,6 +16,7 @@ help:
 	@echo "  make pytest                        	- Run Python unit tests (pytest)"
 	@echo "  make test-rust-client              	- Run Rust client unit tests"
 	@echo "  make test-rust-client-integration  	- Run Rust client integration tests"
+	@echo "  make rust-package                  	- Build architecture-specific Rust client crate"
 	@echo "  make images                        	- Build Docker images"
 	@echo ""
 	@echo "Cluster Provisioning:"
@@ -72,7 +73,7 @@ clean:
 	fi
 	@echo "Clean complete."
 
-test: test-native test-go
+test: test-native test-go test-rust-client
 
 test-native:
 	@echo "Running native unit tests..."
@@ -91,12 +92,24 @@ test-go:
 	fi
 
 test-rust-client:
-	@./bldenv.sh cargo test --manifest-path src/subsystems/storage/rust/dacs_client/Cargo.toml --test unit_tests
+	@./bldenv.sh cargo test --locked --manifest-path src/subsystems/storage/rust/dacs_client/Cargo.toml --test unit_tests
 
 test-rust-client-integration:
 	@test -n "$(DACS_TEST_BLOB_PATH)" || { echo "DACS_TEST_BLOB_PATH is required"; exit 1; }
 	@DACS_LIB_PATH="$(DACS_LIB_PATH)" DACS_TEST_BLOB_PATH="$(DACS_TEST_BLOB_PATH)" \
-		./bldenv.sh cargo test --manifest-path src/subsystems/storage/rust/dacs_client/Cargo.toml --test integration_tests -- --test-threads=1
+		./bldenv.sh cargo test --locked --manifest-path src/subsystems/storage/rust/dacs_client/Cargo.toml --test integration_tests -- --test-threads=1
+
+rust-package:
+	@if [ "$(USE_CONTAINER)" = "1" ]; then \
+		BUILD_ARCH=$(BUILD_ARCH) \
+		BUILD_ARCHITECTURE=$(BUILD_ARCH) \
+		BUILD_CONFIGURATION=$(BUILD_TYPE) \
+		./bldenv.sh ./.pipelines/scripts/build/build-rust-package.sh; \
+	else \
+		BUILD_ARCHITECTURE=$(BUILD_ARCH) \
+		BUILD_CONFIGURATION=$(BUILD_TYPE) \
+		./.pipelines/scripts/build/build-rust-package.sh; \
+	fi
 
 PYTEST_ARGS ?=
 

@@ -51,6 +51,8 @@ node_modules/
 *.egg-info/
 dist/
 build/
+!/.pipelines/scripts/build/
+!/.pipelines/scripts/build/build-rust-package.sh
 
 # Local dependencies
 .pipelines/deps/

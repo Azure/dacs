@@ -41,7 +41,13 @@ cmake \
   "$REPOSITORY_ROOT"
 
 # Build with Ninja - use all available cores
-ninja -j$(nproc)
+ninja -j"$(nproc)"
+
+# Build Rust client
+echo "Building Rust client..."
+cargo build \
+  --locked \
+  --manifest-path "$REPOSITORY_ROOT/src/subsystems/storage/rust/dacs_client/Cargo.toml"
 
 echo ""
 echo "Build complete!"

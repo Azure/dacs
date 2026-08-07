@@ -18,6 +18,8 @@ fi
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 WORKSPACE_NAME="$(basename "$DIR")"
+CARGO_CACHE_DIR="${CARGO_CACHE_DIR:-$HOME/.cache/dacs-cargo}"
+mkdir -p "$CARGO_CACHE_DIR/registry" "$CARGO_CACHE_DIR/git"
 
 # Detect host architecture and use architecture-specific image tag
 HOST_ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
@@ -95,10 +97,14 @@ docker run \
     --env DACS_WHEEL \
     --env PYTHON_PACKAGE_VERSION \
     --env PACKAGE_CHANNEL \
+    --env BUILD_ARCHITECTURE \
+    --env BUILD_CONFIGURATION \
     -v /etc/group:/etc/group:ro \
     -v /etc/passwd:/etc/passwd:ro \
     -v /etc/shadow:/etc/shadow:ro \
     -v ~:/root \
+    -v "$CARGO_CACHE_DIR/registry:/opt/cargo/registry" \
+    -v "$CARGO_CACHE_DIR/git:/opt/cargo/git" \
     -v $DIR:/workspaces/$WORKSPACE_NAME \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -w /workspaces/$WORKSPACE_NAME \

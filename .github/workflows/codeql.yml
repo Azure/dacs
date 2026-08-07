@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # C/C++ uses build-mode "none" (build-free scanning, GA since
+        # C/C++ and Rust use build-mode "none" (build-free scanning, GA since
         # 2025-10-14, CodeQL CLI 2.23.3+), so no native toolchain or build
         # container is required. Go keeps "autobuild" to trace a real compile
         # for the most complete analysis; interpreted languages ignore the mode.
@@ -39,6 +39,8 @@ jobs:
           - language: go
             build-mode: autobuild
           - language: python
+            build-mode: none
+          - language: rust
             build-mode: none
 
     steps:
