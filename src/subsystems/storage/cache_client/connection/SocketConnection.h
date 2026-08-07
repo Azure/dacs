@@ -43,9 +43,11 @@ class SocketConnection : public IConnection
         bool m_sendAttempted;
         int m_rcvTimeoutMillis;
         int m_sndTimeoutMillis;
+        uint64_t m_requestBytesWritten;
 
         FRIEND_TEST(ConnectionManagerTests, RecvTimeoutSocketOptionIsSetAfterReceive);
         FRIEND_TEST(ConnectionManagerTests, RecvTimeoutSocketOptionUpdatedForDifferentSize);
+        FRIEND_TEST(ConnectionManagerTests, RequestBytesWrittenControlsReceiveTimeout);
         FRIEND_TEST(ConnectionManagerTests, SndTimeoutSocketOptionIsSetAfterSend);
         friend struct ScopedMinTimeout;
 };
