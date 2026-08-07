@@ -32,9 +32,11 @@ constexpr uint32_t SNAPSHOT_MAX_AGE_IN_SECONDS = 7 * 24 * 60 * 60; // 1 week
 constexpr uint32_t DefaultCacheTTLWindowSizeSeconds = 60;
 
 // Eviction related settings
-constexpr uint32_t DefaultEvictionPassFrequencySeconds = 3630; // ~ 1hr
+constexpr uint32_t DefaultEvictionPassFrequencySeconds = 900; // 15 min
 constexpr uint64_t DefaultEvictionLastAccessThresholdSeconds = 2592000; // 30 days
 constexpr double DefaultEvictionSizeThresholdPecentage = 90; // 90% of cache size
+constexpr uint64_t DefaultEvictionBucketIntervalSeconds = 900; // 15 min, used by the dynamic (maintain-free-space) eviction path
+constexpr uint64_t MaxEvictionBucketIntervalSeconds = 7ull * 24 * 3600; // 1 week upper bound
 // 1TB cache size
 constexpr uint64_t DefaultCacheSizeLimitBytes = 1024ull * 1024 * 1024 * 1024; 
 

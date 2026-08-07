@@ -97,6 +97,13 @@ spec:
               eviction:
                 description: Eviction settings
                 properties:
+                  bucketInterval:
+                    default: 15m
+                    description: |-
+                      Access-time bucket width used by the maintain-free-space (dynamic) eviction path,
+                      example "15m", "1h", "60s". A smaller interval evicts more precisely (less over-eviction).
+                      Must be at most 1 week; invalid/too-large values fall back to the server default.
+                    type: string
                   enableAccessTimeEviction:
                     default: true
                     description: Enable accessTime based eviction
@@ -112,7 +119,7 @@ spec:
                       "30d12h41m29s"
                     type: string
                   passFrequency:
-                    default: 1h
+                    default: 15m
                     description: Frequency of running eviction pass, example "1h30m"
                     type: string
                   sizeTarget:

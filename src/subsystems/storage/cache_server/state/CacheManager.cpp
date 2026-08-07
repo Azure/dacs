@@ -861,6 +861,31 @@ void CacheManager::InitializeEviction()
         m_dEvictionSizeTarget = defaultEvictionSizeTarget;
         LOG_INFO("Eviction size target not set, using default: {}%", m_dEvictionSizeTarget);
     }
+
+    char* evictionBucketInterval = std::getenv("CACHESERVER_EVICTION_BUCKET_INTERVAL");
+    if (evictionBucketInterval != NULL && strlen(evictionBucketInterval) > 0)
+    {
+        uint64_t nValue = ParseTimeIntervalString(evictionBucketInterval);
+
+
+        if (nValue == 0 || nValue > MaxEvictionBucketIntervalSeconds)
+        {
+            m_nEvictionBucketIntervalSeconds = DefaultEvictionBucketIntervalSeconds;
+            LOG_WARN("Invalid/too-large eviction bucket interval set ({}), using default: {}s",
+                     evictionBucketInterval,
+                     m_nEvictionBucketIntervalSeconds);
+        }
+        else
+        {
+            m_nEvictionBucketIntervalSeconds = nValue;
+            LOG_INFO("Eviction bucket interval seconds: {}", m_nEvictionBucketIntervalSeconds);
+        }
+    }
+    else
+    {
+        m_nEvictionBucketIntervalSeconds = DefaultEvictionBucketIntervalSeconds;
+        LOG_INFO("Eviction bucket interval not set, using default: {}s", m_nEvictionBucketIntervalSeconds);
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 void CacheManager::EvictionWorker()
@@ -1026,7 +1051,7 @@ time_t CacheManager::ParseAndConvertToTime(const std::string& dateTimeString) {
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool CacheManager::GetLastAccessTimeDistribution(
-    uint64_t distributionBucketIntervalInHours,
+    uint64_t distributionBucketIntervalInSeconds,
     ::google::protobuf::Map<int64_t, uint64_t>& lastAccessTimeDistribution) const
 {
     TIMER_START(GetLastAccessTimeDistribution);
@@ -1039,12 +1064,12 @@ bool CacheManager::GetLastAccessTimeDistribution(
         {
             if (cacheInfo.m_status == CacheStatus::COMPLETED)
             {
-                long intervalInSeconds = 3600 * distributionBucketIntervalInHours;
+                long intervalInSeconds = (long)distributionBucketIntervalInSeconds;
                 int64_t lastAccessTimeBucket = (cacheInfo.m_accessTimestamp / intervalInSeconds) * intervalInSeconds;
                 lastAccessTimeDistribution[lastAccessTimeBucket] += cacheInfo.m_fileSize;
             }
         }
-    }   
+    }
 
     for (auto it = lastAccessTimeDistribution.begin(); it != lastAccessTimeDistribution.end(); ++it)
     {
@@ -1082,9 +1107,9 @@ time_t CacheManager::CalculateDynamicEvictionThreshold()
              targetCacheSize, 
              sizeToEvict);
     
-    // Get access time distribution with 1-hour buckets
+    // Get access time distribution bucketized at the configured interval
     ::google::protobuf::Map<int64_t, uint64_t> accessTimeDistribution;
-    if (!GetLastAccessTimeDistribution(1, accessTimeDistribution))
+    if (!GetLastAccessTimeDistribution(m_nEvictionBucketIntervalSeconds, accessTimeDistribution))
     {
         LOG_WARN("Failed to get access time distribution");
         return 0;
@@ -1111,11 +1136,13 @@ time_t CacheManager::CalculateDynamicEvictionThreshold()
         }
     }  
 
-    evictionThreshold = lastBucketTimestamp + 3600; // Add 1 hour to include all entries in this bucket
-    
-    LOG_INFO("Dynamic eviction threshold calculated: {}, will evict ~{} bytes", 
+    evictionThreshold = lastBucketTimestamp + (time_t)m_nEvictionBucketIntervalSeconds; // round up to include all entries in this bucket
+
+    LOG_INFO("Dynamic eviction threshold calculated: {}, will evict ~{} bytes, bucketIntervalSec={}, sizeToEvict={}", 
              LOG_READABLE_TIME_UTC(evictionThreshold), 
-             accumulatedSize);
+             accumulatedSize,
+             m_nEvictionBucketIntervalSeconds,
+             sizeToEvict);
     
     return evictionThreshold;
 }

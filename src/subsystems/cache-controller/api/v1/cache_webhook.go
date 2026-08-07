@@ -87,6 +87,9 @@ func (r *Cache) Default(ctx context.Context, cache *Cache) error {
 	if cache.Spec.Eviction.SizeTarget == nil {
 		cache.Spec.Eviction.SizeTarget = ptr.To(DefaultSizeTarget)
 	}
+	if cache.Spec.Eviction.BucketInterval == nil {
+		cache.Spec.Eviction.BucketInterval = ptr.To(DefaultBucketInterval)
+	}
 
 	if cache.Spec.Storage == nil {
 		cache.Spec.Storage = &StorageConfig{}

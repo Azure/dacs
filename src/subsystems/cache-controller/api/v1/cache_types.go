@@ -81,7 +81,7 @@ type EvictionConfig struct {
 
 	// Frequency of running eviction pass, example "1h30m"
 	// +optional
-	// +kubebuilder:default="1h"
+	// +kubebuilder:default="15m"
 	PassFrequency *string `json:"passFrequency,omitempty"`
 
 	// Target cache utilization percentage after eviction (0-100).
@@ -90,6 +90,13 @@ type EvictionConfig struct {
 	// +optional
 	// +kubebuilder:default="80"
 	SizeTarget *string `json:"sizeTarget,omitempty"`
+
+	// Access-time bucket width used by the maintain-free-space (dynamic) eviction path,
+	// example "15m", "1h", "60s". A smaller interval evicts more precisely (less over-eviction).
+	// Must be at most 1 week; invalid/too-large values fall back to the server default.
+	// +optional
+	// +kubebuilder:default="15m"
+	BucketInterval *string `json:"bucketInterval,omitempty"`
 }
 
 // StorageConfig defines storage configuration for cache data.

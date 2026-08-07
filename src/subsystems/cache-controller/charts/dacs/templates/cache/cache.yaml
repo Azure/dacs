@@ -55,6 +55,7 @@ spec:
     passFrequency: {{ .Values.cache.eviction.passFrequency | quote }}
     sizeTarget: {{ .Values.cache.eviction.sizeTarget | quote }}
     sizeThreshold: {{ .Values.cache.eviction.sizeThreshold | quote }}
+    bucketInterval: {{ .Values.cache.eviction.bucketInterval | quote }}
   storage:
     {{- if .Values.cache.storage.ephemeral }}
     ephemeral: true
