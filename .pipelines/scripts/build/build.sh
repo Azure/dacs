@@ -45,9 +45,9 @@ ninja -j"$(nproc)"
 
 # Build Rust client
 echo "Building Rust client..."
-cargo build \
-  --locked \
-  --manifest-path "$REPOSITORY_ROOT/src/subsystems/storage/rust/dacs_client/Cargo.toml"
+cargo_flags=(--locked --manifest-path "$REPOSITORY_ROOT/src/subsystems/storage/rust/dacs_client/Cargo.toml")
+if [[ "${BUILD_CONFIG}" == "Release" ]]; then cargo_flags=(--release "${cargo_flags[@]}"); fi
+cargo build "${cargo_flags[@]}"
 
 echo ""
 echo "Build complete!"
