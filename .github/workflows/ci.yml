@@ -117,12 +117,12 @@ jobs:
           # tracked independently instead of overwriting one another.
           category: 'trivy-image-${{ matrix.image }}-${{ matrix.arch }}'
 
-  # CPU unit tests: native C++ (ctest) + Go. Reuses the compiled build tree and
-  # restores the native-build toolchain image from the gha cache populated by
-  # the build job, so no source is recompiled (ctest just runs the prebuilt
-  # binaries).
+  # CPU unit tests: native C++ (ctest), Go, and Rust. Reuses the compiled build
+  # tree and restores the native-build toolchain image from the gha cache
+  # populated by the build job, so no source is recompiled (ctest just runs the
+  # prebuilt binaries).
   unit-test:
-    name: CPU unit tests (native + Go, ${{ matrix.arch }})
+    name: CPU unit tests (native + Go + Rust, ${{ matrix.arch }})
     needs: build
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
@@ -160,7 +160,17 @@ jobs:
           artifact: dacs-build-tree-${{ matrix.arch }}
           native-build-image-artifact: dacs-native-build-image-${{ matrix.arch }}
 
-      - name: Run unit tests (native + Go)
+      - name: Cache Cargo dependencies and build outputs
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+        with:
+          path: |
+            ~/.cache/dacs-cargo
+            src/subsystems/storage/rust/dacs_client/target
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/subsystems/storage/rust/dacs_client/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Run unit tests (native + Go + Rust)
         run: make test
 
   # Run the existing controller and 1 GiB performance suites against the images
