@@ -12,6 +12,9 @@ for the cache StatefulSet. It supports two mutually exclusive modes:
 Dynamic scaling includes tolerance bands and stabilization windows to prevent
 unnecessary churn during cluster changes.
 
+For production installation and operational configuration, see the
+[DACS deployment and operations guide](../../../../../user-guide.md).
+
 ## Static Scaling
 
 When `spec.scaling.static` is configured, the desired replica count is always
@@ -69,7 +72,6 @@ Both fields are optional pointers; when nil, the corresponding bound is skipped.
 Stabilization parameters are internal operator configuration, not exposed in the
 Cache CRD. They are set in the controller's config file
 (`cache-controller-config.yaml`) or via environment variables.
-See [Controller Configuration](config.md) for full details.
 
 ```yaml
 # cache-controller-config.yaml
@@ -194,10 +196,10 @@ without waiting for a prior stabilization window to expire.
 
 ## Worked Examples
 
-### Scale-down: AKS node pool shrinking
+### Scale-down: node pool shrinking
 
 Consider a Cache with 10 replicas, default settings (tolerance = 10%), a 5
-minute stabilization window, and an AKS node pool scaling down:
+minute stabilization window, and a node pool scaling down:
 
 | Time | Raw desired | After tolerance | lastAtOrAbove | Stabilized | Action |
 |------|-------------|-----------------|---------------|------------|--------|
@@ -223,9 +225,9 @@ At t=5m, `lastAtOrAbove` is 5 minutes old. The desired count has been
 continuously below current for the full window. A single scale-down to 7
 occurs -- **one ring rebalance** instead of stepping through 9, 8.
 
-### Scale-up: AKS node pool expanding
+### Scale-up: node pool expanding
 
-Consider a Cache with 5 replicas (50% of 10 nodes). AKS scales the pool to 20
+Consider a Cache with 5 replicas (50% of 10 nodes). The cluster scales the pool to 20
 nodes over 4 minutes, with new nodes becoming Ready one by one:
 
 | Time | Nodes | Raw desired | After tolerance | lastAtOrBelow | Stabilized | Action |
@@ -243,9 +245,10 @@ step, `lastAtOrBelow` is never refreshed. At t=5m the window expires and
 scaling jumps directly from 5 to 10 -- **one ring rebalance** for the entire
 node pool expansion.
 
-### AKS node pool upgrade (no scaling)
+### Node pool upgrade (no scaling)
 
-AKS upgrades work by adding surge nodes temporarily, then draining old nodes.
+Many managed Kubernetes upgrades add surge nodes temporarily, then drain old
+nodes.
 With `maxSurge=1` on a 10-node pool, the schedulable count oscillates between
 10 and 11 throughout the upgrade:
 
@@ -449,16 +452,16 @@ different keys.
 
 ```bash
 # Check scaling status
-kubectl get cache <name> -o jsonpath='{.status.scaling}' | jq .
+kubectl get cache <name> -n dacs-system -o jsonpath='{.status.scaling}' | jq .
 
 # Check conditions
-kubectl get cache <name> -o jsonpath='{.status.conditions}' | jq .
+kubectl get cache <name> -n dacs-system -o jsonpath='{.status.conditions}' | jq .
 
 # Watch for scaling events
-kubectl describe cache <name> | grep -A5 scaling
+kubectl describe cache <name> -n dacs-system | grep -A5 scaling
 
 # Check current vs desired
-kubectl get cache <name> -o jsonpath='{.status.desiredServers} desired, {.status.currentServers} current'
+kubectl get cache <name> -n dacs-system -o jsonpath='{.status.desiredServers} desired, {.status.currentServers} current'
 ```
 
 The scaling controller logs at verbosity level 1 (`V(1)`):

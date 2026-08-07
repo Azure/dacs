@@ -4,19 +4,39 @@ Run upload / download throughput tests on a cluster with cache-servers deployed,
 
 ## Usage
 
-Edit the configuration in the script `batch_job_runner.sh` and run it without arguments.
-The K8s cluster should have `dacs-regcred` secret configured to authenticate with the ACR for image pull.
+> **Important:** This workflow is not ready to run externally without
+> configuration. `upload_client.yaml` and `download_client.yaml` contain fixed
+> `spec.template.spec.containers[].image` values, and
+> `batch_job_runner.sh` does not replace them. Publish the image you built to a
+> registry accessible from the cluster, then update both fields before
+> running. If you use manifests under `IB_Perf/`, update their `image:` fields
+> separately.
+
+Edit the configuration in
+`src/subsystems/storage/stress_tests/perf_tests/batch_job_runner.sh`, then run
+it without arguments from the repository root:
+
+```bash
+./src/subsystems/storage/stress_tests/perf_tests/batch_job_runner.sh
+```
+
+If the image registry requires authentication, configure an image pull secret
+and reference it from the test workload.
 
 ### Build and update container
 
-To build and push the PerfClient.cpp container, run:
+The supported repository image flow packages `PerfClient` in the cache test
+client image. From the repository root, run:
 
 ```bash
-# cd <DACS root>
-current_date=$(date +%s)
-docker build . -f src/subsystems/storage/dacs_client/Dockerfile -t dacs.azurecr.io/storage-perf-client:${current_date}
-docker push dacs.azurecr.io/storage-perf-client:${current_date}
+REPOSITORY_ROOT=/path/to/dacs
+cd "$REPOSITORY_ROOT"
+make build BUILD_TYPE=Release
+make images BUILD_TYPE=Release
 ```
-Make sure to update the reference to the image in the K8s YAML files.
+
+This creates `cache-test-client:local`. Publish or retag it using your
+registry's supported workflow, then set the image fields in
+`upload_client.yaml` and `download_client.yaml` to the published image.
 
 **Performance Metrics:** The PerfClient reports detailed per-chunk latency metrics (p50, p90, p99) in addition to throughput measurements, providing better insights into tail latencies.

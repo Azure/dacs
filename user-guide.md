@@ -1,15 +1,21 @@
-# User Guide
+# DACS deployment and operations guide
 
-This guide provides step-by-step instructions for setting up and using the
-DACS Cache Server, including installing Helm, configuring NVMe storage,
-and deploying the cache server cluster.
+Use this guide to install and operate a production DACS deployment with local
+NVMe/RAID storage. It covers prerequisites, installation, configuration,
+verification, scaling, troubleshooting, and uninstall.
 
-## Prerequisites
+For a first deployment without NVMe or RAID provisioning, use the
+[10-minute AKS quickstart](docs/quickstart.md), which creates a single
+ephemeral CacheServer and runs an end-to-end smoke test.
+For the control-plane and data-plane request flow, see
+[Architecture](docs/architecture.md).
+
+## Production prerequisites
 
 Before proceeding, ensure you have the following installed:
 
 - Kubernetes cluster (v1.26+)
-- Kubectl (v1.26+)
+- `kubectl` (v1.26+)
 - Helm (v3.16+)
 - Azure CLI (for AKS deployments)
 
@@ -50,35 +56,24 @@ kubectl get nodes --show-labels | grep dacs.azure.com/processing-unit
 
 You can customize the node selector during installation by setting `cache.nodeSelectorKey` and `cache.nodeSelectorValue`.
 
-### Container Registry Access
+### Published artifacts
 
-The helm charts and container images are hosted in Azure Container Registry (ACR).
-You need to configure your cluster to pull images from the registry.
-
-**Attach ACR to AKS cluster**
-
-```sh
-# Attach ACR to your AKS cluster
-az aks update \
-  --resource-group <your-resource-group> \
-  --name <your-aks-cluster> \
-  --attach-acr dacs
-```
-
+The published DACS OCI charts and images at `dacs.azurecr.io` are publicly
+readable. Helm and Kubernetes can pull them anonymously.
 
 ## Installing Helm
 
 To install Helm, please follow the official [Helm installation guide](https://helm.sh/docs/intro/install/).
 
-## Installing dacs
+## Install DACS
 
-### Step 1: Login to Azure Container Registry
+Use the same release version for the prerequisite and DACS charts. The DACS
+chart's `appVersion` identifies the matching image tag. If you override image
+settings, keep `dacs.azurecr.io/cache-controller`,
+`dacs.azurecr.io/cache-server`, and
+`dacs.azurecr.io/cache-test-client` on that matching version.
 
-```sh
-az acr login --name dacs
-```
-
-### Step 2: Install NVMe RAID Prerequisites (Required)
+### Step 1: Install NVMe RAID Prerequisites (Required)
 
 The cache server requires local NVMe storage to be configured as a RAID array.
 Install the prerequisite chart to automatically set up RAID on each node:
@@ -103,7 +98,7 @@ When installed, a DaemonSet will automatically:
 > The RAID setup is idempotent. If a RAID array already exists, the script
 > will detect it and skip creation.
 
-### Step 3: Install DACS Cache Controller
+### Step 2: Install DACS Cache Controller
 
 The `dacs` chart deploys a Kubernetes controller that manages cache
 infrastructure through a Cache custom resource (CR).
@@ -114,10 +109,12 @@ helm install dacs \
   --version <version> \
   --namespace dacs-system \
   --create-namespace \
+  --set manager.image.repository=dacs.azurecr.io/cache-controller \
+  --set manager.cacheServerImage.repository=dacs.azurecr.io/cache-server \
   --wait --timeout 10m
 ```
 
-### Step 4: Deploy a Cache Instance
+### Step 3: Deploy a Cache Instance
 
 Create a cache cluster by enabling the Cache CR:
 
@@ -126,6 +123,8 @@ helm upgrade dacs \
   oci://dacs.azurecr.io/acstor/charts/dacs \
   --version <version> \
   --namespace dacs-system \
+  --set manager.image.repository=dacs.azurecr.io/cache-controller \
+  --set manager.cacheServerImage.repository=dacs.azurecr.io/cache-server \
   --set cache.enabled=true \
   --set cache.scaling.static.numServers=3 \
   --set cache.serverSizeInGB=100
@@ -164,6 +163,13 @@ NAME           AGE
 cache-sample   2m
 ```
 
+Check the discovery service. Cache clients use this service to discover
+CacheServers and connect on port `9065`:
+
+```sh
+kubectl get service cache-sample-discovery -n dacs-system
+```
+
 Check the cache server pods (created by the controller). Pod names are
 derived from the Cache CR name (default `cache-sample`):
 
@@ -195,6 +201,8 @@ helm upgrade dacs \
   oci://dacs.azurecr.io/acstor/charts/dacs \
   --version <version> \
   --namespace dacs-system \
+  --set manager.image.repository=dacs.azurecr.io/cache-controller \
+  --set manager.cacheServerImage.repository=dacs.azurecr.io/cache-server \
   --set cache.enabled=true \
   --set cache.scaling.static.numServers=5 \
   --set cache.serverSizeInGB=100 \
@@ -212,6 +220,12 @@ and [values.yaml](src/subsystems/cache-controller/charts/dacs/values.yaml).
 For complex configurations, create a `values.yaml` file:
 
 ```yaml
+manager:
+  image:
+    repository: dacs.azurecr.io/cache-controller
+  cacheServerImage:
+    repository: dacs.azurecr.io/cache-server
+
 cache:
   enabled: true
   scaling:
@@ -242,6 +256,33 @@ helm upgrade --install dacs \
   --namespace dacs-system \
   -f values.yaml
 ```
+
+## Scale a cache
+
+For a statically scaled cache, update `numServers` with the same chart version
+used for the deployment:
+
+```sh
+helm upgrade dacs \
+  oci://dacs.azurecr.io/acstor/charts/dacs \
+  --version <version> \
+  --namespace dacs-system \
+  --reuse-values \
+  --set cache.scaling.static.numServers=<server-count>
+```
+
+Verify the requested replicas and pod readiness:
+
+```sh
+kubectl get cache cache-sample -n dacs-system
+kubectl get pods \
+  -n dacs-system \
+  --selector=dacs.azure.com/cache-name=cache-sample
+```
+
+For percentage-based dynamic scaling, server bounds, stabilization behavior,
+and scaling status, see
+[Cache controller scaling](src/subsystems/cache-controller/docs/controller/scaling.md).
 
 ## Monitoring
 
@@ -325,9 +366,9 @@ Check logs:
 kubectl logs <cache-name>-0 -n dacs-system --previous
 ```
 
-## Uninstalling dacs
+## Uninstall DACS
 
-To uninstall dacs, follow these steps:
+To uninstall DACS, follow these steps:
 
 1. Delete Cache custom resources first:
 
@@ -338,7 +379,7 @@ To uninstall dacs, follow these steps:
    > [!NOTE]
    > Deleting the Cache CR removes the cache server StatefulSet and pods.
 
-2. Uninstall the dacs controller:
+2. Uninstall the DACS controller:
 
    ```sh
    helm uninstall dacs -n dacs-system
@@ -359,3 +400,8 @@ To uninstall dacs, follow these steps:
    ```sh
    kubectl delete namespace dacs-system
    ```
+
+## Development and contribution
+
+To build DACS locally, see [Build from source](docs/build-from-source.md).
+Before proposing a change, read [Contributing](CONTRIBUTING.md).

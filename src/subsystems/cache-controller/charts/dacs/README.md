@@ -26,7 +26,7 @@ helm install dacs ./charts/dacs \
   --namespace dacs-system \
   --create-namespace \
   --values ./charts/dacs/values.yaml \
-  --set cache.enable=true
+  --set cache.enabled=true
 ```
 
 ## Configuration
@@ -122,19 +122,21 @@ kubectl logs -n dacs-system -l app.kubernetes.io/name=dacs -f
 
 ### Cache Pods Pending
 
-**Common cause:** Cache server pods with persistent storage (`storage.ephemeral=false`) require a custom scheduler (`cacheserver-scheduler`) which must be deployed separately.
+Persistent-storage scheduling is integrated into the controller manager; do
+not deploy a separate scheduler. Persistent cache pods use
+`schedulerName: cache-controller`.
 
 Check which scheduler the pod is using (pod names are `<cache-name>-<ordinal>`):
 ```bash
-kubectl get pod <cache-name>-0 -n cache-server -o jsonpath='{.spec.schedulerName}'
+CACHE_NAME=cache-sample
+kubectl get pod "$CACHE_NAME-0" -n cache-server -o jsonpath='{.spec.schedulerName}'
 ```
 
-**Solutions:**
-- Use ephemeral storage: `--set cache.storage.ephemeral=true` (uses default scheduler)
-- Or deploy the `cacheserver-scheduler` before installing the chart
+If a pod remains pending, inspect its scheduling events and verify that the
+configured host path and node selection match available nodes:
 
-Also check node selector:
 ```bash
+kubectl describe pod "$CACHE_NAME-0" -n cache-server
 kubectl describe cache -n cache-server
 kubectl get nodes --show-labels
 ```
