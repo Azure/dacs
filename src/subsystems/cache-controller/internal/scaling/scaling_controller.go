@@ -159,19 +159,12 @@ func (r *Reconciler) desiredDynamicReplicas(ctx context.Context, cache *storagev
 	return norm.Replicas, nil
 }
 
-// MapNodeToCaches maps a Node event to the Cache CRs whose NodeSelectorKey/Value
-// match the node's labels, so the controller is triggered for the correct Cache.
-// This lists all Cache CRs (not just dynamic-scaling ones) because node changes
-// also affect scheduling decisions for statically-scaled caches.
+// MapNodeToCaches maps a Node event to all Cache CRs with a node selector.
+// This ensures label removals trigger reconciliation too.
 func (r *Reconciler) MapNodeToCaches(ctx context.Context, obj client.Object) []reconcile.Request {
 	log := logf.FromContext(ctx).WithName("MapNodeToCaches").WithValues("node", klog.KObj(obj))
 	node, ok := obj.(*corev1.Node)
 	if !ok || node == nil {
-		return nil
-	}
-
-	if node.Labels == nil {
-		log.V(4).Info("node has no labels, skipping since it can't match anything")
 		return nil
 	}
 
@@ -190,10 +183,6 @@ func (r *Reconciler) MapNodeToCaches(ctx context.Context, obj client.Object) []r
 		}
 		if cache.Spec.NodeSelectorValue == nil {
 			log.V(4).Info("cache has no node selector value, skipping")
-			continue
-		}
-		if node.Labels[*cache.Spec.NodeSelectorKey] != *cache.Spec.NodeSelectorValue {
-			log.V(4).Info("node label does not match cache node selector")
 			continue
 		}
 		requests = append(requests, reconcile.Request{

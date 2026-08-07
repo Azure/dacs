@@ -18,11 +18,13 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 var (
@@ -374,14 +376,7 @@ var _ = Describe("Scaling Reconciler", func() {
 			Expect(reqs).To(BeNil())
 		})
 
-		It("should return nil for nodes with no labels", func() {
-			r := &Reconciler{Client: k8sClient, scheme: scheme.Scheme}
-			node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "unlabeled"}}
-			reqs := r.MapNodeToCaches(ctx, node)
-			Expect(reqs).To(BeNil())
-		})
-
-		It("should return matching Cache CRs when node labels match selector", func() {
+		It("should return selector-based Cache CRs for every node label change", func() {
 			By("creating Cache CRs with different selectors")
 			matchKey := "pool"
 			matchVal := "gpu"
@@ -427,6 +422,11 @@ var _ = Describe("Scaling Reconciler", func() {
 				_ = k8sClient.Delete(ctx, cacheNoSelector)
 			})
 
+			var defaultedCache storagev1.Cache
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cacheNoSelector.Name, Namespace: ns}, &defaultedCache)).To(Succeed())
+			Expect(defaultedCache.Spec.NodeSelectorKey).To(Equal(ptr.To(storagev1.DefaultNodeSelectorKey)))
+			Expect(defaultedCache.Spec.NodeSelectorValue).To(Equal(ptr.To(storagev1.DefaultNodeSelectorValue)))
+
 			r := &Reconciler{Client: k8sClient, scheme: scheme.Scheme}
 			node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
 				Name:   "gpu-node-1",
@@ -434,9 +434,16 @@ var _ = Describe("Scaling Reconciler", func() {
 			}}
 
 			reqs := r.MapNodeToCaches(ctx, node)
-			Expect(reqs).To(HaveLen(1), "should match only the gpu cache")
-			Expect(reqs[0].Name).To(Equal("cache-gpu"))
-			Expect(reqs[0].Namespace).To(Equal(ns))
+			expected := []reconcile.Request{
+				{NamespacedName: types.NamespacedName{Name: cacheMatch.Name, Namespace: ns}},
+				{NamespacedName: types.NamespacedName{Name: cacheNoMatch.Name, Namespace: ns}},
+				{NamespacedName: types.NamespacedName{Name: cacheNoSelector.Name, Namespace: ns}},
+			}
+			Expect(reqs).To(ConsistOf(expected), "all admitted caches should reconcile")
+
+			node.Labels = nil
+			reqs = r.MapNodeToCaches(ctx, node)
+			Expect(reqs).To(ConsistOf(expected), "label removal should reconcile the same caches")
 		})
 	})
 

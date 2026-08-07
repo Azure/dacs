@@ -313,6 +313,70 @@ func TestPodAffinityHonoredAgentpool(t *testing.T) {
 	assertPodScheduledToOneOfNodes(t, schedulerInstructions, "cachens", "cacheserver-2", freeUserNodes, "Scheduling pod on healthy node")
 }
 
+func TestAllPodsEvictedWhenNodeNoLongerMatchesAffinity(t *testing.T) {
+	resetTracker()
+
+	podStates := []PodStatus{
+		PodStatusRunning,
+		PodStatusPending,
+		PodStatusNotReady,
+		PodStatusFailed,
+		PodStatusUnknown,
+		PodStatusSucceeded,
+		PodStatusTerminating,
+	}
+	nodes := CreateMockGpuNodeList(len(podStates))
+	pods := make([]Pod, 0, len(podStates))
+	for i, state := range podStates {
+		pods = append(pods, CreateMockPod("cachens", i, nodes[i].NodeName, state, true))
+	}
+
+	assert.Equal(t, len(getSchedulerInstructions(pods, nodes)), 0)
+
+	for i := range nodes {
+		nodes[i].NodeLabels["dacs.azure.com/processing-unit"] = "cpu"
+	}
+
+	schedulerInstructions := getSchedulerInstructions(pods, nodes)
+	assert.Equal(t, len(schedulerInstructions), len(podStates)-1)
+	for _, pod := range pods[:len(pods)-1] {
+		assertPodDeleted(
+			t,
+			schedulerInstructions,
+			pod.Namespace,
+			pod.PodName,
+			"Node "+pod.NodeName+" no longer matches pod affinity dacs.azure.com/processing-unit=gpu",
+		)
+	}
+	terminatingPod := pods[len(pods)-1]
+	assert.Assert(
+		t,
+		getSchedulerInstructionForPod(schedulerInstructions, terminatingPod.Namespace, terminatingPod.PodName) == nil,
+		"terminating pod should not receive another delete instruction",
+	)
+}
+
+func TestSchedulerBypassedPodNotEvicted(t *testing.T) {
+	resetTracker()
+
+	nodes := CreateMockGpuNodeList(2)
+	nodes[0].NodeLabels["dacs.azure.com/processing-unit"] = "cpu"
+	pod := CreateMockPod("cachens", 0, "node-0", PodStatusRunning, true)
+	pod.SchedulerBypassed = true
+
+	assert.Equal(t, len(getSchedulerInstructions([]Pod{pod}, nodes)), 0)
+}
+
+func TestPodNotEvictedWhenCurrentNodeIsMissing(t *testing.T) {
+	resetTracker()
+
+	nodes := CreateMockGpuNodeList(1)
+	nodes[0].NodeName = "node-1"
+	pod := CreateMockPod("cachens", 0, "node-0", PodStatusRunning, true)
+
+	assert.Equal(t, len(getSchedulerInstructions([]Pod{pod}, nodes)), 0)
+}
+
 func TestContinousStuckPod(t *testing.T) {
 	resetTracker()
 
