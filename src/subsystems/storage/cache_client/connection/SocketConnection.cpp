@@ -9,6 +9,7 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <netinet/tcp.h>
+#include <algorithm>
 #include <string.h>
 #include <errno.h>
 //---------------------------------------------------------------------------------------------------------------------
@@ -32,6 +33,7 @@ SocketConnection::SocketConnection(int socketFd)
 , m_sendAttempted(false)
 , m_rcvTimeoutMillis(0)
 , m_sndTimeoutMillis(0)
+, m_requestBytesWritten(0)
 {
     ResetConnection();
 }
@@ -99,6 +101,7 @@ bool SocketConnection::IsValidConnection()
 void SocketConnection::ResetConnection()
 {
     m_sendAttempted = false;
+    m_requestBytesWritten = 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t SocketConnection::TimedRead(void* buf, size_t nByte)
@@ -108,7 +111,7 @@ ssize_t SocketConnection::TimedRead(void* buf, size_t nByte)
     pollFDs[0].fd = m_socketFd;
     pollFDs[0].events = POLLIN;
 
-    const int timeoutMillis = GetTimeoutMillis(nByte);
+    const int timeoutMillis = GetTimeoutMillis(std::max<uint64_t>(nByte, m_requestBytesWritten));
     int pollResult = poll(pollFDs, 1, timeoutMillis);
     if (pollResult == 0)
     {
@@ -241,6 +244,10 @@ ssize_t SocketConnection::TimedWrite(const void* buf, size_t nByte)
                  m_socketFd,
                  errno,
                  strerror(errno));
+    }
+    else if (written > 0)
+    {
+        m_requestBytesWritten += written;
     }
 
     return written;
