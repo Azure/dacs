@@ -1,11 +1,12 @@
 name: Build
 
-# Reusable build workflow (workflow_call). Compiles the native (C++) and Go code
-# and packages the component images and the Python wheel. The image builds are
-# split per image so they run on separate runners in parallel:
+# Reusable build workflow (workflow_call). Compiles the native (C++), Go, and
+# Rust code and packages the component images, Python wheel, and Rust crate.
+# The image builds are split per image so they run on separate runners:
 #
 #   compile --+--> images-cpp (matrix: cache-server, cache-test-client)
 #             +--> python-package (make python-package) -> dacs-wheel artifact
+#             +--> rust-package (make rust-package) -> dacs-rust-crate artifact
 #   images-go (matrix: scheduler, controller)   # no needs: runs alongside compile
 #
 # The two Go images compile Go from source inside their own Dockerfiles and do
@@ -80,6 +81,16 @@ jobs:
           key: ccache-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
           restore-keys: |
             ccache-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Cache Cargo dependencies and build outputs
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+        with:
+          path: |
+            ~/.cache/dacs-cargo
+            src/subsystems/storage/rust/dacs_client/target
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/subsystems/storage/rust/dacs_client/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ runner.arch }}-
 
       # Build the native toolchain image from the repo so we never depend on the
       # private ACR. The tag matches what bldenv.sh looks up (derived from the
@@ -316,5 +327,51 @@ jobs:
         with:
           name: dacs-wheel-${{ inputs.build_arch }}
           path: src/subsystems/storage/dacs_client/dist/*.whl
+          retention-days: 1
+          if-no-files-found: error
+
+  # Package the Rust client with the matching architecture's native library.
+  # This job only uploads a workflow artifact and has no package publishing
+  # permissions or registry credentials.
+  rust-package:
+    name: Rust package (crate)
+    needs: compile
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      BUILD_TYPE: ${{ inputs.build_type }}
+      BUILD_ARCH: ${{ inputs.build_arch }}
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Restore build tree
+        uses: ./.github/actions/restore-build
+        with:
+          artifact: dacs-build-tree-${{ inputs.build_arch }}
+          native-build-image-artifact: dacs-native-build-image-${{ inputs.build_arch }}
+
+      - name: Cache Cargo dependencies and build outputs
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+        with:
+          path: |
+            ~/.cache/dacs-cargo
+            src/subsystems/storage/rust/dacs_client/target
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/subsystems/storage/rust/dacs_client/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Build Rust crate
+        run: make rust-package
+
+      - name: Upload Rust crate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dacs-rust-crate-${{ inputs.build_arch }}
+          path: src/subsystems/storage/rust/dacs_client/target/package/*.crate
           retention-days: 1
           if-no-files-found: error
