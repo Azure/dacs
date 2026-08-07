@@ -158,6 +158,10 @@ func schedule(ctx context.Context, tracker *Tracker, cacheKey string) []Schedule
 		})
 	}
 
+	if instructions := getAffinityMismatchDeleteInstructions(tracker, scheduledPods); len(instructions) > 0 {
+		schedulerInstructions = append(schedulerInstructions, instructions...)
+	}
+
 	// Excess pods (ordinal >= desired replicas) are NOT deleted here.
 	// The StatefulSet controller handles scale-down gracefully, honoring
 	// terminationGracePeriodSeconds and PreStop hooks. Force-deleting
@@ -230,6 +234,36 @@ func formatResourceList(resourceList v1.ResourceList) string {
 	}
 	sort.Strings(parts)
 	return fmt.Sprintf("[%s]", strings.Join(parts, ", "))
+}
+
+// Returns delete instructions for pods whose node no longer matches their affinity.
+func getAffinityMismatchDeleteInstructions(tracker *Tracker, scheduledPods []Pod) []SchedulerInstruction {
+	var instructions []SchedulerInstruction
+
+	for _, pod := range scheduledPods {
+		if pod.SchedulerBypassed || pod.State == PodStatusTerminating {
+			continue
+		}
+		// Stuck pods already receive a delete instruction earlier in this scheduling cycle,
+		// so we dont issue another duplicate delete instructions
+		if podState, found := tracker.lookupPodMap(pod.Namespace, pod.PodName); found && isPodStuck(podState, tracker.Config) {
+			continue
+		}
+
+		node, found := tracker.State.CurrentNodes[pod.NodeName]
+		if !found || matchesAffinity(node.NodeInfo, pod.NodeSelectorKey, pod.NodeSelectorValue) {
+			continue
+		}
+
+		instructions = append(instructions, SchedulerInstruction{
+			Type:      DeleteInstruction,
+			PodName:   pod.PodName,
+			Namespace: pod.Namespace,
+			Reason:    fmt.Sprintf("Node %s no longer matches pod affinity %s=%s", pod.NodeName, pod.NodeSelectorKey, pod.NodeSelectorValue),
+		})
+	}
+
+	return instructions
 }
 
 // UpdateAndSchedule atomically updates the tracker with the given nodes
