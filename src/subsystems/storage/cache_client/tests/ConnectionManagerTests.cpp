@@ -843,6 +843,53 @@ TEST_F(ConnectionManagerTests, RecvTimeoutSocketOptionUpdatedForDifferentSize)
     close(spFds[1]);
 }
 //---------------------------------------------------------------------------------------------------------------------
+TEST_F(ConnectionManagerTests, RequestBytesWrittenControlsReceiveTimeout)
+{
+    int spFds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, spFds), 0);
+
+    constexpr size_t headerSize = 4;
+    constexpr uint64_t mediumUploadSize = 10ULL * 1024 * 1024;
+    constexpr uint64_t largeUploadSize = 4ULL * 1024 * 1024 * 1024;
+    const int mediumTimeoutMs = SocketConnection::GetTimeoutMillis(mediumUploadSize);
+    const int largeTimeoutMs = SocketConnection::GetTimeoutMillis(largeUploadSize);
+    const int defaultTimeoutMs = SocketConnection::GetTimeoutMillis(headerSize);
+
+    char responseData[headerSize * 3] = {};
+    ASSERT_EQ((int)write(spFds[1], responseData, sizeof(responseData)), (int)sizeof(responseData));
+
+    {
+        SocketConnection conn(spFds[0]);
+        char recvBuf[headerSize];
+        struct timeval tv{};
+        socklen_t len = sizeof(tv);
+
+        char requestData[headerSize] = {};
+        ASSERT_EQ(conn.Send(requestData, headerSize), (int)headerSize);
+        ASSERT_EQ(conn.Send(requestData, headerSize), (int)headerSize);
+        EXPECT_EQ(conn.m_requestBytesWritten, headerSize * 2);
+
+        conn.m_requestBytesWritten = mediumUploadSize;
+        ASSERT_EQ(conn.Receive(recvBuf, headerSize), (int)headerSize);
+        ASSERT_EQ(getsockopt(spFds[0], SOL_SOCKET, SO_RCVTIMEO, &tv, &len), 0);
+        EXPECT_EQ((int)(tv.tv_sec * 1000 + tv.tv_usec / 1000), mediumTimeoutMs);
+        EXPECT_EQ(mediumTimeoutMs, 20000);
+
+        conn.m_requestBytesWritten = largeUploadSize;
+        ASSERT_EQ(conn.Receive(recvBuf, headerSize), (int)headerSize);
+        ASSERT_EQ(getsockopt(spFds[0], SOL_SOCKET, SO_RCVTIMEO, &tv, &len), 0);
+        EXPECT_EQ((int)(tv.tv_sec * 1000 + tv.tv_usec / 1000), largeTimeoutMs);
+        EXPECT_EQ(largeTimeoutMs, 120000);
+
+        conn.ResetConnection();
+        ASSERT_EQ(conn.Receive(recvBuf, headerSize), (int)headerSize);
+        ASSERT_EQ(getsockopt(spFds[0], SOL_SOCKET, SO_RCVTIMEO, &tv, &len), 0);
+        EXPECT_EQ((int)(tv.tv_sec * 1000 + tv.tv_usec / 1000), defaultTimeoutMs);
+        EXPECT_EQ(defaultTimeoutMs, 15000);
+    }
+    close(spFds[1]);
+}
+//---------------------------------------------------------------------------------------------------------------------
 TEST_F(ConnectionManagerTests, SndTimeoutSocketOptionIsSetAfterSend)
 {
     // Verify SO_SNDTIMEO is set to GetTimeoutMillis(N) on the socket after Send(buf, N).
