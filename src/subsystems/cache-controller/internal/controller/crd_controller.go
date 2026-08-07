@@ -275,6 +275,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		EvictionPassFrequency        string
 		EvictionMaintainFreeSpace    bool
 		EvictionSizeTarget           string
+		EvictionBucketInterval       string
 		InfinibandResourceLimitCount int32
 		InfinibandResourceLimitName  string
 		MemoryLimitMB                *int32
@@ -335,6 +336,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		EvictionPassFrequency:        *cache.Spec.Eviction.PassFrequency,
 		EvictionMaintainFreeSpace:    *cache.Spec.Eviction.EvictionMaintainFreeSpace,
 		EvictionSizeTarget:           *cache.Spec.Eviction.SizeTarget,
+		EvictionBucketInterval:       *cache.Spec.Eviction.BucketInterval,
 		InfinibandResourceLimitCount: *cache.Spec.InfinibandResourceLimitCount,
 		InfinibandResourceLimitName:  *cache.Spec.InfinibandResourceLimitName,
 		MemoryLimitMB:                cache.Spec.MemoryLimitMB,

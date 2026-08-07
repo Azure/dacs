@@ -25,10 +25,12 @@ cacheServer:
   evictionEnabled: true
   evictionLastAccessThreshold: 30d
   evictionSizeThreshold: 90
-  evictionPassFrequency: 1h
+  evictionPassFrequency: 15m
   #Enables eviction to maintain free space on the cache server.
   evictionMaintainFreeSpace: true
   evictionSizeTarget: 80
+  # Access-time bucket width for maintain-free-space eviction (max 1 week).
+  evictionBucketInterval: 15m
   mountSsdPath: /host/mnt/ssd0
   port: 9065
   metricsPort: 9096

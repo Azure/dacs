@@ -37,7 +37,8 @@ const (
 	DefaultEvictionMaintainFreeSpace    = true
 	DefaultLastAccessThreshold          = "30d"
 	DefaultSizeThreshold                = "90"
-	DefaultPassFrequency                = "1h"
+	DefaultPassFrequency                = "15m"
 	DefaultSizeTarget                   = "80"
+	DefaultBucketInterval               = "15m"
 	DefaultNodeCacheFolderPath          = "/var/lib/ssd/cacheserver"
 )

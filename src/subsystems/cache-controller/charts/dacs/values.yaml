@@ -207,9 +207,10 @@ cache:
     enableAccessTimeEviction: true
     evictionMaintainFreeSpace: true
     lastAccessThreshold: "30d"
-    passFrequency: "1h"
+    passFrequency: "15m"
     sizeTarget: "80"
     sizeThreshold: "90"
+    bucketInterval: "15m"
 
   # Storage configuration
   storage:
