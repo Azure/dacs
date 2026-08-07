@@ -41,7 +41,13 @@ cmake \
   "$REPOSITORY_ROOT"
 
 # Build with Ninja - use all available cores
-ninja -j$(nproc)
+ninja -j"$(nproc)"
+
+# Build Rust client
+echo "Building Rust client..."
+cargo_flags=(--locked --manifest-path "$REPOSITORY_ROOT/src/subsystems/storage/rust/dacs_client/Cargo.toml")
+if [[ "${BUILD_CONFIG}" == "Release" ]]; then cargo_flags=(--release "${cargo_flags[@]}"); fi
+cargo build "${cargo_flags[@]}"
 
 echo ""
 echo "Build complete!"
