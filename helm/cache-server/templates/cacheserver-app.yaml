@@ -70,6 +70,8 @@ spec:
           value: {{ .Values.cacheServer.evictionMaintainFreeSpace | quote }}
         - name: CACHESERVER_EVICTION_SIZE_TARGET
           value: {{ .Values.cacheServer.evictionSizeTarget | quote }}
+        - name: CACHESERVER_EVICTION_BUCKET_INTERVAL
+          value: {{ .Values.cacheServer.evictionBucketInterval | quote }}
         - name: CACHESERVER_USE_ZEROCOPY
           value: {{ ternary "1" "0" .Values.cacheServer.useZeroCopy | quote }}
 {{- if has "gpu" .Values.cacheServer.nodeSelectorLabelValues }}

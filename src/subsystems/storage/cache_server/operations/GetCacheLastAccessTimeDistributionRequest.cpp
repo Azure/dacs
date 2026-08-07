@@ -68,8 +68,11 @@ bool GetLastAccessTimeDistribution(
         return SendMessageToRemoteFinal(clientConnection, getCacheLastAccessTimeDistributionResponse, requestid);
     }
 
+    // TODO: the request field is in hours but CacheManager::GetLastAccessTimeDistribution
+    // now takes seconds. Converting here as a temporary fix. Proper fix: make the wire protocol /
+    // client pass the interval in seconds and rename distributionbucketsizeinhours accordingly.
     bool temp = CacheManager::GetInstance().GetLastAccessTimeDistribution(
-        getLastAccessTimeDistributionRequest.distributionbucketsizeinhours(),
+        static_cast<uint64_t>(getLastAccessTimeDistributionRequest.distributionbucketsizeinhours()) * 3600ULL,
         *(getCacheLastAccessTimeDistributionResponse.mutable_distributionmap()));
     if (temp)
     {

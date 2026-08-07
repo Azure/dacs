@@ -135,7 +135,7 @@ class CacheManager
             return (double)m_totalCachedSize.load() * 100.0 / m_cacheSizeLimitBytes;
         }
 
-        bool GetLastAccessTimeDistribution(uint64_t distributionBucketIntervalInHours,
+        bool GetLastAccessTimeDistribution(uint64_t distributionBucketIntervalInSeconds,
                                            ::google::protobuf::Map<int64_t, uint64_t>& lastAccessTimeDistributionMap) const;
 
       private:
@@ -204,6 +204,10 @@ class CacheManager
         // Parameter used by the dynamic eviction algorithm to determine target utilization after eviction.
         // Target utilization percentage (e.g., 70 means target 70% utilization)
         double m_dEvictionSizeTarget;
+        // Bucket granularity (in seconds) used by the dynamic eviction algorithm to bucketize the
+        // last-access-time distribution and to round up the computed eviction cutoff. Historically
+        // hardcoded to 3600 (1 hour); now configurable via CACHESERVER_EVICTION_BUCKET_INTERVAL.
+        uint64_t m_nEvictionBucketIntervalSeconds;
         std::atomic_bool m_bStopEvictionThread;
         std::mutex m_mutexEviction; // really only used by the wait_for
         std::condition_variable m_cvEviction;

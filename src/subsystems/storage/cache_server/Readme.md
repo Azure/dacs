@@ -54,7 +54,15 @@ invalid, the cache server falls back to 90% of the Eviction Size Threshold.
 
 ### CACHESERVER_EVICTION_PASS_FREQUENCY
 Values: Frequency of running eviction pass, example "1h30m"
-Default is set to 1 hour
+Default is 15 minutes (900s)
+
+### CACHESERVER_EVICTION_BUCKET_INTERVAL
+Values: Access-time bucket width used by the maintain-free-space (dynamic) eviction algorithm,
+in the same time-interval format as the other eviction settings, example "1h", "5m", "60s".
+Only used when CACHESERVER_EVICTION_MAINTAIN_FREE_SPACE is true. It controls how finely cached
+entries are grouped by last-access time when computing the eviction cutoff: a smaller interval
+evicts more precisely (less over-eviction), a larger interval is coarser and can over-evict.
+Default is 15 minutes (900s). Invalid or too-large (> 1 week) values fall back to the default.
 
 ### CACHESERVER_SOCKET_SNDBUF_SIZE
 Values: Send buffer size in bytes (e.g., 4194304 for 4 MiB)
