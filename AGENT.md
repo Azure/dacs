@@ -32,7 +32,7 @@ DACS (internally "dacs") is a high-performance distributed caching system for Ku
 
 ### Key Dependencies
 - **Boost** - C++ utilities
-- **spdlog** - Logging
+- **fmt** - Logging
 - **nlohmann/json** - JSON serialization (supports BSON, CBOR)
 - **Google Test** - C++ unit testing
 - **Prometheus C++** - Metrics

@@ -14,7 +14,8 @@ DACS (dacs) is a high-performance distributed caching system for Kubernetes. Thi
 
 When writing C++ code:
 - Follow existing naming conventions in the codebase
-- Use `spdlog` for logging
+- Use the repository logging macros (e.g., `LOG_ERROR`, `LOG_WARN`, `LOG_INFO`, `LOG_DEBUG`)
+- Use `fmt` for formatting
 - Use `nlohmann/json` for JSON serialization
 - Use Google Test for unit tests
 - Prefer smart pointers over raw pointers
@@ -45,7 +46,7 @@ When writing Go code:
 
 ### C++ Libraries
 - **Boost**: General utilities
-- **spdlog**: Structured logging
+- **fmt**: Structured logging
 - **nlohmann/json**: JSON/BSON/CBOR serialization
 - **Google Test (gtest)**: Unit testing
 - **Prometheus C++**: Metrics exposition
@@ -106,7 +107,7 @@ make test-e2e                   # Run E2E tests
 // Error handling with status codes
 Status status = cache_client->Get(key, &value);
 if (!status.ok()) {
-    SPDLOG_ERROR("Cache get failed: {}", status.message());
+    LOG_ERROR("Cache get failed: {}", status.message());
     return status;
 }
 ```

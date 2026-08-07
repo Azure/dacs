@@ -203,7 +203,7 @@ bool ReadFileData(/*[in]*/ IConnection& clientConnection,
 /**
  * Buffered read-file-data implementation using POSIX write() and fsync()
  * to ensure data persistence.
- * Extracted into its own function so that the stack buffer is only allocated
+ * Extracted into its own function so that the buffer is only allocated
  * when this path is actually taken.
  */
 static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
@@ -224,7 +224,7 @@ static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
     LOG_DEBUG_REQID("Reading file data for file: {}", uploadRequest, uploadRequest.filename());
 
     const uint64_t writeBufferSize = 4 * 1024 * 1024;
-    char buffer[writeBufferSize];
+    std::vector<char> buffer(writeBufferSize);
     int fileFd = -1;
     bool bWriteError = false;
 
@@ -248,7 +248,7 @@ static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
         int bufferPos = 0;
         while (true)
         {
-            int temp = clientConnection.Read(buffer + bufferPos,
+            int temp = clientConnection.Read(buffer.data() + bufferPos,
                                              min(writeBufferSize, uploadRequest.filesize() - totalRead) - bufferPos);
             if (temp <= 0)
             {
@@ -293,7 +293,7 @@ static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
             ssize_t bytesWritten = 0;
             while (bytesWritten < bufferPos)
             {
-                ssize_t w = ::write(fileFd, buffer + bytesWritten, bufferPos - bytesWritten);
+                ssize_t w = ::write(fileFd, buffer.data() + bytesWritten, bufferPos - bytesWritten);
                 if (w <= 0)
                 {
                     if (w < 0 && errno == EINTR)

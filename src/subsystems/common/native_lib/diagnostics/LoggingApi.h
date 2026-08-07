@@ -47,10 +47,10 @@
 (std::chrono::high_resolution_clock::now().time_since_epoch()).count()
 //--------------------------------------------------------------------------------------------------------------------------------------------
 #define FMT_HEADER_ONLY
-#include "spdlog/fmt/bundled/format.h"
-#include "spdlog/fmt/bundled/core.h"
-#include "spdlog/fmt/bundled/ostream.h"
-#include "spdlog/fmt/bundled/ranges.h"
+#include "fmt/format.h"
+#include "fmt/core.h"
+#include "fmt/ostream.h"
+#include "fmt/ranges.h"
 //-------------------------------------------------------------------------------------------------------------------------------------------
 enum class LogLevel
 {

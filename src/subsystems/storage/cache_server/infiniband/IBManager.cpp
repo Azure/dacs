@@ -270,6 +270,13 @@ void IBManager::IBListenerThread()
                 LOG_WARN("Received work completion error={},{} addr={} qp={}",
                     ibv_wc_status_str(wc.status), wc.vendor_err, wc.wr_id, wc.qp_num);
 
+                // For RECV errors the buffer was consumed from the SRQ — mark it available.
+                // For SEND errors the buffer was already marked available when the RECV WC arrived.
+                if (wc.opcode == IBV_WC_RECV)
+                {
+                    MarkBufferRemovedFromSRQ(wc.wr_id);
+                }
+
                 // Reclaim the memory buffer
                 PostWrToSRQ(wc.wr_id);
 
@@ -306,6 +313,9 @@ void IBManager::IBListenerThread()
             }
 
             LOG_DEBUG("Received receive work request addr={} qp={}", wc.wr_id, wc.qp_num);
+
+            // Buffer consumed from SRQ — mark as available so it can be re-posted after processing.
+            MarkBufferRemovedFromSRQ(wc.wr_id);
 
             // Allocate handler to process this work request
             {
@@ -402,6 +412,14 @@ void IBManager::ProcessRequest(const ibv_wc& wc)
 //---------------------------------------------------------------------------------------------------------------------
 void IBManager::PostWrToSRQ(uint64_t bufferAddr)
 {
+    // Guard against duplicate calls (e.g. ProcessRequest failure path racing with a SEND error WC).
+    // exchange(true): if the buffer was already posted (true), skip; otherwise mark posted and proceed.
+    if (m_bufferPosted[BufferIndex(bufferAddr)].exchange(true))
+    {
+        LOG_INFO("PostWrToSRQ: duplicate call for already-posted buffer addr={}", bufferAddr);
+        return;
+    }
+
     struct ibv_sge sg{};
     sg.addr	  = (uintptr_t)(bufferAddr);
     sg.length = IB_BUFFER_SIZE;
@@ -422,5 +440,16 @@ void IBManager::PostWrToSRQ(uint64_t bufferAddr)
     {
         LOG_DEBUG("Posted receive wr addr={}", bufferAddr);
     }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void IBManager::MarkBufferRemovedFromSRQ(uint64_t bufferAddr)
+{
+    m_bufferPosted[BufferIndex(bufferAddr)].store(false);
+}
+//---------------------------------------------------------------------------------------------------------------------
+int IBManager::BufferIndex(uint64_t addr) const
+{
+    auto base = reinterpret_cast<uint64_t>(m_ibDevice.mrBufferBlock.get());
+    return static_cast<int>((addr - base) / IB_BUFFER_SIZE);
 }
 //---------------------------------------------------------------------------------------------------------------------
