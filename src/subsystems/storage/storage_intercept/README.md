@@ -226,7 +226,7 @@ To run integration tests, repeat the 2nd step mentioned in the section: "`Run Un
 In the `/tmp/storageIntercept.config`, make sure to add / edit this config property:
 ```
 ...
-storagePath /mnt/quiverfs
+storagePath /mnt/storage
 ```
 cd to the `integration_tests` directory.
 

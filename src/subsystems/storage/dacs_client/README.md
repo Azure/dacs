@@ -22,9 +22,11 @@ This Python library provides interfaces to perform file operations on Azure blob
 
 ## Installation
 
-Build the DACS Cache Client wheel from this repository before installation.
+Build the DACS Cache Client wheel from this repository or obtain one from your
+build artifacts. No public package index is currently documented for this
+component.
 
-The package is published as `manylinux` wheels for both `x86_64` (amd64) and `aarch64` (arm64). The wheels are repaired with [`auditwheel`](https://github.com/pypa/auditwheel) so that all required native shared libraries (e.g. `libcurl`, `libssl`, `libjsoncpp`, `libuuid`, etc.) are bundled inside the wheel. `pip` automatically selects the correct wheel for your platform.
+The package is built as `manylinux` wheels for both `x86_64` (amd64) and `aarch64` (arm64). The wheels are repaired with [`auditwheel`](https://github.com/pypa/auditwheel) so that all required native shared libraries (e.g. `libcurl`, `libssl`, `libjsoncpp`, `libuuid`, etc.) are bundled inside the wheel. `pip` automatically selects the correct wheel for your platform.
 
 Wheel filenames look like:
 
@@ -37,10 +39,10 @@ The exact `manylinux_X_Y` tag depends on the glibc version of the build image; `
 
 ### Install the DACS Cache Client
 
-Install a locally built wheel:
+Install the wheel selected for your platform:
 
 ```bash
-python -m pip install dist/dacs_client_official-*.whl
+python3 -m pip install /path/to/dacs_client_official-<version>-*.whl
 ```
 
 ---
@@ -95,9 +97,9 @@ DACSCacheClient(executor=None, write_mode=None)
 | `shutdown()` | Close all open file handles and log final metrics (reads, writes, bytes, elapsed time). |
 
 > **Blob path format:** `blob_path` arguments accept three formats:
-> - `az://account.blob.core.windows.net/container/path` (long form — DACS internal format)
-> - `az://account/container/path` (short form — blobfile/boostedblob compatible)
-> - `https://account.blob.core.windows.net/container/path` (https form — blobfile compatible)
+> - `az://account.blob.core.windows.net/container/path` (canonical format)
+> - `az://account/container/path` (blobfile/boostedblob-compatible short form)
+> - `https://account.blob.core.windows.net/container/path` (HTTPS form)
 >
 > All formats are normalized to the long `az://` form internally.
 
@@ -329,18 +331,21 @@ from py_dacs_client.dacs_utils import alloc_buffer, release_buffer, BoundedBuffe
 | `alloc_buffer(size) -> ctypes buffer` | Allocate a raw C buffer of the specified size (via `malloc`). Raises `MemoryError` on failure. |
 | `release_buffer(buffer)` | Release a previously allocated buffer (via `free`). |
 | `get_memory_limit() -> int` | Get the container memory limit in bytes. Uses `DACS_MEMORY_MB` when set; otherwise derives memory as `cpu_core_count * 256 MB` (using `DACS_CPU_CORES` or `os.cpu_count()`). |
-| `BoundedBufferManager(max_memory_limit)` | Async-safe buffer pool that enforces a total memory usage cap. See [BoundedBufferManager](#boundedbuffermanager). |
-
-> **Note:** For production workloads, prefer `BoundedBufferManager` over raw `alloc_buffer`/`release_buffer` to prevent unbounded memory growth when processing many blobs concurrently.
+| `BoundedBufferManager(max_memory_limit)` | Allocation/free wrapper with synchronous and asynchronous APIs. Memory capping is not currently implemented. See [BoundedBufferManager](#boundedbuffermanager). |
 
 #### BoundedBufferManager
 
-An async-safe buffer pool that enforces a total memory usage cap across all concurrent operations. It prevents out-of-memory conditions by blocking `acquire_buffer()` calls when the memory limit would be exceeded, and automatically unblocking them when buffers are released.
+`BoundedBufferManager` is currently a thin wrapper around `alloc_buffer()` and
+`release_buffer()`. Its synchronous and asynchronous acquire methods allocate
+immediately, and its release methods free the supplied buffer.
 
-Internally, `BoundedBufferManager` uses `asyncio.Condition` (not a bare `Event`) so waiters re-check allocation predicates under lock. This avoids lost-wakeup races under high concurrency.
+> **Important:** The current implementation does not enforce
+> `max_memory_limit`, block under memory pressure, prevent out-of-memory
+> conditions, or track allocated bytes. Memory capping is planned for the
+> native C++ layer.
 
 ```python
-from py_dacs_client.dacs_utils import BoundedBufferManager, get_memory_limit
+from py_dacs_client.dacs_utils import BoundedBufferManager
 ```
 
 ##### Constructor
@@ -351,38 +356,24 @@ BoundedBufferManager(max_memory_limit: int = 1024 * 1024 * 1024)
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
-| `max_memory_limit` | `int` | `1073741824` (1 GB) | Maximum total bytes that can be allocated across all buffers. A common pattern is to use 80% of the container memory limit via `get_memory_limit()`. |
-
-`max_memory_limit` must be greater than `0`; otherwise `ValueError` is raised.
+| `max_memory_limit` | `int` | `1073741824` (1 GB) | Stored for observability and future native memory-capping support. It does not currently limit allocations. |
 
 ##### Methods
 
 | Method | Description |
 | --- | --- |
-| `await acquire_buffer(buf_size) -> ctypes.c_void_p` | Allocate a buffer of the requested size. Blocks (async) if the allocation would exceed `max_memory_limit`, resuming automatically when other buffers are released. If `buf_size` exceeds `max_memory_limit`, the allocation proceeds anyway to avoid deadlock. Raises `MemoryError` on `malloc` failure. |
-| `await release_buffer(buffer) -> None` | Release a previously acquired buffer back to the pool (frees the underlying C memory via `free`). Signals waiting `acquire_buffer()` calls that memory may be available. Logs a warning and skips if `buffer` is `None`. If the buffer size cannot be determined, memory is still freed and accounting decrement is skipped with a warning. |
+| `acquire_buffer_sync(buf_size) -> ctypes.c_void_p` | Allocate a buffer immediately through `alloc_buffer()`. |
+| `release_buffer_sync(buffer) -> None` | Free a buffer through `release_buffer()`. Logs a warning and returns when `buffer` is `None`. |
+| `await acquire_buffer(buf_size) -> ctypes.c_void_p` | Async-compatible API that allocates a buffer immediately through `alloc_buffer()`; it does not wait for memory availability. |
+| `await release_buffer(buffer) -> None` | Async-compatible API that frees a buffer through `release_buffer()`. Logs a warning and returns when `buffer` is `None`. |
+| `current_memory_usage` | Always returns `0` because usage accounting is not implemented. |
 
-##### Memory Pressure Logging
-
-`BoundedBufferManager` logs at `INFO` level when memory usage exceeds 90% of the limit, and at `DEBUG` level otherwise. This helps identify memory pressure without excessive log noise.
-
-##### Test Coverage
-
-Unit tests in `py_dacs_client/tests/test_bounded_buffer_manager.py` validate:
-- memory-pressure blocking/unblocking
-- multiple waiting acquirers under constrained memory
-- allocation-failure accounting correctness
-- `None`/unknown buffer release edge cases
-- constructor validation for invalid memory limits
-
-##### Standalone Usage (async)
+##### Usage
 
 ```python
-import asyncio
-from py_dacs_client.dacs_utils import BoundedBufferManager, get_memory_limit
+from py_dacs_client.dacs_utils import BoundedBufferManager
 
-memory_limit = get_memory_limit()
-buffer_manager = BoundedBufferManager(max_memory_limit=int(memory_limit * 0.8))
+buffer_manager = BoundedBufferManager()
 
 async def process_blob(client, blob_path, blob_size):
     buffer = await buffer_manager.acquire_buffer(blob_size)
@@ -391,69 +382,21 @@ async def process_blob(client, blob_path, blob_size):
         # Process the data in buffer...
     finally:
         await buffer_manager.release_buffer(buffer)
-
-# Multiple concurrent reads are automatically bounded
-async def main():
-    tasks = [process_blob(client, path, size) for path, size in blob_list]
-    await asyncio.gather(*tasks)
 ```
 
-##### With DACSBlobfileAdapter (automatic)
+This example provides paired allocation and release, but callers must control
+concurrency and memory use themselves.
 
-When using `DACSBlobfileAdapter`, a singleton `BoundedBufferManager` (80% of container memory) is created automatically — no manual setup is needed. Internal read and write buffers are acquired and released through this shared pool:
+##### With DACSBlobfileAdapter
 
-- **Reads without a user buffer:** The adapter acquires a buffer internally, copies data to Python bytes, and releases the buffer immediately.
+`DACSBlobfileAdapter` creates a shared `BoundedBufferManager` and uses it for
+buffer allocation and release. The shared manager does not currently bound
+aggregate memory use:
+
+- **Reads without a user buffer:** The adapter allocates a buffer internally, copies data to Python bytes, and releases the buffer immediately.
 - **Reads with a user buffer:** The user allocates via `BoundedBufferManager.acquire_buffer()` and is responsible for calling `release_buffer()` after use.
-- **Writes without a user buffer:** The adapter acquires internal buffers that are automatically released on `close()`.
+- **Writes without a user buffer:** The adapter allocates internal buffers that are automatically released on `close()`.
 - **Writes with a user buffer:** The user must keep the buffer alive until `close()` and release it via `BoundedBufferManager.release_buffer()` afterward.
-
-```python
-import asyncio
-from py_dacs_client.dacs_blobfile_adapter import DACSBlobfileAdapter
-from py_dacs_client.dacs_utils import BoundedBufferManager
-
-# For user-managed buffer reads, create or share a BoundedBufferManager
-buffer_manager = BoundedBufferManager(max_memory_limit=1024 * 1024 * 1024)
-
-async def read_blob_with_buffer():
-    buffer = await buffer_manager.acquire_buffer(4096)
-    try:
-        with DACSBlobfileAdapter("az://account.blob.core.windows.net/container/blob", "rb") as f:
-            mv = f.read(size=4096, buffer=buffer)
-            data = bytes(mv)
-    finally:
-        await buffer_manager.release_buffer(buffer)
-
-asyncio.run(read_blob_with_buffer())
-```
-
-##### Concurrent Blob Downloads with Bounded Memory
-
-```python
-import asyncio
-from py_dacs_client.dacs_client import DACSCacheClient
-from py_dacs_client.dacs_utils import BoundedBufferManager, get_memory_limit
-
-memory_limit = get_memory_limit()
-buffer_manager = BoundedBufferManager(max_memory_limit=int(memory_limit * 0.8))
-client = DACSCacheClient()
-
-async def download_blob(blob_path, blob_size):
-    buffer = await buffer_manager.acquire_buffer(blob_size)
-    try:
-        await client.read_blob(blob_path, buffer, blob_size, 0)
-        # Process buffer contents...
-    finally:
-        await buffer_manager.release_buffer(buffer)
-
-async def main():
-    blob_list = [(f"az://account.blob.core.windows.net/container/blob_{i}", 32 * 1024 * 1024) for i in range(100)]
-    tasks = [download_blob(path, size) for path, size in blob_list]
-    await asyncio.gather(*tasks)  # Memory stays within 80% of container limit
-    await client.shutdown()
-
-asyncio.run(main())
-```
 
 ---
 
@@ -476,7 +419,6 @@ DACSError (base)
 │   └── DACSServiceUnavailableError - Temporarily unavailable (EAGAIN)
 └── OperationNotSupportedError   - Unsupported operations (ENOTSUP)
 ```
-
 Usage:
 
 ```python
@@ -542,13 +484,12 @@ async for entry in client.list_dir("az://account.blob.core.windows.net/container
 
 #### Read blob contents
 
-Using `BoundedBufferManager` (recommended for concurrent workloads):
+Using the async-compatible `BoundedBufferManager` allocation/free wrapper:
 
 ```python
-from py_dacs_client.dacs_utils import BoundedBufferManager, get_memory_limit
+from py_dacs_client.dacs_utils import BoundedBufferManager
 
-memory_limit = get_memory_limit()
-buffer_manager = BoundedBufferManager(max_memory_limit=int(memory_limit * 0.8))
+buffer_manager = BoundedBufferManager()
 
 read_size = 33554432  # 32 MB
 buffer = await buffer_manager.acquire_buffer(read_size)
@@ -584,14 +525,13 @@ finally:
 
 #### Write blob contents
 
-Using `BoundedBufferManager` (recommended for concurrent workloads):
+Using the async-compatible `BoundedBufferManager` allocation/free wrapper:
 
 ```python
 import ctypes
-from py_dacs_client.dacs_utils import BoundedBufferManager, get_memory_limit
+from py_dacs_client.dacs_utils import BoundedBufferManager
 
-memory_limit = get_memory_limit()
-buffer_manager = BoundedBufferManager(max_memory_limit=int(memory_limit * 0.8))
+buffer_manager = BoundedBufferManager()
 
 write_size = len(data_bytes)
 buffer = await buffer_manager.acquire_buffer(write_size)
@@ -656,14 +596,14 @@ with DACSBlobfileAdapter("az://account.blob.core.windows.net/container/blob", "r
 
 #### Read with a user-provided buffer (zero-copy)
 
-Using `BoundedBufferManager` (recommended — enforces memory limits):
+Using the async-compatible `BoundedBufferManager` allocation/free wrapper:
 
 ```python
 import asyncio
 from py_dacs_client.dacs_blobfile_adapter import DACSBlobfileAdapter
 from py_dacs_client.dacs_utils import BoundedBufferManager
 
-buffer_manager = BoundedBufferManager(max_memory_limit=1024 * 1024 * 1024)  # 1 GB limit
+buffer_manager = BoundedBufferManager()
 
 buffer = asyncio.run(buffer_manager.acquire_buffer(1024))
 try:
@@ -884,7 +824,7 @@ asyncio.run(main())
 | `CACHE_DISCOVERY_URL` | No | Cache server discovery endpoint URL. Enables dynamic cache server discovery when set with `CACHE_SERVER_PORT`. Takes precedence over `CACHE_SERVER_LIST`. |
 | `CACHE_SERVER_PORT` | No | Cache server port. Required for both static and discovery-based cache configurations. |
 | `BLOBFILE_USE_DACS` | No | Set to `"1"` to auto-enable blobfile monkey-patching on import. See [Blobfile Integration](#blobfile-integration-monkey-patching). |
-| `DACS_MEMORY_MB` | No | Container memory limit in MB. Used by `get_memory_limit()` and `BoundedBufferManager` to derive buffer pool size. If unset/invalid, memory defaults to `cpu_core_count * 256 MB` (e.g., 8 cores → 2 GB, 128 cores → 32 GB). |
+| `DACS_MEMORY_MB` | No | Container memory limit in MB returned by `get_memory_limit()`. If unset/invalid, the value defaults to `cpu_core_count * 256 MB` (e.g., 8 cores -> 2 GB, 128 cores -> 32 GB). `BoundedBufferManager` does not currently enforce this value. |
 | `DACS_PY_CACHE_CLIENT_THREADPOOL_SIZE` | No | Thread pool size for parallel downloads. Defaults to `min(cpu_count * 4, 48)`. |
 | `DACS_PY_CACHE_CLIENT_CHUNK_SIZE` | No | Chunk size in bytes for chunked blob downloads. Defaults to `268435456` (256 MB). |
 | `DACS_DATA_LOG_LEVEL` | No | Logging level (`DEBUG`, `INFO`, `WARNING`, etc.). Defaults to `INFO`. |
@@ -910,18 +850,22 @@ Ensure `libStorageDirect.so` is present in the same directory as the `py_dacs_cl
 
 ## Throughput Benchmarking
 
-For AKS throughput benchmarking, use the benchmark scripts in `aks_stress_test/`:
+For Kubernetes throughput benchmarking, use the benchmark scripts in
+`aks_stress_test/`:
 
 ```bash
 cd aks_stress_test
 ./run_benchmark.sh
 ```
 
-The benchmark deploys dacs clients as a DaemonSet across your AKS cluster and measures read/write throughput under various conditions. Results include per-chunk latency percentiles (p50, p90, p99) and overall throughput metrics.
+The benchmark deploys DACS clients as a DaemonSet and measures read/write
+throughput. Results include per-chunk latency percentiles and overall
+throughput metrics.
 
 ## To Build
 
-The wheel is built by the helper script `.pipelines/scripts/build/build-python-package.sh` which is invoked by the Azure DevOps pipeline. It can also be run locally.
+The wheel is built by the helper script
+`.pipelines/scripts/build/build-python-package.sh`. It can also be run locally.
 
 ### Prerequisites
 
@@ -959,7 +903,7 @@ The script:
 2. Runs `python setup.py bdist_wheel`, producing a wheel named `dacs_client_<channel>-<version>-py3-none-linux_{x86_64,aarch64}.whl`.
 3. Restores `setup.py` and `pyproject.toml` from git.
 4. Runs `auditwheel repair` on the produced wheel. This bundles all required native shared libraries into the wheel and re-tags it as `manylinux_X_Y_{x86_64,aarch64}`.
-5. Deletes the unrepaired `linux_*` wheel so only the `manylinux` wheel is published.
+5. Deletes the unrepaired `linux_*` wheel so only the `manylinux` wheel remains.
 
 The final artifact in `dist/` looks like (the `manylinux_X_Y` tag is set by `auditwheel` based on the build image's glibc, e.g. `manylinux_2_31` on Ubuntu 20.04):
 
@@ -1006,18 +950,6 @@ export AZURE_CLIENT_ID="your-client-id"
 export MSI_ENDPOINT="http://169.254.169.254/metadata/identity/oauth2/token"
 export MSI_SECRET="dummy"
 
-Run the setup script (if needed):
-sh /usr/local/lib/python3.11/site-packages/dacs_client/setup.sh
-
 Validate installation:
-root ➜ /storage/2020-12-01-preview/_generated $ python
-Python 3.11.11 (main, Dec  4 2024, 20:38:25) [GCC 12.2.0] on linux
-Type "help", "copyright", "credits" or "license" for more information.
->>> from py_dacs_client import dacs_client
->>> dacs_client.help()
-'\n    DACS Client library exposes interfaces to perform file operations.\n    '
->>>
-
-Run a test job:
-/storage/2020-12-01-preview/_generated/dacs_client/sample $ python dacs_client_test.py
+python3 -c "from py_dacs_client import dacs_client; print(dacs_client.help())"
 ```
