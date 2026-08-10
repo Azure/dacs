@@ -12,9 +12,9 @@ set(BUILD_PERFORMANCE_TESTS OFF CACHE BOOL "" FORCE)
 set(WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(azuresdkforcpp
-    # Set the SDK URL path and release tag
-    GIT_REPOSITORY      https://github.com/Azure/azure-sdk-for-cpp.git
-    GIT_TAG             azure-storage-blobs_12.13.0
+    # Pin the Azure SDK for C++ storage blobs 12.13.0 tag archive by SHA-256.
+    URL      https://github.com/Azure/azure-sdk-for-cpp/archive/refs/tags/azure-storage-blobs_12.13.0.tar.gz
+    URL_HASH SHA256=300bbd1d6bc50b8988b3dda29d6d627574a4f3e25a7e00a6986da5d3965f679a
 )
 FetchContent_GetProperties(azuresdkforcpp)
 if(NOT azuresdkforcpp_POPULATED)

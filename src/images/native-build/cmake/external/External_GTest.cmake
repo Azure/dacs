@@ -2,8 +2,9 @@ find_package(Threads REQUIRED)
 
 ExternalProject_Add(
         googletest
-        GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG main
+        # Pin the official GoogleTest 1.17.0 release archive by SHA-256.
+        URL "https://github.com/google/googletest/releases/download/v1.17.0/googletest-1.17.0.tar.gz"
+        URL_HASH "SHA256=65fab701d9829d38cb77c14acdc431d2108bfdbf8979e40eb8ae567edf10b27c"
         UPDATE_COMMAND ""
         INSTALL_COMMAND ""
         LOG_DOWNLOAD ON
