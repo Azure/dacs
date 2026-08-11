@@ -90,7 +90,7 @@ fi
 # prebuilt binary) so auditwheel can repair the wheel without a system package
 # manager or sudo - the native-build container runs as a non-root user.
 echo "Installing build dependencies..."
-$PYTHON_CMD -m pip install --upgrade build pip setuptools wheel packaging auditwheel patchelf -q
+$PYTHON_CMD -m pip install --upgrade build pip setuptools wheel packaging "auditwheel==6.7.0" patchelf -q
 
 # pip may install the patchelf/auditwheel entry points under the user site
 # (~/.local/bin) when running as a non-root container user; make sure auditwheel
