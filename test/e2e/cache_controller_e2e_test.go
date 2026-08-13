@@ -429,24 +429,40 @@ var _ = Describe("Cache Controller", Label("e2e", "controller"), Ordered, func()
 			Expect(k8sClient.Create(ctx, multiCache)).To(Succeed(), "Failed to create second Cache CR for multi-cache tests")
 
 			DeferCleanup(func(ctx SpecContext) {
-				cache := &storagev1.Cache{}
-				err := k8sClient.Get(ctx, types.NamespacedName{
+				key := types.NamespacedName{
 					Name:      MultiCacheName,
 					Namespace: namespace,
-				}, cache)
-				if errors.IsNotFound(err) {
-					return
 				}
-				Expect(err).NotTo(HaveOccurred())
-				Expect(k8sClient.Delete(ctx, cache)).To(Succeed())
+				cache := &storagev1.Cache{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      key.Name,
+						Namespace: key.Namespace,
+					},
+				}
+				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, cache))).
+					To(Succeed(), "deleting second Cache CR")
 
-				Eventually(func() bool {
-					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      MultiCacheName,
-						Namespace: namespace,
-					}, &storagev1.Cache{})
-					return errors.IsNotFound(err)
-				}).WithContext(ctx).WithTimeout(2*time.Minute).Should(BeTrue(), "Failed to delete second Cache CR for multi-cache tests")
+				Eventually(func(g Gomega) {
+					var currentCache storagev1.Cache
+					err := k8sClient.Get(ctx, key, &currentCache)
+					g.Expect(client.IgnoreNotFound(err)).
+						To(Succeed(), "getting second Cache CR during cleanup")
+					g.Expect(errors.IsNotFound(err)).To(BeTrue(), "waiting for second Cache CR to be deleted")
+
+					var sts appsv1.StatefulSet
+					err = k8sClient.Get(ctx, key, &sts)
+					g.Expect(client.IgnoreNotFound(err)).
+						To(Succeed(), "getting second cache StatefulSet during cleanup")
+					g.Expect(errors.IsNotFound(err)).To(BeTrue(), "waiting for second cache StatefulSet to be deleted")
+
+					var pods corev1.PodList
+					g.Expect(k8sClient.List(ctx, &pods,
+						client.InNamespace(namespace),
+						client.MatchingLabels{CacheNameLabelKey: MultiCacheName},
+					)).To(Succeed(), "listing second cache pods during cleanup")
+					g.Expect(pods.Items).To(BeEmpty(), "waiting for second cache pods to be deleted")
+				}).WithContext(ctx).WithTimeout(2*time.Minute).
+					Should(Succeed(), "deleting second cache and its child resources")
 			})
 		})
 
