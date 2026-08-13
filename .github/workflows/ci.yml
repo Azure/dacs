@@ -262,7 +262,7 @@ jobs:
       - name: Create Minikube cluster
         run: |
           sed -i \
-            -e 's/^MINIKUBE_NODES=.*/MINIKUBE_NODES=3/' \
+            -e 's/^MINIKUBE_NODES=.*/MINIKUBE_NODES=4/' \
             .pipelines/scripts/k8s/config/local.config
           make provision TARGET=minikube
 
