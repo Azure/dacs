@@ -8,7 +8,7 @@
         "git": {
           "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git",
           "commitHash": "f0dc78d7e6e331b8c6bb2d5283e06aa26883ca7c",
-          "tag": "v3.21.12"
+          "tag": "v21.12"
         }
       },
       "developmentDependency": false
@@ -71,9 +71,9 @@
       "component": {
         "type": "git",
         "git": {
-          "repositoryUrl": "https://github.com/vaisharma/spdlog.git",
-          "commitHash": "b7dbdb8d6ccec1b7c7a5311718cd5b1754f3a5ed",
-          "tag": "v1.x"
+          "repositoryUrl": "https://github.com/fmtlib/fmt.git",
+          "commitHash": "4fe0b11195b7cd71f39253c44db2c9dddf6b82d4",
+          "tag": "7.1.0"
         }
       },
       "developmentDependency": false
@@ -83,8 +83,8 @@
         "type": "git",
         "git": {
           "repositoryUrl": "https://github.com/google/googletest.git",
-          "commitHash": "7f7595f67d366ca0f9d2a5cd60c747a789214b10",
-          "tag": "main"
+          "commitHash": "52eb8108c5bdec04579160ae17225d66034bd723",
+          "tag": "v1.17.0"
         }
       },
       "developmentDependency": true
