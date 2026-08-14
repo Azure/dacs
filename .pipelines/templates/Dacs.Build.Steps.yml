@@ -1,0 +1,138 @@
+# Copyright (c) Microsoft Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+parameters:
+  - name: architecture
+    type: string
+  - name: acrName
+    type: string
+  - name: azureServiceConnection
+    type: string
+
+steps:
+  - bash: |
+      set -euo pipefail
+
+      if [ "${{ parameters.architecture }}" = "arm64" ]; then
+        packages=()
+        command -v make >/dev/null 2>&1 || packages+=(make)
+        command -v az >/dev/null 2>&1 || packages+=(ca-certificates azure-cli)
+        command -v git >/dev/null 2>&1 || packages+=(git)
+        command -v helm >/dev/null 2>&1 || command -v curl >/dev/null 2>&1 || packages+=(curl)
+
+        if [ "${#packages[@]}" -gt 0 ]; then
+          echo "Installing missing ARM64 build tools: ${packages[*]}"
+          sudo tdnf install -y "${packages[@]}"
+        fi
+
+        if ! command -v helm >/dev/null 2>&1; then
+          echo "Helm is not installed on the ARM64 agent; installing it..."
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        fi
+      fi
+
+      docker version
+      docker buildx version
+      make --version
+      az version
+      helm version
+      git --version
+    displayName: Check linux/${{ parameters.architecture }} build tools
+
+  - task: AzureCLI@2
+    displayName: Sign in to ACR
+    inputs:
+      azureSubscription: ${{ parameters.azureServiceConnection }}
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: az acr login --name "${{ parameters.acrName }}"
+
+  - task: PipAuthenticate@1
+    displayName: Authenticate to Python package feed
+    inputs:
+      artifactFeeds: One/One_PublicPackages
+
+  - task: CargoAuthenticate@0
+    displayName: Authenticate to Cargo package feed
+    inputs:
+      configFile: $(Pipeline.Workspace)/s/dacs/.cargo/cfs-config.toml
+
+  - task: Cache@2
+    displayName: Restore linux/${{ parameters.architecture }} ccache
+    inputs:
+      key: '"ccache" | "$(Agent.OS)" | "${{ parameters.architecture }}" | "$(Build.SourceVersion)"'
+      restoreKeys: |
+        "ccache" | "$(Agent.OS)" | "${{ parameters.architecture }}"
+      path: $(Pipeline.Workspace)/s/dacs/.ccache
+
+  - task: Cache@2
+    displayName: Restore linux/${{ parameters.architecture }} Cargo dependencies
+    inputs:
+      key: '"cargo-dependencies" | "$(Agent.OS)" | "${{ parameters.architecture }}" | $(Pipeline.Workspace)/s/dacs/src/subsystems/storage/rust/dacs_client/Cargo.lock'
+      restoreKeys: |
+        "cargo-dependencies" | "$(Agent.OS)" | "${{ parameters.architecture }}"
+      path: $(Pipeline.Workspace)/.cache/dacs-cargo
+
+  - task: Cache@2
+    displayName: Restore linux/${{ parameters.architecture }} Rust build
+    inputs:
+      key: '"cargo-build" | "$(Agent.OS)" | "${{ parameters.architecture }}" | $(Pipeline.Workspace)/s/dacs/src/subsystems/storage/rust/dacs_client/Cargo.lock | "$(Build.SourceVersion)"'
+      restoreKeys: |
+        "cargo-build" | "$(Agent.OS)" | "${{ parameters.architecture }}"
+      path: $(Pipeline.Workspace)/s/dacs/src/subsystems/storage/rust/dacs_client/target
+
+  - bash: |
+      set -euo pipefail
+
+      readonly architecture="${{ parameters.architecture }}"
+      readonly host_arch="$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')"
+      [[ "$host_arch" == "$architecture" ]] || {
+        echo "The ${architecture} build requires a native ${architecture} agent" >&2
+        exit 1
+      }
+
+      export USE_AZURE_CFS=true
+      export CARGO_CACHE_DIR="$(Pipeline.Workspace)/.cache/dacs-cargo"
+
+      BUILD_ARCH="$architecture" \
+      SHOULD_PUBLISH_IMAGES=True \
+      DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
+        ./.pipelines/scripts/build/rebuild-native-build-image.sh
+      make build BUILD_TYPE=Release BUILD_ARCH="$architecture"
+      DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
+      BUILD_TYPE=Release \
+      BUILD_ARCH="$architecture" \
+        make images
+    displayName: Build and test linux/${{ parameters.architecture }}
+    workingDirectory: $(Pipeline.Workspace)/s/dacs
+
+  - bash: |
+      set -euo pipefail
+      DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
+      BUILD_NUMBER="$(finalTag)" \
+      BUILD_ARCH="${{ parameters.architecture }}" \
+      OUTPUT_DIR="$(Build.ArtifactStagingDirectory)/container-images" \
+        ./.pipelines/scripts/publish/save-image-tarballs.sh
+    displayName: Package linux/${{ parameters.architecture }} images
+    workingDirectory: $(Pipeline.Workspace)/s/dacs
+
+  - bash: |
+      set -euo pipefail
+      DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
+      BUILD_NUMBER="$(finalTag)" \
+      BUILD_ARCH="${{ parameters.architecture }}" \
+        ./.pipelines/scripts/publish/publish-images.sh
+      cp docker-images.txt "$(Build.ArtifactStagingDirectory)/container-images/"
+    displayName: Publish linux/${{ parameters.architecture }} images
+    workingDirectory: $(Pipeline.Workspace)/s/dacs

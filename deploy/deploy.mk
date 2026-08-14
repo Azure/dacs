@@ -52,7 +52,7 @@ AKS_IS_TEST ?= false
 CONTROLLER ?= old
 
 # Image settings
-DOCKER_REGISTRY ?= dacs.azurecr.io
+DOCKER_REGISTRY ?= dacstest.azurecr.io
 COMMIT_HASH ?= $(shell git describe --always --dirty)
 BUILD_NUMBER ?= latest
 BASE_REPO ?= $(DOCKER_REGISTRY)

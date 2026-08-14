@@ -46,7 +46,7 @@ spec:
       - name: regcreddacsdaily
       containers:
       - name: cacheserver
-        image: dacs.azurecr.io/dacs/cache-server:0.0.5167
+        image: dacstest.azurecr.io/dacs/cache-server:0.0.5167
         ports:
         - containerPort: 9065
         env:

@@ -23,7 +23,7 @@ Follow the **[AKS quickstart](docs/quickstart.md)** to install one ephemeral
 CacheServer on an existing AKS cluster and complete an end-to-end upload and
 download smoke test.
 
-The published OCI charts and images at `dacs.azurecr.io` are publicly readable
+The published OCI charts and images at `dacstest.azurecr.io` are publicly readable
 and can be pulled anonymously.
 
 ### Deploy DACS for production
@@ -93,7 +93,7 @@ developer environments include Linux containers and Ubuntu under WSL2.
 Kubernetes workflows cover Minikube and Azure Kubernetes Service (AKS). Native
 Windows and macOS builds are not currently documented or supported.
 
-Published OCI charts and container images at `dacs.azurecr.io` are anonymously
+Published OCI charts and container images at `dacstest.azurecr.io` are anonymously
 pullable. Language packages are not currently published to public package
 indexes; build them from this source distribution.
 

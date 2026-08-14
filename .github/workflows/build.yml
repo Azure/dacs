@@ -117,7 +117,7 @@ jobs:
         id: image
         run: |
           arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
-          echo "tag=dacs.azurecr.io/native-build:linux-${arch}" >> "$GITHUB_OUTPUT"
+          echo "tag=dacstest.azurecr.io/native-build:linux-${arch}" >> "$GITHUB_OUTPUT"
 
       - name: Build native-build container image
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
@@ -201,6 +201,13 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Stage compliance files
+        env:
+          IMAGE_CONTEXT: ${{ matrix.image.context }}
+        run: |
+          cp LICENSE "${IMAGE_CONTEXT}/LICENSE"
+          cp NOTICE.txt "${IMAGE_CONTEXT}/NOTICE.txt"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
@@ -209,8 +216,6 @@ jobs:
         with:
           context: ${{ matrix.image.context }}
           file: ${{ matrix.image.file }}
-          build-contexts: |
-            compliance=.
           tags: ${{ matrix.image.name }}:local
           load: true
           cache-from: type=gha,scope=${{ matrix.image.name }}
@@ -256,6 +261,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Stage base image compliance files
+        run: |
+          cp LICENSE Docker/base/LICENSE
+          cp NOTICE.txt Docker/base/NOTICE.txt
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
@@ -281,9 +291,7 @@ jobs:
         with:
           context: Docker/base
           file: ${{ matrix.image.base_file }}
-          build-contexts: |
-            compliance=.
-          tags: dacs.azurecr.io/${{ matrix.image.base }}:latest
+          tags: dacstest.azurecr.io/${{ matrix.image.base }}:latest
           load: true
           push: false
           cache-from: type=gha,scope=${{ matrix.image.base }}-${{ inputs.build_arch }}
@@ -296,7 +304,7 @@ jobs:
           IMAGE_FILE: ${{ matrix.image.file }}
         run: |
           docker build \
-            --build-arg DOCKER_REGISTRY=dacs.azurecr.io \
+            --build-arg DOCKER_REGISTRY=dacstest.azurecr.io \
             -t "${IMAGE_NAME}:local" \
             -f "$IMAGE_FILE" \
             .

@@ -59,7 +59,7 @@ spec:
       - name: regcred
       containers:
       - name: cacheserver
-        image: dacs.azurecr.io/dacs/cache-server:0.0.1522
+        image: dacstest.azurecr.io/dacs/cache-server:0.0.1522
         imagePullPolicy: Always
         env:
         - name: CACHESERVER_THREADPOOL_SIZE

@@ -20,6 +20,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 DOCKER_DIR="$REPOSITORY_ROOT/Docker"
 CACHE_CONTROLLER_DIR="$REPOSITORY_ROOT/src/subsystems/cache-controller"
+SCHEDULER_DIR="$REPOSITORY_ROOT/src/subsystems/storage/cache_server_scheduler"
+BASE_IMAGE_DIR="$REPOSITORY_ROOT/Docker/base"
+UBUNTU_ARCHIVE_MIRROR="${UBUNTU_ARCHIVE_MIRROR:-}"
+if [[ "${USE_AZURE_CFS:-false}" == "true" && -z "$UBUNTU_ARCHIVE_MIRROR" ]]; then
+    UBUNTU_ARCHIVE_MIRROR="http://azure.archive.ubuntu.com/ubuntu"
+fi
+
+for context_dir in "$BASE_IMAGE_DIR" "$SCHEDULER_DIR" "$CACHE_CONTROLLER_DIR"; do
+    cp "$REPOSITORY_ROOT/LICENSE" "$context_dir/LICENSE"
+    cp "$REPOSITORY_ROOT/NOTICE.txt" "$context_dir/NOTICE.txt"
+done
 
 # Load configuration from k8s config file
 CONFIG_FILE="$REPOSITORY_ROOT/scripts/k8s/config/local.config"
@@ -45,7 +56,7 @@ echo "Cache Controller Image: $CACHECONTROLLER_IMAGE"
 # Note: DOCKER_REGISTRY already includes .azurecr.io suffix from pipeline
 REGISTRY="${DOCKER_REGISTRY:-}"
 if [[ -z "$REGISTRY" ]]; then
-    REGISTRY="dacs.azurecr.io"
+    REGISTRY="dacstest.azurecr.io"
     echo "DOCKER_REGISTRY not set; defaulting to: $REGISTRY"
 fi
 echo "image registry: $REGISTRY"
@@ -110,6 +121,13 @@ prepare_base_image() {
     local image="${REGISTRY}/${name}:latest"
     local current_sha
     current_sha=$(git rev-parse HEAD)
+    local build_args=()
+    if [[ -n "$UBUNTU_ARCHIVE_MIRROR" ]]; then
+        build_args+=(--build-arg "UBUNTU_ARCHIVE_MIRROR=$UBUNTU_ARCHIVE_MIRROR")
+    fi
+    if [[ "${USE_AZURE_CFS:-false}" == "true" && "$name" == "cache-client-base" && -n "${PIP_INDEX_URL:-}" ]]; then
+        build_args+=(--secret "id=pip_index_url,env=PIP_INDEX_URL")
+    fi
 
     # On scheduled rebuilds, bypass Docker's layer cache so that
     # `apt-get update && apt-get upgrade` actually re-runs and pulls fresh
@@ -117,15 +135,15 @@ prepare_base_image() {
     # whose RUN string is byte-identical to last week and skip the upgrade.
     # `--pull` additionally forces re-resolving the FROM tag against the
     # registry so the upstream ubuntu:22.04 layer itself is refreshed.
-    local no_cache_flag=""
+    local build_options=()
     if [[ "${BUILD_REASON:-}" == "Schedule" ]]; then
-        no_cache_flag="--no-cache --pull"
+        build_options+=(--no-cache --pull)
     fi
 
     if base_dockerfile_changed "$name"; then
         echo "Building $name (Dockerfile changed)..."
-        docker build $no_cache_flag \
-            --build-context compliance="$REPOSITORY_ROOT" \
+        docker build "${build_options[@]}" \
+            "${build_args[@]}" \
             --label "git-sha=$current_sha" \
             -f "$REPOSITORY_ROOT/$dockerfile" \
             -t "$image" \
@@ -137,8 +155,8 @@ prepare_base_image() {
             echo "Pulled $name from ACR"
         else
             echo "Pull failed for $image, building locally..."
-            docker build $no_cache_flag \
-                --build-context compliance="$REPOSITORY_ROOT" \
+            docker build "${build_options[@]}" \
+                "${build_args[@]}" \
                 --label "git-sha=$current_sha" \
                 -f "$REPOSITORY_ROOT/$dockerfile" \
                 -t "$image" \
@@ -149,7 +167,6 @@ prepare_base_image() {
 
 prepare_base_image "cache-server-base" "Docker/base/CacheServer.base.Dockerfile"
 prepare_base_image "cache-client-base" "Docker/base/CacheClient.base.Dockerfile"
-
 
 # Build Docker images from Dockerfiles
 cd "$DOCKER_DIR"
@@ -162,14 +179,13 @@ PID_CLIENT=$!
 
 # Build Go images in parallel
 docker build \
-    --build-context compliance="$REPOSITORY_ROOT" \
     -f CacheServerScheduler.Dockerfile \
     -t "$CACHESERVER_SCHEDULER_IMAGE" \
     "$REPOSITORY_ROOT/src/subsystems/storage/cache_server_scheduler" &
 PID_SCHEDULER=$!
 
 cd "$CACHE_CONTROLLER_DIR"
-COMPLIANCE_CONTEXT="$REPOSITORY_ROOT" IMG="$CACHECONTROLLER_IMAGE" make docker-build &
+IMG="$CACHECONTROLLER_IMAGE" make docker-build &
 PID_CONTROLLER=$!
 
 wait $PID_SERVER || { echo "CacheServer build failed"; exit 1; }

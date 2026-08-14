@@ -14,7 +14,6 @@
 
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
-COMPLIANCE_CONTEXT ?= ../../..
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -145,10 +144,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build \
-		--build-context compliance=$(COMPLIANCE_CONTEXT) \
-		-t ${IMG} \
-		.
+	$(CONTAINER_TOOL) build -t ${IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
@@ -168,7 +164,6 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	- $(CONTAINER_TOOL) buildx create --name cache-controller-builder
 	$(CONTAINER_TOOL) buildx use cache-controller-builder
 	- $(CONTAINER_TOOL) buildx build \
-		--build-context compliance=$(COMPLIANCE_CONTEXT) \
 		--push \
 		--platform=$(PLATFORMS) \
 		--tag ${IMG} \

@@ -32,7 +32,7 @@ spec:
       - name: regcred
       containers:
       - name: cacheserver
-        image: dacs.azurecr.io/users/surkris/cache:poc-oci
+        image: dacstest.azurecr.io/users/surkris/cache:poc-oci
         ports:
         - containerPort: 9065
           # Cache server big enough to fit entire dataset

@@ -26,7 +26,7 @@ cd <Root Directory of DACS Project>
   ```
   (Or) other alternate way is
   ```sh
-  ginkgo -v -r --timeout="60m" --label-filter="perf && (dacsclients)" --focus="" --no-color="false" "./test/perf" -- -- -blobCount=50 -clientImage=dacs.azurecr.io/cache-test-client:local -storageAccount <storage_account_name>
+  ginkgo -v -r --timeout="60m" --label-filter="perf && (dacsclients)" --focus="" --no-color="false" "./test/perf" -- -- -blobCount=50 -clientImage=dacstest.azurecr.io/cache-test-client:local -storageAccount <storage_account_name>
   ```
 
 Notes:
@@ -44,9 +44,9 @@ Notes:
 ## Sample Output
 
 ```sh
- BUILD_NUMBER=latest DOCKER_REGISTRY=dacs.azurecr.io STORAGE_ACCOUNT=samplestorageacct LABEL_FILTER=dacsclients make test-perf EXTRA_TEST_ARGS="--client-image=dacs.azurecr.io/cache-test-client:latest --blob-count=20 --blob-size=536870912"
+ BUILD_NUMBER=latest DOCKER_REGISTRY=dacstest.azurecr.io STORAGE_ACCOUNT=samplestorageacct LABEL_FILTER=dacsclients make test-perf EXTRA_TEST_ARGS="--client-image=dacstest.azurecr.io/cache-test-client:latest --blob-count=20 --blob-size=536870912"
 Using system kubectl
-GIT_COMMIT=75661283f4ae11826f796ee4d1a13c390430d155 GIT_BRANCH=sample/perf-branch PATH=/home/sampleuser/workspace/azure/DACS/.local/bin:$PATH /home/sampleuser/workspace/azure/DACS/.local/bin/ginkgo -v -r --timeout="60m" --label-filter="perf && (dacsclients)" --focus="" --no-color="false" "./test/perf" -- --junit-report=/home/sampleuser/workspace/azure/DACS/test.xml --summary-report=/home/sampleuser/workspace/azure/DACS/summary.md --support-bundle-dir=/home/sampleuser/workspace/azure/DACS/support-bundles --client-image=dacs.azurecr.io/cache-test-client:latest --blob-count=20 --blob-size=536870912
+GIT_COMMIT=75661283f4ae11826f796ee4d1a13c390430d155 GIT_BRANCH=sample/perf-branch PATH=/home/sampleuser/workspace/azure/DACS/.local/bin:$PATH /home/sampleuser/workspace/azure/DACS/.local/bin/ginkgo -v -r --timeout="60m" --label-filter="perf && (dacsclients)" --focus="" --no-color="false" "./test/perf" -- --junit-report=/home/sampleuser/workspace/azure/DACS/test.xml --summary-report=/home/sampleuser/workspace/azure/DACS/summary.md --support-bundle-dir=/home/sampleuser/workspace/azure/DACS/support-bundles --client-image=dacstest.azurecr.io/cache-test-client:latest --blob-count=20 --blob-size=536870912
   I0210 06:14:38.589093 1623035 perf_suite_test.go:80] "Starting DACS Performance test suite"
 Running Suite: perf suite - /home/sampleuser/workspace/azure/DACS/test/perf
 ==========================================================================
