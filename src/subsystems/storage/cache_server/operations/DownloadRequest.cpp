@@ -83,6 +83,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
 
     DownloadResponse downloadResponse;
     const std::string& requestid = downloadRequest.requestid();
+    downloadResponse.set_requestid(requestid);
     if (!AuthenticateRequest(downloadRequest))
     {
         LOG_WARN_REQID("Failed to authenticate request", downloadRequest);
@@ -160,7 +161,6 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
         LOG_DEBUG_REQID("Set download filesize to: {}", downloadRequest, downloadFileSize);
         *(downloadResponse.mutable_metadata()) = cacheInfo.m_metadata;
     }
-
     downloadResponse.set_filesize(downloadFileSize);
     
     downloadResponse.set_isfulldownload(cacheInfo.m_fileSize == downloadFileSize);

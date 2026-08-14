@@ -274,6 +274,14 @@ CacheClientStatus CacheClientImpl::Upload(
         if (m_bEnableCalculateChecksum && nBufferLength > 0)
         {
             auto checksumCalculator = ChecksumFactory::GetChecksumStrategyInstance(m_checksumAlgorithm);   
+            if(checksumCalculator == nullptr)
+            {
+                LOG_ERROR_REQID(
+                    "Failed to get checksum calculator, algorithm: {}",
+                    *uploadRequest,
+                    static_cast<int>(m_checksumAlgorithm));
+                return CacheClientStatus::INTERNAL_ERROR;
+            }
             uint32_t calculatedChecksum = checksumCalculator->CalculateChecksum(pBuffer, nBufferLength);  
             std::string bufferChecksum = std::to_string(calculatedChecksum);
             fileMetadata[(char*)CACHE_META_CHUNK_CHECKSUM_KEY] = bufferChecksum;
@@ -419,7 +427,7 @@ CacheClientStatus CacheClientImpl::Download(
     /*[inopt]*/ const char* strCorrelationId)
 {
     std::string strRandId;
-    if(strCorrelationId == nullptr)
+    if(strCorrelationId == nullptr || *strCorrelationId == '\0')
     {
         strRandId = cacheutils::GetCorrelationId();
         strCorrelationId = strRandId.c_str();
@@ -496,6 +504,7 @@ CacheClientStatus CacheClientImpl::Download(
         LOG_WARN_REQID("couldn't get server connection, key: {}", *downloadRequest, strCacheKey);
         return cacheClientStatus;
     }
+    bool discardConnection = false;
 
     if(!SendMessageToRemoteFinal(serverConnection.get(), request))
     {
@@ -520,6 +529,30 @@ CacheClientStatus CacheClientImpl::Download(
         return cacheClientStatus;
     }
 
+    if(response.requestid().empty())
+    {
+        LOG_DEBUG_REQID(
+            "Download response request ID is unavailable; accepting for legacy compatibility: "
+            "server={}, connection={}, key={}",
+            *downloadRequest,
+            hostname,
+            serverConnection->GetId(),
+            strCacheKey);
+    }
+    else if(response.requestid() != downloadRequest->requestid())
+    {
+        LOG_ERROR_REQID(
+            "Download response request ID mismatch: server={}, connection={}, requestedId={}, responseId={}, key={}",
+            *downloadRequest,
+            hostname,
+            serverConnection->GetId(),
+            downloadRequest->requestid(),
+            response.requestid(),
+            strCacheKey);
+        m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
+        return cacheClientStatus;
+    }
+
     LOG_DEBUG_REQID("Download response from server: {}, key: {}, filesize: {}, isFullDownload: {}",
                     *downloadRequest,
                     response.result(),
@@ -533,15 +566,18 @@ CacheClientStatus CacheClientImpl::Download(
         actualReadLen = response.filesize();
         if(*nLength > 0 && actualReadLen > *nLength)
         {
-            LOG_WARN_REQID("Received invalid length from server, key: {}, got: {}, expected: {}",
-                           *downloadRequest,
-                           strCacheKey,
-                           actualReadLen,
-                           *nLength);
+            LOG_ERROR_REQID(
+                "Received invalid response length: server={}, connection={}, key={}, "
+                "responseSize={}, requestedSize={}",
+                *downloadRequest,
+                hostname,
+                serverConnection->GetId(),
+                strCacheKey,
+                actualReadLen,
+                *nLength);
             m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
             return cacheClientStatus;
         }
-
         if(actualReadLen > 0)
         {
             if(!pOutBuffer)
@@ -576,49 +612,90 @@ CacheClientStatus CacheClientImpl::Download(
                     try
                     {
                         int algorithmInt = std::stoi(algorithmIter->second);
+                        if(algorithmInt < 0 || algorithmInt > UINT8_MAX)
+                        {
+                            throw std::out_of_range("Checksum algorithm exceeds enum range");
+                        }
                         auto algorithm = static_cast<ChecksumAlgorithm>(algorithmInt);
 
                         auto checksumCalculator = ChecksumFactory::GetChecksumStrategyInstance(algorithm);   
+                        if(checksumCalculator == nullptr)
+                        {
+                            throw std::invalid_argument("Unsupported checksum algorithm");
+                        }
                         uint32_t calculatedChecksum = checksumCalculator->CalculateChecksum(pOutBuffer, actualReadLen);             
                         
-                        uint32_t receivedChecksum = std::stoul(checksumIter->second);
-                        LOG_DEBUG_REQID("Checksum for file: {}, algorithm: {}, receivedChecksum: {}, calculatedChecksum: {}",
+                        uint64_t checksumValue = std::stoull(checksumIter->second);
+                        if(checksumValue > UINT32_MAX)
+                        {
+                            throw std::out_of_range("Checksum exceeds uint32_t range");
+                        }
+                        uint32_t expectedChecksum = static_cast<uint32_t>(checksumValue);
+                        LOG_DEBUG_REQID("Checksum for file: {}, algorithm: {}, expectedChecksum: {}, calculatedChecksum: {}",
                                         *downloadRequest,
                                         strCacheKey,
                                         ChecksumFactory::GetAlgorithmName(algorithm),
-                                        receivedChecksum,
+                                        expectedChecksum,
                                         calculatedChecksum);
-                        if(receivedChecksum != calculatedChecksum)
+                        if(expectedChecksum != calculatedChecksum)
                         {
-                            LOG_ERROR_REQID("Checksum mismatch, key: {}, algorithm: {}, received: {}, calculated: {}",
-                                           *downloadRequest,
-                                           strCacheKey,
-                                           ChecksumFactory::GetAlgorithmName(algorithm),
-                                           receivedChecksum,
-                                           calculatedChecksum);
+                            LOG_ERROR_REQID(
+                                "Checksum mismatch, key: {}, algorithm: {}, expectedChecksum: {}, "
+                                "calculatedChecksum: {}, responseSize: {}, requestedSize: {}",
+                                *downloadRequest,
+                                strCacheKey,
+                                ChecksumFactory::GetAlgorithmName(algorithm),
+                                expectedChecksum,
+                                calculatedChecksum,
+                                actualReadLen,
+                                *nLength);
 
                             cacheClientStatus = CacheClientStatus::CHECKSUM_MISMATCH;
-                            m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), false);
+                            m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
                             return cacheClientStatus;
                         }
                     }
                     catch (const std::exception& e)
                     {
-                        LOG_WARN_REQID("Failed to parse algorithm enum from metadata: {}, key: {}", 
-                                      *downloadRequest, algorithmIter->second, strCacheKey);
+                        LOG_ERROR_REQID(
+                            "Exception during checksum validation: "
+                            "server={}, connection={}, key={}, algorithm={}, expectedChecksum={}, error={}",
+                            *downloadRequest,
+                            hostname,
+                            serverConnection->GetId(),
+                            strCacheKey,
+                            algorithmIter->second,
+                            checksumIter->second,
+                            e.what());
+                        cacheClientStatus = CacheClientStatus::CHECKSUM_MISMATCH;
+                        m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
+                        return cacheClientStatus;
                     }
                 }
                 else
                 {
-                    LOG_DEBUG_REQID("No algorithm in metadata, skipping checksum validation, key: {}", *downloadRequest, strCacheKey);
+                    LOG_WARN_REQID(
+                        "Checksum validation skipped because algorithm metadata is missing: "
+                        "server={}, connection={}, key={}",
+                        *downloadRequest,
+                        hostname,
+                        serverConnection->GetId(),
+                        strCacheKey);
+                    discardConnection = true;
                 }
             }
             else
             {
-                LOG_DEBUG_REQID("Checksum not found in metadata, skipping validation, key: {}", *downloadRequest, strCacheKey);
+                LOG_WARN_REQID(
+                    "Checksum validation skipped because checksum metadata is missing: "
+                    "server={}, connection={}, key={}",
+                    *downloadRequest,
+                    hostname,
+                    serverConnection->GetId(),
+                    strCacheKey);
+                discardConnection = true;
             }
         }
-
         if(pMetadata != nullptr)
         {
             pMetadata->nKeyValuePairs = response.metadata_size();
@@ -653,9 +730,10 @@ CacheClientStatus CacheClientImpl::Download(
     {
         LOG_ERROR_REQID("Server returned internal failure for key: {}", *downloadRequest, strCacheKey);
         cacheClientStatus = CacheClientStatus::INTERNAL_ERROR;
+        discardConnection = true;
     }
 
-    m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), false);
+    m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), discardConnection);
     return cacheClientStatus;
 }
 //---------------------------------------------------------------------------------------------------------------------

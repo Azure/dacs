@@ -793,6 +793,49 @@ TEST_P(CacheClientTests, ChecksumValidationEdgeCases)
     free((void*)pBuffer);
 }
 //---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, ChecksumValidationRejectsInvalidMetadata)
+{
+    struct TestCase
+    {
+        const char* suffix;
+        const char* algorithm;
+        const char* checksum;
+    };
+
+    const TestCase testCases[] = {
+        {"unsupported_algorithm", "2", "0"},
+        {"checksum_overflow", "0", "4294967296"},
+    };
+
+    const uint64_t nLength = 1024;
+    const void* pBuffer = GetRandomBuffer(nLength);
+    for(const auto& testCase : testCases)
+    {
+        KeyValuePair kvPairs[2];
+        kvPairs[0].strKey = (char*)"CHUNK_CHECKSUM";
+        kvPairs[0].strValue = (char*)testCase.checksum;
+        kvPairs[1].strKey = (char*)"CHECKSUM_ALGORITHM";
+        kvPairs[1].strValue = (char*)testCase.algorithm;
+        Metadata metadata;
+        metadata.arrKeyValuePairs = kvPairs;
+        metadata.nKeyValuePairs = 2;
+
+        const string filename = GetCorrelationId() + "_" + testCase.suffix;
+        auto status = m_cacheClientImpl.Upload(
+            filename.c_str(), pBuffer, nLength, 0, nullptr, &metadata, nullptr);
+        ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+        void* pDownloadBuffer = malloc(nLength);
+        uint64_t readLength = nLength;
+        status = m_cacheClientImplCRC.Download(
+            filename.c_str(), pDownloadBuffer, &readLength, nullptr, nullptr);
+        ASSERT_EQ(CacheClientStatus::CHECKSUM_MISMATCH, status);
+        free(pDownloadBuffer);
+    }
+
+    free((void*)pBuffer);
+}
+//---------------------------------------------------------------------------------------------------------------------
 TEST_P(CacheClientTests, FileExpiry)
 {
     string filename = GetCorrelationId();
