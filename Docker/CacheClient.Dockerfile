@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Use pre-built base image with packages installed (avoids slow apt downloads)
+# Use the pre-built base image with blobfuse2 and its runtime dependencies.
 ARG DOCKER_REGISTRY=dacstest.azurecr.io
 FROM ${DOCKER_REGISTRY}/cache-client-base:latest
 

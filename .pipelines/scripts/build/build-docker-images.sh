@@ -63,6 +63,17 @@ fi
 PUBLISH_LATEST="${PUBLISH_LATEST:-false}"
 echo "image registry: $REGISTRY"
 
+# Reclaim disk before we start building images. Warm CI agents accumulate
+# gigabytes of stale BuildKit layer cache from prior runs. That cache is a
+# pure performance optimization; the (re)builds below will repopulate what
+# they need. Without this, the cache-client-base rebuild -- which now
+# contains a Go-based blobfuse2 builder stage -- can hit ENOSPC on agents
+# that were already near their disk quota (~95%) before this job started.
+echo "Pruning stale Docker BuildKit cache to reclaim disk..."
+docker builder prune -af >/dev/null 2>&1 || true
+docker image prune -f >/dev/null 2>&1 || true
+df -h / | tail -1 || true
+
 # Check if base Dockerfiles changed
 base_dockerfile_changed() {
     if [[ "$PUBLISH_LATEST" == "true" ]]; then

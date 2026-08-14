@@ -90,7 +90,7 @@ func AddFlags(fs *flag.FlagSet, opts *Options) error {
 
 	// Scenario test flags
 	fs.StringVar(&opts.ScenarioScale, "scenario-scale", "7B", "Model scale for scenario tests (1B, 7B, 13B, 70B)")
-	fs.StringVar(&opts.ScenarioMethods, "scenario-methods", "blobfile", "Comma-separated access methods (python,blobfile,boostedblob,interceptor,stream_client,huggingface,runaistreamer)")
+	fs.StringVar(&opts.ScenarioMethods, "scenario-methods", "blobfile", "Comma-separated access methods (python,blobfile,boostedblob,interceptor,stream_client,huggingface,runaistreamer,blobfuse)")
 	fs.StringVar(&opts.ScenarioCacheModes, "scenario-cache-modes", "no_cache", "Comma-separated cache modes (no_cache,cold_cache,warm_cache)")
 	fs.IntVar(&opts.RunAIStreamerConcurrency, "runai-streamer-concurrency", 16, "Number of concurrent streams for Run:AI streamer")
 	fs.IntVar(&opts.RunAIStreamerBlockSize, "runai-streamer-block-size", 33554432, "Read block size in bytes for Run:AI streamer (default 32MB, matches cache chunk size)")

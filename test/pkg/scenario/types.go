@@ -42,6 +42,9 @@ const (
 	RunAIStreamer AccessMethod = "runaistreamer" // Run:AI Model Streamer
 	HFDownloader  AccessMethod = "huggingface"   // Hugging Face hub download API
 	StreamClient  AccessMethod = "stream_client" // Native C++ DACS stream client
+	// Blobfuse2; cold/warm_cache configure dist_cache, which automatically adds
+	// block_cache as its L1 and points at DACS as an L2.
+	Blobfuse AccessMethod = "blobfuse"
 )
 
 // ScaleProfile defines a model scale for testing, referencing a real HF model.
