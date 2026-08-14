@@ -70,7 +70,9 @@ void CacheClientTests::InitializeClient(
 
     const char* arrServers[] = {"127.0.0.1"};
     uint32_t nServers = 1;
-    bool enableIB = false;
+    /* Always enable IB, if the test is running against a cache server without IB support,
+     * the connection will fallback to ethernet automatically.*/
+    bool enableIB = true;
     bool enableCalculateChecksum = bEnableCalculateChecksum;
     bool enableValidateChecksum = bEnableValidateChecksum;
     bool enableAuth = authAccountKey != nullptr && authAccountName != nullptr;
