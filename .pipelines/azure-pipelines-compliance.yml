@@ -57,8 +57,20 @@ extends:
         jobs:
           - job: CheckoutForSdl
             displayName: Check out sources for SDL scan
+            templateContext:
+              outputs:
+                - output: pipelineArtifact
+                  path: $(Build.ArtifactStagingDirectory)/NOTICE.txt
+                  artifact: notice
             steps:
               - checkout: self
                 submodules: true
+              - task: ComponentGovernanceComponentDetection@0
+                displayName: Component Detection
+              - task: notice@0
+                displayName: Generate NOTICE file
+                inputs:
+                  outputfile: $(Build.ArtifactStagingDirectory)/NOTICE.txt
+                  outputformat: text
               - script: echo "Sources checked out. SDL source-analysis tools run in the injected SDLSources stage."
                 displayName: Source checkout marker

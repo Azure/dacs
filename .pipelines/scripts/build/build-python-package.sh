@@ -54,10 +54,49 @@ fi
 
 cd "$REPOSITORY_ROOT/src/subsystems/storage/dacs_client"
 
+readonly INIT_FILE="py_dacs_client/__init__.py"
+readonly PYPROJECT_FILE="pyproject.toml"
+readonly PACKAGE_LICENSE="LICENSE"
+readonly PACKAGE_NOTICE="NOTICE.txt"
+STAGED_COMPLIANCE_FILES=()
+BACKUP_DIR="$(mktemp -d)"
+readonly BACKUP_DIR
+
+cleanup_package_build() {
+  local staged_file
+  for staged_file in "${STAGED_COMPLIANCE_FILES[@]}"; do
+    rm -f -- "$staged_file"
+  done
+  cp -- "$BACKUP_DIR/__init__.py" "$INIT_FILE"
+  cp -- "$BACKUP_DIR/pyproject.toml" "$PYPROJECT_FILE"
+  rm -rf -- "$BACKUP_DIR"
+}
+
+cp -- "$INIT_FILE" "$BACKUP_DIR/__init__.py"
+cp -- "$PYPROJECT_FILE" "$BACKUP_DIR/pyproject.toml"
+trap cleanup_package_build EXIT
+
+for source_file in "$REPOSITORY_ROOT/LICENSE" "$REPOSITORY_ROOT/NOTICE.txt"; do
+  if [[ ! -f "$source_file" ]]; then
+    echo "Error: Required compliance file not found: $source_file" >&2
+    exit 1
+  fi
+done
+
+if [[ -e "$PACKAGE_LICENSE" || -e "$PACKAGE_NOTICE" ]]; then
+  echo "Error: Refusing to overwrite staged package compliance files" >&2
+  exit 1
+fi
+
+cp -- "$REPOSITORY_ROOT/LICENSE" "$PACKAGE_LICENSE"
+STAGED_COMPLIANCE_FILES+=("$PACKAGE_LICENSE")
+cp -- "$REPOSITORY_ROOT/NOTICE.txt" "$PACKAGE_NOTICE"
+STAGED_COMPLIANCE_FILES+=("$PACKAGE_NOTICE")
+
 # =============================================================================
 # Version and channel - provided by pipeline via environment variables
 # =============================================================================
-if [ -z "$PYTHON_PACKAGE_VERSION" ] || [ -z "$PACKAGE_CHANNEL" ]; then
+if [ -z "${PYTHON_PACKAGE_VERSION:-}" ] || [ -z "${PACKAGE_CHANNEL:-}" ]; then
   echo "ERROR: PYTHON_PACKAGE_VERSION and PACKAGE_CHANNEL must be set!"
   echo "  PYTHON_PACKAGE_VERSION=${PYTHON_PACKAGE_VERSION:-<not set>}"
   echo "  PACKAGE_CHANNEL=${PACKAGE_CHANNEL:-<not set>}"
@@ -68,10 +107,6 @@ echo ""
 echo "Python package version: $PYTHON_PACKAGE_VERSION"
 echo "Python package channel: $PACKAGE_CHANNEL"
 echo ""
-
-# Update __version__ in py_dacs_client/__init__.py with the calculated version
-INIT_FILE="py_dacs_client/__init__.py"
-PYPROJECT_FILE="pyproject.toml"
 
 # Extract placeholder version from __init__.py (should be '0.9.0-PLACEHOLDER')
 ORIGINAL_VERSION=$(grep "^__version__ = " "$INIT_FILE" | cut -d '"' -f 2)
@@ -92,7 +127,7 @@ echo "Name updated in pyproject.toml: dacs_cache_PLACEHOLDER → ${PACKAGE_NAME}
 echo ""
 
 # Clean previous builds
-rm -rf dist/ build/ *.egg-info
+rm -rf -- dist/ build/ ./*.egg-info
 
 # Ensure pip is available
 if ! $PYTHON_CMD -m pip --version &> /dev/null; then
@@ -121,11 +156,6 @@ set +e
 $PYTHON_CMD -m build --wheel --no-isolation
 BUILD_EXIT_CODE=$?
 set -e
-
-# Restore original __init__.py and pyproject.toml
-if ! git checkout "$INIT_FILE" pyproject.toml 2>/dev/null; then
-  echo "Warning: Could not restore $INIT_FILE / pyproject.toml from git. You may need to revert manually."
-fi
 
 if [ $BUILD_EXIT_CODE -ne 0 ]; then
   echo "Error: Failed to build Python package"
@@ -193,6 +223,20 @@ echo "Verifying repaired wheel(s) with auditwheel show:"
 for whl in dist/*.whl; do
   echo "--- $(basename "$whl") ---"
   $PYTHON_CMD -m auditwheel show "$whl"
+  $PYTHON_CMD - "$whl" <<'PY'
+import pathlib
+import sys
+import zipfile
+
+wheel = pathlib.Path(sys.argv[1])
+required = {"LICENSE", "NOTICE.txt"}
+with zipfile.ZipFile(wheel) as archive:
+    packaged = {pathlib.PurePosixPath(name).name for name in archive.namelist()}
+
+missing = sorted(required - packaged)
+if missing:
+    raise SystemExit(f"{wheel} is missing compliance files: {', '.join(missing)}")
+PY
 done
 
 exit 0

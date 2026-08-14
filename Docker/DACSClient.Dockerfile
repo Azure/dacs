@@ -57,11 +57,14 @@ RUN wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-p
 
 RUN mkdir -p /app
 
+COPY LICENSE NOTICE.txt /
+
 # Install build dependencies for wheel creation
 RUN pip3 install --no-cache-dir setuptools wheel packaging
 
 # Copy source files needed to build the wheel
 COPY src/subsystems/storage/dacs_client/ /tmp/dacs_client/
+COPY LICENSE NOTICE.txt /tmp/dacs_client/
 
 # Create the expected directory structure and copy libStorageDirect.so
 # setup.py resolves ../../../../bin/Debug/amd64/native-storage/storage/ from /tmp/dacs_client to /bin/Debug/amd64/...
@@ -76,4 +79,3 @@ RUN cd /tmp/dacs_client && \
     python3 setup.py bdist_wheel && \
     pip3 install dist/*.whl && \
     rm -rf /tmp/dacs_client /bin/Debug
-
