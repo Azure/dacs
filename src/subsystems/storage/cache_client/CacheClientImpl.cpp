@@ -811,7 +811,7 @@ CacheClientStatus CacheClientImpl::DeleteGroupFromServer(
         return CacheClientStatus::INTERNAL_ERROR;
     }
 
-    if(!SendMessageToRemote(connection.get(), request))
+    if(!SendMessageToRemoteFinal(connection.get(), request))
     {
         LOG_ERROR_REQID("Couldn't send message to server {}, delete request for groupID: {}",
                         *deleteGroupRequest,
@@ -928,7 +928,7 @@ CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
-        if(!SendMessageToRemote(connection.get(), request))
+        if(!SendMessageToRemoteFinal(connection.get(), request))
         {
             LOG_ERROR_REQID("Couldn't send message to server, access time distribution request for server: {}",
                             *lastAccessTimeDistributionRequest,
@@ -1061,7 +1061,7 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
-        if(!SendMessageToRemote(connection.get(), request))
+        if(!SendMessageToRemoteFinal(connection.get(), request))
         {
             LOG_ERROR_REQID("Couldn't send message to server {}, delete by last access request for lastAccessTime: {}",
                             *deleteByLastAccessTimeRequest,
