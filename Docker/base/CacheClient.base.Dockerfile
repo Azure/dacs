@@ -14,6 +14,23 @@
 
 # Base image for CacheClient with pre-installed apt/pip packages
 # This image is built once and pushed to ACR, avoiding slow apt downloads in CI
+#
+# Build blobfuse2 with the dist_cache component from a pinned public commit.
+# The packaged release does not yet include dist_cache, so only the compiled
+# binary is copied into the runtime image.
+FROM mcr.microsoft.com/oss/go/microsoft/golang:1.26 AS blobfuse2-builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git ca-certificates libfuse3-dev pkg-config build-essential && \
+    rm -rf /var/lib/apt/lists/*
+ARG BLOBFUSE2_REPO=https://github.com/Azure/azure-storage-fuse.git
+ARG BLOBFUSE2_COMMIT=dd3a4461a3efdf679a3a06d0522b81d60edce781
+RUN git init /src/blobfuse2 && \
+    git -C /src/blobfuse2 remote add origin "${BLOBFUSE2_REPO}" && \
+    git -C /src/blobfuse2 fetch --depth 1 origin "${BLOBFUSE2_COMMIT}" && \
+    git -C /src/blobfuse2 checkout --detach FETCH_HEAD
+WORKDIR /src/blobfuse2
+RUN CGO_ENABLED=1 GOTOOLCHAIN=local go build -o /out/blobfuse2
+
 FROM mcr.microsoft.com/mirror/docker/library/ubuntu:22.04
 
 ARG UBUNTU_ARCHIVE_MIRROR=""
@@ -26,6 +43,7 @@ COPY LICENSE NOTICE.txt /
 # `apt-get upgrade` is included so each rebuild of this base image pulls the
 # latest security patches for packages already present in the upstream image
 # (e.g. libc6, libssl3, libgnutls30) -- not just the ones in our install list.
+# fuse3/libfuse3-3 are the blobfuse2 runtime dependencies.
 RUN if [ -n "${UBUNTU_ARCHIVE_MIRROR}" ]; then \
         sed -i "s|http://archive.ubuntu.com/ubuntu|${UBUNTU_ARCHIVE_MIRROR}|g" /etc/apt/sources.list; \
     fi && \
@@ -56,7 +74,9 @@ RUN if [ -n "${UBUNTU_ARCHIVE_MIRROR}" ]; then \
     libxxhash0 \
     libopenmpi-dev \
     openssh-client \
-    openssh-server && \
+    openssh-server \
+    fuse3 \
+    libfuse3-3 && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get clean && \
     # The openssh-server postinst auto-generates private host keys at
@@ -86,6 +106,10 @@ RUN wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-p
     rm -rf /var/lib/apt/lists/* && \
     apt-get clean && \
     rm -f packages-microsoft-prod.deb
+
+# Install blobfuse2 (built above) and enable user_allow_other for FUSE mounts.
+COPY --from=blobfuse2-builder /out/blobfuse2 /usr/local/bin/blobfuse2
+RUN echo "user_allow_other" >> /etc/fuse.conf
 
 # SSH setup for the Kubeflow MPI operator, mirroring the operator's own base
 # image (https://github.com/kubeflow/mpi-operator/tree/master/build/base).

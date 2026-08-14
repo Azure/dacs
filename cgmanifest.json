@@ -60,6 +60,16 @@
       "component": {
         "type": "git",
         "git": {
+          "repositoryUrl": "https://github.com/Azure/azure-storage-fuse.git",
+          "commitHash": "dd3a4461a3efdf679a3a06d0522b81d60edce781"
+        }
+      },
+      "developmentDependency": false
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "repositoryUrl": "https://github.com/Azure/azure-sdk-for-cpp.git",
           "commitHash": "610c85d7684f9a384c3e72bb9a41068d41f521d1",
           "tag": "azure-storage-blobs_12.13.0"

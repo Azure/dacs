@@ -49,10 +49,11 @@ var log = logger.New()
 var methodScriptFile = map[AccessMethod]string{
 	Blobfile:      "workloads/method_blobfile.py",
 	BoostedBlob:   "workloads/method_boostedblob.py",
-	PythonClient: "workloads/method_python_client.py",
+	PythonClient:  "workloads/method_python_client.py",
 	Interceptor:   "workloads/method_interceptor.py",
 	HFDownloader:  "workloads/method_hf_downloader.py",
 	RunAIStreamer: "workloads/method_runai_streamer.py",
+	Blobfuse:      "workloads/method_blobfuse.py",
 }
 
 // ModelLoadingRunner manages execution of model loading scenario jobs.
@@ -242,7 +243,7 @@ python3 /tmp/harness.py`, preCommand, string(authScript), string(methodScript), 
 		WithParallelism(1).
 		WithCompletions(1).
 		WithMatchLabels(map[string]string{
-			"app":                        jobName,
+			"app":                     jobName,
 			"dacs.azure.com/test-pod": "true",
 		}).
 		WithRestartPolicy(corev1.RestartPolicyNever).
@@ -312,6 +313,22 @@ python3 /tmp/harness.py`, preCommand, string(authScript), string(methodScript), 
 		} else {
 			// Explicitly disable cache auto-discovery for no_cache mode
 			jc.WithEnv(0, "RUNAI_STREAMER_EXPERIMENTAL_AZURE_CACHE_ENABLED", "0")
+		}
+	}
+
+	// Blobfuse method: pass mount paths and dist_cache (DACS L2) settings.
+	// The Python module reads these env vars to render the blobfuse2 YAML config
+	// at runtime.
+	if r.Method == Blobfuse {
+		jc.WithEnv(0, "BLOBFUSE_MOUNT_PATH", "/mnt/blobfuse").
+			// Used by blobfuse azstorage.mode=workloadidentity (config key: appid)
+			WithEnv(0, "AZURE_CLIENT_ID", r.Config.WorkloadIdentityClientID).
+			// Privileged container is required for mount(2) and /dev/fuse access.
+			WithPrivilegedFuse(0)
+		if r.Cache != NoCache {
+			jc.WithEnv(0, "BLOBFUSE_USE_DIST_CACHE", "true").
+				WithEnv(0, "BLOBFUSE_DIST_CACHE_DISCOVERY_ENDPOINT",
+					fmt.Sprintf("%s:9065", cacheDiscovery))
 		}
 	}
 
