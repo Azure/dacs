@@ -156,6 +156,16 @@ PERF_CLIENT_DOWNLOAD_LOG="/tmp/perf_client_ib_download_$$.log"
 eval "${PERF_CLIENT_EXE} --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT} --num-threads 20 --data-size-GiB 50 --prefix ${random_prefix} --mode download --ib-enabled true --enable-validate-checksum true" 2>&1 | tee "${PERF_CLIENT_DOWNLOAD_LOG}"
 verify_ib_used "${PERF_CLIENT_DOWNLOAD_LOG}" "download" 70000
 
+echo "Running CacheClientTests after InfiniBand performance tests"
+if ! (
+    cd "${REPOSITORY_ROOT}/build/${BUILD_CONFIGURATION}/${BUILD_ARCH}"
+    GTEST_FILTER='*CacheClientTests*' ctest -V --no-tests=error -R '^CacheClientLibTests$'
+); then
+    echo "ERROR: CacheClientTests failed"
+    exit 1
+fi
+echo "CacheClientTests completed successfully"
+
 # cleanup would be executed due to trap handler
 
 echo "================================================"
