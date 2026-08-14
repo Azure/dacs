@@ -21,6 +21,7 @@
 #include "IBConstants.h"
 #include "IBUtils.h"
 #include "cache.pb.h"
+#include <algorithm>
 #include <iostream>
 #include <unistd.h>
 #include <sys/types.h>
@@ -366,6 +367,8 @@ bool TestDownloadAPI(
     Request request;
 
     DownloadRequest* downloadRequest = request.mutable_downloadrequest();
+    const std::string requestId = GetUniqueFilename("download_request");
+    downloadRequest->set_requestid(requestId);
     downloadRequest->set_filename(filename.c_str());
     downloadRequest->set_offset(offset);
     downloadRequest->set_length(filesize);
@@ -395,6 +398,12 @@ bool TestDownloadAPI(
     {
         std::cout << "error: download failed: response.result() != expectedResult:" << response.result() << ", " <<
             expectedResult << endl;
+        return false;
+    }
+
+    if (response.requestid() != requestId)
+    {
+        std::cout << "error: download response request ID mismatch" << endl;
         return false;
     }
 

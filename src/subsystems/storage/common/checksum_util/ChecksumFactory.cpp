@@ -38,8 +38,8 @@ IChecksumStrategy* ChecksumFactory::GetChecksumStrategyInstance(ChecksumAlgorith
         }
         default:
         {
-            LOG_DEBUG("Invalid checksum algorithm enum value: {}, defaulting to XXHash32", static_cast<int>(algorithm));
-            return &XXHash32Strategy::GetInstance();
+            LOG_ERROR("Unsupported checksum algorithm enum value: {}", static_cast<int>(algorithm));
+            return nullptr;
         }
     }
 }
