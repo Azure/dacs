@@ -209,6 +209,8 @@ jobs:
         with:
           context: ${{ matrix.image.context }}
           file: ${{ matrix.image.file }}
+          build-contexts: |
+            compliance=.
           tags: ${{ matrix.image.name }}:local
           load: true
           cache-from: type=gha,scope=${{ matrix.image.name }}
@@ -279,6 +281,8 @@ jobs:
         with:
           context: Docker/base
           file: ${{ matrix.image.base_file }}
+          build-contexts: |
+            compliance=.
           tags: dacs.azurecr.io/${{ matrix.image.base }}:latest
           load: true
           push: false

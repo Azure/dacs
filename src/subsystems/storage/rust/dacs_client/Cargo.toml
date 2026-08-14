@@ -29,6 +29,8 @@ include = [
     "tests/**",
     "native/**",
     "README.md",
+    "LICENSE",
+    "NOTICE.txt",
 ]
 
 [lib]

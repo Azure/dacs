@@ -48,6 +48,7 @@ FROM mcr.microsoft.com/azurelinux/distroless/minimal:3.0
 WORKDIR /
 COPY --from=builder /cacheserver-scheduler /cacheserver-scheduler
 COPY ./cacheserver-scheduler-config.yaml /cacheserver-scheduler-config.yaml
+COPY --from=compliance LICENSE NOTICE.txt /
 COPY --from=dependency-install /staging/ /
 
 ENTRYPOINT ["/cacheserver-scheduler"]

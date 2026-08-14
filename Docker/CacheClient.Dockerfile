@@ -18,6 +18,8 @@ FROM ${DOCKER_REGISTRY}/cache-client-base:latest
 
 USER root
 
+COPY ./storage/LICENSE ./storage/NOTICE.txt /
+
 COPY ./storage/cache-test/launcher.py /app/launcher.py
 COPY ./storage/cache-test/StorageClient.py /app/StorageClient.py
 COPY ./storage/cache-test/CacheStorageClient /app/CacheStorageClient
@@ -32,4 +34,3 @@ COPY ./storage/libStorageIntercept.so /app/py_dacs_client/libStorageIntercept.so
 RUN chmod +x /app/CacheStorageClient
 RUN chmod +x /app/DeleteClient
 RUN chmod +x /app/PerfClient
-

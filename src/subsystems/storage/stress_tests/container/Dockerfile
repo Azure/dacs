@@ -48,6 +48,8 @@ RUN mkdir -p /app/lib
 RUN mkdir -p /app/_cache
 RUN mkdir -p /app/_cacheTemp
 
+COPY LICENSE NOTICE.txt /
+
 COPY src/subsystems/storage/stress_tests/launcher.py /app/launcher.py
 COPY src/subsystems/storage/stress_tests/StorageClient.py /app/StorageClient.py
 COPY bin/Release/amd64/native-storage/storage/CacheStorageClient /app/CacheStorageClient
