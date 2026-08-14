@@ -44,7 +44,7 @@ spec:
       - name: regcred
       containers:
       - name: job
-        image: dacs.azurecr.io/storage-test-client:stress
+        image: dacstest.azurecr.io/storage-test-client:stress
         imagePullPolicy: Always # Using this for testing
         env:
         - name: SI_azBlobStorageAccountName

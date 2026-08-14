@@ -15,7 +15,7 @@
 
 # Build and optionally publish Helm charts for cache server
 # Uses the same registry/version settings as publish-images.sh
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
@@ -24,12 +24,13 @@ OUTPUT_DIR="$REPOSITORY_ROOT/dist"
 # Load configuration
 CONFIG_FILE="$REPOSITORY_ROOT/scripts/k8s/config/local.config"
 if [[ -f "$CONFIG_FILE" ]]; then
+    # shellcheck disable=SC1090
     source "$CONFIG_FILE"
     echo "Loaded config from: $CONFIG_FILE"
 fi
 
 # Registry settings - must be provided by environment variables
-REGISTRY="$DOCKER_REGISTRY"
+REGISTRY="${DOCKER_REGISTRY:?DOCKER_REGISTRY is required}"
 BUILD_NUMBER="${BUILD_NUMBER:-latest}"
 
 # Chart repo
@@ -40,20 +41,22 @@ mkdir -p "$OUTPUT_DIR"
 
 # Function to package and optionally push a chart
 # Args: CHART_DIR CHART_NAME CHART_VERSION APP_VERSION
-package_chart() {
+package_chart() (
     local CHART_DIR="$1"
     local CHART_NAME="$2"
     local CHART_VERSION="$3"
     local APP_VERSION="$4"
-    
+
     local CHART_PACKAGE="$OUTPUT_DIR/$CHART_NAME-$CHART_VERSION.tgz"
-    local CHART_DESCRIPTION=$(grep '^description:' "$CHART_DIR/Chart.yaml" | cut -d: -f2- | xargs)
-    
-    # Backup and update Chart.yaml
-    cp "$CHART_DIR/Chart.yaml" "$CHART_DIR/Chart.yaml.bak"
-    [[ -f "$CHART_DIR/values.yaml" ]] && cp "$CHART_DIR/values.yaml" "$CHART_DIR/values.yaml.bak"
-    
-    cat > "$CHART_DIR/Chart.yaml" << EOF
+    local CHART_DESCRIPTION
+    local CHART_STAGE
+    CHART_DESCRIPTION="$(grep '^description:' "$CHART_DIR/Chart.yaml" | cut -d: -f2- | xargs)"
+    CHART_STAGE="$(mktemp -d)"
+    trap 'rm -rf -- "$CHART_STAGE"' EXIT
+
+    cp -a "$CHART_DIR/." "$CHART_STAGE/"
+
+    cat > "$CHART_STAGE/Chart.yaml" << EOF
 apiVersion: v2
 name: $CHART_NAME
 description: $CHART_DESCRIPTION
@@ -63,28 +66,30 @@ appVersion: "$APP_VERSION"
 EOF
 
     # Update values.yaml with full image repository paths
-    if [[ -f "$CHART_DIR/values.yaml" ]]; then
-        sed -i "s|^\\(    repository:\\) cache-server|\\1 $REGISTRY/cache-server|" "$CHART_DIR/values.yaml"
-        sed -i "s|^\\(      repository:\\) cacheserver-scheduler|\\1 $REGISTRY/cacheserver-scheduler|" "$CHART_DIR/values.yaml"
-        sed -i "s|^\\(    repository:\\) cache-controller|\\1 $REGISTRY/cache-controller|" "$CHART_DIR/values.yaml"
-        sed -i "s|cache-server:latest|$REGISTRY/cache-server:$APP_VERSION|" "$CHART_DIR/values.yaml"
+    if [[ -f "$CHART_STAGE/values.yaml" ]]; then
+        sed -i -E \
+            "s#^([[:space:]]*repository:)[[:space:]]*(acstor/dacs-server|cache-server)\$#\\1 $REGISTRY/cache-server#" \
+            "$CHART_STAGE/values.yaml"
+        sed -i -E \
+            "s#^([[:space:]]*repository:)[[:space:]]*(acstor/dacs-scheduler|cacheserver-scheduler)\$#\\1 $REGISTRY/cacheserver-scheduler#" \
+            "$CHART_STAGE/values.yaml"
+        sed -i -E \
+            "s#^([[:space:]]*repository:)[[:space:]]*(acstor/dacs-controller|cache-controller)\$#\\1 $REGISTRY/cache-controller#" \
+            "$CHART_STAGE/values.yaml"
+        sed -i "s|cache-server:latest|$REGISTRY/cache-server:$APP_VERSION|" "$CHART_STAGE/values.yaml"
     fi
 
     # Package the chart (empty tag in values.yaml defaults to appVersion)
-    helm package "$CHART_DIR" -d "$OUTPUT_DIR" --version "$CHART_VERSION" --app-version "$APP_VERSION"
-    
-    # Restore original files
-    mv "$CHART_DIR/Chart.yaml.bak" "$CHART_DIR/Chart.yaml"
-    [[ -f "$CHART_DIR/values.yaml.bak" ]] && mv "$CHART_DIR/values.yaml.bak" "$CHART_DIR/values.yaml"
-    
+    helm package "$CHART_STAGE" -d "$OUTPUT_DIR" --version "$CHART_VERSION" --app-version "$APP_VERSION"
+
     echo "  Built: $CHART_PACKAGE"
-    
+
     # Push if enabled
     if [[ "$PUSH_CHARTS" == "true" ]]; then
         helm push "$CHART_PACKAGE" "$CHART_REPO"
         echo "  Published: $CHART_REPO/$CHART_NAME:$CHART_VERSION"
     fi
-}
+)
 
 # Function to build and optionally push a chart
 build_and_push_chart() {
@@ -97,9 +102,11 @@ build_and_push_chart() {
     echo "=========================================="
     
     # Get base version from existing Chart.yaml (extract only semver part, strip any suffix like -local)
-    local RAW_VERSION=$(grep '^version:' "$CHART_DIR/Chart.yaml" | awk '{print $2}' | tr -d '"')
+    local RAW_VERSION
+    RAW_VERSION="$(grep '^version:' "$CHART_DIR/Chart.yaml" | awk '{print $2}' | tr -d '"')"
     # Extract just the semver base (e.g., "0.1.0-local" -> "0.1.0")
-    local BASE_VERSION=$(echo "$RAW_VERSION" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
+    local BASE_VERSION
+    BASE_VERSION="$(echo "$RAW_VERSION" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
     [[ -z "$BASE_VERSION" ]] && BASE_VERSION="0.0.0"
     
     # Chart version: always use BASE_VERSION-BUILD_NUMBER format
@@ -119,7 +126,7 @@ echo "Build Number: $BUILD_NUMBER"
 
 # Check if --push flag is provided
 PUSH_CHARTS="false"
-if [[ "$1" == "--push" ]]; then
+if [[ "${1:-}" == "--push" ]]; then
     PUSH_CHARTS="true"
 fi
     

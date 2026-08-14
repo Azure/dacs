@@ -29,7 +29,7 @@
 # restores an image that lines up with the helm chart defaults.
 #
 # Required environment variables:
-#   DOCKER_REGISTRY   - Target registry (e.g. dacs.azurecr.io)
+#   DOCKER_REGISTRY   - Target registry (e.g. dacstest.azurecr.io)
 #   BUILD_NUMBER      - Build number used in the tag
 #
 # Optional environment variables:

@@ -32,7 +32,7 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       containers:
       - name: dacs-client
-        image: dacs.azurecr.io/dacs-client:latest
+        image: dacstest.azurecr.io/dacs-client:latest
         imagePullPolicy: Always
         env:
           # TODO: Update the CACHE_SERVER_LIST and CACHE_SERVER_PORT environment variables with the actual values for your cache servers

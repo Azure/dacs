@@ -58,7 +58,7 @@ FROM mcr.microsoft.com/azurelinux/distroless/minimal:3.0
 WORKDIR /
 COPY --from=builder /workspace/manager .
 COPY --from=builder /workspace/internal/config/cache-controller-config.yaml /cache-controller-config.yaml
-COPY --from=compliance LICENSE NOTICE.txt /
+COPY LICENSE NOTICE.txt /
 COPY --from=dependency-install /staging/ /
 USER 65532:65532
 

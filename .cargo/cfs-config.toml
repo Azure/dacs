@@ -1,0 +1,5 @@
+[registries]
+AzureNativeContainerStorage_PublicPackages = { index = "sparse+https://msazure.pkgs.visualstudio.com/One/_packaging/AzureNativeContainerStorage_PublicPackages/Cargo/index/", credential-provider = "cargo:token" }
+
+[source.crates-io]
+replace-with = "AzureNativeContainerStorage_PublicPackages"

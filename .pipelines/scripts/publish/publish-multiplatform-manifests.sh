@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Create multi-platform manifests after all architecture builds complete
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
@@ -22,12 +22,13 @@ REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 # Load configuration
 CONFIG_FILE="$REPOSITORY_ROOT/scripts/k8s/config/local.config"
 if [[ -f "$CONFIG_FILE" ]]; then
+    # shellcheck disable=SC1090
     source "$CONFIG_FILE"
     echo "Loaded config from: $CONFIG_FILE"
 fi
 
 # Registry settings - must be provided by environment variables
-REGISTRY="$DOCKER_REGISTRY"
+REGISTRY="${DOCKER_REGISTRY:?DOCKER_REGISTRY is required}"
 BUILD_NUMBER="${BUILD_NUMBER:-latest}"
 
 # Architectures to include in manifest
@@ -37,7 +38,6 @@ BUILD_ARCHS="${BUILD_ARCHS:-amd64 arm64}"
 
 # Define images to process
 IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler" "cache-controller")
-BASE_IMAGES=("cache-server-base" "cache-client-base")
 
 echo "Creating multi-platform manifests..."
 echo "Registry: $REGISTRY"
@@ -66,17 +66,6 @@ create_manifest() {
     echo "Manifest created: $manifest_tag"
     echo ""
 }
-
-# Base images: combine <build>-<arch> into :latest (only if they were pushed in this build)
-for image in "${BASE_IMAGES[@]}"; do
-    # Check if amd64 tag exists to determine if base images were pushed in this build
-    if docker buildx imagetools inspect "$REGISTRY/$image:${BUILD_NUMBER}-amd64" >/dev/null 2>&1; then
-        echo "Base image $image was pushed in this build, creating manifest..."
-        create_manifest "$image" "latest" "${BUILD_NUMBER}-{arch}"
-    else
-        echo "Skipping base image manifest for $image (not pushed in this build)"
-    fi
-done
 
 # App images: combine <build>-linux-<arch> into :<build>
 for image in "${IMAGES[@]}"; do

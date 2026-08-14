@@ -45,7 +45,7 @@ spec:
       - name: prestageacrcred
       containers:
       - name: write-container
-        image: dacs.azurecr.io/storage/cache-write-test:20251121_3
+        image: dacstest.azurecr.io/storage/cache-write-test:20251121_3
         imagePullPolicy: Always
         env:
         - name: STORAGE_INTCPT_SAS_TOKEN

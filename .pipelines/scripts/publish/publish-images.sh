@@ -22,6 +22,7 @@ REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 # Load configuration
 CONFIG_FILE="$REPOSITORY_ROOT/scripts/k8s/config/local.config"
 if [[ -f "$CONFIG_FILE" ]]; then
+    # shellcheck disable=SC1090
     source "$CONFIG_FILE"
     echo "Loaded config from: $CONFIG_FILE"
 fi
@@ -40,16 +41,6 @@ echo "Registry: $REGISTRY"
 echo "Build Number: $BUILD_NUMBER"
 echo "Architecture: $BUILD_ARCH"
 echo ""
-
-# Login to ACR if the registry is an Azure Container Registry
-if [[ "$REGISTRY" == *".azurecr.io" ]]; then
-    ACR_NAME="${REGISTRY%.azurecr.io}"
-    echo "Logging into ACR $ACR_NAME..."
-    if ! az acr login --name "$ACR_NAME" 2>&1; then
-        echo "Error: Failed to login to ACR $ACR_NAME"
-        exit 1
-    fi
-fi
 
 # Validate that local images exist before publishing
 echo "Validating local images..."
@@ -122,8 +113,11 @@ base_dockerfile_changed() {
     return 1
 }
 
-# Push base images only if Dockerfile changed
-if base_dockerfile_changed; then
+# Push base images only from main builds and only if Dockerfile changed
+if [[ "${BUILD_SOURCEBRANCH:-}" != "refs/heads/main" ]]; then
+    echo "Skipping base image push (not a main branch build)"
+    echo ""
+elif base_dockerfile_changed; then
     echo "Pushing base images (Dockerfile changed)..."
     for image in "${BASE_IMAGES[@]}"; do
         src="${REGISTRY}/${image}:latest"

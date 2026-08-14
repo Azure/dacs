@@ -16,15 +16,20 @@
 # This image is built once and pushed to ACR, avoiding slow apt downloads in CI
 FROM mcr.microsoft.com/mirror/docker/library/ubuntu:22.04
 
+ARG UBUNTU_ARCHIVE_MIRROR=""
+
 USER root
 
-COPY --from=compliance LICENSE NOTICE.txt /
+COPY LICENSE NOTICE.txt /
 
 # Install all required apt packages.
 # `apt-get upgrade` is included so each rebuild of this base image pulls the
 # latest security patches for packages already present in the upstream image
 # (e.g. libc6, libssl3, libgnutls30) -- not just the ones in our install list.
-RUN apt-get update && \
+RUN if [ -n "${UBUNTU_ARCHIVE_MIRROR}" ]; then \
+        sed -i "s|http://archive.ubuntu.com/ubuntu|${UBUNTU_ARCHIVE_MIRROR}|g" /etc/apt/sources.list; \
+    fi && \
+    apt-get update && \
     apt-get upgrade -yq && \
     apt-get install -yq \
     python3 \
@@ -61,7 +66,11 @@ RUN apt-get update && \
     rm -f /etc/ssh/ssh_host_*
 
 # Install Python dependencies
-RUN pip3 install --no-cache-dir \
+RUN --mount=type=secret,id=pip_index_url,required=false \
+    if [ -f /run/secrets/pip_index_url ]; then \
+        export PIP_INDEX_URL="$(cat /run/secrets/pip_index_url)"; \
+    fi && \
+    pip3 install --no-cache-dir \
     pytest \
     blobfile \
     boostedblob \

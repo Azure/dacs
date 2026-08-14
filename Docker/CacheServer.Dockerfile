@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Use pre-built base image with packages installed (avoids slow apt downloads)
-ARG DOCKER_REGISTRY=dacs.azurecr.io
+ARG DOCKER_REGISTRY=dacstest.azurecr.io
 FROM ${DOCKER_REGISTRY}/cache-server-base:latest
 
 USER root
