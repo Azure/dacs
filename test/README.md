@@ -142,7 +142,7 @@ These metrics are automatically collected from the PerfClient logs and can be se
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SEND_METRICS` | `false` | Send metrics to EventHub for Kusto ingestion |
-| `DOCKER_REGISTRY` | `dacs.azurecr.io` | Docker registry for perf client image |
+| `DOCKER_REGISTRY` | `dacstest.azurecr.io` | Docker registry for perf client image |
 | `BUILD_NUMBER` | - | Image tag for perf client |
 
 ### Examples
@@ -171,10 +171,10 @@ SEND_METRICS=true make test-e2e TEST_FILTER=perf EXTRA_TEST_ARGS="--data-size-gi
 make provision TARGET=aks AKS_TEMPLATE=nvme-l16 AKS_LOCATION=westus2
 
 # Install prerequisites and cache-server
-DOCKER_REGISTRY=dacs.azurecr.io BUILD_NUMBER=20251222.6 make deploy
+DOCKER_REGISTRY=dacstest.azurecr.io BUILD_NUMBER=20251222.6 make deploy
 
 # Run performance tests
-DOCKER_REGISTRY=dacs.azurecr.io BUILD_NUMBER=20251222.6 make test-e2e TEST_FILTER=perf EXTRA_TEST_ARGS="--data-size-gib=100 --cache-server-count=5 --num-threads=32"
+DOCKER_REGISTRY=dacstest.azurecr.io BUILD_NUMBER=20251222.6 make test-e2e TEST_FILTER=perf EXTRA_TEST_ARGS="--data-size-gib=100 --cache-server-count=5 --num-threads=32"
 
 # Clean up
 make undeploy

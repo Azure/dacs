@@ -4,7 +4,7 @@ By the end of this tutorial, you will have installed the DACS controller,
 created one CacheServer with ephemeral storage, and verified an upload and
 download through cache discovery.
 
-The published OCI charts and images at `dacs.azurecr.io` are publicly readable
+The published OCI charts and images at `dacstest.azurecr.io` are publicly readable
 and can be pulled anonymously.
 
 The 10-minute estimate starts after cluster creation. It assumes:
@@ -40,7 +40,7 @@ Read that chart's metadata first so the smoke-test client uses the matching
 `appVersion`, which is the published image build number:
 
 ```bash
-export CHART_REF="oci://dacs.azurecr.io/acstor/charts/dacs"
+export CHART_REF="oci://dacstest.azurecr.io/acstor/charts/dacs"
 CHART_METADATA=$(helm show chart "$CHART_REF")
 
 export CHART_VERSION=$(
@@ -77,8 +77,8 @@ helm upgrade --install dacs "$CHART_REF" \
   --atomic \
   --wait \
   --timeout 10m \
-  --set manager.image.repository=dacs.azurecr.io/cache-controller \
-  --set manager.cacheServerImage.repository=dacs.azurecr.io/cache-server \
+  --set manager.image.repository=dacstest.azurecr.io/cache-controller \
+  --set manager.cacheServerImage.repository=dacstest.azurecr.io/cache-server \
   --set cache.enabled=true \
   --set cache.name=cache-sample \
   --set cache.scaling.static.numServers=1 \
@@ -142,7 +142,7 @@ and stores checksums. Fixed Job names are deleted first so this section can be
 rerun.
 
 ```bash
-export SMOKE_IMAGE="dacs.azurecr.io/cache-test-client:$APP_VERSION"
+export SMOKE_IMAGE="dacstest.azurecr.io/cache-test-client:$APP_VERSION"
 export SMOKE_PREFIX="quickstart-$(date +%s)"
 
 kubectl delete job dacs-smoke-upload dacs-smoke-download \

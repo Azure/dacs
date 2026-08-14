@@ -58,7 +58,7 @@ You can customize the node selector during installation by setting `cache.nodeSe
 
 ### Published artifacts
 
-The published DACS OCI charts and images at `dacs.azurecr.io` are publicly
+The published DACS OCI charts and images at `dacstest.azurecr.io` are publicly
 readable. Helm and Kubernetes can pull them anonymously.
 
 ## Installing Helm
@@ -69,9 +69,9 @@ To install Helm, please follow the official [Helm installation guide](https://he
 
 Use the same release version for the prerequisite and DACS charts. The DACS
 chart's `appVersion` identifies the matching image tag. If you override image
-settings, keep `dacs.azurecr.io/cache-controller`,
-`dacs.azurecr.io/cache-server`, and
-`dacs.azurecr.io/cache-test-client` on that matching version.
+settings, keep `dacstest.azurecr.io/cache-controller`,
+`dacstest.azurecr.io/cache-server`, and
+`dacstest.azurecr.io/cache-test-client` on that matching version.
 
 ### Step 1: Install NVMe RAID Prerequisites (Required)
 
@@ -80,7 +80,7 @@ Install the prerequisite chart to automatically set up RAID on each node:
 
 ```sh
 helm install dacs-prereq \
-  oci://dacs.azurecr.io/acstor/charts/dacs-prereq \
+  oci://dacstest.azurecr.io/acstor/charts/dacs-prereq \
   --version <version> \
   --namespace dacs-system \
   --create-namespace \
@@ -105,12 +105,12 @@ infrastructure through a Cache custom resource (CR).
 
 ```sh
 helm install dacs \
-  oci://dacs.azurecr.io/acstor/charts/dacs \
+  oci://dacstest.azurecr.io/acstor/charts/dacs \
   --version <version> \
   --namespace dacs-system \
   --create-namespace \
-  --set manager.image.repository=dacs.azurecr.io/cache-controller \
-  --set manager.cacheServerImage.repository=dacs.azurecr.io/cache-server \
+  --set manager.image.repository=dacstest.azurecr.io/cache-controller \
+  --set manager.cacheServerImage.repository=dacstest.azurecr.io/cache-server \
   --wait --timeout 10m
 ```
 
@@ -120,11 +120,11 @@ Create a cache cluster by enabling the Cache CR:
 
 ```sh
 helm upgrade dacs \
-  oci://dacs.azurecr.io/acstor/charts/dacs \
+  oci://dacstest.azurecr.io/acstor/charts/dacs \
   --version <version> \
   --namespace dacs-system \
-  --set manager.image.repository=dacs.azurecr.io/cache-controller \
-  --set manager.cacheServerImage.repository=dacs.azurecr.io/cache-server \
+  --set manager.image.repository=dacstest.azurecr.io/cache-controller \
+  --set manager.cacheServerImage.repository=dacstest.azurecr.io/cache-server \
   --set cache.enabled=true \
   --set cache.scaling.static.numServers=3 \
   --set cache.serverSizeInGB=100
@@ -198,11 +198,11 @@ The most common configuration options:
 
 ```sh
 helm upgrade dacs \
-  oci://dacs.azurecr.io/acstor/charts/dacs \
+  oci://dacstest.azurecr.io/acstor/charts/dacs \
   --version <version> \
   --namespace dacs-system \
-  --set manager.image.repository=dacs.azurecr.io/cache-controller \
-  --set manager.cacheServerImage.repository=dacs.azurecr.io/cache-server \
+  --set manager.image.repository=dacstest.azurecr.io/cache-controller \
+  --set manager.cacheServerImage.repository=dacstest.azurecr.io/cache-server \
   --set cache.enabled=true \
   --set cache.scaling.static.numServers=5 \
   --set cache.serverSizeInGB=100 \
@@ -222,9 +222,9 @@ For complex configurations, create a `values.yaml` file:
 ```yaml
 manager:
   image:
-    repository: dacs.azurecr.io/cache-controller
+    repository: dacstest.azurecr.io/cache-controller
   cacheServerImage:
-    repository: dacs.azurecr.io/cache-server
+    repository: dacstest.azurecr.io/cache-server
 
 cache:
   enabled: true
@@ -251,7 +251,7 @@ Install with the values file:
 
 ```sh
 helm upgrade --install dacs \
-  oci://dacs.azurecr.io/acstor/charts/dacs \
+  oci://dacstest.azurecr.io/acstor/charts/dacs \
   --version <version> \
   --namespace dacs-system \
   -f values.yaml
@@ -264,7 +264,7 @@ used for the deployment:
 
 ```sh
 helm upgrade dacs \
-  oci://dacs.azurecr.io/acstor/charts/dacs \
+  oci://dacstest.azurecr.io/acstor/charts/dacs \
   --version <version> \
   --namespace dacs-system \
   --reuse-values \

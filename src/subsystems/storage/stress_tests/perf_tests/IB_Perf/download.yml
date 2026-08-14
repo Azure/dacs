@@ -52,7 +52,7 @@ spec:
               topologyKey: kubernetes.io/hostname # Use the node's hostname for anti-affinity
       containers:
       - name: job
-        image: dacs.azurecr.io/test-image:1.5.9
+        image: dacstest.azurecr.io/test-image:1.5.9
         command: ['/app/PerfClient']
         args: ['--server-port', '9065', '--server-hostname', 'cacheserver-0.cacheserver.azureml.svc.cluster.local', '--num-threads', '64', '--data-size-GiB', '1000', '--prefix', 'test8', '--mode', 'download', '--num-iterations', '1', '--ib-enabled', 'true']
         resources:

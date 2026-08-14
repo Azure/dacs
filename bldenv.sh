@@ -33,14 +33,75 @@ fi
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 WORKSPACE_NAME="$(basename "$DIR")"
 CARGO_CACHE_DIR="${CARGO_CACHE_DIR:-$HOME/.cache/dacs-cargo}"
+USE_AZURE_CFS="${USE_AZURE_CFS:-false}"
+UBUNTU_ARCHIVE_MIRROR="${UBUNTU_ARCHIVE_MIRROR:-}"
+if [ "$USE_AZURE_CFS" = "true" ] && [ -z "$UBUNTU_ARCHIVE_MIRROR" ]; then
+    UBUNTU_ARCHIVE_MIRROR="http://azure.archive.ubuntu.com/ubuntu"
+fi
 mkdir -p "$CARGO_CACHE_DIR/registry" "$CARGO_CACHE_DIR/git"
+
+PIP_CONFIG_FILE=""
+CARGO_CONFIG_FILE=""
+CARGO_CREDENTIALS_FILE=""
+cleanup() {
+    if [ -n "$PIP_CONFIG_FILE" ]; then
+        rm -f "$PIP_CONFIG_FILE"
+    fi
+    if [ -n "$CARGO_CONFIG_FILE" ]; then
+        rm -f "$CARGO_CONFIG_FILE"
+    fi
+    if [ -n "$CARGO_CREDENTIALS_FILE" ]; then
+        rm -f "$CARGO_CREDENTIALS_FILE"
+    fi
+}
+trap cleanup EXIT
+
+pip_runtime_args=()
+if [ "$USE_AZURE_CFS" = "true" ] && [ -n "${PIP_INDEX_URL:-}" ]; then
+    PIP_CONFIG_FILE="$(mktemp)"
+    chmod 600 "$PIP_CONFIG_FILE"
+    {
+        printf '[global]\n'
+        printf 'index-url = %s\n' "$PIP_INDEX_URL"
+        if [ -n "${PIP_EXTRA_INDEX_URL:-}" ]; then
+            printf 'extra-index-url = %s\n' "$PIP_EXTRA_INDEX_URL"
+        fi
+    } > "$PIP_CONFIG_FILE"
+    pip_runtime_args=(
+        -v "$PIP_CONFIG_FILE:/run/secrets/pip.conf:ro"
+        --env PIP_CONFIG_FILE=/run/secrets/pip.conf
+    )
+fi
+
+cargo_runtime_args=()
+if [ "$USE_AZURE_CFS" = "true" ]; then
+    CARGO_CONFIG_FILE="$(mktemp)"
+    chmod 600 "$CARGO_CONFIG_FILE"
+    cp "$DIR/.cargo/cfs-config.toml" "$CARGO_CONFIG_FILE"
+    cargo_runtime_args=(
+        -v "$CARGO_CONFIG_FILE:/opt/cargo/config.toml:ro"
+    )
+
+    cargo_registry_token="${CARGO_REGISTRIES_AZURENATIVECONTAINERSTORAGE_PUBLICPACKAGES_TOKEN:-}"
+    if [ -n "$cargo_registry_token" ]; then
+        CARGO_CREDENTIALS_FILE="$(mktemp)"
+        chmod 600 "$CARGO_CREDENTIALS_FILE"
+        {
+            printf '[registries.AzureNativeContainerStorage_PublicPackages]\n'
+            printf 'token = "%s"\n' "$cargo_registry_token"
+        } > "$CARGO_CREDENTIALS_FILE"
+        cargo_runtime_args+=(
+            -v "$CARGO_CREDENTIALS_FILE:/opt/cargo/credentials.toml:ro"
+        )
+    fi
+fi
 
 # Detect host architecture and use architecture-specific image tag
 HOST_ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 echo "Detected host architecture: $(uname -m) -> $HOST_ARCH"
 
 # TODO: switch to dacs
-ACR_IMAGE="dacs.azurecr.io/native-build:linux-${HOST_ARCH}"
+ACR_IMAGE="dacstest.azurecr.io/native-build:linux-${HOST_ARCH}"
 
 # Try to use ACR image first, fallback to local build if not available
 nativeBuildImage="$ACR_IMAGE"
@@ -53,7 +114,20 @@ if ! docker image inspect "$nativeBuildImage" >/dev/null 2>&1; then
     else
         echo "Failed to pull from ACR. Building image locally..."
         nativeBuildImage="native-build:latest"
-        docker build -f src/images/native-build/Dockerfile -t "$nativeBuildImage" src/images/native-build
+        native_build_args=()
+        pip_build_secret=()
+        if [ -n "$UBUNTU_ARCHIVE_MIRROR" ]; then
+            native_build_args+=(--build-arg "UBUNTU_ARCHIVE_MIRROR=$UBUNTU_ARCHIVE_MIRROR")
+        fi
+        if [ "$USE_AZURE_CFS" = "true" ] && [ -n "${PIP_INDEX_URL:-}" ]; then
+            pip_build_secret=(--secret "id=pip_index_url,env=PIP_INDEX_URL")
+        fi
+        docker build \
+            "${native_build_args[@]}" \
+            "${pip_build_secret[@]}" \
+            -f src/images/native-build/Dockerfile \
+            -t "$nativeBuildImage" \
+            src/images/native-build
     fi
 else
     echo "Using cached ACR image: $nativeBuildImage"
@@ -113,6 +187,8 @@ docker run \
     --env PACKAGE_CHANNEL \
     --env BUILD_ARCHITECTURE \
     --env BUILD_CONFIGURATION \
+    "${pip_runtime_args[@]}" \
+    "${cargo_runtime_args[@]}" \
     -v /etc/group:/etc/group:ro \
     -v /etc/passwd:/etc/passwd:ro \
     -v /etc/shadow:/etc/shadow:ro \

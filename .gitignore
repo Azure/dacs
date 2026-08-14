@@ -26,6 +26,12 @@ cmake-build-release/
 
 # Docker build context - copied binaries, not source
 Docker/storage/
+Docker/base/LICENSE
+Docker/base/NOTICE.txt
+src/subsystems/cache-controller/LICENSE
+src/subsystems/cache-controller/NOTICE.txt
+src/subsystems/storage/cache_server_scheduler/LICENSE
+src/subsystems/storage/cache_server_scheduler/NOTICE.txt
 
 # Binary files
 *.exe

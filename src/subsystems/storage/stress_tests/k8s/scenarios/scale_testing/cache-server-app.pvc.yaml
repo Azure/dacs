@@ -45,7 +45,7 @@ spec:
       containers:
       - name: cacheserver
         # When using create and use latest cache-server image from DACS.
-        image: dacs.azurecr.io/public/azureml/amlarc/docker/onebox/cache-server:0.0.56
+        image: dacstest.azurecr.io/public/azureml/amlarc/docker/onebox/cache-server:0.0.56
         ports:
         - containerPort: 9065
           # Cache server big enough to fit entire dataset

@@ -45,7 +45,7 @@ spec:
       - name: regcreddacsdaily
       containers:
       - name: dacsfs-mount-container
-        image: dacs.azurecr.io/dacs/cache-perf-test-client:adbansal20240620
+        image: dacstest.azurecr.io/dacs/cache-perf-test-client:adbansal20240620
         imagePullPolicy: Always
         env:
         - name: SI_azBlobStorageAccountName
@@ -99,7 +99,7 @@ spec:
         - name: mount-signal
           mountPath: /signals
       - name: rslex-mount-container
-        image: dacs.azurecr.io/dacs/rslex-mount:adbansal20240630
+        image: dacstest.azurecr.io/dacs/rslex-mount:adbansal20240630
         imagePullPolicy: Always
         env:
         - name: CACHE_SERVER_LIST
@@ -134,7 +134,7 @@ spec:
         - name: mount-signal
           mountPath: /signals
       - name: job
-        image: dacs.azurecr.io/dacs/base-client:adbansal20240630
+        image: dacstest.azurecr.io/dacs/base-client:adbansal20240630
         imagePullPolicy: Always
         env:
         - name: MOUNT_TYPE

@@ -26,7 +26,7 @@ usage() {
     echo "  --what-if         (Optional) Flag to indicate if the deployment should run in 'what-if' mode (default: false)"
     echo ""
     echo "Environment variables:"
-    echo "  DOCKER_REGISTRY   (Optional) Docker registry to attach to AKS (default: dacs.azurecr.io)"
+    echo "  DOCKER_REGISTRY   (Optional) Docker registry to attach to AKS (default: dacstest.azurecr.io)"
     exit 1
 }
 

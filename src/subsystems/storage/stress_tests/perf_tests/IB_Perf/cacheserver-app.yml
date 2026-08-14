@@ -79,7 +79,7 @@ spec:
           value: "75"
         - name: CACHESERVER_EVICTION_PASS_FREQUENCY
           value: 1h
-        image: dacs.azurecr.io/test-image:1.5.8
+        image: dacstest.azurecr.io/test-image:1.5.8
         imagePullPolicy: Always
         livenessProbe:
           exec:
