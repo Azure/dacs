@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Build Docker images for cache server and client components
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
@@ -43,7 +43,7 @@ echo "Cache Controller Image: $CACHECONTROLLER_IMAGE"
 
 # Registry for base images
 # Note: DOCKER_REGISTRY already includes .azurecr.io suffix from pipeline
-REGISTRY="${DOCKER_REGISTRY}"
+REGISTRY="${DOCKER_REGISTRY:-}"
 if [[ -z "$REGISTRY" ]]; then
     REGISTRY="dacs.azurecr.io"
     echo "DOCKER_REGISTRY not set; defaulting to: $REGISTRY"
@@ -125,6 +125,7 @@ prepare_base_image() {
     if base_dockerfile_changed "$name"; then
         echo "Building $name (Dockerfile changed)..."
         docker build $no_cache_flag \
+            --build-context compliance="$REPOSITORY_ROOT" \
             --label "git-sha=$current_sha" \
             -f "$REPOSITORY_ROOT/$dockerfile" \
             -t "$image" \
@@ -137,6 +138,7 @@ prepare_base_image() {
         else
             echo "Pull failed for $image, building locally..."
             docker build $no_cache_flag \
+                --build-context compliance="$REPOSITORY_ROOT" \
                 --label "git-sha=$current_sha" \
                 -f "$REPOSITORY_ROOT/$dockerfile" \
                 -t "$image" \
@@ -158,12 +160,16 @@ PID_SERVER=$!
 docker build --build-arg DOCKER_REGISTRY="$REGISTRY" -f CacheClient.Dockerfile -t "$CACHECLIENT_IMAGE" . &
 PID_CLIENT=$!
 
-# Build Go images in parallel 
-docker build -f CacheServerScheduler.Dockerfile -t "$CACHESERVER_SCHEDULER_IMAGE" "$REPOSITORY_ROOT/src/subsystems/storage/cache_server_scheduler" &
+# Build Go images in parallel
+docker build \
+    --build-context compliance="$REPOSITORY_ROOT" \
+    -f CacheServerScheduler.Dockerfile \
+    -t "$CACHESERVER_SCHEDULER_IMAGE" \
+    "$REPOSITORY_ROOT/src/subsystems/storage/cache_server_scheduler" &
 PID_SCHEDULER=$!
 
 cd "$CACHE_CONTROLLER_DIR"
-IMG="$CACHECONTROLLER_IMAGE" make docker-build &
+COMPLIANCE_CONTEXT="$REPOSITORY_ROOT" IMG="$CACHECONTROLLER_IMAGE" make docker-build &
 PID_CONTROLLER=$!
 
 wait $PID_SERVER || { echo "CacheServer build failed"; exit 1; }

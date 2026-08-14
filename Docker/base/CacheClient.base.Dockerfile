@@ -18,6 +18,8 @@ FROM mcr.microsoft.com/mirror/docker/library/ubuntu:22.04
 
 USER root
 
+COPY --from=compliance LICENSE NOTICE.txt /
+
 # Install all required apt packages.
 # `apt-get upgrade` is included so each rebuild of this base image pulls the
 # latest security patches for packages already present in the upstream image

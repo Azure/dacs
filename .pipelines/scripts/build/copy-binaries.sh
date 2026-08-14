@@ -27,6 +27,8 @@ BINARIES_PATH="$REPOSITORY_ROOT/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-
 STRESS_TESTS_PATH="$REPOSITORY_ROOT/src/subsystems/storage/stress_tests"
 PY_DACS_CLIENT_PATH="$REPOSITORY_ROOT/src/subsystems/storage/dacs_client/py_dacs_client"
 PY_DACS_CLIENT="$DOCKER_STORAGE/py_dacs_client"
+LICENSE_SOURCE="$REPOSITORY_ROOT/LICENSE"
+NOTICE_SOURCE="$REPOSITORY_ROOT/NOTICE.txt"
 
 echo "Build configuration: $BUILD_CONFIGURATION"
 echo "Build architecture: $BUILD_ARCH"
@@ -40,6 +42,13 @@ if [ ! -d "$BINARIES_PATH" ] || [ ! -f "$BINARIES_PATH/CacheServer" ]; then
   ls -la "$REPOSITORY_ROOT/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/" 2>/dev/null || echo "  Directory does not exist"
   exit 1
 fi
+
+for compliance_file in "$LICENSE_SOURCE" "$NOTICE_SOURCE"; do
+  if [ ! -f "$compliance_file" ]; then
+    echo "ERROR: Compliance file not found: $compliance_file"
+    exit 1
+  fi
+done
 
 # Set up Docker build directories
 mkdir -p "$DOCKER_STORAGE" "$CACHE_TEST" "$PY_DACS_CLIENT"
@@ -56,6 +65,8 @@ cp "$BINARIES_PATH/DeleteClient" "$CACHE_TEST/DeleteClient"
 cp "$BINARIES_PATH/PerfClient" "$CACHE_TEST/PerfClient"
 cp "$BINARIES_PATH/libStorageIntercept.so" "$DOCKER_STORAGE/libStorageIntercept.so"
 cp "$BINARIES_PATH/libStorageDirect.so" "$DOCKER_STORAGE/libStorageDirect.so"
+cp "$LICENSE_SOURCE" "$DOCKER_STORAGE/LICENSE"
+cp "$NOTICE_SOURCE" "$DOCKER_STORAGE/NOTICE.txt"
 
 # Copy Python test scripts and configuration files
 cp "$STRESS_TESTS_PATH/launcher.py" "$CACHE_TEST/launcher.py"

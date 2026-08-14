@@ -18,6 +18,8 @@ FROM ${DOCKER_REGISTRY}/cache-server-base:latest
 
 USER root
 
+COPY ./storage/LICENSE ./storage/NOTICE.txt /
+
 COPY ./storage/CacheServer /root/CacheServer
 COPY ./storage/LivenessProbe /root/LivenessProbe
 RUN chmod +x /root/CacheServer

@@ -20,7 +20,7 @@ requires = [ "setuptools", "wheel" ]
 name = "dacs_cache_PLACEHOLDER"
 description = "Python package for DACS Client"
 readme = "README.md"
-license-files = [ "LICENSES/*" ]
+license-files = [ "LICENSE", "NOTICE.txt", "LICENSES/*" ]
 authors = [ { name = "Microsoft Corporation", email = "dacs-storage@users.noreply.github.com" } ]
 requires-python = ">=3.8"
 classifiers = [
