@@ -164,6 +164,23 @@ func (jc *JobConfig) WithWorkloadIdentityLabel() *JobConfig {
 	return jc
 }
 
+// WithPrivilegedFuse grants the container the privileges needed to mount a FUSE
+// filesystem (blobfuse2). It sets the container's SecurityContext to privileged.
+// AKS supports this for test pods; if a cluster policy disallows privileged
+// containers, switch to capabilities ["SYS_ADMIN"] + /dev/fuse device.
+func (jc *JobConfig) WithPrivilegedFuse(containerIndex int) *JobConfig {
+	if containerIndex < 0 || containerIndex >= len(jc.Spec.Template.Spec.Containers) {
+		return jc
+	}
+	priv := true
+	c := &jc.Spec.Template.Spec.Containers[containerIndex]
+	if c.SecurityContext == nil {
+		c.SecurityContext = &corev1.SecurityContext{}
+	}
+	c.SecurityContext.Privileged = &priv
+	return jc
+}
+
 // DownwardAPIName adds a downward API of pod name to the job
 func (jc *JobConfig) WithEnvDownwardAPIPodName() *JobConfig {
 	downardAPI := corev1.EnvVar{
