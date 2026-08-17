@@ -342,6 +342,41 @@ uint32_t StorageInterceptConfig::GetOptionalConfigUint32(
     return stoul(strConfig);
 }
 //---------------------------------------------------------------------------------------------------------------------
+uint32_t StorageInterceptConfig::GetOptionalConfigUint32(
+    const std::map<std::string, std::string>& config,
+    const char* configName,
+    uint32_t defaultValue,
+    uint32_t minValue,
+    uint32_t maxValue)
+{
+    auto strConfig = GetOptionalConfigStr(config, configName, "");
+    if (strConfig.empty())
+    {
+        return defaultValue;
+    }
+
+    unsigned long long parsedValue = 0;
+    try
+    {
+        parsedValue = std::stoull(strConfig);
+    }
+    catch (...)
+    {
+        // TODO: add a log here to indicate bad config value, once we have intercept-safe logging macro.
+        return defaultValue;
+    }
+
+    if (parsedValue > static_cast<unsigned long long>(std::numeric_limits<uint32_t>::max()) ||
+        parsedValue < static_cast<unsigned long long>(minValue) ||
+        parsedValue > static_cast<unsigned long long>(maxValue))
+    {
+        // TODO: add a log here to indicate bad config value, once we have intercept-safe logging macro.
+        return defaultValue;
+    }
+
+    return static_cast<uint32_t>(parsedValue);
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetConfigBoolean(
     const std::map<std::string, std::string>& config,
     const char* configName)
@@ -473,6 +508,16 @@ uint32_t StorageInterceptConfig::GetStreamingChunkSize()
 {
     return StorageInterceptConfig::GetOptionalConfigUint32(
         m_ConfigProps, StorageInterceptConstants::ConfigNameStreamingChunkSize, 4 * 1024 * 1024);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint32_t StorageInterceptConfig::GetSubChunkReadThresholdPercent()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint32(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameSubChunkReadThresholdPercent,
+        StorageInterceptConstants::ConfigDefaultSubChunkReadThresholdPercent,
+        0 /* minValue */,
+        100 /* maxValue */);
 }
 //---------------------------------------------------------------------------------------------------------------------
 uint32_t StorageInterceptConfig::GetIoBlockSize()
@@ -735,6 +780,14 @@ bool StorageInterceptConfig::IsCacheValidateChecksumEnabled()
     return StorageInterceptConfig::GetOptionalConfigBoolean(
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameCacheValidateChecksumEnabled,
+        true);
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::IsSubChunkDisabledForChecksumValidation()
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameSubChunkDisabledForChecksumValidation,
         false);
 }
 //---------------------------------------------------------------------------------------------------------------------

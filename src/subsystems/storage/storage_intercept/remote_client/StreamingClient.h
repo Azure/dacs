@@ -134,8 +134,10 @@ class StreamingClient
         const uint32_t                     m_nChunkSize;
 
         // Sub-chunk read optimization: bypass full-chunk fetch for small cache-hit reads
+        const uint32_t                     m_nSubChunkReadThresholdPercent;
         const bool                         m_bEncryptionEnabled;
         const bool                         m_bChecksumValidationEnabled;
+        const bool                         m_bDisableSubChunkForChecksumValidation;
 
         // Parallel chunk download related
         const bool                         m_bEnableChunkOpParallelism;
