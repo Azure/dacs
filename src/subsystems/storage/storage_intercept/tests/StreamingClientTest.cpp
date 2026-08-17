@@ -526,6 +526,7 @@ TEST_F(StreamingClientTest, ReadFileSubChunkDisabledWithChecksumTest)
 {
     OverrideConfig(StorageInterceptConstants::ConfigNameCacheEncryptionEnabled, "false");
     OverrideConfig(StorageInterceptConstants::ConfigNameCacheValidateChecksumEnabled, "true");
+    OverrideConfig(StorageInterceptConstants::ConfigNameSubChunkDisabledForChecksumValidation, "true");
     OverrideConfig(StorageInterceptConstants::ConfigNameEnableZeroCopy, "false");
     m_spStreamingClient.reset();
     SetUp();
@@ -543,6 +544,42 @@ TEST_F(StreamingClientTest, ReadFileSubChunkDisabledWithChecksumTest)
         m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 50);
     ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 0u);
+    m_spStreamingClient->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadFileSubChunkThresholdWithChecksumEnabledTest)
+{
+    OverrideConfig(StorageInterceptConstants::ConfigNameCacheEncryptionEnabled, "false");
+    OverrideConfig(StorageInterceptConstants::ConfigNameCacheValidateChecksumEnabled, "true");
+    OverrideConfig(StorageInterceptConstants::ConfigNameSubChunkDisabledForChecksumValidation, "false");
+    OverrideConfig(StorageInterceptConstants::ConfigNameSubChunkReadThresholdPercent, "50");
+    OverrideConfig(StorageInterceptConstants::ConfigNameEnableZeroCopy, "false");
+    m_spStreamingClient.reset();
+    SetUp();
+
+    std::vector<char> warmBuf(DEFAULT_STREAMING_CHUNK_SIZE);
+    ssize_t nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, warmBuf.data(), warmBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(DEFAULT_STREAMING_CHUNK_SIZE));
+
+    const size_t belowThresholdReadSize = DEFAULT_STREAMING_CHUNK_SIZE * 49 / 100;
+    std::vector<char> belowThresholdBuf(belowThresholdReadSize);
+    uint64_t subChunkBefore = m_spStreamingClient->GetReadChunksSubChunk();
+    nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, belowThresholdBuf.data(), belowThresholdBuf.size(),
+        0, REMOTE_FILE_SIZE, m_strFileVersion);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(belowThresholdReadSize));
+    ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 1u);
+
+    const size_t thresholdReadSize = DEFAULT_STREAMING_CHUNK_SIZE / 2;
+    std::vector<char> thresholdBuf(thresholdReadSize);
+    subChunkBefore = m_spStreamingClient->GetReadChunksSubChunk();
+    nBytesRead = m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, thresholdBuf.data(), thresholdBuf.size(),
+        0, REMOTE_FILE_SIZE, m_strFileVersion);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(thresholdReadSize));
+    ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 0u);
+
     m_spStreamingClient->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
 }
 //---------------------------------------------------------------------------------------------------------------------

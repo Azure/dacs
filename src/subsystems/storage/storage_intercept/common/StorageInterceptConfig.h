@@ -53,6 +53,7 @@ class StorageInterceptConfig
         std::string GetMockClientRoot(const std::string& mountName);
 
         uint32_t GetStreamingChunkSize();
+        uint32_t GetSubChunkReadThresholdPercent();
 
         uint32_t GetIoBlockSize();
 
@@ -79,6 +80,7 @@ class StorageInterceptConfig
         std::string GetCacheKeyGroupId();
         bool IsCacheCalculateChecksumEnabled();
         bool IsCacheValidateChecksumEnabled();
+        bool IsSubChunkDisabledForChecksumValidation();
         std::string GetCacheChecksumAlgorithm();
         uint32_t GetCacheRetryMaxAttempts();
         uint64_t GetCacheRetryBaseDelayMillis();
@@ -253,6 +255,14 @@ class StorageInterceptConfig
             /*[in]*/ const std::map<std::string, std::string>& config,
             /*[in]*/ const char* configName,
             /*[in]*/ uint32_t defaultValue);
+
+        // Private helper function to get config uint32 value with min and max bounds.
+        uint32_t GetOptionalConfigUint32(
+            /*[in]*/ const std::map<std::string, std::string>& config,
+            /*[in]*/ const char* configName,
+            /*[in]*/ uint32_t defaultValue,
+            /*[in]*/ uint32_t minValue,
+            /*[in]*/ uint32_t maxValue);
 
         // Private helper function to get config boolean value.
         bool GetConfigBoolean(
