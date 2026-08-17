@@ -42,6 +42,8 @@ namespace StorageInterceptConstants
     const char* const ConfigNameAdlsAuthTokenUrl = "adlsAuthTokenUrl";
 
     const char* const ConfigNameStreamingChunkSize = "streamingChunkSize";
+    const char* const ConfigNameSubChunkReadThresholdPercent = "subChunkReadThresholdPercent";
+    constexpr std::uint32_t ConfigDefaultSubChunkReadThresholdPercent = 80;
     const char* const ConfigNameIoBlockSize = "ioBlockSize";
     const char* const ConfigNameEnableReadIOLogs = "enableReadIOLogs";
     const char* const ConfigNameLogRefreshIntervalInSeconds = "logRefreshIntervalInSeconds";
@@ -72,6 +74,7 @@ namespace StorageInterceptConstants
     const char* const ConfigNameCacheIBEnabled = "cacheIBEnabled";
     const char* const ConfigNameCacheCalculateChecksumEnabled = "cacheCalculateChecksumEnabled";
     const char* const ConfigNameCacheValidateChecksumEnabled = "cacheValidateChecksumEnabled";
+    const char* const ConfigNameSubChunkDisabledForChecksumValidation = "subChunkDisabledForChecksumValidation";
     const char* const ConfigNameCacheChecksumAlgorithm = "cacheChecksumAlgorithm";
     const char* const ConfigDefaultCacheChecksumAlgorithm = "xxhash32";
     const char* const ConfigNameCacheServerDiscoveryEnabled = "cacheServerDiscoveryEnabled";

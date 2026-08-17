@@ -60,8 +60,10 @@ StreamingClient::StreamingClient(
     , m_strRemotePathPrefix(StorageInterceptUtils::GetRemotePathPrefix(mountName))
     , m_enableReadIOLogs(StorageInterceptConfig::GetInstance().GetEnableReadIOLogs())
     , m_nChunkSize(StorageInterceptConfig::GetInstance().GetStreamingChunkSize())
+    , m_nSubChunkReadThresholdPercent(StorageInterceptConfig::GetInstance().GetSubChunkReadThresholdPercent())
     , m_bEncryptionEnabled(StorageInterceptConfig::GetInstance().GetCacheEncryptionEnabled(mountName))
     , m_bChecksumValidationEnabled(StorageInterceptConfig::GetInstance().IsCacheValidateChecksumEnabled())
+    , m_bDisableSubChunkForChecksumValidation(StorageInterceptConfig::GetInstance().IsSubChunkDisabledForChecksumValidation())
     , m_bEnableChunkOpParallelism(
         StorageInterceptConfig::GetInstance().GetChunkOperationParallelismEnabled(mountName))
     , m_nMaxChunkOpConcurrency(StorageInterceptConfig::GetInstance().GetChunkOperationMaxConcurrency(mountName))
@@ -179,6 +181,7 @@ StreamingClient::StreamingClient(
 
     LOG_INFO("StreamingClient initialized. MountName={}, RemotePathPrefix={} ChunkSize={}, ChunkCache={},"
              " AttributeCache={} chunkParallelism={}, maxChunkConcurrency={},"
+             " subChunkReadThresholdPercent={}, encryptionEnabled={}, checksumValidationEnabled={}, disableSubChunkForChecksumValidation={},"
              " enableWrite={}, enableRemoteWrite={}, enableRemoteWriteAsync={},"
              " enableLargePrefetch={}, prefetchWindowSizeInBytes={},"
              " enableZeroCopy={} Commit hash={} built on {}",
@@ -189,6 +192,10 @@ StreamingClient::StreamingClient(
         (m_spAttributesCache ? "enabled" : "disabled"),
         m_bEnableChunkOpParallelism,
         m_nMaxChunkOpConcurrency,
+        m_nSubChunkReadThresholdPercent,
+        m_bEncryptionEnabled,
+        m_bChecksumValidationEnabled,
+        m_bDisableSubChunkForChecksumValidation,
         m_bEnableWrite,
         m_bEnableRemoteWrite,
         m_bEnableRemoteWriteAsync,
@@ -733,9 +740,15 @@ ssize_t StreamingClient::ReadChunkAndCopyToBuffer(
 {
     // Sub-chunk fast path: for small reads on cache hits, request only the needed bytes
     // instead of fetching the entire chunk and copying a slice.
-    if (bufSize < m_nChunkSize
+    //
+    // Despite better perf due to extra read, there are negative implications of sub-chunk reads:
+    // 1. Checksum validation is not supported for sub-chunk reads, as the checksum is computed on the entire chunk.
+    // 2. PrefetchCache is not populated for sub-chunk reads, as the entire chunk is not fetched,
+    //    leading to slower subsequent subchunk reads on the same chunk
+    // For these reasons, we don't do sub-chunk reads if read amplification is low (m_nSubChunkReadThresholdPercent is default 80%)
+    if ((bufSize * 100 / m_nChunkSize) < m_nSubChunkReadThresholdPercent
         && !m_bEncryptionEnabled
-        && !m_bChecksumValidationEnabled)
+        && !(m_bChecksumValidationEnabled && m_bDisableSubChunkForChecksumValidation))
     {
         auto subChunkResult = TrySubChunkRead(remotePath, chunkOffset, pUserBuf, bufSize, chunkCopyOffset, version);
         if (subChunkResult.has_value())
