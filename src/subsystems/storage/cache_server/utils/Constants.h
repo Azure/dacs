@@ -24,9 +24,8 @@ constexpr int REQUEST_METADATA_SIZE = 4;
 // Maximum size of a framed request protobuf. The 4-byte length prefix is client-supplied
 // and can declare up to ~4 GiB; without a cap, a single peer can force an unbounded
 // allocation before any data is read or validated. Request protobufs carry only metadata
-// (file data is streamed separately); the largest legitimate request is a batched
-// PutAttribute, well under 1 MiB. 4 MiB matches gRPC's default max receive message
-// size and leaves ample headroom.
+// (file data is streamed separately); the largest legitimate request is well under 1 MiB.
+// 4 MiB matches gRPC's default max receive message size and leaves ample headroom.
 constexpr uint32_t MAX_REQUEST_PROTO_SIZE = 4 * 1024 * 1024;
 
 constexpr int DEFAULT_SOCKET_BUF_SIZE = 0;
@@ -50,9 +49,6 @@ constexpr uint64_t DefaultEvictionBucketIntervalSeconds = 900; // 15 min, used b
 constexpr uint64_t MaxEvictionBucketIntervalSeconds = 7ull * 24 * 3600; // 1 week upper bound
 // 1TB cache size
 constexpr uint64_t DefaultCacheSizeLimitBytes = 1024ull * 1024 * 1024 * 1024; 
-
-// Limit to contain RAM usage
-constexpr uint64_t DefaultAttributeCacheLimit = 10 * 1024 * 1024;
 
 // 4GB limit on individual file size 
 constexpr uint64_t UPLOAD_FILESIZE_LIMIT = (uint64_t)4 * 1024 * 1024 * 1024;

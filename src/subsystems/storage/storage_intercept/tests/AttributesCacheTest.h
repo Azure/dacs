@@ -14,7 +14,7 @@
 
 #pragma once
 #include "TestBase.h"
-#include "LocalAttributesCache.h"
+#include "IAttributesCache.h"
 #include <string>
 #include <atomic>
 #include <memory>

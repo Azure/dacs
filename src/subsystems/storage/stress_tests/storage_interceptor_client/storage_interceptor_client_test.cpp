@@ -287,7 +287,6 @@ void GenerateStorageInterceptorConfigFile(
             config_file << "cacheMaxUploadBufferSizePerProcessGB 200\n";
             config_file << "cacheNumUploadThreadsPerProcess 10\n";
             config_file << "attributesCacheEnable true\n";
-            config_file << "attributesCacheUseLocalServer false\n";
             config_file << "attributesCacheUseRemoteServer true\n";
             LOG_DEBUG("Configured cache related configurations in {}", config_path);
         } else {

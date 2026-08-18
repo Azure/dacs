@@ -20,7 +20,6 @@
 #include "StorageInterceptLogger.h"
 #include "LocalFSCacheClient.h"
 #include "RemoteCacheClient.h"
-#include "LocalAttributesCache.h"
 #include "InMemoryAttributesCache.h"
 #include <dirent.h>
 #include <time.h>
@@ -315,14 +314,7 @@ void ContentHandler::SetCacheClients()
 
     if (attrCacheEnabled)
     {
-        if (StorageInterceptConfig::GetInstance().GetAttributesCacheUseLocalServer())
-        {
-            std::atomic_store(
-                &m_spAttributesCache,
-                std::shared_ptr<IAttributesCache>(std::make_shared<LocalAttributesCache>()));
-            LOG_INFO("Initialized Local server attributes cache client in ContentHandler")
-        }
-        else if (StorageInterceptConfig::GetInstance().GetAttributesCacheUseRemoteServer())
+        if (StorageInterceptConfig::GetInstance().GetAttributesCacheUseRemoteServer())
         {
             // reuse RemoteCacheClient if its already instantiated
             if (!remoteCacheClient.get())

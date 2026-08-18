@@ -3,7 +3,9 @@
 ## Test all APIs
 
 ### Start Cache server
-./bin/Release/native-storage/storage/CacheServer 20000 <folder path on ssd> 100000000000 10000000 1
+The fourth argument (`0`) is an unused placeholder retained for positional compatibility.
+
+./bin/Release/native-storage/storage/CacheServer 20000 <folder path on ssd> 100000000000 0 1
 
 ### Run test client
 ./bin/Release/native-storage/storage/cacheServerTestClient
@@ -11,7 +13,9 @@
 ## Test cache size limits
 
 ### Start Cache server with limits set
-./CacheServer 20000 <folder path on ssd> 104857600 1024 1
+The fourth argument (`0`) is an unused placeholder retained for positional compatibility.
+
+./CacheServer 20000 <folder path on ssd> 104857600 0 1
 
 ### Run test client
 ./bin/Release/native-storage/storage/cacheServerTestClient testlimits

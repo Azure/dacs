@@ -90,9 +90,7 @@ class StorageInterceptConfig
 
         // Getters for attribute cache
         bool GetAttributesCacheEnable(const std::string& mountName);
-        uint64_t GetAttributesCacheServerPort();
         uint64_t GetAttributesCacheMaxEntries();
-        bool GetAttributesCacheUseLocalServer();
         bool GetAttributesCacheUseRemoteServer();
         bool GetAttributesCachePutAllOnReaddir();
 
