@@ -133,6 +133,8 @@ pytest:
 		BUILD_ARCH=$(BUILD_ARCH) \
 		STORAGE_INTCPT_SAS_TOKEN="$(STORAGE_INTCPT_SAS_TOKEN)" \
 		SI_azBlobAccessToken="$(SI_azBlobAccessToken)" \
+		SI_remoteBlobUseSdkClient="$(SI_remoteBlobUseSdkClient)" \
+		SI_remoteBlobChecksumEnabled="$(SI_remoteBlobChecksumEnabled)" \
 		AZURE_CLIENT_ID="$(AZURE_CLIENT_ID)" \
 		USER_VM_AZURE_CLIENT_ID="$(USER_VM_AZURE_CLIENT_ID)" \
 		AZURE_TENANT_ID="$(AZURE_TENANT_ID)" \

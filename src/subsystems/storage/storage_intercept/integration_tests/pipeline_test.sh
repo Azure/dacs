@@ -136,6 +136,9 @@ function append_interception_config_blob_prefix() {
     echo "${MOUNT_PREFIX}azBlobStorageEndpoint https://${ACCOUNT_NAME}.blob.core.windows.net" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "${MOUNT_PREFIX}azBlobContainerName ${CONTAINER_NAME}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "${MOUNT_PREFIX}maxConnsPerBlobClient 200" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    # Exercise the azure-sdk-for-cpp blob client with Azure CRC64 validation.
+    echo "${MOUNT_PREFIX}remoteBlobUseSdkClient true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "${MOUNT_PREFIX}remoteBlobChecksumEnabled true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
     # Authentication priority: SAS Token -> Access Token
     # Note: IMDS is unavailable in CI pools. We rely on WIF Access Token (SI_azBlobAccessToken).
@@ -917,6 +920,6 @@ __run__test__last_access_time_distribution__
 
 # TODO: Future enhancement - Add comprehensive tests for ADLS (Azure Data Lake Storage)
 
-source "${SCRIPT_DIR}/checksum_e2e_test.sh"
-__run_checksum_e2e_test__ xxhash32
+source "${SCRIPT_DIR}/local_checksum_perf_test.sh"
+__run_local_checksum_perf_test__ xxhash32
 echo "All Storage interception integration tests completed successfully!"

@@ -14,6 +14,7 @@
 
 #include "BlobAuthTokenProviderTest.h"
 #include "BlobAuthTokenProvider.h"
+#include "DacsTokenCredential.h"
 #include "mock/MockBlobAuthTokenProvider.h"
 #include "RemoteClientException.h"
 #include "StorageInterceptConstants.h"
@@ -38,11 +39,6 @@ void BlobAuthTokenProviderTest::SetUp()
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-void BlobAuthTokenProviderTest::TearDown()
-{
-
-}
-//---------------------------------------------------------------------------------------------------------------------
 //Test case to fetch a fresh token from the MSI endpoint
 TEST_F(BlobAuthTokenProviderTest, TestFetchAccessToken)
 {
@@ -53,6 +49,41 @@ TEST_F(BlobAuthTokenProviderTest, TestFetchAccessToken)
     OverrideConfig(StorageInterceptConstants::ConfigNameAzBlobIdentityClientId, "mock-client-id");
     std::string token = mockProvider.GetAccessToken(mountPath);
     ASSERT_FALSE(token.empty()) << "Failed to fetch access token from MSI endpoint";
+}
+//---------------------------------------------------------------------------------------------------------------------
+// DacsTokenCredential returns the provider's token and sets ExpiresOn = min(now + refreshBuffer,
+// realExpiry) - so the SDK refreshes around when the token enters the provider's refresh window, and
+// never past the token's real expiry.
+TEST_F(BlobAuthTokenProviderTest, DacsTokenCredentialCapsExpiresOnAtRefreshBuffer)
+{
+    const std::string mountPath = "tokencred";
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSIEndpoint).c_str(), "http://mock-msi-endpoint");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSISecret).c_str(), "mock-secret");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobIdentityClientId).c_str(), "mock-client-id");
+    // refreshBuffer < the mock MSI token lifetime (605s) so the cached token is reused and ExpiresOn
+    // takes the (now + refreshBuffer) branch of the min.
+    const uint32_t refreshBufferSeconds = 500;
+    OverrideConfig(StorageInterceptConstants::ConfigNameTokenRefreshBufferInSeconds, std::to_string(refreshBufferSeconds));
+
+    MockBlobAuthTokenProvider mockProvider;
+    // Prime the cache; the credential reuses this same cached token.
+    const TokenInfo primed = mockProvider.GetAccessTokenInfo(mountPath);
+    ASSERT_FALSE(primed.token.empty()) << "Mock provider returned an empty token";
+
+    DacsTokenCredential credential(mountPath, mockProvider);
+
+    const auto before = std::chrono::system_clock::now();
+    Azure::Core::Credentials::AccessToken accessToken =
+        credential.GetToken(Azure::Core::Credentials::TokenRequestContext{}, Azure::Core::Context{});
+    const auto after = std::chrono::system_clock::now();
+
+    // Token is sourced from the injected provider (cached token reused).
+    ASSERT_EQ(accessToken.Token, primed.token);
+
+    // refreshBuffer (500s) < token lifetime (605s) => ExpiresOn = now + refreshBuffer.
+    const auto expiresOn = static_cast<std::chrono::system_clock::time_point>(accessToken.ExpiresOn);
+    ASSERT_GE(expiresOn, before + std::chrono::seconds(refreshBufferSeconds) - std::chrono::seconds(2));
+    ASSERT_LE(expiresOn, after + std::chrono::seconds(refreshBufferSeconds) + std::chrono::seconds(2));
 }
 //---------------------------------------------------------------------------------------------------------------------
 // Test case to check if token is returned from map

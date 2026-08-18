@@ -114,6 +114,11 @@ namespace StorageInterceptConstants
     const char* const ConfigNameMaxConnsPerBlobClient = "maxConnsPerBlobClient";
     const char* const ConfigNameAzIgnoreAccountNameInCacheKey = "azIgnoreAccountNameInCacheKey";
 
+    const char* const ConfigNameRemoteBlobUseSdkClient = "remoteBlobUseSdkClient";
+    const char* const ConfigNameRemoteBlobChecksumEnabled = "remoteBlobChecksumEnabled";
+    const char* const ConfigNameRemoteBlobChecksumRetryMaxAttempts = "remoteBlobChecksumRetryMaxAttempts";
+    constexpr std::uint32_t ConfigDefaultRemoteBlobChecksumRetryMaxAttempts = 3;
+
     // Config constants for blob client retry policy
     const char* const ConfigNameBlobRetryMaxAttempts = "blobRetryMaxAttempts";
     const char* const ConfigNameBlobRetryBaseDelaySeconds = "blobRetryBaseDelaySeconds";

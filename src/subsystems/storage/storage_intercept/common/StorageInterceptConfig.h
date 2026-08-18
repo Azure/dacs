@@ -127,10 +127,15 @@ class StorageInterceptConfig
         bool IsIgnoreAccountNameInCacheKey(const std::string& mountName);
         uint64_t GetMaxBlobConnectionsPerClient(const std::string& mountName);
 
+        // Feature flags for the azure-sdk-for-cpp backed blob client and CRC64 download validation
+        bool GetRemoteBlobUseSdkClient(const std::string& mountName);
+        bool GetRemoteBlobChecksumEnabled(const std::string& mountName);
+
         // Getters for blob client retry policy configuration
         uint32_t GetBlobRetryMaxAttempts();
         uint32_t GetBlobRetryBaseDelaySeconds();
         uint32_t GetBlobRetryMaxDelaySeconds();
+        uint32_t GetRemoteBlobChecksumRetryMaxAttempts();
 
         // Getters for chunk download\upload parallelism
         bool GetChunkOperationParallelismEnabled(const std::string& mountName);

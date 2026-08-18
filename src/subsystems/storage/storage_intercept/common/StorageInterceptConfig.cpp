@@ -1005,6 +1005,32 @@ uint64_t StorageInterceptConfig::GetMaxBlobConnectionsPerClient(const std::strin
         10);
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::GetRemoteBlobUseSdkClient(const std::string& mountName)
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameRemoteBlobUseSdkClient,
+        false);
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::GetRemoteBlobChecksumEnabled(const std::string& mountName)
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameRemoteBlobChecksumEnabled,
+        true);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint32_t StorageInterceptConfig::GetRemoteBlobChecksumRetryMaxAttempts()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint32(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameRemoteBlobChecksumRetryMaxAttempts,
+        StorageInterceptConstants::ConfigDefaultRemoteBlobChecksumRetryMaxAttempts);
+}
+//---------------------------------------------------------------------------------------------------------------------
 uint32_t StorageInterceptConfig::GetBlobRetryMaxAttempts()
 {
     return StorageInterceptConfig::GetOptionalConfigUint32(

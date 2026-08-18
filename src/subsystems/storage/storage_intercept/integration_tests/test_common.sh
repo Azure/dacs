@@ -118,6 +118,9 @@ function append_interception_config_blob_prefix() {
     echo "${MOUNT_PREFIX}azBlobStorageEndpoint https://${ACCOUNT_NAME}.blob.core.windows.net" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "${MOUNT_PREFIX}azBlobContainerName ${CONTAINER_NAME}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "${MOUNT_PREFIX}maxConnsPerBlobClient 200" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    # Exercise the azure-sdk-for-cpp blob client with Azure CRC64 validation.
+    echo "${MOUNT_PREFIX}remoteBlobUseSdkClient true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "${MOUNT_PREFIX}remoteBlobChecksumEnabled true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
     # Authentication priority: SAS Token -> Access Token
     # Note: IMDS is unavailable in CI pools. We rely on WIF Access Token (SI_azBlobAccessToken).
@@ -130,7 +133,7 @@ function append_interception_config_blob_prefix() {
     elif [ -n "${SI_azBlobAccessToken:-}" ]
     then
       # Use access token (from Azure CLI authentication)
-      echo "DEBUG: Using access token authentication" 
+      echo "DEBUG: Using access token authentication"
       echo "${MOUNT_PREFIX}azBlobAccessToken ${SI_azBlobAccessToken}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     else
       # No valid authentication method available - this will cause the storage client to fail gracefully
@@ -164,7 +167,7 @@ function add_dynamic_mount_config() {
     echo "storagePath ${MOUNT_PATH}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "type blob" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "azBlobDynamicAccount true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    
+
     # Add authentication configuration using same priority logic as main function
     echo "DEBUG: STORAGE_INTCPT_SAS_TOKEN='${STORAGE_INTCPT_SAS_TOKEN:+SET}'"
     echo "DEBUG: SI_azBlobAccessToken='${SI_azBlobAccessToken:+SET}'"
@@ -219,7 +222,7 @@ function add_interception_config_blob() {
 # Extends basic blob configuration with local cache server integration
 # Parameters:
 #   $1: STORAGE_INTERCEPT_PATH - Primary mount path for storage interception
-#   $2: TEST_MULTI_MOUNT - Boolean flag to enable multi-mount configuration (default: false)  
+#   $2: TEST_MULTI_MOUNT - Boolean flag to enable multi-mount configuration (default: false)
 #   $3: ENABLE_CACHE_DISCOVERY - Boolean flag to enable cache server discovery (default: false)
 function add_interception_config_blob_with_cache() {
     # Generate base blob configuration first
@@ -468,7 +471,7 @@ function __verify_nologs_unintercepted_() {
 
   add_interception_config_blob /mnt/quiverfs
 
-  echo ""  
+  echo ""
   echo "Running test to verify no logs are emitted for non-intercepted file read"
   echo "LD_PRELOAD=${STORAGE_INTERCEPTOR} cat $testFile > $outFile"
   LD_PRELOAD="${STORAGE_INTERCEPTOR}" cat $testFile > $outFile
@@ -516,7 +519,7 @@ function __run_perf_benchmark__() {
   uploader_args=$(grep "\-\-upload_throughput_mbps" <<< "$perf_logs")
   uploader_args+=" --git_branch \"$GIT_BRANCH\" --git_commit_hash \"$GIT_COMMIT\" --git_commit_message \"$GIT_COMMIT_MESSAGE\""
 
-  eval "${SCRIPT_DIR}/storage_perf_app_insights_uploader.py $uploader_args" 
+  eval "${SCRIPT_DIR}/storage_perf_app_insights_uploader.py $uploader_args"
 
   if [ $? -ne 0 ]
   then
