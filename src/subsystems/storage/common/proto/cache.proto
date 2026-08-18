@@ -45,21 +45,6 @@ package cache;
  *         then followed by the DownloadResponse proto message. 
  *         If file exists the proto message will be immediately followed by the contents of the file.
  *
- * PutAttribute API
- *
- * Client has to first send a 4 byte buffer containing the proto message length, 
- *         then followed by the "Request" proto message with the appropriate PutAttributeRequest fields populated.
- *         The raw file bytes has to be streamed immediately after the proto buffer is sent.
- * The server will respond with a 4 byte buffer containing the proto message length and
- *         then followed by the PutAttributeResponse proto message.
- * 
- * GetAttribute API
- *
- * Client has to first send a 4 byte buffer containing the proto message length,
- *         then followed by the "Request" proto message with the appropriate GetAttributeRequest fields populated.
- * The server will respond with a 4 byte buffer containing the proto message length and
- *         then followed by the GetAttributeResponse proto message. 
- *
  * Delete API
  *
  * Client has to first send a 4 byte buffer containing the proto message length,
@@ -218,63 +203,6 @@ message DeleteResponse
     Result result = 1;
 }
 //---------------------------------------------------------------------------------------------------------------------
-message FileAttribute
-{
-    bool isdir = 1;
-    uint64 filesize = 2;
-    uint64 accessedtime = 3;
-    uint64 modifiedtime = 4;
-    string version = 5;
-}
-//---------------------------------------------------------------------------------------------------------------------
-message FileAttributes
-{
-    string filename = 1;
-    FileAttribute fileattribute = 2;
-}
-//---------------------------------------------------------------------------------------------------------------------
-// Check and get file atrributes from cache
-// Use enablelock to coordinate across multiple workers so that only one worker attempts to populate the cache
-message GetAttributeRequest
-{
-    string requestid = 999;
-    string filename = 1;
-    bool enablelock = 2;
-    AuthParams authparams = 3;
-}
-//---------------------------------------------------------------------------------------------------------------------
-message GetAttributeResponse
-{
-    enum Result
-    {
-        SUCCESS = 0;
-        NOT_FOUND_GOT_LOCK = 1;
-        NOT_FOUND = 2;
-        AUTH_FAILED = 3;
-        INTERNAL_ERROR = 4;
-    }
-    Result result = 1;
-    FileAttribute fileattribute = 2;
-}
-//---------------------------------------------------------------------------------------------------------------------
-message PutAttributeRequest
-{
-    string requestid = 999;
-    repeated FileAttributes fileattributes = 1;
-    AuthParams authparams = 2;
-}
-//---------------------------------------------------------------------------------------------------------------------
-message PutAttributeResponse
-{
-    enum Result
-    {
-        SUCCESS = 0;
-        AUTH_FAILED = 1;
-        INTERNAL_ERROR = 2;
-    }
-    Result result = 1;
-}
-//---------------------------------------------------------------------------------------------------------------------
 message IBInitRequest
 {
 
@@ -363,13 +291,13 @@ message EndMarker
 //---------------------------------------------------------------------------------------------------------------------
 message Request
 {
+    reserved 4, 5;
+    reserved "getattributerequest", "putattributerequest";
     oneof type
     {
         LockFileRequest lockrequest = 1;
         UploadRequest uploadrequest = 2;
         DownloadRequest downloadrequest = 3;
-        GetAttributeRequest getattributerequest = 4;
-        PutAttributeRequest putattributerequest = 5;
         DeleteRequest deleterequest = 6;
         IBInitRequest ibinitrequest = 7;
         GetCacheLastAccessTimeDistributionRequest getcachelastaccesstimedistributionrequest = 8;

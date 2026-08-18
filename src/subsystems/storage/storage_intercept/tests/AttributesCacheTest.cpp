@@ -14,7 +14,6 @@
 
 #include "AttributesCacheTest.h"
 #include "RemoteCacheClient.h"
-#include "LocalAttributesCache.h"
 #include "StorageInterceptConfig.h"
 #include <algorithm>
 #include <vector>
@@ -36,11 +35,7 @@ AttributesCacheTest::AttributesCacheTest()
     m_strTestId = testId;
     if (StorageInterceptConfig::GetInstance().GetAttributesCacheEnable(""))
     {
-        if (StorageInterceptConfig::GetInstance().GetAttributesCacheUseLocalServer())
-        {
-            m_attributesCacheClient = make_shared<LocalAttributesCache>();
-        }
-        else if (StorageInterceptConfig::GetInstance().GetAttributesCacheUseRemoteServer())
+        if (StorageInterceptConfig::GetInstance().GetAttributesCacheUseRemoteServer())
         {
             m_attributesCacheClient = std::make_shared<RemoteCacheClient>();
         }

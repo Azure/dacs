@@ -232,28 +232,6 @@ namespace cacheutils
                 std::to_string(timestamp);
             authParams = request.mutable_uploadrequest()->mutable_authparams();
         }
-        else if (request.type_case() == Request::kGetattributerequest)
-        {
-            serializedHeaders = 
-                std::string("G") + 
-                request.mutable_getattributerequest()->filename() + 
-                (request.mutable_getattributerequest()->enablelock() ? "1" : "0") +
-                std::to_string(timestamp);
-            authParams = request.mutable_getattributerequest()->mutable_authparams();
-        }
-        else if (request.type_case() == Request::kPutattributerequest)
-        {
-            serializedHeaders = 
-                std::string("P") + 
-                std::to_string(request.mutable_putattributerequest()->fileattributes_size()) + 
-                std::to_string(timestamp);
-            for (auto fileAttribute : request.putattributerequest().fileattributes())
-            {
-                serializedHeaders += fileAttribute.filename();
-                serializedHeaders += std::to_string(fileAttribute.fileattribute().filesize());
-            }
-            authParams = request.mutable_putattributerequest()->mutable_authparams();
-        }
         else if (request.type_case() == Request::kLockrequest)
         {
             serializedHeaders = 

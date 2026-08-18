@@ -89,9 +89,7 @@ namespace StorageInterceptConstants
 
     // Config for Attributes cache
     const char* const ConfigNameAttributesCacheEnable = "attributesCacheEnable";
-    const char* const ConfigNameAttributesCacheServerPort = "attributesCacheServerPort";
     const char* const ConfigNameAttributesCacheMaxEntries = "attributesCacheMaxEntries";
-    const char* const ConfigNameAttributesCacheUseLocalServer = "attributesCacheUseLocalServer";
     const char* const ConfigNameAttributesCacheUseRemoteServer = "attributesCacheUseRemoteServer";
     const char* const ConfigNameAttributesCachePutAllOnReaddir = "attributesCachePutAllOnReaddir";
 

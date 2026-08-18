@@ -256,8 +256,6 @@ function add_interception_config_blob_with_cache() {
     ENABLE_CACHE_DISCOVERY=${3:false}
 
     # Local cache server configuration
-    echo "attributesCacheUseLocalServer true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "attributesCacheServerPort ${CACHE_SERVER_PORT}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "cacheServerPort ${CACHE_SERVER_PORT}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
     # Cache enablement configuration (mount-specific vs global)

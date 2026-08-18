@@ -213,20 +213,6 @@ cacheMaxConnectionsReuseSize 1024
 make test TEST=StorageIntercept
 ```
 
-### Run Unit test with attribute cache enabled
-1. Start cache_server at port 20000 in the same container as the client
-2. Set the STORAGE_INTERCEPT_USE_EXISTING_CONFIG to true
-3. Add/edit the following to existing configuration at '/tmp/storageIntercept.config'
-4. (Optional) Set the STORAGE_INTERCEPT_TESTCASES_DIR env to the directory that contains test cases
-```
-attributesCacheEnable true
-attributesCacheUseLocalServer true
-```
-4. Execute the tests from bash shell
-```bash
-make test TEST=StorageIntercept
-```
-
 ### Run integration test
 To run integration tests, repeat the 2nd step mentioned in the section: "`Run Unit test against adls`". \
 In the `/tmp/storageIntercept.config`, make sure to add / edit this config property:

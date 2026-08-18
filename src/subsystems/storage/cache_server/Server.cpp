@@ -19,7 +19,6 @@
 #include "CacheManager.h"
 #include "SnapshotManager.h"
 #include "SocketConnection.h"
-#include "AttributesManager.h"
 #include "IBManager.h"
 #include "cache.pb.h"
 #include "Logger.h"
@@ -341,7 +340,7 @@ int main(int argc, char *argv[])
     if (argc < 2) 
     {
         LOG_CRITICAL("Usage: ./CacheServer <port> <cache folder root> <cache size in bytes - default 1TB>"
-        " <Num attributes limit - default 10M> <cache expiry ttl window size in seconds - default 60 seconds>");
+        " <unused - reserved> <cache expiry ttl window size in seconds - default 60 seconds>");
         return -1;
     }
     int port = atoi(argv[1]);
@@ -356,10 +355,8 @@ int main(int argc, char *argv[])
         CacheManager::GetInstance().SetCacheSizeLimit(stoull(argv[3]));
     }
 
-    if (argc > 4)
-    {
-        AttributesManager::GetInstance().SetAttributeCacheLimit(stoull(argv[4]));
-    }
+    // Note: argv[4] is reserved (previously used for attribute cache limit, now unused) to preserve
+    // positional compatibility with existing callers that pass all 5 arguments.
 
     if (argc > 5)
     {
