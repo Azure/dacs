@@ -16,6 +16,7 @@
 #include "StorageInterceptLogger.h"
 #include "adls/AdlsClient.h"
 #include "blob/BlobClient.h"
+#include "blob/SdkBlobClient.h"
 #include "StorageInterceptConstants.h"
 #include "StorageInterceptConfig.h"
 #include "mock/MockRemoteClient.h"
@@ -27,6 +28,12 @@ std::shared_ptr<IRemoteClient> RemoteClientProvider::GetRemoteClient(const std::
 
     if (remoteStoreType == StorageInterceptConstants::ConfigValRemoteTypeBlob)
     {
+        // Use the azure-sdk-for-cpp client when remoteBlobUseSdkClient is set; else legacy cpplite.
+        if (StorageInterceptConfig::GetInstance().GetRemoteBlobUseSdkClient(mountName))
+        {
+            LOG_INFO("Using SdkBlobClient (azure-sdk-for-cpp) for mountName={}", mountName);
+            return std::make_shared<SdkBlobClient>(mountName);
+        }
         return std::make_shared<BlobClient>(mountName);
     }
     else if (remoteStoreType == StorageInterceptConstants::ConfigValRemoteTypeAdls)

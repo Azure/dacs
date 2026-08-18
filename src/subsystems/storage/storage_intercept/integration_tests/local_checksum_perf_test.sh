@@ -17,11 +17,11 @@ BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
 # Ensure this script is sourced, not executed directly
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     echo "Error: This script should be sourced, not executed directly."
-    echo "Usage: source checksum_e2e_test.sh"
+    echo "Usage: source local_checksum_perf_test.sh"
     exit 1
 fi
 
-function __run_checksum_e2e_test__()
+function __run_local_checksum_perf_test__()
 {
     local checksum_algorithm="${1:-xxhash32}"  # Default to crc32 if no parameter provided
     

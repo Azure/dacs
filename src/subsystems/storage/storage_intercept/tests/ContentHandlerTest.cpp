@@ -183,7 +183,7 @@ TEST_F(ContentHandlerTest, OpenFileNonExistentTest)
 TEST_F(ContentHandlerTest, ReaddirOneThreadTest)
 {
     ReaddirTask task;
-    task.numFiles = 1;
+    task.numFiles = m_bUsingMock ? 1 : 2; // real testDirForUt has file-1 and file-2
     task.numDirs = 3;
     task.dirPath = m_strInterceptPath + '/' + m_strRemoteDirPath;
 

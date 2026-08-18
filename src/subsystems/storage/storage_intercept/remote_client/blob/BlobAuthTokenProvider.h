@@ -57,6 +57,9 @@ public:
     // Function to fetch the access token for a given mount path
     std::string GetAccessToken(const std::string& mountPath);
 
+    // Function to fetch the access token together with its real expiry for a given mount path
+    TokenInfo GetAccessTokenInfo(const std::string& mountPath);
+
     protected:
     BlobAuthTokenProvider(); 
 
