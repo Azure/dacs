@@ -71,13 +71,19 @@ BlobAuthTokenProvider& BlobAuthTokenProvider::GetInstance()
 // Function to retrieve the access token for a given mount path
 std::string BlobAuthTokenProvider::GetAccessToken(const std::string& mountPath)
 {
+    return GetAccessTokenInfo(mountPath).token;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Function to retrieve the access token together with its real expiry for a given mount path
+TokenInfo BlobAuthTokenProvider::GetAccessTokenInfo(const std::string& mountPath)
+{
     LOG_DEBUG("Get access token for mount path: {}", mountPath);
 
     std::unique_lock<std::mutex> lock(m_tokenUpdateLock);
     //token exists, is valid and not nearing expiry, return it
     if(m_mapMountPathToken.find(mountPath) != m_mapMountPathToken.end() && !IsTokenNearingExpiry(m_mapMountPathToken[mountPath]))
     {
-        return m_mapMountPathToken[mountPath].token;
+        return m_mapMountPathToken[mountPath];
     }
 
     //token does not exist or is nearing expiry, start a background update if not already in progress
@@ -96,7 +102,7 @@ std::string BlobAuthTokenProvider::GetAccessToken(const std::string& mountPath)
     if(m_mapMountPathToken.find(mountPath) != m_mapMountPathToken.end() && !IsTokenExpired(m_mapMountPathToken[mountPath]))
     {
         LOG_DEBUG("Returning cached access token for mount path: {}", mountPath);
-        return m_mapMountPathToken[mountPath].token;
+        return m_mapMountPathToken[mountPath];
     }
 
     //store the future and release the lock before waiting for it to finish
@@ -111,7 +117,7 @@ std::string BlobAuthTokenProvider::GetAccessToken(const std::string& mountPath)
         LOG_ERROR("Token not found in map after background update for mount path: {}", mountPath);
         throw RemoteClientException("TokenFetchError: Token not available after background update");
     }
-    return m_mapMountPathToken[mountPath].token;
+    return m_mapMountPathToken[mountPath];
 }
 //---------------------------------------------------------------------------------------------------------------------
 // Function to start a background process to update the token

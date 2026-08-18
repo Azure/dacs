@@ -25,10 +25,12 @@ set(BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_PERFORMANCE_TESTS OFF CACHE BOOL "" FORCE)
 set(WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
 
+# azure-storage-blobs 12.17.0+ provides the Structured Message (XSM/1.0) validation APIs
+# used by SdkBlobClient for CRC64 download validation.
 FetchContent_Declare(azuresdkforcpp
-    # Pin the Azure SDK for C++ storage blobs 12.13.0 tag archive by SHA-256.
-    URL      https://github.com/Azure/azure-sdk-for-cpp/archive/refs/tags/azure-storage-blobs_12.13.0.tar.gz
-    URL_HASH SHA256=300bbd1d6bc50b8988b3dda29d6d627574a4f3e25a7e00a6986da5d3965f679a
+    # Pin the Azure SDK for C++ storage blobs 12.18.0 tag archive by SHA-256.
+    URL      https://github.com/Azure/azure-sdk-for-cpp/archive/refs/tags/azure-storage-blobs_12.18.0.tar.gz
+    URL_HASH SHA256=0f266f91cf00b79bb6c7c6f99e44942b43a7141db565556a4298f6ebe3a86fcc
 )
 FetchContent_GetProperties(azuresdkforcpp)
 if(NOT azuresdkforcpp_POPULATED)

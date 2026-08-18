@@ -22,5 +22,4 @@
     ~BlobAuthTokenProviderTest() override = default;
 
     void SetUp() override;
-    void TearDown() override;
  };

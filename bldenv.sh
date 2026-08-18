@@ -173,6 +173,8 @@ docker run \
     --env AZURE_DEVOPS_EXT_PAT \
     --env STORAGE_INTCPT_SAS_TOKEN \
     --env SI_azBlobAccessToken \
+    --env SI_remoteBlobUseSdkClient \
+    --env SI_remoteBlobChecksumEnabled \
     --env AZURE_CLIENT_ID \
     --env USER_VM_AZURE_CLIENT_ID \
     --env AZURE_TENANT_ID \

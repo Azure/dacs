@@ -110,6 +110,15 @@ exit 1
 fi
 echo -e "Blob Integration test with multi-mount and remote attribute and data cache passed\n\n"
 
+# Checksum both-legs validation: Leg 1 CRC64 (blob->cache via SdkBlobClient) + Leg 2 xxHash (cache->client).
+echo "Running checksum both-legs test (Leg1 CRC64 + Leg2 xxHash)"
+source "$SCRIPT_DIR/checksum_both_legs_test.sh"
+if ! __run_checksum_both_legs_test__; then
+    echo "checksum both-legs test failed"
+    exit 1
+fi
+echo -e "checksum both-legs test passed\n\n"
+
 stop_cache_server
 
 echo "================================================"

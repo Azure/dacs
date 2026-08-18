@@ -71,8 +71,8 @@
         "type": "git",
         "git": {
           "repositoryUrl": "https://github.com/Azure/azure-sdk-for-cpp.git",
-          "commitHash": "610c85d7684f9a384c3e72bb9a41068d41f521d1",
-          "tag": "azure-storage-blobs_12.13.0"
+          "commitHash": "1c32f92de06445c467715b55860083202194aee4",
+          "tag": "azure-storage-blobs_12.18.0"
         }
       },
       "developmentDependency": false
