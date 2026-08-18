@@ -18,8 +18,6 @@
 #include "UploadRequest.h"
 #include "LockRequest.h"
 #include "DownloadRequest.h"
-#include "PutAttributeRequest.h"
-#include "GetAttributeRequest.h"
 #include "DeleteRequest.h"
 #include "IBInitRequest.h"
 #include "GetCacheLastAccessTimeDistributionRequest.h"
@@ -81,14 +79,6 @@ bool HandleRequest(IConnection& clientConnection,
     else if (eRequestType == Request::kLockrequest)
     {
         bRet = LockFile(clientConnection, request.lockrequest());
-    }
-    else if (eRequestType == Request::kGetattributerequest)
-    {
-        bRet = HandleGetAttribute(clientConnection, request.getattributerequest());
-    }
-    else if (eRequestType == Request::kPutattributerequest)
-    {
-        bRet = HandlePutAttribute(clientConnection, request.putattributerequest());
     }
     else if (eRequestType == Request::kDeleterequest)
     {

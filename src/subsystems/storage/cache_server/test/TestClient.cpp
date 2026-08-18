@@ -747,242 +747,13 @@ void MeasurePerf(int parallelism, uint64_t GBUpload, uint64_t GBDownload)
          << "--download_time_ms " << downloadDurationMs << " " << endl;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool TestPutAttributeAPI(PutAttributeRequest& putRequest, PutAttributeResponse_Result expectedResult)
-{
-    unique_ptr<IConnection> serverConnection  = GetConnection();
-    if (!serverConnection)
-    {
-        return false;
-    }
-
-    Request request;
-    request.set_allocated_putattributerequest(&putRequest);
-    if (!SendMessageToRemote(serverConnection.get(), request))
-    {
-        cout << "couldn't send message to server" << endl;
-        return false;
-    }
-
-    string requestMessage;
-    if (!ReadMessageFromRemote(serverConnection.get(), requestMessage))
-    {
-        cout << "couldn't read message from server" << endl;
-        return false;
-    }
-
-    PutAttributeResponse response;
-    if (!response.ParseFromString(requestMessage))
-    {
-        std::cout << "error: Failed to parse protobuf message" << endl;
-        return false;
-    }
-
-    bool status = true;
-    if (response.result() != expectedResult)
-    {
-        std::cout << "error: putattribute failed: response.result() != expectedResult:" << response.result() <<
-            ", " << expectedResult << endl;
-        status = false;
-    }
-
-    auto _ = request.release_putattributerequest();
-    ReleaseConnection(serverConnection);
-    return status;
-}
-//---------------------------------------------------------------------------------------------------------------------
-bool TestGetAttributeAPI(
-    const string& filename,
-    bool enableLock,
-    GetAttributeResponse_Result expectedResult,
-    bool isDir,
-    uint64_t filesize,
-    uint64_t accessedtime,
-    uint64_t modifiedtime)
-{
-    unique_ptr<IConnection> serverConnection  = GetConnection();
-    if (!serverConnection)
-    {
-        return false;
-    }
-
-    Request request;
-    GetAttributeRequest* getAttributeRequest = request.mutable_getattributerequest();
-    getAttributeRequest->set_filename(filename);
-    getAttributeRequest->set_enablelock(enableLock);
-    if (!SendMessageToRemote(serverConnection.get(), request))
-    {
-        cout << "couldn't send message to server" << endl;
-        return false;
-    }
-
-    string requestMessage;
-    if (!ReadMessageFromRemote(serverConnection.get(), requestMessage))
-    {
-        cout << "couldn't read message from server" << endl;
-        return false;
-    }
-
-    GetAttributeResponse response;
-    if (!response.ParseFromString(requestMessage))
-    {
-        std::cout << "error: Failed to parse protobuf message" << endl;
-        return false;
-    }
-
-    bool status = true;
-    if (response.result() != expectedResult)
-    {
-        std::cout << "error: getattribute failed: response.result() != expectedResult:" << response.result() <<
-            ", " << expectedResult << endl;
-        status = false;
-    }
-
-    if (expectedResult == GetAttributeResponse::SUCCESS)
-    {
-        if (response.fileattribute().isdir() != isDir ||
-            response.fileattribute().filesize() != filesize ||
-            response.fileattribute().accessedtime() != accessedtime ||
-            response.fileattribute().modifiedtime() != modifiedtime)
-            {
-                std::cout << "error: getattribute failed: return values don't match" << endl;
-                status = false;
-            }
-    }
-
-    ReleaseConnection(serverConnection);
-    return status;
-}
-//---------------------------------------------------------------------------------------------------------------------
-bool TestParallelAttributeCache(int parallelism, int durationInSeconds)
-{
-    std::atomic_uint_fast64_t totalFailed(0);
-    std::atomic_bool stop(false);
-    std::vector<std::thread *> threads;
-
-    string filePrefix = GetUniqueFilename("paralellelattrtest-" + std::to_string(rand()) + "-");
-    for (int threadId = 0; threadId < parallelism; threadId++)
-    {
-        auto t = new std::thread([&filePrefix, &totalFailed, threadId, parallelism, &stop]()
-        {
-            int i = 0;
-            while (!stop)
-            {
-                string fileName = filePrefix + std::to_string(threadId) + "-" + to_string(i);
-                string fileName2 = fileName + "-2";
-                string fileName3 = fileName + "-3";
-
-                bool passed = true;
-
-                PutAttributeRequest putRequest;
-                {
-                    auto fileAttr = putRequest.add_fileattributes();
-                    fileAttr->set_filename(fileName);
-                    auto attr = fileAttr->mutable_fileattribute();
-                    attr->set_isdir(true);
-                    attr->set_filesize(100);
-                    attr->set_accessedtime(101);
-                    attr->set_modifiedtime(102);
-                }
-                passed &= TestGetAttributeAPI(fileName, false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0);
-                passed &= TestGetAttributeAPI(
-                    fileName, true, GetAttributeResponse::NOT_FOUND_GOT_LOCK, false, 0, 0, 0);
-                passed &= TestGetAttributeAPI(fileName, true, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0);
-                passed &= TestGetAttributeAPI(fileName, false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0);
-                passed &= TestPutAttributeAPI(putRequest, PutAttributeResponse::SUCCESS);
-                passed &= TestGetAttributeAPI(fileName, false, GetAttributeResponse::SUCCESS, true, 100, 101, 102);
-
-                {
-                    putRequest.clear_fileattributes();
-                    auto fileAttr = putRequest.add_fileattributes();
-                    fileAttr->set_filename(fileName2);
-                    auto attr = fileAttr->mutable_fileattribute();
-                    attr->set_isdir(true);
-                    attr->set_filesize(0);
-                    attr->set_accessedtime(201);
-                    attr->set_modifiedtime(202);
-
-                    fileAttr = putRequest.add_fileattributes();
-                    fileAttr->set_filename(fileName3);
-                    attr = fileAttr->mutable_fileattribute();
-                    attr->set_isdir(false);
-                    attr->set_filesize(300);
-                    attr->set_accessedtime(301);
-                    attr->set_modifiedtime(302);
-                }
-                passed &= TestGetAttributeAPI(fileName2, false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0);
-                passed &= TestGetAttributeAPI(
-                    fileName3, true, GetAttributeResponse::NOT_FOUND_GOT_LOCK, false, 0, 0, 0);
-                passed &= TestGetAttributeAPI(fileName3, true, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0);
-                passed &= TestGetAttributeAPI(fileName2, false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0);
-                passed &= TestPutAttributeAPI(putRequest, PutAttributeResponse::SUCCESS);
-                passed &= TestGetAttributeAPI(fileName2, true, GetAttributeResponse::SUCCESS, true, 0, 201, 202);
-                passed &= TestGetAttributeAPI(fileName3, false, GetAttributeResponse::SUCCESS, false, 300, 301, 302);
-
-                if (!passed)
-                {
-                    totalFailed++;
-                    break;
-                }
-                i++;
-            }
-        });
-        threads.push_back(t);
-    }
-
-    std::this_thread::sleep_for(std::chrono::seconds(durationInSeconds));
-    stop = true;
-
-    for (int i = 0; i < threads.size(); ++i)
-    {
-        auto t = threads[i];
-        t->join();
-        delete t;
-    }
-
-    return totalFailed == 0;
-}
-//---------------------------------------------------------------------------------------------------------------------
 int TestLimits()
 {
     // Assuming cache server is started with cache limits set to
-    // AttributeLimit = 1024
     // CacheSizeLimit = 100 * 1024 * 1024 bytes;
-    int AttributeLimit = 1024;
     int CacheSizeLimit = 104857600;
 
-    cout << "Test attribute cache limits" << endl;
-    for (int i = 0; i < AttributeLimit; i++)
-    {
-        string fileName = GetUniqueFilename(string("test-") + to_string(i));
-        PutAttributeRequest putRequest;
-        {
-            auto fileAttr = putRequest.add_fileattributes();
-            fileAttr->set_filename(fileName);
-            auto attr = fileAttr->mutable_fileattribute();
-            attr->set_isdir(false);
-            attr->set_filesize(100);
-            attr->set_accessedtime(101);
-            attr->set_modifiedtime(102);
-        }
-        RUNTEST(TestGetAttributeAPI(fileName, false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
-        RUNTEST(TestPutAttributeAPI(putRequest, PutAttributeResponse::SUCCESS));
-        RUNTEST(TestGetAttributeAPI(fileName, false, GetAttributeResponse::SUCCESS, false, 100, 101, 102));
-    }
-
     string extraFileName = GetUniqueFilename("extraFile");
-    PutAttributeRequest putRequest;
-    {
-        auto fileAttr = putRequest.add_fileattributes();
-        fileAttr->set_filename(extraFileName);
-        auto attr = fileAttr->mutable_fileattribute();
-        attr->set_isdir(false);
-        attr->set_filesize(100);
-        attr->set_accessedtime(101);
-        attr->set_modifiedtime(102);
-    }
-    RUNTEST(TestGetAttributeAPI(extraFileName, false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
-    RUNTEST(TestPutAttributeAPI(putRequest, PutAttributeResponse::INTERNAL_ERROR));
-    RUNTEST(TestGetAttributeAPI(extraFileName, false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
 
     cout << "Test cache size limits" << endl;
 
@@ -1047,7 +818,8 @@ int TestLimits()
     cout << "Test complete. Total tests: " << TotalTests << ". Failed: " << TestsFailed << endl;
     if (TestsFailed > 0)
     {
-        cout << "Ensure cache server is started as: ./CacheServer 20000 <folder path on ssd> 104857600 1024 1" << endl;
+        // The fourth argument is an unused placeholder retained for positional compatibility.
+        cout << "Ensure cache server is started as: ./CacheServer 20000 <folder path on ssd> 104857600 0 1" << endl;
     }
     return 0;
 }
@@ -1260,58 +1032,6 @@ void TestUploadDownload()
         test9, 0, (uint64_t)4*1024*1024*1024 + 1, false, DownloadResponse::NOT_FOUND, &hashValue));
 }
 //---------------------------------------------------------------------------------------------------------------------
-void TestAttributeCache()
-{
-    cout << "Test attribute cache" << endl;
-
-    string test1 = GetUniqueFilename("test1");
-    string test2 = GetUniqueFilename("test2");
-    string test3 = GetUniqueFilename("test3");
-
-    PutAttributeRequest putRequest;
-    {
-        auto fileAttr = putRequest.add_fileattributes();
-        fileAttr->set_filename(test1);
-        auto attr = fileAttr->mutable_fileattribute();
-        attr->set_isdir(true);
-        attr->set_filesize(100);
-        attr->set_accessedtime(101);
-        attr->set_modifiedtime(102);
-    }
-    RUNTEST(TestGetAttributeAPI(test1, false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
-    RUNTEST(TestGetAttributeAPI(test1, true, GetAttributeResponse::NOT_FOUND_GOT_LOCK, false, 0, 0, 0));
-    RUNTEST(TestGetAttributeAPI(test1, true, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
-    RUNTEST(TestGetAttributeAPI(test1, false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
-    RUNTEST(TestPutAttributeAPI(putRequest, PutAttributeResponse::SUCCESS));
-    RUNTEST(TestGetAttributeAPI(test1, false, GetAttributeResponse::SUCCESS, true, 100, 101, 102));
-
-    {
-        putRequest.clear_fileattributes();
-        auto fileAttr = putRequest.add_fileattributes();
-        fileAttr->set_filename(test2);
-        auto attr = fileAttr->mutable_fileattribute();
-        attr->set_isdir(true);
-        attr->set_filesize(0);
-        attr->set_accessedtime(201);
-        attr->set_modifiedtime(202);
-
-        fileAttr = putRequest.add_fileattributes();
-        fileAttr->set_filename(test3);
-        attr = fileAttr->mutable_fileattribute();
-        attr->set_isdir(false);
-        attr->set_filesize(300);
-        attr->set_accessedtime(301);
-        attr->set_modifiedtime(302);
-    }
-    RUNTEST(TestGetAttributeAPI(test2, false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
-    RUNTEST(TestGetAttributeAPI(test3, true, GetAttributeResponse::NOT_FOUND_GOT_LOCK, false, 0, 0, 0));
-    RUNTEST(TestGetAttributeAPI(test3, true, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
-    RUNTEST(TestGetAttributeAPI(test2, false, GetAttributeResponse::NOT_FOUND, false, 0, 0, 0));
-    RUNTEST(TestPutAttributeAPI(putRequest, PutAttributeResponse::SUCCESS));
-    RUNTEST(TestGetAttributeAPI(test2, true, GetAttributeResponse::SUCCESS, true, 0, 201, 202));
-    RUNTEST(TestGetAttributeAPI(test3, false, GetAttributeResponse::SUCCESS, false, 300, 301, 302));
-}
-//---------------------------------------------------------------------------------------------------------------------
 void TestParallelism()
 {
     cout << "test parallel lock" << endl;
@@ -1323,11 +1043,6 @@ void TestParallelism()
     RUNTEST(TestParallelUploadDownload(200, 5));
     RUNTEST(TestParallelUploadDownload(1, 2));
     RUNTEST(TestParallelUploadDownload(500, 10));
-
-    cout << "Test parallel attribute cache" << endl;
-    RUNTEST(TestParallelAttributeCache(200, 5));
-    RUNTEST(TestParallelAttributeCache(1, 2));
-    RUNTEST(TestParallelAttributeCache(500, 10));
 }
 //---------------------------------------------------------------------------------------------------------------------
 void TestCacheMetadata()
@@ -2027,7 +1742,7 @@ bool TestGetCacheServersAPI(GetCacheServersResponse_Result expectedResult, int e
 
     if (response.result() != expectedResult)
     {
-        cout << "error: getattribute failed: response.result() != expectedResult:" << response.result() << ", "
+        cout << "error: getcacheservers failed: response.result() != expectedResult:" << response.result() << ", "
              << expectedResult << endl;
         return false;
     }
@@ -2184,7 +1899,6 @@ int main(int argc, char *argv[])
     {
         TestLockAPIs();
         TestUploadDownload();
-        TestAttributeCache();
         TestParallelism();
         TestCacheMetadata();
         TestDeletes();
@@ -2203,8 +1917,9 @@ int main(int argc, char *argv[])
     
     if (TestsFailed > 0)
     {
+        // The fourth argument is an unused placeholder retained for positional compatibility.
         cout << endl << "Ensure cache server is started as "
-            "./CacheServer 20000 <folder path on ssd> 100000000000 10000000 1" << endl;
+            "./CacheServer 20000 <folder path on ssd> 100000000000 0 1" << endl;
         cout << endl << "Failed tests: " << endl;
         for (string test: FailedTests)
         {

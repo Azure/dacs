@@ -681,28 +681,12 @@ bool StorageInterceptConfig::GetAttributesCacheEnable(const std::string& mountNa
         true);
 }
 //---------------------------------------------------------------------------------------------------------------------
-uint64_t StorageInterceptConfig::GetAttributesCacheServerPort()
-{
-    return StorageInterceptConfig::GetOptionalConfigUint64(
-        m_ConfigProps,
-        StorageInterceptConstants::ConfigNameAttributesCacheServerPort,
-        GetCacheServerPort());
-}
-//---------------------------------------------------------------------------------------------------------------------
 uint64_t StorageInterceptConfig::GetAttributesCacheMaxEntries()
 {
     return StorageInterceptConfig::GetOptionalConfigUint64(
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameAttributesCacheMaxEntries,
         10000000);
-}
-//---------------------------------------------------------------------------------------------------------------------
-bool StorageInterceptConfig::GetAttributesCacheUseLocalServer()
-{
-    return StorageInterceptConfig::GetOptionalConfigBoolean(
-        m_ConfigProps,
-        StorageInterceptConstants::ConfigNameAttributesCacheUseLocalServer,
-        false);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetAttributesCacheUseRemoteServer()

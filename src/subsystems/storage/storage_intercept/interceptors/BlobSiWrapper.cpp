@@ -222,7 +222,6 @@ bool generate_si_config(const char* config_path)
         fprintf(f, "%s 1000\n", ConfigNameCacheRetryMaxDelayMillis);
         fprintf(f, "%s 400\n", ConfigNameCacheUploaderMaxBufferSizePerProcessGB);
         fprintf(f, "%s 80\n", ConfigNameCacheUploaderThreadsPerProcess);
-        fprintf(f, "%s false\n", ConfigNameAttributesCacheUseLocalServer);
         fprintf(f, "%s true\n", ConfigNameAttributesCacheUseRemoteServer);
 
         LOG_INFO("blob_read: distributed cache enabled (port={})", port);

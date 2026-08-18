@@ -259,7 +259,6 @@ fn write_cache_config(file: &mut impl Write) -> io::Result<()> {
         writeln!(file, "cacheRetryMaxDelayMs 1000")?;
         writeln!(file, "cacheMaxUploadBufferSizePerProcessGB 400")?;
         writeln!(file, "cacheNumUploadThreadsPerProcess 80")?;
-        writeln!(file, "attributesCacheUseLocalServer false")?;
         writeln!(file, "attributesCacheUseRemoteServer true")?;
     }
 

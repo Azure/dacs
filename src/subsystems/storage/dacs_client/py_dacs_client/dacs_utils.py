@@ -530,7 +530,6 @@ def _initialize_dacs_client_config(
             config_file.write("cacheRetryMaxDelayMs 1000\n")
             config_file.write("cacheMaxUploadBufferSizePerProcessGB 400\n")
             config_file.write("cacheNumUploadThreadsPerProcess 80\n")
-            config_file.write("attributesCacheUseLocalServer false\n")
             config_file.write("attributesCacheUseRemoteServer true\n")
         else:
             logger.warning("Cache not configured. Working in Remote Blob mode only.")

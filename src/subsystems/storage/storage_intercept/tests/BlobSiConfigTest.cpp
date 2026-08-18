@@ -446,7 +446,6 @@ TEST_F(ConfigTest, CacheTuningSettings)
     EXPECT_EQ(kv["cacheRetryMaxDelayMillis"], "1000");
     EXPECT_EQ(kv["cacheMaxUploadBufferSizePerProcessGB"], "400");
     EXPECT_EQ(kv["cacheNumUploadThreadsPerProcess"], "80");
-    EXPECT_EQ(kv["attributesCacheUseLocalServer"], "false");
     EXPECT_EQ(kv["attributesCacheUseRemoteServer"], "true");
 }
 
