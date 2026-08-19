@@ -393,7 +393,12 @@ CacheClientStatus CacheClientImpl::Upload(
             status = CacheClientStatus::INTERNAL_ERROR;
         }
 
-        m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), false);
+        // We reuse connection only for success, because if the server has closed the connection
+        // but another client operation reuses it, that operation will fail due to connection reset.
+        m_spConnectionManager->ReleaseConnection(
+            hostname,
+            std::move(serverConnection),
+            status != CacheClientStatus::SUCCESS /* discard connection on any error */);
         return status;
     };
 
@@ -725,6 +730,7 @@ CacheClientStatus CacheClientImpl::Download(
     else if(response.result() == DownloadResponse::AUTH_FAILED)
     {
         cacheClientStatus = CacheClientStatus::AUTH_FAILED;
+        discardConnection = true;
     }
     else
     {
