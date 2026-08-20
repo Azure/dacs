@@ -16,6 +16,7 @@
 #include "gtest/gtest.h"
 #include <chrono>  // For std::chrono::seconds
 #include <cstring> // For memcmp function
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <stdlib.h>
@@ -36,6 +37,86 @@
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 using namespace cacheutils;
+//---------------------------------------------------------------------------------------------------------------------
+namespace
+{
+// Helper function to encode a filename into a hexadecimal string representation.
+// We use it to find the disk path where cacheserver has stored the cache file.
+std::string EncodeCacheFilename(const std::string& filename)
+{
+    std::ostringstream encoded;
+    for(const unsigned char character : filename)
+    {
+        encoded << std::setfill('0') << std::setw(2) << std::hex << static_cast<int>(character);
+    }
+    return encoded.str();
+}
+
+// Helper function to find a cache file in the given root directory and its subdirectories.
+std::filesystem::path FindCacheFile(const std::filesystem::path& root, const std::string& filename)
+{
+    const auto encodedFilename = EncodeCacheFilename(filename);
+    for(const auto& entry : std::filesystem::recursive_directory_iterator(root))
+    {
+        if(entry.is_regular_file() && entry.path().filename() == encodedFilename)
+        {
+            return entry.path();
+        }
+    }
+    return {};
+}
+
+// Helper class to temporarily truncate a file and restore it afterward.
+// This is useful for testing scenarios where we want to simulate a file being partially written or corrupted on disk.
+class ScopedTruncatedFile
+{
+  public:
+    ScopedTruncatedFile(const std::filesystem::path& path, uint64_t clippedBytes)
+        : m_path(path), m_originalSize(std::filesystem::file_size(path)), m_clippedTail(clippedBytes)
+    {
+        std::ifstream input(m_path, std::ios::binary);
+        input.seekg(static_cast<std::streamoff>(m_originalSize - clippedBytes));
+        input.read(m_clippedTail.data(), static_cast<std::streamsize>(m_clippedTail.size()));
+        std::filesystem::resize_file(m_path, m_originalSize - clippedBytes);
+    }
+
+    ~ScopedTruncatedFile()
+    {
+        std::ofstream output(m_path, std::ios::binary | std::ios::app);
+        output.write(m_clippedTail.data(), static_cast<std::streamsize>(m_clippedTail.size()));
+    }
+
+  private:
+    std::filesystem::path m_path;
+    uint64_t m_originalSize;
+    std::vector<char> m_clippedTail;
+};
+
+// Helper class to temporarily replace a directory with a regular file, and restore it afterward.
+// This is useful for testing scenarios where we want to simulate cache directory being blocked or inaccessible to cacheserver
+class ScopedBlockedDirectory
+{
+  public:
+    explicit ScopedBlockedDirectory(const std::filesystem::path& path)
+        : m_path(path), m_backupPath(path.string() + ".cache_client_test_backup")
+    {
+        std::filesystem::rename(m_path, m_backupPath);
+        std::ofstream blockedPath(m_path);
+        blockedPath.exceptions(std::ios::failbit | std::ios::badbit);
+    }
+
+    ~ScopedBlockedDirectory()
+    {
+        std::error_code error;
+        std::filesystem::remove(m_path, error);
+        std::filesystem::rename(m_backupPath, m_path, error);
+    }
+
+  private:
+    std::filesystem::path m_path;
+    std::filesystem::path m_backupPath;
+};
+}
 //---------------------------------------------------------------------------------------------------------------------
 /**
  * ### Key Features:
@@ -436,6 +517,79 @@ TEST_P(CacheClientTests, DownloadFiles)
     free((void*)pBuffer);
     free((void*)pBuffer2);
     free((void*)pBuffer3);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, UploadInternalErrorTest)
+{
+    const char* cacheServerPath = getenv("CACHE_SERVER_PATH");
+    if(cacheServerPath == nullptr)
+    {
+        GTEST_SKIP() << "CACHE_SERVER_PATH is not set";
+    }
+
+    const uint64_t nLength = 1024;
+    const char* pBuffer = GetRandomBuffer(nLength);
+    const string existingFilename = GetCorrelationId();
+    const string newFilename = GetCorrelationId();
+
+    auto status = m_cacheClientImpl.Upload(existingFilename.c_str(), pBuffer, nLength, 0, nullptr, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    {
+        ScopedBlockedDirectory blockedTempUploads(std::filesystem::path(cacheServerPath) / "_cache/temp_upload");
+        status = m_cacheClientImpl.Upload(newFilename.c_str(), pBuffer, nLength, 0, nullptr, nullptr, nullptr);
+        EXPECT_EQ(CacheClientStatus::INTERNAL_ERROR, status);
+    }
+
+    void* pDownloadBuffer = malloc(nLength);
+    uint64_t readLength = nLength;
+    status = m_cacheClientImpl.Download(
+        existingFilename.c_str(), pDownloadBuffer, &readLength, nullptr, nullptr);
+    EXPECT_EQ(CacheClientStatus::SUCCESS, status);
+    EXPECT_EQ(nLength, readLength);
+    EXPECT_EQ(0, memcmp(pBuffer, pDownloadBuffer, nLength));
+
+    free((void*)pBuffer);
+    free(pDownloadBuffer);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, DownloadInternalErrorTest)
+{
+    const char* cacheServerPath = getenv("CACHE_SERVER_PATH");
+    if(cacheServerPath == nullptr)
+    {
+        GTEST_SKIP() << "CACHE_SERVER_PATH is not set";
+    }
+
+    const uint64_t nLength = 1024;
+    const char* pBuffer = GetRandomBuffer(nLength);
+    const string filename = GetCorrelationId();
+
+    auto status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    const auto cacheFile = FindCacheFile(cacheServerPath, filename);
+    ASSERT_FALSE(cacheFile.empty()) << "Could not find cached file for " << filename;
+
+    void* pDownloadBuffer = malloc(nLength);
+    uint64_t readLength = nLength;
+    {
+        constexpr uint64_t clippedBytes = 8;
+        ScopedTruncatedFile truncatedCacheFile(cacheFile, clippedBytes);
+        status = m_cacheClientImpl.Download(
+            filename.c_str(), pDownloadBuffer, &readLength, nullptr, nullptr);
+        EXPECT_EQ(CacheClientStatus::INTERNAL_ERROR, status);
+    }
+
+    readLength = nLength;
+    status = m_cacheClientImpl.Download(
+        filename.c_str(), pDownloadBuffer, &readLength, nullptr, nullptr);
+    EXPECT_EQ(CacheClientStatus::SUCCESS, status);
+    EXPECT_EQ(nLength, readLength);
+    EXPECT_EQ(0, memcmp(pBuffer, pDownloadBuffer, nLength));
+
+    free((void*)pBuffer);
+    free(pDownloadBuffer);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_P(CacheClientTests, DownloadFilesWithKeyValuePairs)
