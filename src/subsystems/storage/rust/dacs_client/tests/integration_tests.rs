@@ -23,19 +23,8 @@ fn nonexistent_blob_path() -> String {
     format!("{}/does_not_exist_12345", blob_base_path())
 }
 
-fn find_test_file(client: &dacs_client::Client) -> String {
-    let top = client.list_dir(&blob_base_path()).unwrap();
-    let subdir = top
-        .iter()
-        .find(|e| e.file_type == 4 && e.name != "." && e.name != "..")
-        .expect("no subdirectory found");
-    let subdir_path = format!("{}/{}", blob_base_path(), subdir.name);
-    let files = client.list_dir(&subdir_path).unwrap();
-    let file = files
-        .iter()
-        .find(|e| e.file_type == 8)
-        .expect("no file found");
-    format!("{}/{}", subdir_path, file.name)
+fn test_file_path() -> String {
+    format!("{}/rust-fixture/sample/sample.bin", blob_base_path())
 }
 
 // =============================================================================
@@ -64,7 +53,7 @@ fn client_list_dir_and_stat() {
 #[test]
 fn client_file_size_and_stat_agree() {
     let client = dacs_client::Client::new().unwrap();
-    let path = find_test_file(&client);
+    let path = test_file_path();
     let size = client.file_size(&path).unwrap();
     assert!(size > 0);
     assert_eq!(size, client.file_stat(&path).unwrap().size);
@@ -73,7 +62,7 @@ fn client_file_size_and_stat_agree() {
 #[test]
 fn client_read_blob() {
     let client = dacs_client::Client::new().unwrap();
-    let path = find_test_file(&client);
+    let path = test_file_path();
     let size = client.file_stat(&path).unwrap().size.clamp(0, 4096) as usize;
     let mut buf = vec![0u8; size];
     assert_eq!(client.read_blob(&path, &mut buf, 0).unwrap(), size);
@@ -82,7 +71,7 @@ fn client_read_blob() {
 #[test]
 fn client_open_read_close() {
     let client = dacs_client::Client::new().unwrap();
-    let path = find_test_file(&client);
+    let path = test_file_path();
     let mut handle = client.open(&path, libc::O_RDONLY).unwrap();
     let mut buf = vec![0u8; 512];
     let n = handle.read(&mut buf, 0).unwrap();
@@ -100,7 +89,7 @@ fn client_concurrent_reads() {
     use std::thread;
 
     let client = Arc::new(dacs_client::Client::new().unwrap());
-    let path = Arc::new(find_test_file(&client));
+    let path = Arc::new(test_file_path());
 
     let results: Vec<usize> = (0..4)
         .map(|_| {
@@ -171,7 +160,7 @@ fn client_read_nonexistent_blob() {
 #[test]
 fn client_read_beyond_file_size() {
     let client = dacs_client::Client::new().unwrap();
-    let path = find_test_file(&client);
+    let path = test_file_path();
     let size = client.file_stat(&path).unwrap().size as i64;
     let mut buf = vec![0u8; 64];
     let n = client.read_blob(&path, &mut buf, size + 1000).unwrap();

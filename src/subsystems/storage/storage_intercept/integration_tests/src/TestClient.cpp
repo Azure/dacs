@@ -40,10 +40,13 @@
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
+constexpr char PRIMARY_TEST_FILE[] = "/synthetic/small/class-b/primary.bin";
+constexpr int PRIMARY_TEST_FILE_SIZE = 324089;
+//---------------------------------------------------------------------------------------------------------------------
 void TestFileReadWithSeek(const std::string& mountPath)
 {
-  std::string remoteFilePath = mountPath + "/imagenet_data/train/n01494475/n01494475_10008.JPEG";
-  int expectedFileSize = 324089;
+  std::string remoteFilePath = mountPath + PRIMARY_TEST_FILE;
+  int expectedFileSize = PRIMARY_TEST_FILE_SIZE;
 
   int fd = ::open(remoteFilePath.c_str(), O_RDONLY, 0777);
   if (fd < 0)
@@ -94,8 +97,8 @@ void TestSubChunkRead(const std::string& mountPath)
   // Test that sub-chunk reads return correct data.
   // The sub-chunk optimization activates automatically for reads smaller than chunk size
   // when encryption and checksum validation are disabled.
-  std::string remoteFilePath = mountPath + "/imagenet_data/train/n01494475/n01494475_10008.JPEG";
-  constexpr int expectedFileSize = 324089;
+  std::string remoteFilePath = mountPath + PRIMARY_TEST_FILE;
+  constexpr int expectedFileSize = PRIMARY_TEST_FILE_SIZE;
 
   int fd = ::open(remoteFilePath.c_str(), O_RDONLY, 0777);
   if (fd < 0)
@@ -325,8 +328,8 @@ void TestSubChunkBoundaryRead(const std::string& mountPath)
 //---------------------------------------------------------------------------------------------------------------------
 void TestStatInterception(const std::string& mountPath)
 {
-  std::string remoteFilePath = mountPath + "/imagenet_data/train/n01494475/n01494475_10008.JPEG";
-  int expectedFileSize = 324089;
+  std::string remoteFilePath = mountPath + PRIMARY_TEST_FILE;
+  int expectedFileSize = PRIMARY_TEST_FILE_SIZE;
 
   struct stat statBuf{};
   int ret = stat(remoteFilePath.c_str(), &statBuf);
@@ -758,8 +761,8 @@ void TestReaddir(
 //---------------------------------------------------------------------------------------------------------------------
 void TestIfStreamInterception(const std::string& mountPath)
 {
-  std::string remoteFilePath = mountPath + "/imagenet_data/train/n01494475/n01494475_10008.JPEG";
-  int expectedFileSize = 324089;
+  std::string remoteFilePath = mountPath + PRIMARY_TEST_FILE;
+  int expectedFileSize = PRIMARY_TEST_FILE_SIZE;
 
   std::ifstream in(remoteFilePath, std::ios::in | std::ios::binary);
   if (!in)
@@ -812,9 +815,9 @@ int main(int argc, char** argv)
   std::string mountPath = argv[1];
 
   std::cout << "Testing the list directory calls" << std::endl;
-  TestReaddir(mountPath + "/imagenet_data/", 4, 0);
-  TestReaddir(mountPath + "/imagenet_data/train", 102, 0);
-  TestReaddir(mountPath + "/imagenet_data/train/n01494475", 2, 1300);
+  TestReaddir(mountPath + "/synthetic", 4, 4);
+  TestReaddir(mountPath + "/synthetic/small", 4, 0);
+  TestReaddir(mountPath + "/synthetic/small/class-b", 4, 10);
   std::cout << "Tests for list directory calls done." << std::endl;
 
   TestIfStreamInterception(mountPath);
@@ -889,12 +892,12 @@ int main(int argc, char** argv)
   std::cout << "Num bytes read              => " << numBytesRead  << std::endl;
   std::cout << "Average throughput obtained => " << avgThroughput <<  " B / sec"  << std::endl;
   std::cout << "========================================================" << std::endl;
-
+  
   // Allow time for async cache uploads to complete before program exit.
   // File reads trigger background cache uploads in CacheUploadManager. 
   // Without this sleep, the ContentHandler destructor can run while upload threads
   // are still active, causing segfaults when threads access destroyed objects.
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
   return 0;
 }

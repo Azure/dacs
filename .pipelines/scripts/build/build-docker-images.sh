@@ -35,6 +35,7 @@ done
 # Load configuration from k8s config file
 CONFIG_FILE="$REPOSITORY_ROOT/scripts/k8s/config/local.config"
 if [[ -f "$CONFIG_FILE" ]]; then
+    # shellcheck disable=SC1090
     source "$CONFIG_FILE"
     echo "Loaded config from: $CONFIG_FILE"
 fi
@@ -59,59 +60,24 @@ if [[ -z "$REGISTRY" ]]; then
     REGISTRY="dacstest.azurecr.io"
     echo "DOCKER_REGISTRY not set; defaulting to: $REGISTRY"
 fi
+PUBLISH_LATEST="${PUBLISH_LATEST:-false}"
 echo "image registry: $REGISTRY"
 
 # Check if base Dockerfiles changed
 base_dockerfile_changed() {
-    docker_image_name="$1"
-
-    # Strategy 0: scheduled (cron) build -- always rebuild so security patches
-    # for transitive system packages (libc6, libssl3, etc.) are picked up even
-    # when Docker/base/ files have not changed.
-    if [[ "${BUILD_REASON:-}" == "Schedule" ]]; then
-        echo "[DEBUG] Forcing base image rebuild (BUILD_REASON=Schedule)" >&2
+    if [[ "$PUBLISH_LATEST" == "true" ]]; then
+        echo "[DEBUG] Official main build: forcing base image refresh" >&2
         return 0
     fi
 
-    # Strategy 1: PR builds - compare against origin/main
     git fetch origin main --depth=1 2>/dev/null || true
-    if git diff --name-only origin/main...HEAD 2>/dev/null | grep -q "Docker/base/"; then
-        echo "[DEBUG] Docker/base/ changed (vs origin/main)" >&2
+    if git diff --name-only origin/main..HEAD 2>/dev/null |
+        grep -q '^Docker/base/'; then
+        echo "[DEBUG] Docker/base/ changed relative to origin/main" >&2
         return 0
     fi
 
-    # Strategy 2: Official builds - compare against commit SHA stored in ACR image label
-    local image="${REGISTRY}/${docker_image_name}:latest"
-    local last_built_sha
-
-    # Pull the image to inspect commit SHA label; if pull fails, assume image doesn't exist and needs build
-    docker pull "$image" > /dev/null 2>&1 || {
-        echo "[DEBUG] Failed to pull $image, assuming base image needs rebuild" >&2
-        return 0
-    }
-
-    last_built_sha=$(docker inspect "$image" --format '{{ index .Config.Labels "git-sha"}}' 2>/dev/null || true)
-    if [[ -z "$last_built_sha" || "$last_built_sha" == "<no value>" ]]; then
-        echo "[DEBUG] No git-sha label found on $image, rebuilding to be safe" >&2
-        return 0
-    fi
-
-    echo "[DEBUG] Last base image built at commit: $last_built_sha" >&2
-
-    # Ensure the SHA exists locally -- if not, deepen the fetch to find it, but if it still doesn't exist, assume we need to rebuild
-    git fetch --unshallow 2>/dev/null || git fetch origin --deepen=100 2>/dev/null || true
-
-    if ! git rev-parse --quiet --verify "$last_built_sha" >/dev/null 2>&1; then
-        echo "[DEBUG] Last built SHA $last_built_sha still not found, assuming base image needs rebuild" >&2
-        return 0
-    fi
-
-    if git diff --name-only "$last_built_sha"...HEAD 2>/dev/null | grep -q "Docker/base/"; then
-        echo "[DEBUG] Docker/base/ changed since $last_built_sha" >&2
-        return 0
-    fi
-
-    echo "[DEBUG] No Docker/base/ changes detected" >&2
+    echo "[DEBUG] Base image inputs are unchanged" >&2
     return 1
 }
 
@@ -129,19 +95,13 @@ prepare_base_image() {
         build_args+=(--secret "id=pip_index_url,env=PIP_INDEX_URL")
     fi
 
-    # On scheduled rebuilds, bypass Docker's layer cache so that
-    # `apt-get update && apt-get upgrade` actually re-runs and pulls fresh
-    # security patches. Without this, warm agents would reuse a cached layer
-    # whose RUN string is byte-identical to last week and skip the upgrade.
-    # `--pull` additionally forces re-resolving the FROM tag against the
-    # registry so the upstream ubuntu:22.04 layer itself is refreshed.
-    local build_options=()
-    if [[ "${BUILD_REASON:-}" == "Schedule" ]]; then
-        build_options+=(--no-cache --pull)
+    local build_options=(--pull)
+    if [[ "$PUBLISH_LATEST" == "true" ]]; then
+        build_options+=(--no-cache)
     fi
 
-    if base_dockerfile_changed "$name"; then
-        echo "Building $name (Dockerfile changed)..."
+    if base_dockerfile_changed; then
+        echo "Building $name..."
         docker build "${build_options[@]}" \
             "${build_args[@]}" \
             --label "git-sha=$current_sha" \
@@ -149,8 +109,7 @@ prepare_base_image() {
             -t "$image" \
             "$REPOSITORY_ROOT/Docker/base/"
     else
-        # Since image is already pulled via base_dockerfile_changed, it will be a no-op if it exists.
-        echo "Attempting to pull base image: $image"
+        echo "Pulling official base image: $image"
         if docker pull "$image"; then
             echo "Pulled $name from ACR"
         else
@@ -195,4 +154,4 @@ wait $PID_CONTROLLER || { echo "CacheController build failed"; exit 1; }
 
 echo ""
 echo "Images built successfully"
-docker images | grep -E "(cache*)" | grep local
+docker images | grep -E 'cache.*' | grep local

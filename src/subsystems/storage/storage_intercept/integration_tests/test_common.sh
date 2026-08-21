@@ -71,6 +71,9 @@ BUILD_CONFIGURATION="${BUILD_CONFIGURATION:-Debug}"
 
 # 1.5 Build Architecture Detection
 BUILD_ARCH="${BUILD_ARCH:-amd64}"
+DACS_AZURE_STORAGE_ACCOUNT="${DACS_AZURE_STORAGE_ACCOUNT:-dacstest}"
+DACS_AZURE_STORAGE_CONTAINER="${DACS_AZURE_STORAGE_CONTAINER:-dataset}"
+DACS_AZURE_STORAGE_SECONDARY_CONTAINER="${DACS_AZURE_STORAGE_SECONDARY_CONTAINER:-dataset2}"
 
 # 1.6 Python Virtual Environment Activation
 if [ -f /venv/bin/activate ]; then
@@ -95,23 +98,25 @@ export STORAGE_INTERCEPT_USE_EXISTING_CONFIG=true
 # Parameters:
 #   $1: MOUNT_PATH - The local mount path for the storage
 #   $2: ACCOUNT_NAME - Azure storage account name
-#   $3: MOUNT_PREFIX - Prefix for configuration keys (empty for single mount)
-#   $4: MOUNT_SAS_TOKEN_NAME - Environment variable name for SAS token (optional)
-#   $5: IS_DYNAMIC - Boolean flag for dynamic container support
-#   $6: IS_FUSE_ENABLED - Boolean flag for FUSE optimization settings
+#   $3: CONTAINER_NAME - Azure Blob container name
+#   $4: MOUNT_PREFIX - Prefix for configuration keys (empty for single mount)
+#   $5: MOUNT_SAS_TOKEN_NAME - Environment variable name for SAS token (optional)
+#   $6: IS_DYNAMIC - Boolean flag for dynamic container support
+#   $7: IS_FUSE_ENABLED - Boolean flag for FUSE optimization settings
 function append_interception_config_blob_prefix() {
     MOUNT_PATH=$1
     ACCOUNT_NAME=$2
-    MOUNT_PREFIX=$3
-    MOUNT_SAS_TOKEN_NAME=$4
-    IS_DYNAMIC=$5
-    IS_FUSE_ENABLED=$6
+    CONTAINER_NAME=$3
+    MOUNT_PREFIX=$4
+    MOUNT_SAS_TOKEN_NAME=$5
+    IS_DYNAMIC=$6
+    IS_FUSE_ENABLED=$7
 
     echo "${MOUNT_PREFIX}storagePath ${MOUNT_PATH}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "${MOUNT_PREFIX}type blob" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "${MOUNT_PREFIX}azBlobStorageAccountName ${ACCOUNT_NAME}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "${MOUNT_PREFIX}azBlobStorageEndpoint https://${ACCOUNT_NAME}.blob.core.windows.net" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-    echo "${MOUNT_PREFIX}azBlobContainerName dataset" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+    echo "${MOUNT_PREFIX}azBlobContainerName ${CONTAINER_NAME}" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "${MOUNT_PREFIX}maxConnsPerBlobClient 200" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
     # Authentication priority: SAS Token -> Access Token
@@ -194,16 +199,16 @@ function add_interception_config_blob() {
     # Configure multi-mount or single-mount based on flag
     if [ "$TEST_MULTI_MOUNT" = true ]
     then
-      # Multi-mount configuration: Two storage accounts with different settings
+      # Multi-mount configuration: Two containers with different mount settings
       echo "multiMountEnabled true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
       echo "mountName0 mount1" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-      append_interception_config_blob_prefix ${STORAGE_INTERCEPT_PATH} storageinterceptionpr1 "mount1" STORAGE_INTCPT_SAS_TOKEN true $IS_FUSE_ENABLED
+      append_interception_config_blob_prefix ${STORAGE_INTERCEPT_PATH} "${DACS_AZURE_STORAGE_ACCOUNT}" "${DACS_AZURE_STORAGE_CONTAINER}" "mount1" STORAGE_INTCPT_SAS_TOKEN true $IS_FUSE_ENABLED
 
       echo "mountName1 mount2" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
-      append_interception_config_blob_prefix "${STORAGE_INTERCEPT_PATH}2" storageinterceptionpr2 "mount2" "" true $IS_FUSE_ENABLED
+      append_interception_config_blob_prefix "${STORAGE_INTERCEPT_PATH}2" "${DACS_AZURE_STORAGE_ACCOUNT}" "${DACS_AZURE_STORAGE_SECONDARY_CONTAINER}" "mount2" "" true $IS_FUSE_ENABLED
     else
       # Single-mount configuration: One storage account
-      append_interception_config_blob_prefix ${STORAGE_INTERCEPT_PATH} storageinterceptionpr1 "" "" false $IS_FUSE_ENABLED
+      append_interception_config_blob_prefix ${STORAGE_INTERCEPT_PATH} "${DACS_AZURE_STORAGE_ACCOUNT}" "${DACS_AZURE_STORAGE_CONTAINER}" "" "" false $IS_FUSE_ENABLED
     fi
 
     echo "Created the storage interception config file. Its contents are =>"

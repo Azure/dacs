@@ -13,68 +13,67 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Create multi-platform manifests after all architecture builds complete
+# Create immutable manifests for every build and mutable aliases for official
+# main builds.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-
-# Load configuration
-CONFIG_FILE="$REPOSITORY_ROOT/scripts/k8s/config/local.config"
-if [[ -f "$CONFIG_FILE" ]]; then
-    # shellcheck disable=SC1090
-    source "$CONFIG_FILE"
-    echo "Loaded config from: $CONFIG_FILE"
-fi
-
-# Registry settings - must be provided by environment variables
 REGISTRY="${DOCKER_REGISTRY:?DOCKER_REGISTRY is required}"
-BUILD_NUMBER="${BUILD_NUMBER:-latest}"
-
-# Architectures to include in manifest
-# Default: both amd64 and arm64 (for pipeline)
-# Override with BUILD_ARCHS="amd64" for single-arch local builds
+BUILD_NUMBER="${BUILD_NUMBER:?BUILD_NUMBER is required}"
 BUILD_ARCHS="${BUILD_ARCHS:-amd64 arm64}"
+PUBLISH_LATEST="${PUBLISH_LATEST:-false}"
 
-# Define images to process
 IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler" "cache-controller")
+BASE_IMAGES=("cache-server-base" "cache-client-base")
 
-echo "Creating multi-platform manifests..."
-echo "Registry: $REGISTRY"
-echo "Build Number: $BUILD_NUMBER"
-echo "Architectures: $BUILD_ARCHS"
-echo ""
-
-# Create multi-platform manifest from arch-specific images
 create_manifest() {
     local image="$1"
     local tag="$2"
-    local arch_pattern="$3"  # Use {arch} as placeholder
-    
-    local manifest_tag="$REGISTRY/$image:$tag"
+    local arch_pattern="$3"
     local arch_images=()
-    
-    echo "Creating manifest: $manifest_tag"
-    echo "  References:"
+
     for arch in $BUILD_ARCHS; do
-        local arch_image="$REGISTRY/$image:${arch_pattern//\{arch\}/$arch}"
-        arch_images+=("$arch_image")
-        echo "    • $arch_image"
+        arch_images+=("${REGISTRY}/${image}:${arch_pattern//\{arch\}/$arch}")
     done
-    
-    docker buildx imagetools create --tag "$manifest_tag" "${arch_images[@]}"
-    echo "Manifest created: $manifest_tag"
-    echo ""
+
+    docker buildx imagetools create \
+        --tag "${REGISTRY}/${image}:${tag}" \
+        "${arch_images[@]}"
 }
 
-# App images: combine <build>-linux-<arch> into :<build>
+create_manifest_if_available() {
+    local image="$1"
+    local tag="$2"
+    local arch_pattern="$3"
+
+    for arch in $BUILD_ARCHS; do
+        arch_image="${REGISTRY}/${image}:${arch_pattern//\{arch\}/$arch}"
+        if ! docker buildx imagetools inspect "$arch_image" >/dev/null 2>&1; then
+            echo "Skipping ${image}:${tag}; ${arch_image} was not published"
+            return 0
+        fi
+    done
+
+    create_manifest "$image" "$tag" "$arch_pattern"
+}
+
 for image in "${IMAGES[@]}"; do
     create_manifest "$image" "$BUILD_NUMBER" "${BUILD_NUMBER}-linux-{arch}"
 done
 
-echo "✅ All multi-platform manifests created successfully:"
-echo ""
-for image in "${IMAGES[@]}"; do
-    echo "  • $REGISTRY/$image:$BUILD_NUMBER (linux/${BUILD_ARCHS// /, linux/})"
+for image in "${BASE_IMAGES[@]}"; do
+    create_manifest_if_available "$image" "$BUILD_NUMBER" "${BUILD_NUMBER}-{arch}"
 done
-echo ""
+create_manifest_if_available \
+    "native-build" "$BUILD_NUMBER" "${BUILD_NUMBER}-linux-{arch}"
+
+if [[ "$PUBLISH_LATEST" == "true" ]]; then
+    for image in "${IMAGES[@]}"; do
+        create_manifest "$image" "latest" "${BUILD_NUMBER}-linux-{arch}"
+    done
+    for image in "${BASE_IMAGES[@]}"; do
+        create_manifest "$image" "latest" "latest-linux-{arch}"
+    done
+    create_manifest "native-build" "latest" "linux-{arch}"
+fi
+
+echo "Published multi-platform manifests for ${BUILD_NUMBER}"

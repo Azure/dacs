@@ -14,6 +14,7 @@
 # limitations under the License.
 
 BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
+DACS_AZURE_STORAGE_ACCOUNT="${DACS_AZURE_STORAGE_ACCOUNT:-dacstest}"
 
 # This script is an integration test to intercept the I/O related system calls
 # made from a test client via LD_PRELOAD and process the request from files present
@@ -203,31 +204,31 @@ if [ "$dataset" = "small" ]
 then
     samples_file="${SCRIPT_DIR}/small_dataset_testcases.txt"
     declare -A io_test_args=(
-        [folder_path]="/mnt/quiverfs/imagenet_data/train/n01443537"
-        [compressed_tar_path]="/mnt/quiverfs/n01443537.tar.gz"
-        [compressed_zip_path]="/mnt/quiverfs/n01443537.zip")
+        [folder_path]="/mnt/quiverfs/synthetic/small/class-a"
+        [compressed_tar_path]="/mnt/quiverfs/synthetic/small.tar.gz"
+        [compressed_zip_path]="/mnt/quiverfs/synthetic/small.zip")
 elif [ "$dataset" = "largeMultiMountDynamic" ]
 then
     mount_path="/mnt/quiverfs/dataset"
     samples_file="${SCRIPT_DIR}/large_dataset_testcases_dynamic_container.txt"
     declare -A io_test_args=(
-        [folder_path]="/mnt/quiverfs/dataset/books_wiki_en_corpus"
-        [compressed_tar_path]="/mnt/quiverfs/dataset/books_wiki_en_corpus.tar.gz"
-        [compressed_zip_path]="/mnt/quiverfs/dataset/books_wiki_en_corpus.zip")
+        [folder_path]="/mnt/quiverfs/dataset/synthetic/large"
+        [compressed_tar_path]="/mnt/quiverfs/dataset/synthetic/large.tar.gz"
+        [compressed_zip_path]="/mnt/quiverfs/dataset/synthetic/large.zip")
 elif [ "$dataset" = "largeDynamicAccount" ]
 then
-    mount_path="/mnt/quiverfs/storageinterceptionpr1.blob.core.windows.net/dataset"
+    mount_path="/mnt/quiverfs/${DACS_AZURE_STORAGE_ACCOUNT}.blob.core.windows.net/dataset"
     samples_file="${SCRIPT_DIR}/large_dataset_testcases_dynamic_account.txt"
     declare -A io_test_args=(
-        [folder_path]="/mnt/quiverfs/storageinterceptionpr1.blob.core.windows.net/dataset/books_wiki_en_corpus"
-        [compressed_tar_path]="/mnt/quiverfs/storageinterceptionpr1.blob.core.windows.net/dataset/books_wiki_en_corpus.tar.gz"
-        [compressed_zip_path]="/mnt/quiverfs/storageinterceptionpr1.blob.core.windows.net/dataset/books_wiki_en_corpus.zip")
+        [folder_path]="/mnt/quiverfs/${DACS_AZURE_STORAGE_ACCOUNT}.blob.core.windows.net/dataset/synthetic/large"
+        [compressed_tar_path]="/mnt/quiverfs/${DACS_AZURE_STORAGE_ACCOUNT}.blob.core.windows.net/dataset/synthetic/large.tar.gz"
+        [compressed_zip_path]="/mnt/quiverfs/${DACS_AZURE_STORAGE_ACCOUNT}.blob.core.windows.net/dataset/synthetic/large.zip")
 else
     samples_file="${SCRIPT_DIR}/large_dataset_testcases.txt"
     declare -A io_test_args=(
-        [folder_path]="/mnt/quiverfs/books_wiki_en_corpus"
-        [compressed_tar_path]="/mnt/quiverfs/books_wiki_en_corpus.tar.gz"
-        [compressed_zip_path]="/mnt/quiverfs/books_wiki_en_corpus.zip")
+        [folder_path]="/mnt/quiverfs/synthetic/large"
+        [compressed_tar_path]="/mnt/quiverfs/synthetic/large.tar.gz"
+        [compressed_zip_path]="/mnt/quiverfs/synthetic/large.zip")
 fi
 
 if [ "$discovery_enabled" = true ]

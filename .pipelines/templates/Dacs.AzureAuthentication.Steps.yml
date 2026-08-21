@@ -1,0 +1,98 @@
+# Copyright (c) Microsoft Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+
+parameters:
+  - name: architecture
+    type: string
+  - name: acrName
+    type: string
+  - name: azureServiceConnection
+    type: string
+  - name: azureStorageBlobPath
+    type: string
+
+steps:
+  - ${{ if eq(parameters.architecture, 'arm64') }}:
+      - bash: |
+          set -euo pipefail
+
+          packages=()
+          command -v make >/dev/null 2>&1 || packages+=(make)
+          command -v az >/dev/null 2>&1 || packages+=(ca-certificates azure-cli)
+
+          if [ "${#packages[@]}" -gt 0 ]; then
+            sudo tdnf install -y "${packages[@]}"
+          fi
+
+          make --version
+          az version
+        displayName: Install ARM64 test tools
+
+  - task: AzureCLI@2
+    displayName: Configure Azure workload identity
+    inputs:
+      azureSubscription: ${{ parameters.azureServiceConnection }}
+      scriptType: bash
+      scriptLocation: inlineScript
+      addSpnToEnvironment: true
+      inlineScript: |
+        set -euo pipefail
+
+        readonly fixture="$DACS_AZURE_STORAGE_BLOB_PATH"
+        readonly without_scheme="${fixture#az://}"
+        readonly account_host="${without_scheme%%/*}"
+        readonly remainder="${without_scheme#*/}"
+        readonly container="${remainder%%/*}"
+        readonly account="${account_host%%.*}"
+        prefix=""
+        if [[ "$remainder" == */* ]]; then
+          prefix="${remainder#*/}"
+        fi
+        readonly prefix
+
+        if [[ "$fixture" != az://* ||
+              "$remainder" == "$without_scheme" ||
+              ! "$account" =~ ^[a-z0-9]{3,24}$ ||
+              ( "$account_host" != "$account" &&
+                "$account_host" != "${account}.blob.core.windows.net" ) ||
+              ! "$container" =~ ^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$ ||
+              ! "$DACS_ACR_NAME" =~ ^[a-z0-9]{5,50}$ ]]; then
+          echo "Invalid Azure Blob fixture path: $fixture" >&2
+          echo "Expected az://<account>[.blob.core.windows.net]/<container>[/<prefix>]" >&2
+          exit 1
+        fi
+
+        storage_token="$(az account get-access-token \
+          --resource https://storage.azure.com/ \
+          --query accessToken \
+          --output tsv)"
+        test -n "$storage_token"
+        test -n "${servicePrincipalId:-}"
+        test -n "${tenantId:-}"
+        test -n "${idToken:-}"
+
+        az storage blob list \
+          --account-name "$account" \
+          --container-name "$container" \
+          --prefix "$prefix" \
+          --auth-mode login \
+          --num-results 1 \
+          --only-show-errors \
+          --output none
+        az acr login --name "$DACS_ACR_NAME"
+
+        echo "##vso[task.setvariable variable=SI_azBlobAccessToken;issecret=true]$storage_token"
+        echo "##vso[task.setvariable variable=AZURE_CLIENT_ID]$servicePrincipalId"
+        echo "##vso[task.setvariable variable=AZURE_TENANT_ID]$tenantId"
+        echo "##vso[task.setvariable variable=AZURE_FEDERATED_TOKEN;issecret=true]$idToken"
+        echo "##vso[task.setvariable variable=DACS_AZURE_STORAGE_ACCOUNT]$account"
+        echo "##vso[task.setvariable variable=DACS_AZURE_STORAGE_CONTAINER]$container"
+        echo "Azure Blob fixture access validated for account '$account', container '$container'."
+    env:
+      DACS_ACR_NAME: ${{ parameters.acrName }}
+      DACS_AZURE_STORAGE_BLOB_PATH: ${{ parameters.azureStorageBlobPath }}

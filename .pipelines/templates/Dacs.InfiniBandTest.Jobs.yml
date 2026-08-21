@@ -1,0 +1,44 @@
+# Copyright (c) Microsoft Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+
+parameters:
+  - name: acrName
+    type: string
+  - name: azureServiceConnection
+    type: string
+  - name: azureStorageBlobPath
+    type: string
+
+jobs:
+  - job: InfiniBandTests_amd64
+    displayName: amd64 - InfiniBand tests
+    timeoutInMinutes: 90
+    steps:
+      - template: Dacs.RestoreBuild.Steps.yml
+        parameters:
+          architecture: amd64
+      - template: Dacs.AzureAuthentication.Steps.yml
+        parameters:
+          architecture: amd64
+          acrName: ${{ parameters.acrName }}
+          azureServiceConnection: ${{ parameters.azureServiceConnection }}
+          azureStorageBlobPath: ${{ parameters.azureStorageBlobPath }}
+      - bash: |
+          set -euo pipefail
+          BUILD_ARCH="amd64" \
+          DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
+          DACS_AZURE_STORAGE_ACCOUNT="$(DACS_AZURE_STORAGE_ACCOUNT)" \
+          DACS_AZURE_STORAGE_CONTAINER="$(DACS_AZURE_STORAGE_CONTAINER)" \
+          SI_azBlobAccessToken="$(SI_azBlobAccessToken)" \
+            ./bldenv.sh /usr/bin/env \
+              ADO_PIPELINE=true \
+              ./src/subsystems/storage/storage_intercept/integration_tests/test_ib.sh Release
+        workingDirectory: $(Pipeline.Workspace)/s/dacs
+        displayName: Run InfiniBand tests
+        env:
+          SI_azBlobAccessToken: $(SI_azBlobAccessToken)
