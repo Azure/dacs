@@ -12,12 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-trigger: none
-pr: none
+trigger:
+  branches:
+    include:
+      - main
+pr:
+  branches:
+    include:
+      - main
 
 schedules:
-  - cron: "0 6 * * *"
-    displayName: Daily DACS ACR build
+  - cron: "0 6 * * 0"
+    displayName: Weekly DACS ACR build
     branches:
       include:
         - main
@@ -32,7 +38,14 @@ parameters:
     displayName: Azure Resource Manager service connection
     type: string
     default: dacs ARM Connection
-
+  - name: enableAzureTests
+    displayName: Run Azure-backed storage tests
+    type: boolean
+    default: true
+  - name: azureStorageBlobPath
+    displayName: Azure Blob fixture path
+    type: string
+    default: az://dacstest.blob.core.windows.net/dataset/client-integration
 resources:
   repositories:
     - repository: 1ESPipelineTemplates
@@ -59,19 +72,22 @@ extends:
         enabled: true
     stages:
       - stage: Build_amd64
-        displayName: Build linux/amd64 images
+        displayName: Compile linux/amd64
         dependsOn: []
         variables:
           finalTag: git-$(Build.SourceVersion)-$(Build.BuildId)
         jobs:
           - job: Build_amd64
-            displayName: Build linux/amd64 images
+            displayName: Compile linux/amd64
             timeoutInMinutes: 120
             templateContext:
               outputs:
                 - output: pipelineArtifact
-                  path: $(Build.ArtifactStagingDirectory)/container-images
-                  artifact: container-images-linux-amd64
+                  path: $(Build.ArtifactStagingDirectory)/build-tree
+                  artifact: dacs-build-tree-linux-amd64
+                - output: pipelineArtifact
+                  path: $(Build.ArtifactStagingDirectory)/python-wheel
+                  artifact: dacs-python-wheel-linux-amd64
             steps:
               - checkout: self
                 path: s/dacs
@@ -84,24 +100,27 @@ extends:
                   azureServiceConnection: ${{ parameters.azureServiceConnection }}
 
       - stage: Build_arm64
-        displayName: Build linux/arm64 images
+        displayName: Compile linux/arm64
         dependsOn: []
+        variables:
+          finalTag: git-$(Build.SourceVersion)-$(Build.BuildId)
         pool:
           name: 1es-dacs-pool-arm64
           image: 1es-pt-linux-arm64
           os: linux
           hostArchitecture: arm64
-        variables:
-          finalTag: git-$(Build.SourceVersion)-$(Build.BuildId)
         jobs:
           - job: Build_arm64
-            displayName: Build linux/arm64 images
+            displayName: Compile linux/arm64
             timeoutInMinutes: 120
             templateContext:
               outputs:
                 - output: pipelineArtifact
-                  path: $(Build.ArtifactStagingDirectory)/container-images
-                  artifact: container-images-linux-arm64
+                  path: $(Build.ArtifactStagingDirectory)/build-tree
+                  artifact: dacs-build-tree-linux-arm64
+                - output: pipelineArtifact
+                  path: $(Build.ArtifactStagingDirectory)/python-wheel
+                  artifact: dacs-python-wheel-linux-arm64
             steps:
               - checkout: self
                 path: s/dacs
@@ -113,12 +132,120 @@ extends:
                   acrName: ${{ parameters.acrName }}
                   azureServiceConnection: ${{ parameters.azureServiceConnection }}
 
+      - stage: Images_amd64
+        displayName: Build linux/amd64 images
+        dependsOn: Build_amd64
+        variables:
+          finalTag: git-$(Build.SourceVersion)-$(Build.BuildId)
+        jobs:
+          - job: Images_amd64
+            displayName: Build linux/amd64 images
+            timeoutInMinutes: 120
+            templateContext:
+              outputs:
+                - output: pipelineArtifact
+                  path: $(Build.ArtifactStagingDirectory)/container-images
+                  artifact: container-images-linux-amd64
+            steps:
+              - template: /.pipelines/templates/Dacs.ImageBuild.Steps.yml@self
+                parameters:
+                  architecture: amd64
+                  acrName: ${{ parameters.acrName }}
+                  azureServiceConnection: ${{ parameters.azureServiceConnection }}
+
+      - stage: Images_arm64
+        displayName: Build linux/arm64 images
+        dependsOn: Build_arm64
+        pool:
+          name: 1es-dacs-pool-arm64
+          image: 1es-pt-linux-arm64
+          os: linux
+          hostArchitecture: arm64
+        variables:
+          finalTag: git-$(Build.SourceVersion)-$(Build.BuildId)
+        jobs:
+          - job: Images_arm64
+            displayName: Build linux/arm64 images
+            timeoutInMinutes: 120
+            templateContext:
+              outputs:
+                - output: pipelineArtifact
+                  path: $(Build.ArtifactStagingDirectory)/container-images
+                  artifact: container-images-linux-arm64
+            steps:
+              - template: /.pipelines/templates/Dacs.ImageBuild.Steps.yml@self
+                parameters:
+                  architecture: arm64
+                  acrName: ${{ parameters.acrName }}
+                  azureServiceConnection: ${{ parameters.azureServiceConnection }}
+
+      - stage: AzureTests_amd64
+        displayName: Azure-backed tests linux/amd64
+        dependsOn: Build_amd64
+        condition: >-
+          and(
+            succeeded(),
+            ${{ eq(parameters.enableAzureTests, true) }},
+            or(
+              eq(variables['Build.SourceBranch'], 'refs/heads/main'),
+              eq(variables['Build.Reason'], 'Manual')
+            )
+          )
+        jobs:
+          - template: /.pipelines/templates/Dacs.StorageTest.Jobs.yml@self
+            parameters:
+              architecture: amd64
+              acrName: ${{ parameters.acrName }}
+              azureServiceConnection: ${{ parameters.azureServiceConnection }}
+              azureStorageBlobPath: ${{ parameters.azureStorageBlobPath }}
+          - template: /.pipelines/templates/Dacs.PythonTest.Job.yml@self
+            parameters:
+              architecture: amd64
+              acrName: ${{ parameters.acrName }}
+              azureServiceConnection: ${{ parameters.azureServiceConnection }}
+              azureStorageBlobPath: ${{ parameters.azureStorageBlobPath }}
+
+      - stage: AzureTests_arm64
+        displayName: Azure-backed tests linux/arm64
+        dependsOn: Build_arm64
+        pool:
+          name: 1es-dacs-pool-arm64
+          image: 1es-pt-linux-arm64
+          os: linux
+          hostArchitecture: arm64
+        condition: >-
+          and(
+            succeeded(),
+            ${{ eq(parameters.enableAzureTests, true) }},
+            or(
+              eq(variables['Build.SourceBranch'], 'refs/heads/main'),
+              eq(variables['Build.Reason'], 'Manual')
+            )
+          )
+        jobs:
+          - template: /.pipelines/templates/Dacs.StorageTest.Jobs.yml@self
+            parameters:
+              architecture: arm64
+              acrName: ${{ parameters.acrName }}
+              azureServiceConnection: ${{ parameters.azureServiceConnection }}
+              azureStorageBlobPath: ${{ parameters.azureStorageBlobPath }}
+          - template: /.pipelines/templates/Dacs.PythonTest.Job.yml@self
+            parameters:
+              architecture: arm64
+              acrName: ${{ parameters.acrName }}
+              azureServiceConnection: ${{ parameters.azureServiceConnection }}
+              azureStorageBlobPath: ${{ parameters.azureStorageBlobPath }}
+
       - stage: Publish
         displayName: Publish DACS
         dependsOn:
-          - Build_amd64
-          - Build_arm64
-        condition: succeeded()
+          - Images_amd64
+          - Images_arm64
+        condition: >-
+          and(
+            in(dependencies.Images_amd64.result, 'Succeeded', 'SucceededWithIssues'),
+            in(dependencies.Images_arm64.result, 'Succeeded', 'SucceededWithIssues')
+          )
         variables:
           finalTag: git-$(Build.SourceVersion)-$(Build.BuildId)
         jobs:
@@ -161,9 +288,17 @@ extends:
                   export BUILD_NUMBER="$(finalTag)"
                   export HELM_REGISTRY_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}/config.json"
 
+                  publish_latest=false
+                  if [[ "$BUILD_SOURCEBRANCH" == "refs/heads/main" &&
+                        "$BUILD_REASON" != "PullRequest" ]]; then
+                    publish_latest=true
+                  fi
+
                   BUILD_ARCHS="amd64 arm64" \
+                  PUBLISH_LATEST="$publish_latest" \
                     ./.pipelines/scripts/publish/publish-multiplatform-manifests.sh
-                  ./.pipelines/scripts/publish/publish-helm-chart.sh --push
+                  PUBLISH_LATEST="$publish_latest" \
+                    ./.pipelines/scripts/publish/publish-helm-chart.sh --push
 
                   readonly helm_artifacts="$(Build.ArtifactStagingDirectory)/helm-charts"
                   readonly release_metadata="$(Build.ArtifactStagingDirectory)/release-metadata"

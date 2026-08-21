@@ -220,18 +220,68 @@ test/
 
 ## CI/CD Integration
 
-The E2E and performance tests are integrated into the Azure DevOps pull request pipeline:
+The public GitHub workflow runs credential-free unit, Minikube E2E, and
+Minikube performance tests. The official Azure DevOps pipeline runs the
+Azure-backed storage suites after successful AMD64 and ARM64 builds:
 
-1. Build binaries and Docker images
-2. Create Minikube cluster
-3. Deploy cache-server with `make provision TARGET=minikube && make deploy`
-4. Run E2E tests with `make test-e2e`
-5. Run performance tests with `make test-e2e TEST_FILTER=perf` (regression check)
-6. Publish test results (JUnit XML)
-7. Upload support bundle artifacts
+| Suite | Pipeline stage | Architectures | Local command |
+|-------|----------------|---------------|---------------|
+| Native storage intercept | `AzureTests_<arch>` | AMD64, ARM64 | `test_serverless.sh`, `test_cache_basic.sh`, `test_cache_advanced.sh`, and `test_cache_specialized.sh` |
+| Python Azure Blob | `AzureTests_<arch>` | AMD64, ARM64 | `DACS_TEST_MODE=wheel make pytest BUILD_TYPE=Release` |
+| Rust Azure Blob | `AzureTests_<arch>` serverless job | AMD64, ARM64 | `DACS_TEST_BLOB_PATH=<az-path> make test-rust-client-integration` |
+| InfiniBand | `InfiniBandTests` | AMD64 | `test_ib.sh Release` |
 
-Performance tests are run on Minikube in the PR pipeline to catch regressions before merge. For full-scale performance testing, use the AKS workflow described above.
+The official pipeline runs automatically on `main` and on its weekly Sunday
+schedule.
+It does not have an automatic PR trigger. Authorized internal users can
+manually queue a PR branch; credentialed test stages only run for `main` or a
+manual build. Manual queue permission must remain restricted to trusted
+internal users because the selected branch owns the test scripts that receive
+the short-lived credential. The release publication stage remains restricted
+to `main`.
 
-See [.pipelines/dacs-pull-request-base.yml](../.pipelines/dacs-pull-request-base.yml) for PR pipeline configuration and [.pipelines/Create-Cacheserver-AKS-Test.yml](../.pipelines/Create-Cacheserver-AKS-Test.yml) for AKS performance test pipeline.
+`enableAzureTests` defaults to `true`. `azureStorageBlobPath` defaults to
+`az://dacstest.blob.core.windows.net/dataset/client-integration`. The native,
+Python, and Rust tests use deterministic synthetic fixtures in the `dataset`
+and `dataset2` containers of that account. Python tests create an isolated
+per-run prefix and delete it during cleanup.
+
+Generate the native fixtures and manifests with:
+
+```bash
+python3 .pipelines/scripts/tests/generate-azure-test-fixtures.py \
+  --output-dir /tmp/dacs-azure-fixtures \
+  --manifest-dir src/subsystems/storage/storage_intercept/integration_tests \
+  --unit-manifest \
+    src/subsystems/storage/storage_intercept/tests/testcases/file_paths_sizes.txt \
+  --directory-manifest \
+    src/subsystems/storage/storage_intercept/tests/testcases/directory_paths.txt \
+  --account-name dacstest \
+  --upload
+```
+
+The `--upload` option uses the current Azure CLI login to create the `dataset`
+and `dataset2` containers, upload all generated fixtures, and verify every
+uploaded blob and size. This includes native unit and integration fixtures,
+archives, multi-container data, and the Rust client fixture. Omit `--upload` to
+generate files and manifests without changing Azure. Python tests create and
+clean up their own per-run blobs. The signed-in identity requires
+`Storage Blob Data Contributor` on the test account. Use a dedicated test-only
+identity with no production scope.
+
+`enableInfiniBandTests` defaults to `false`. Before enabling it, set
+`infiniBandPoolName` and `infiniBandPoolImage` to a 1ES pool with InfiniBand
+hardware, drivers, device access, and Azure connectivity.
+
+The official pipeline does not provision AKS or run AKS scenario, upgrade,
+scale, restart, Helm upgrade, or full-scale performance tests.
+
+Python results appear as architecture-qualified test runs. Native storage jobs
+print their existing diagnostics in the job log, matching the Tachyon PR
+pipeline structure.
+
+See
+[`.pipelines/dacs-official.yml`](../.pipelines/dacs-official.yml)
+for the official pipeline configuration.
 
 [ginkgo]: https://onsi.github.io/ginkgo/

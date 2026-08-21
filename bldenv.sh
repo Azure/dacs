@@ -100,8 +100,8 @@ fi
 HOST_ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 echo "Detected host architecture: $(uname -m) -> $HOST_ARCH"
 
-# TODO: switch to dacs
-ACR_IMAGE="dacstest.azurecr.io/native-build:linux-${HOST_ARCH}"
+DOCKER_REGISTRY="${DOCKER_REGISTRY:-dacstest.azurecr.io}"
+ACR_IMAGE="${DOCKER_REGISTRY%/}/native-build:linux-${HOST_ARCH}"
 
 # Try to use ACR image first, fallback to local build if not available
 nativeBuildImage="$ACR_IMAGE"
@@ -177,7 +177,11 @@ docker run \
     --env USER_VM_AZURE_CLIENT_ID \
     --env AZURE_TENANT_ID \
     --env AZURE_FEDERATED_TOKEN \
+    --env AZURE_BLOB_PATH \
     --env BUILD_ARCH \
+    --env DACS_AZURE_STORAGE_ACCOUNT \
+    --env DACS_AZURE_STORAGE_CONTAINER \
+    --env DACS_AZURE_STORAGE_SECONDARY_CONTAINER \
     --env DACS_TEST_MODE \
     --env DACS_LIB_PATH \
     --env DACS_NATIVE_DIR \
