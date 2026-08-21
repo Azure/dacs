@@ -32,6 +32,7 @@ fi
 # Registry settings - must be provided by environment variables
 REGISTRY="${DOCKER_REGISTRY:?DOCKER_REGISTRY is required}"
 BUILD_NUMBER="${BUILD_NUMBER:-latest}"
+PUBLISH_LATEST="${PUBLISH_LATEST:-false}"
 
 # Chart repo
 CHART_REPO="oci://$REGISTRY/charts"
@@ -118,6 +119,10 @@ build_and_push_chart() {
     
     # Build and push versioned chart
     package_chart "$CHART_DIR" "$CHART_NAME" "$CHART_VERSION" "$BUILD_NUMBER"
+
+    if [[ "$PUBLISH_LATEST" == "true" ]]; then
+        package_chart "$CHART_DIR" "$CHART_NAME" "$BASE_VERSION-latest" "latest"
+    fi
 }
 
 echo "Building Helm charts..."
@@ -158,6 +163,14 @@ CACHE_SERVER_PREREQ_CHART_VERSION=$PREREQ_VERSION
 CACHE_CONTROLLER_CHART_VERSION=$CONTROLLER_VERSION
 CHART_REPO=$CHART_REPO
 EOF
+
+    if [[ "$PUBLISH_LATEST" == "true" ]]; then
+        cat >> "$REPOSITORY_ROOT/helm-chart.txt" << EOF
+CACHE_SERVER_LATEST_CHART_VERSION=$CACHE_SERVER_BASE-latest
+CACHE_SERVER_PREREQ_LATEST_CHART_VERSION=$PREREQ_BASE-latest
+CACHE_CONTROLLER_LATEST_CHART_VERSION=$CONTROLLER_BASE-latest
+EOF
+    fi
     
     echo ""
     echo "=========================================="

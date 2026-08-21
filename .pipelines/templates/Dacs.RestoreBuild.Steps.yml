@@ -1,0 +1,100 @@
+# Copyright (c) Microsoft Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+
+parameters:
+  - name: architecture
+    type: string
+  - name: restoreWheel
+    type: boolean
+    default: false
+  - name: fetchDepth
+    type: number
+    default: 1
+  - name: persistCredentials
+    type: boolean
+    default: false
+
+steps:
+  - checkout: self
+    path: s/dacs
+    fetchDepth: ${{ parameters.fetchDepth }}
+    persistCredentials: ${{ parameters.persistCredentials }}
+
+  - task: DownloadPipelineArtifact@2
+    displayName: Download linux/${{ parameters.architecture }} build tree
+    inputs:
+      buildType: current
+      artifact: dacs-build-tree-linux-${{ parameters.architecture }}
+      targetPath: $(Pipeline.Workspace)/artifacts/build-tree
+
+  - ${{ if eq(parameters.restoreWheel, true) }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: Download linux/${{ parameters.architecture }} Python wheel
+        inputs:
+          buildType: current
+          artifact: dacs-python-wheel-linux-${{ parameters.architecture }}
+          targetPath: $(Pipeline.Workspace)/s/dacs/src/subsystems/storage/dacs_client/dist
+
+  - bash: |
+      set -euo pipefail
+
+      readonly archive="$(Pipeline.Workspace)/artifacts/build-tree/dacs-build-tree-linux-${{ parameters.architecture }}.tar"
+      test -f "$archive"
+      tar -xf "$archive"
+      test -d "bin/Release/${{ parameters.architecture }}"
+      test -n "$(find build/Release/${{ parameters.architecture }} -name CTestTestfile.cmake -print -quit)"
+
+      readonly container_build_root="/workspaces/$(basename "$PWD")"
+      BUILD_ARCH="${{ parameters.architecture }}" CURRENT_BUILD_ROOT="$container_build_root" python3 - <<'PY'
+      import os
+      from pathlib import Path
+
+      architecture = os.environ["BUILD_ARCH"]
+      current_root = os.environ["CURRENT_BUILD_ROOT"]
+      marker = f"/bin/Release/{architecture}/"
+      paths = list(Path("build").rglob("CTestTestfile.cmake"))
+      roots = set()
+
+      for path in paths:
+          for line in path.read_text().splitlines():
+              marker_index = line.find(marker)
+              if marker_index == -1:
+                  continue
+              quote_index = line.rfind('"', 0, marker_index)
+              if quote_index != -1:
+                  root = line[quote_index + 1:marker_index]
+                  if root.startswith("/"):
+                      roots.add(root)
+
+      if len(roots) != 1:
+          raise RuntimeError(f"Expected one CTest build root, found: {sorted(roots)}")
+
+      original_root = roots.pop()
+      replacements = 0
+
+      for path in paths:
+          contents = path.read_text()
+          updated = contents.replace(original_root, current_root)
+          if updated != contents:
+              path.write_text(updated)
+              replacements += 1
+
+      if original_root != current_root and replacements == 0:
+          raise RuntimeError(f"CTest metadata does not reference the original build root: {original_root}")
+      PY
+
+      find bin -type f -perm /111 -exec chmod a+x {} +
+    displayName: Restore linux/${{ parameters.architecture }} build tree
+    workingDirectory: $(Pipeline.Workspace)/s/dacs
+
+  - ${{ if eq(parameters.restoreWheel, true) }}:
+      - bash: |
+          set -euo pipefail
+          test -n "$(find . -maxdepth 1 -name '*.whl' -print -quit)"
+        displayName: Verify linux/${{ parameters.architecture }} Python wheel
+        workingDirectory: $(Pipeline.Workspace)/s/dacs/src/subsystems/storage/dacs_client/dist

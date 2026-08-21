@@ -105,34 +105,53 @@ steps:
       export USE_AZURE_CFS=true
       export CARGO_CACHE_DIR="$(Pipeline.Workspace)/.cache/dacs-cargo"
 
-      BUILD_ARCH="$architecture" \
-      SHOULD_PUBLISH_IMAGES=True \
+      publish_latest=false
+      if [[ "$BUILD_SOURCEBRANCH" == "refs/heads/main" &&
+            "$BUILD_REASON" != "PullRequest" ]]; then
+        publish_latest=true
+      fi
+
       DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
+      BUILD_NUMBER="$(finalTag)" \
+      BUILD_ARCH="$architecture" \
+      PUBLISH_LATEST="$publish_latest" \
+      PUSH_IMAGES=false \
         ./.pipelines/scripts/build/rebuild-native-build-image.sh
-      make build BUILD_TYPE=Release BUILD_ARCH="$architecture"
+
       DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
-      BUILD_TYPE=Release \
+        make build BUILD_TYPE=Release BUILD_ARCH="$architecture"
+
+      DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
+      BUILD_NUMBER="$(finalTag)" \
       BUILD_ARCH="$architecture" \
-        make images
-    displayName: Build and test linux/${{ parameters.architecture }}
+      PUBLISH_LATEST="$publish_latest" \
+      PUBLISH_ONLY=true \
+        ./.pipelines/scripts/build/rebuild-native-build-image.sh
+
+      PYTHON_PACKAGE_VERSION="0.0.$(Build.BuildId)" \
+      PACKAGE_CHANNEL="dev" \
+      DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
+        make python-package BUILD_TYPE=Release BUILD_ARCH="$architecture"
+    displayName: Compile linux/${{ parameters.architecture }} and build Python wheel
     workingDirectory: $(Pipeline.Workspace)/s/dacs
 
   - bash: |
       set -euo pipefail
-      DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
-      BUILD_NUMBER="$(finalTag)" \
-      BUILD_ARCH="${{ parameters.architecture }}" \
-      OUTPUT_DIR="$(Build.ArtifactStagingDirectory)/container-images" \
-        ./.pipelines/scripts/publish/save-image-tarballs.sh
-    displayName: Package linux/${{ parameters.architecture }} images
-    workingDirectory: $(Pipeline.Workspace)/s/dacs
 
-  - bash: |
-      set -euo pipefail
-      DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
-      BUILD_NUMBER="$(finalTag)" \
-      BUILD_ARCH="${{ parameters.architecture }}" \
-        ./.pipelines/scripts/publish/publish-images.sh
-      cp docker-images.txt "$(Build.ArtifactStagingDirectory)/container-images/"
-    displayName: Publish linux/${{ parameters.architecture }} images
+      readonly architecture="${{ parameters.architecture }}"
+      readonly build_artifact_dir="$(Build.ArtifactStagingDirectory)/build-tree"
+      readonly wheel_artifact_dir="$(Build.ArtifactStagingDirectory)/python-wheel"
+      readonly wheel_source="src/subsystems/storage/dacs_client/dist"
+
+      test -d bin
+      test -d build
+      test -n "$(find build -name CTestTestfile.cmake -print -quit)"
+      test -n "$(find "$wheel_source" -maxdepth 1 -name '*.whl' -print -quit)"
+      mkdir -p "$build_artifact_dir" "$wheel_artifact_dir"
+      mkdir -p "$build_artifact_dir" "$wheel_artifact_dir"
+      tar -cf "$build_artifact_dir/dacs-build-tree-linux-${architecture}.tar" \
+        bin \
+        $(find build -name CTestTestfile.cmake -print)
+      cp "$wheel_source"/*.whl "$wheel_artifact_dir/"
+    displayName: Package linux/${{ parameters.architecture }} test artifacts
     workingDirectory: $(Pipeline.Workspace)/s/dacs

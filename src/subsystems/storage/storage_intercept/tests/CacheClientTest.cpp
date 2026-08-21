@@ -20,7 +20,9 @@
 #include "StorageInterceptConfig.h"
 #include "StorageInterceptUtils.h"
 #include <algorithm>
+#include <chrono>
 #include <cctype>
+#include <thread>
 #include <vector>
 #include <unistd.h>
 #include <iostream>
@@ -390,17 +392,27 @@ TEST_F(CacheClientTest, ParallelUploadDownloadTest)
     }
     testThreads.clear();
 
-    // wait for async uploads to complete
-    // TODO: make this deterministic
-    sleep(5);
-
-    // download all files in parallel
+    // Download all files in parallel, allowing asynchronous uploads to finish.
     for (int i = 0; i < numFiles; ++i)
     {
         auto t = make_unique<thread>([i, &dataBuffer, &outBuffer, &fileNames, &version, this]() {
             uint64_t dataRead = 0;
-            auto cacheStatus =
-                this->m_cacheClient->DownloadSync("", fileNames[i], version, 0, 0, outBuffer[i].size(), outBuffer[i].data(), dataRead);
+            CacheStatus cacheStatus = CacheStatus::NOTFOUND;
+            const auto deadline = chrono::steady_clock::now() + chrono::seconds(60);
+
+            while (chrono::steady_clock::now() < deadline)
+            {
+                cacheStatus =
+                    this->m_cacheClient->DownloadSync("", fileNames[i], version, 0, 0, outBuffer[i].size(), outBuffer[i].data(), dataRead);
+                if (cacheStatus == CacheStatus::SUCCESS)
+                {
+                    break;
+                }
+
+                ASSERT_TRUE(cacheStatus == CacheStatus::NOTFOUND || cacheStatus == CacheStatus::NOTFOUND_LOCKED);
+                this_thread::sleep_for(chrono::milliseconds(100));
+            }
+
             ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
             ASSERT_EQ(dataRead, dataBuffer[i]->BufferSize);
             AssertEqArray<char>(outBuffer[i].data(), dataBuffer[i]->Buffer.get(), dataRead);
