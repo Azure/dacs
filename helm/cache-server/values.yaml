@@ -52,6 +52,8 @@ cacheServer:
   ibResourceCountLimit: 0
   useZeroCopy: false
   enableTrafficControl: true # If true, traffic control will be enabled for the cacheserver pods
+  # Configures the egress limit and grants NET_ADMIN. Leave empty to disable.
+  egressBandwidthInGb: null
   nodeCacheFolderPath: /var/lib/ssd/cacheserver # required when useEphemeralStorage is false and useHostPath is true.
   nodeSelectorLabelKey: dacs.azure.com/processing-unit
   nodeSelectorLabelValues: [ "cpu" ]

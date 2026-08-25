@@ -12,10 +12,45 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.19)
 project(HashingStrategy)
 
 find_package(OpenSSL REQUIRED)
+
+set(CMAKE_DEP_INSTALL_DIR $ENV{CMAKE_DEP_INSTALL_DIR})
+if(NOT CMAKE_DEP_INSTALL_DIR)
+    message(FATAL_ERROR
+        "CMAKE_DEP_INSTALL_DIR is not set. Build this target in the DACS native-build container.")
+endif()
+
+find_path(
+    MURMURHASH3_INCLUDE_DIR
+    MurmurHash3.h
+    PATHS ${CMAKE_DEP_INSTALL_DIR}/include
+    REQUIRED
+    NO_DEFAULT_PATH
+)
+find_library(
+    MURMURHASH3_LIBRARY
+    NAMES MurmurHash3
+    PATHS ${CMAKE_DEP_INSTALL_DIR}/lib
+    REQUIRED
+    NO_DEFAULT_PATH
+)
+find_path(
+    XXHASH_INCLUDE_DIR
+    xxhash.h
+    PATHS ${CMAKE_DEP_INSTALL_DIR}/include
+    REQUIRED
+    NO_DEFAULT_PATH
+)
+find_library(
+    XXHASH_LIBRARY
+    NAMES xxhash
+    PATHS ${CMAKE_DEP_INSTALL_DIR}/lib
+    REQUIRED
+    NO_DEFAULT_PATH
+)
 
 add_executable(HashingStrategyTest
     test/HashingStrategyTest.cpp
@@ -24,8 +59,6 @@ add_executable(HashingStrategyTest
     strategies/ConsistentHashingStrategy.cpp
     strategies/RendezvousHashingStrategy.cpp
     hash_functions/HashFunctions.cpp
-    hash_functions/MurmurHash3.cpp
-    hash_functions/xxhash.c
 )
 
 target_include_directories(HashingStrategyTest PRIVATE
@@ -33,6 +66,8 @@ target_include_directories(HashingStrategyTest PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/hash_functions
     ${CMAKE_CURRENT_SOURCE_DIR}/strategies
     ${CMAKE_CURRENT_SOURCE_DIR}/test
+    ${MURMURHASH3_INCLUDE_DIR}
+    ${XXHASH_INCLUDE_DIR}
 )
 
 target_compile_features(HashingStrategyTest PRIVATE cxx_std_17)
@@ -46,6 +81,8 @@ target_compile_options(HashingStrategyTest PRIVATE
 target_link_libraries(HashingStrategyTest PRIVATE 
     OpenSSL::SSL 
     OpenSSL::Crypto
+    ${MURMURHASH3_LIBRARY}
+    ${XXHASH_LIBRARY}
 )
 
 enable_testing()

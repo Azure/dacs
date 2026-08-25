@@ -295,6 +295,42 @@ var _ = Describe("Cache Controller", func() {
 			deleteCache(cacheName)
 		})
 
+		It("should grant NET_ADMIN only when egress bandwidth limiting is configured", func(ctx SpecContext) {
+			const cacheName = "test-cache-traffic-control"
+			cache := createTestCache(cacheName, resourceNamespace, 1, true)
+			Expect(k8sClient.Create(ctx, cache)).To(Succeed(), "creating Cache CR without an egress limit")
+			DeferCleanup(func(cleanupCtx SpecContext) {
+				Expect(k8sClient.Delete(cleanupCtx, cache)).To(Succeed(), "deleting traffic-control test Cache CR")
+			})
+
+			Eventually(func(g Gomega) {
+				statefulSet := &appsv1.StatefulSet{}
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cacheName, Namespace: resourceNamespace}, statefulSet)).
+					To(Succeed(), "getting CacheServer StatefulSet without an egress limit")
+				g.Expect(statefulSet.Spec.Template.Spec.Containers[0].SecurityContext).
+					To(BeNil(), "security context should be absent without an egress limit")
+			}, timeout, pollInterval).Should(Succeed(), "waiting for the unprivileged CacheServer StatefulSet")
+
+			Eventually(func() error {
+				updatedCache := &storagev1.Cache{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: cacheName, Namespace: resourceNamespace}, updatedCache); err != nil {
+					return err
+				}
+				updatedCache.Spec.EgressBandwidthLimitGbps = int32Ptr(1)
+				return k8sClient.Update(ctx, updatedCache)
+			}, timeout, pollInterval).Should(Succeed(), "setting the Cache CR egress bandwidth limit")
+
+			Eventually(func(g Gomega) {
+				statefulSet := &appsv1.StatefulSet{}
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: cacheName, Namespace: resourceNamespace}, statefulSet)).
+					To(Succeed(), "getting CacheServer StatefulSet with an egress limit")
+				g.Expect(statefulSet.Spec.Template.Spec.Containers[0].SecurityContext).
+					NotTo(BeNil(), "security context should be present with an egress limit")
+				g.Expect(statefulSet.Spec.Template.Spec.Containers[0].SecurityContext.Capabilities.Add).
+					To(ContainElement(corev1.Capability("NET_ADMIN")), "NET_ADMIN should be granted with an egress limit")
+			}, timeout, pollInterval).Should(Succeed(), "waiting for the privileged CacheServer StatefulSet")
+		})
+
 		It("should create and update resources when Cache CR with persistent storage is created and modified", func() {
 			cacheName := "test-cache-persistent"
 

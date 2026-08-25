@@ -1,7 +1,7 @@
 {
     "TestName": "Long running server with 1 cpp multithreaded client and 1 python multiprocessed client",
-    "AccountName": "storagetestingstore",
-    "AccountEndpoint": "https://storagetestingstore.blob.core.windows.net",
+    "AccountName": "exampleaccount",
+    "AccountEndpoint": "https://exampleaccount.blob.core.windows.net",
     "ContainerName": "datasets",
     "SASToken": "dummy",
     "ServerConfig": {

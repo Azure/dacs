@@ -108,9 +108,11 @@ spec:
           name : cacheserver
         - containerPort: {{ .Values.cacheServer.metricsPort }}
           name : metrics
+        {{- if and .Values.cacheServer.enableTrafficControl .Values.cacheServer.egressBandwidthInGb }}
         securityContext:
           capabilities:
             add: ["NET_ADMIN"]
+        {{- end }}
         command: ["/bin/sh", "-cx"]
         args:
         - |

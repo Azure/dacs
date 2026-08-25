@@ -92,6 +92,13 @@ The 53-character limit ensures all derived resource names (longest suffix is `-d
 | `spec.egressBandwidthLimitGbps` | >= 1 (if set) | "must be at least 1" |
 | `spec.infinibandResourceLimitCount` | >= 0 | "must be at least 0" |
 
+When `spec.egressBandwidthLimitGbps` is set, the controller configures Linux
+traffic control (`tc`) in the CacheServer container and grants the container
+the `NET_ADMIN` capability. Leave this field unset when bandwidth limiting is
+not required. `NET_ADMIN` expands the container's networking privileges, so
+production deployments should grant it only after reviewing the workload
+threat model and cluster network isolation.
+
 #### Infiniband
 | Rule | Error Message |
 |------|---------------|

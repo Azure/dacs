@@ -4,13 +4,11 @@
 A stress testing framework for cacheserver/client interactions on kubernetes based clusters. This sub-project is organized as follows:
 
 > **Important:** This framework is not ready to run externally without
-> configuration. Its Kubernetes manifests contain fixed image references, and
-> the runners do not replace them. Before running a test, publish the images
-> you built to a registry accessible from the cluster and update every
-> `image:` field in the manifests used by that test. For the standard runners,
-> update `k8s/stress-client.template.yaml` and, for the Linux flow,
-> `k8s/cache-server-app.template.yaml`. Inspect any additional manifest you
-> apply, including scenario-specific files, for its own `image:` fields.
+> configuration. Before running a test, publish the images you built to a
+> registry accessible from the cluster. Set `CACHE_SERVER_IMAGE` for the Linux
+> runner, update the client image in `k8s/stress-client.template.yaml`, and
+> provide real storage account settings in the selected scenario file. Inspect
+> any additional manifest you apply for its own `image:` fields.
 
 1. _container/_ - contains a legacy standalone container definition. Build the
     current stress and performance client image through the supported
@@ -66,7 +64,8 @@ Install-Module -Name Az -Repository PSGallery -Force
 ```bash
 REPOSITORY_ROOT=/path/to/dacs
 cd "$REPOSITORY_ROOT/src/subsystems/storage/stress_tests/k8s"
-./launcher.sh /path/to/kubeconfig /path/to/scenario.json
+CACHE_SERVER_IMAGE=registry.example/cache-server:tag \
+  ./launcher.sh /path/to/kubeconfig /path/to/scenario.json
 ```
 #### Windows
 ```powershell
