@@ -14,42 +14,19 @@ Each strategy can be tested with 5 different hash functions to analyze performan
 ## Build Instructions
 
 ### Prerequisites
-- C++17 compatible compiler (GCC 7+, Clang 5+)
-- CMake 3.10 or higher
-- OpenSSL development libraries
-
-### Install Dependencies (Ubuntu/Debian)
-```bash
-sudo apt update
-sudo apt install build-essential cmake libssl-dev
-```
+- Docker
+- The DACS native-build image, which contains the pinned MurmurHash3, xxHash,
+  and OpenSSL dependencies
 
 ### Build with CMake (Recommended)
 ```bash
-# Navigate to project directory
-cd hashing_strategy
-
-# Create build directory
-mkdir build && cd build
-
-# Configure and build
-cmake ..
-make -j$(nproc)
-```
-
-### Build with g++ (Alternative)
-```bash
-g++ -std=c++17 -O2 -Wall -Wextra -Wno-implicit-fallthrough \
-    -I hash_functions -I strategies -I test \
-    test/HashingStrategyTest.cpp \
-    test/HashingStrategyBenchmark.cpp \
-    strategies/StaticHashingStrategy.cpp \
-    strategies/ConsistentHashingStrategy.cpp \
-    strategies/RendezvousHashingStrategy.cpp \
-    hash_functions/HashFunctions.cpp \
-    hash_functions/MurmurHash3.cpp \
-    hash_functions/xxhash.c \
-    -lssl -lcrypto -o HashingStrategyTest
+# Run from the repository root
+./bldenv.sh /bin/bash '
+  cmake -S src/subsystems/storage/cache_server/test/hashing_strategy \
+    -B build/hashing_strategy -G Ninja &&
+  cmake --build build/hashing_strategy &&
+  ctest --test-dir build/hashing_strategy --output-on-failure
+'
 ```
 
 ## Test Instructions

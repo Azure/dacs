@@ -53,6 +53,10 @@ include_directories(SYSTEM ${PROJECT_BINARY_DIR}/include)
 include(external/External_xxHash.cmake)
 include_directories(${CMAKE_DEP_INSTALL_DIR}/include)
 
+# MurmurHash3
+include(external/External_MurmurHash3.cmake)
+include_directories(${CMAKE_DEP_INSTALL_DIR}/include)
+
 # azure storage lite library to communicate with blob services
 include(external/External_storagelite.cmake)
 include_directories(SYSTEM ${PROJECT_BINARY_DIR}/include)

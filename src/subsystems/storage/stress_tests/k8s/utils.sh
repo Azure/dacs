@@ -124,6 +124,11 @@ _setup_server_() {
     local _setup_dir=${1}
     local _configuration_file=${2}
 
+    if [[ -z "${CACHE_SERVER_IMAGE:-}" ]]; then
+        _log_with_time_ "CACHE_SERVER_IMAGE must identify the CacheServer image to test"
+        return 1
+    fi
+
     local _num_replicas=$(jq '.ServerConfig.Replicas' $_configuration_file)
     local _cache_size=$(jq '.ServerConfig.CacheSize' $_configuration_file)
     local _ephemeral_limit=$(jq '.ServerConfig.EphemeralLimit' $_configuration_file)
@@ -134,6 +139,7 @@ _setup_server_() {
     sed -i "s/%NUM_REPLICAS%/$_num_replicas/g" $_server_yaml
     sed -i "s/%CACHE_SIZE%/$_cache_size/g" $_server_yaml
     sed -i "s/%EPHEMERAL_LIMIT%/$_ephemeral_limit/g" $_server_yaml
+    sed -i "s|%CACHE_SERVER_IMAGE%|${CACHE_SERVER_IMAGE}|g" $_server_yaml
 
     echo $_server_yaml
 }

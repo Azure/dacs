@@ -6,6 +6,16 @@
       "component": {
         "type": "git",
         "git": {
+          "repositoryUrl": "https://github.com/aappleby/smhasher.git",
+          "commitHash": "92cf3702fcfaadc84eb7bef59825a23e0cd84f56"
+        }
+      },
+      "developmentDependency": true
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git",
           "commitHash": "f0dc78d7e6e331b8c6bb2d5283e06aa26883ca7c",
           "tag": "v21.12"
@@ -29,8 +39,8 @@
         "type": "git",
         "git": {
           "repositoryUrl": "https://github.com/Cyan4973/xxHash.git",
-          "commitHash": "94e5f23e736f2bb67ebdf90727353e65344f9fc0",
-          "tag": "v0.8.0"
+          "commitHash": "e626a72bc2321cd320e953a0ccf1584cad60f363",
+          "tag": "v0.8.3"
         }
       },
       "developmentDependency": false

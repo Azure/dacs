@@ -30,7 +30,7 @@ param aksSubnetId string
 
 var blobDataContributorRoleDefinitionId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
-  '00000000-0000-0000-0000-000000000000' // Storage Blob Data Contributor role Id
+  'ba92f5b4-2d11-453d-a403-e96b0029c9fe' // Storage Blob Data Contributor role Id
 )
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {

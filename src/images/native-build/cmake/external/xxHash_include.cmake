@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ExternalProject_Get_Property(xxHash source_dir)
-
-set(XXHASH_INCLUDE_DIRS ${source_dir})
+set(XXHASH_INCLUDE_DIRS ${CMAKE_DEP_INSTALL_DIR}/include)
 include_directories(${XXHASH_INCLUDE_DIRS})
+link_directories(${CMAKE_DEP_INSTALL_DIR}/lib)

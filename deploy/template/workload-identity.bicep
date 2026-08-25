@@ -68,7 +68,7 @@ resource federatedCredential 'Microsoft.ManagedIdentity/userAssignedIdentities/f
 // Assign Storage Blob Data Contributor role to the managed identity on the storage account
 // This allows the identity to read/write blobs in the storage account
 @description('Storage Blob Data Contributor role definition ID')
-var storageBlobDataContributorRoleId = '00000000-0000-0000-0000-000000000000'
+var storageBlobDataContributorRoleId = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 
 resource storageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(storageAccount.id, managedIdentity.id, storageBlobDataContributorRoleId)

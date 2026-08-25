@@ -28,7 +28,19 @@ See `values.yaml` for all configuration options.
 | `cacheServer.scheduler.enabled` | Enable custom scheduler | `true` |
 | `cacheServer.useHostPath` | Use hostPath storage instead of PV/PVC | `true` |
 | `cacheServer.enableTrafficControl` | Enable traffic control for bandwidth limiting | `true` |
+| `cacheServer.egressBandwidthInGb` | Egress limit in Gbps; grants `NET_ADMIN` when traffic control is enabled | unset |
 | `cacheServer.nodeCacheFolderPath` | Host path for cache storage | `/var/lib/ssd/cacheserver` |
+
+### Traffic-control privileges
+
+CacheServer uses Linux traffic control (`tc`) when
+`cacheServer.enableTrafficControl` is `true` and
+`cacheServer.egressBandwidthInGb` is set. Only in that configuration does the
+chart grant the CacheServer container the `NET_ADMIN` capability. Leave the
+bandwidth value unset when traffic control is not required. `NET_ADMIN`
+expands the container's networking privileges, so production deployments
+should enable it only after reviewing the workload threat model and cluster
+network isolation.
 
 ## Architecture
 

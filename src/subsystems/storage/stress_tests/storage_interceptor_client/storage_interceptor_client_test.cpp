@@ -40,7 +40,6 @@ namespace po = boost::program_options;
 //---------------------------------------------------------------------------------------------------------------------
 constexpr const std::size_t DEFAULT_CHUNK_SIZE_IN_MiB = 32;
 constexpr const std::size_t RETRY_COUNT_PER_CHUNK = 5;
-std::string DEFAULT_TEST_BLOB_NAME = "/storageinterceptionpr1.blob.core.windows.net/dataset/tbs/500gb/test1GB.";
 //---------------------------------------------------------------------------------------------------------------------
 std::atomic_uint_fast64_t nGlobalFailureCounter(0);
 //---------------------------------------------------------------------------------------------------------------------
@@ -224,7 +223,7 @@ po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
             "ib-enabled", po::value<bool>()->default_value(false), "Enable Infiniband")(
             "chunk-size-MiB", po::value<int>()->default_value(DEFAULT_CHUNK_SIZE_IN_MiB), "Chunk size in MiB")(
             "single-blob", po::value<bool>()->default_value(false), "Read single blob")(
-            "remote-blob-path", po::value<std::string>()->default_value(DEFAULT_TEST_BLOB_NAME),
+            "remote-blob-path", po::value<std::string>()->required(),
                 "Remote blob path to use for the test");
 
         po::variables_map vm;

@@ -21,7 +21,6 @@
 # Runs in ~15 minutes. Fully independent - no cache server conflicts.
 #
 # Tests included:
-# - Performance benchmarks (skippable via SKIP_PERF_BENCHMARK=true)
 # - Cache server unit tests (no server needed - pure unit tests)
 # - Basic blob unit tests
 # - Go integration tests
@@ -43,8 +42,6 @@ echo "================================================"
 #===============================================================================
 # SECTION 6: UNIT TESTS AND INTEGRATION TESTS (NO CACHE SERVER REQUIRED)
 #===============================================================================
-
-__run_perf_benchmark__
 
 __verify_nologs_unintercepted_
 

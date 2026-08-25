@@ -11254,7 +11254,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 ---------------------------------------------------------
 
-cyan4973/xxhash 94e5f23e736f2bb67ebdf90727353e65344f9fc0 - BSD-2-Clause AND BSD-3-Clause AND GPL-2.0-only AND GPL-2.0-or-later
+cyan4973/xxhash e626a72bc2321cd320e953a0ccf1584cad60f363 - BSD-2-Clause AND BSD-3-Clause AND GPL-2.0-only AND GPL-2.0-or-later
 
 
 Copyright (c) Yann Collet
@@ -11263,7 +11263,7 @@ copyrighted by the Free Software Foundation
 Copyright (c) 1989, 1991 Free Software Foundation, Inc.
 
 xxHash Library
-Copyright (c) 2012-2020 Yann Collet
+Copyright (c) 2012-2021 Yann Collet
 All rights reserved.
 
 BSD 2-Clause License (https://www.opensource.org/licenses/bsd-license.php)
@@ -11292,7 +11292,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ----------------------------------------------------
 
 xxhsum command line interface
-Copyright (c) 2013-2020 Yann Collet
+Copyright (c) 2013-2023 Yann Collet
 All rights reserved.
 
 GPL v2 License
@@ -23204,4 +23204,3 @@ For more information, please refer to <http://unlicense.org/>
 
 
 ---------------------------------------------------------
-
