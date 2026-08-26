@@ -79,6 +79,7 @@ See [Architecture](docs/architecture.md) for the detailed request flow.
 | Install and operate DACS | [Deployment user guide](user-guide.md) |
 | Build from a clean clone | [Build from source](docs/build-from-source.md) |
 | Run tests | [Testing](test/README.md) |
+| Understand artifact versions and releases | [Versioning and releases](VERSIONING.md) |
 | Use deployment tooling | [Deployment workflows](deploy/README.md) |
 | Configure the CacheServer chart | [CacheServer Helm chart](helm/cache-server/README.md) |
 | Configure the controller and `Cache` resource | [Cache controller Helm chart](src/subsystems/cache-controller/charts/dacs/README.md) |
