@@ -210,6 +210,7 @@ def generate_fixtures(
         dataset / "testFileForUt", STORAGE_INTERCEPT_TEST_FILE_SIZE
     )
     write_deterministic_file(dataset / "testDirForUt/file-1", 0)
+    write_deterministic_file(dataset / "testDirForUt/file-2", 0)
     write_deterministic_file(dataset / "testDirForUt/dir-1/fixture", 0)
 
     small_files: list[Path] = []
