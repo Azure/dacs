@@ -17,6 +17,8 @@ name: Dependency Review
 on:
   pull_request:
     branches: [main, release-**]
+    paths-ignore:
+      - '**/*.md'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
