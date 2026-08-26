@@ -64,6 +64,7 @@ bool GetLastAccessTimeDistribution(
 
     GetCacheLastAccessTimeDistributionResponse getCacheLastAccessTimeDistributionResponse;
     const std::string& requestid = getLastAccessTimeDistributionRequest.requestid();
+    getCacheLastAccessTimeDistributionResponse.set_requestid(requestid);
     if (!AuthenticateRequest(getLastAccessTimeDistributionRequest))
     {
         LOG_WARN_REQID("Failed to authenticate request", getLastAccessTimeDistributionRequest);

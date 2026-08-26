@@ -30,6 +30,7 @@ bool GetCacheServers(IConnection& clientConnection,
     LOG_DEBUG_REQID_STR("Get Cache Servers", requestid);
 
     GetCacheServersResponse getCacheServersResponse;
+    getCacheServersResponse.set_requestid(requestid);
     
     if (!GetCacheServersHelper(*getCacheServersResponse.mutable_serveraddresses(), requestid))
     {

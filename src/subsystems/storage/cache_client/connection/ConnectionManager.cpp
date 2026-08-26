@@ -478,6 +478,26 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(std::unique_p
         return socketConnection;
     }
 
+    if (response.requestid().empty())
+    {
+        LOG_DEBUG_REQID(
+            "IB init response request ID is unavailable; accepting for legacy compatibility: server={}",
+            *ibRequest,
+            cacheserver);
+    }
+    else if (response.requestid() != ibRequest->requestid())
+    {
+        LOG_ERROR_REQID(
+            "IB init response request ID mismatch: server={}, requestedId={}, responseId={}",
+            *ibRequest,
+            cacheserver,
+            ibRequest->requestid(),
+            response.requestid());
+        std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
+        m_mapIbSetupStatus[cacheserver] = IBSetupStatus::FAILURE;
+        return nullptr;
+    }
+
     if (response.result() != IBInitResponse::SUCCESS)
     {
         if (response.result() == IBInitResponse::IB_NOT_SUPPORTED)
@@ -912,6 +932,24 @@ ConnectionManager::HandshakeStatus ConnectionManager::NewIBHandshake(
         return HandshakeStatus::FAILURE;
     }
 
+    if (response.requestid().empty())
+    {
+        LOG_DEBUG_REQID(
+            "IB handshake response request ID is unavailable; accepting for legacy compatibility: server={}",
+            *downloadRequest,
+            cacheserver);
+    }
+    else if (response.requestid() != downloadRequest->requestid())
+    {
+        LOG_ERROR_REQID(
+            "IB handshake response request ID mismatch: server={}, requestedId={}, responseId={}",
+            *downloadRequest,
+            cacheserver,
+            downloadRequest->requestid(),
+            response.requestid());
+        return HandshakeStatus::FAILURE;
+    }
+
     if (response.result() != DownloadResponse::NOT_FOUND)
     {
         LOG_WARN("IB handshake failed, Invalid response received qp={}", connection->GetId());
@@ -952,6 +990,22 @@ std::unique_ptr<std::vector<std::string>> ConnectionManager::FetchLatestCacheSer
     if (!response.ParseFromString(requestMessage))
     {
         LOG_WARN("Failed to parse response from server for fetching cache servers");
+        return nullptr;
+    }
+
+    if (response.requestid().empty())
+    {
+        LOG_DEBUG_REQID(
+            "Cache discovery response request ID is unavailable; accepting for legacy compatibility",
+            *getCacheServersRequest);
+    }
+    else if (response.requestid() != getCacheServersRequest->requestid())
+    {
+        LOG_ERROR_REQID(
+            "Cache discovery response request ID mismatch: requestedId={}, responseId={}",
+            *getCacheServersRequest,
+            getCacheServersRequest->requestid(),
+            response.requestid());
         return nullptr;
     }
 

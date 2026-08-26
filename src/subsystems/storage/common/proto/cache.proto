@@ -138,6 +138,7 @@ message UploadResponse
         BAD_REQUEST = 4;
     }
     Result result = 1;
+    string requestid = 2;
 }
 //---------------------------------------------------------------------------------------------------------------------
 // Check and download file from cache
@@ -201,6 +202,7 @@ message DeleteResponse
         INTERNAL_ERROR = 2;
     }
     Result result = 1;
+    string requestid = 2;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message IBInitRequest
@@ -245,6 +247,7 @@ message IBInitResponse
 
     // The server created qp identifiers which is connected to the client qps in the order it was sent in the request
     repeated uint32 serverqpn = 5;
+    string requestid = 6;
 }
 //----------------------------------------------------------------------------------------------------------------------
 message GetCacheLastAccessTimeDistributionRequest
@@ -264,6 +267,7 @@ message GetCacheLastAccessTimeDistributionResponse
     }
     Result result = 1;
     map<int64, uint64> distributionmap = 2;
+    string requestid = 3;
 }
 //----------------------------------------------------------------------------------------------------------------------
 message GetCacheServersRequest
@@ -282,6 +286,7 @@ message GetCacheServersResponse
 
     // List of cache server addresses
     repeated string serveraddresses = 2;
+    string requestid = 3;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message EndMarker

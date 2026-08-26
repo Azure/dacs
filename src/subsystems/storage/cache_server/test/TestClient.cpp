@@ -263,6 +263,8 @@ bool TestUploadAPI(
     //cout << "testupload. filesize: " << filesize << endl;
 
     UploadRequest* uploadRequest = request.mutable_uploadrequest();
+    const std::string requestId = GetUniqueFilename("upload_request");
+    uploadRequest->set_requestid(requestId);
     uploadRequest->set_filename(filename);
     uploadRequest->set_filesize(filesize);    
     uploadRequest->set_ignorelock(ignoreLock);
@@ -337,6 +339,12 @@ bool TestUploadAPI(
     if (!response.ParseFromString(requestMessage))
     {
         std::cout << "error: Failed to parse protobuf message" << endl;
+        return false;
+    }
+
+    if (response.requestid() != requestId)
+    {
+        std::cout << "error: upload response request ID mismatch" << endl;
         return false;
     }
 
@@ -467,6 +475,8 @@ bool TestDeleteAPI(
     Request request;
 
     DeleteRequest* deleteRequest = request.mutable_deleterequest();
+    const std::string requestId = GetUniqueFilename("delete_request");
+    deleteRequest->set_requestid(requestId);
     if (!groupid.empty())
     {
         deleteRequest->set_groupid(groupid.c_str());
@@ -495,6 +505,12 @@ bool TestDeleteAPI(
         return false;
     }
 
+    if (response.requestid() != requestId)
+    {
+        std::cout << "error: delete response request ID mismatch" << endl;
+        return false;
+    }
+
     if (response.result() != expectedResult)
     {
         std::cout << "error: delete failed: response.result() != expectedResult:" << response.result() << ", " <<
@@ -517,6 +533,8 @@ bool TestLastAccessTimeDistribution(uint64_t distributionbucketsizeinhours)
     Request request;
     std::cout << "distributionbucketsizeinhours:" << distributionbucketsizeinhours << endl;
     GetCacheLastAccessTimeDistributionRequest* getCacheLastAccessTimeDistributionRequest = request.mutable_getcachelastaccesstimedistributionrequest();
+    const std::string requestId = GetUniqueFilename("distribution_request");
+    getCacheLastAccessTimeDistributionRequest->set_requestid(requestId);
     getCacheLastAccessTimeDistributionRequest->set_distributionbucketsizeinhours(distributionbucketsizeinhours);
 
     if (!SendMessageToRemote(serverConnection.get(), request))
@@ -540,6 +558,12 @@ bool TestLastAccessTimeDistribution(uint64_t distributionbucketsizeinhours)
     if (!response.ParseFromString(requestMessage))
     {
         std::cout << "error: Failed to parse protobuf message" << endl;
+        return false;
+    }
+
+    if (response.requestid() != requestId)
+    {
+        std::cout << "error: distribution response request ID mismatch" << endl;
         return false;
     }
 
@@ -1422,6 +1446,8 @@ bool TestIBAPI()
 
     Request request;
     IBInitRequest* ibRequest = request.mutable_ibinitrequest();
+    const std::string requestId = GetUniqueFilename("ib_init_request");
+    ibRequest->set_requestid(requestId);
     ibRequest->set_clientibport(m_ibDevice.port);
     ibRequest->set_clientlid(m_ibDevice.lid);
     ibRequest->set_clientmtu(m_ibDevice.mtu);
@@ -1505,6 +1531,12 @@ bool TestIBAPI()
     if (!response.ParseFromString(requestMessage))
     {
         std::cout << "Failed to parse protobuf message" << endl;
+        return false;
+    }
+
+    if (response.requestid() != requestId)
+    {
+        std::cout << "IB init response request ID mismatch" << endl;
         return false;
     }
 
@@ -1716,6 +1748,8 @@ bool TestGetCacheServersAPI(GetCacheServersResponse_Result expectedResult, int e
 
     Request request;
     GetCacheServersRequest* getCacheServersRequest = request.mutable_getcacheserversrequest();
+    const std::string requestId = GetUniqueFilename("get_cache_servers_request");
+    getCacheServersRequest->set_requestid(requestId);
 
     if (!SendMessageToRemote(serverConnection.get(), request))
     {
@@ -1737,6 +1771,12 @@ bool TestGetCacheServersAPI(GetCacheServersResponse_Result expectedResult, int e
     if (!response.ParseFromString(requestMessage))
     {
         cout << "Failed to parse protobuf message" << endl;
+        return false;
+    }
+
+    if (response.requestid() != requestId)
+    {
+        cout << "GetCacheServers response request ID mismatch" << endl;
         return false;
     }
 
