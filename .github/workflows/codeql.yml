@@ -17,8 +17,12 @@ name: CodeQL
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
   pull_request:
     branches: [main, release-**]
+    paths-ignore:
+      - '**/*.md'
   schedule:
     - cron: '0 1 * * *'
 

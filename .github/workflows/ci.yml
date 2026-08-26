@@ -39,8 +39,14 @@ concurrency:
 on:
   push:
     branches: [main]
+    # Documentation-only changes are covered by the separate lint and security
+    # workflows and do not need the full build and test matrix.
+    paths-ignore:
+      - '**/*.md'
   pull_request:
     branches: [main, release-**]
+    paths-ignore:
+      - '**/*.md'
 
 permissions: {}
 
