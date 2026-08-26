@@ -19,7 +19,7 @@ import (
 	"strings"
 )
 
-// Gate names — add new feature gates here as constants.
+// Gate names are defined here as constants.
 const (
 	// UseZeroCopy enables zero-copy data transfers in the cache server.
 	UseZeroCopy = "UseZeroCopy"
