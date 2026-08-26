@@ -78,7 +78,7 @@ TEST_F(RemoteClientTest, ReadDirectoryTest)
 
     std::string newContToken = m_RemoteClient->ReadDirectory(m_strRemoteDirPath, "", vecDirEntries);
     ASSERT_EQ(newContToken, "");
-    ASSERT_EQ(vecDirEntries.size(), 2);
+    ASSERT_EQ(vecDirEntries.size(), m_bUsingMock ? 2 : 3);
     for (const auto& entry : vecDirEntries)
     {
         if (entry.d_type == DT_DIR)
