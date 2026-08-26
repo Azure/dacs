@@ -65,6 +65,7 @@ bool IBInitializeClient(IConnection& clientConnection, const IBInitRequest& ibRe
 
     IBInitResponse ibResponse;
     const std::string& requestid = ibRequest.requestid();
+    ibResponse.set_requestid(requestid);
     if (!AuthenticateRequest(ibRequest))
     {
         LOG_WARN_REQID("Failed to authenticate request", ibRequest);

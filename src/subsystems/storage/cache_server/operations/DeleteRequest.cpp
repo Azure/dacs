@@ -63,6 +63,7 @@ bool DeleteFile(IConnection& clientConnection, const DeleteRequest& deleteReques
 
     DeleteResponse deleteResponse;
     const std::string& requestid = deleteRequest.requestid();
+    deleteResponse.set_requestid(requestid);
     if (!AuthenticateRequest(deleteRequest))
     {
         LOG_WARN_REQID("Failed to authenticate request", deleteRequest);

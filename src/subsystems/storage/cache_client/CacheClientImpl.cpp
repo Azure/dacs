@@ -29,6 +29,20 @@
 using namespace cacheutils;
 using namespace cache;
 //---------------------------------------------------------------------------------------------------------------------
+#define CACHECLIENT_EXTENDED_CONTEXT "cacheKey:{}| hostname:{}| connectionId:{}| "
+#define LOG_DEBUG_CACHECLIENT_EXTENDED(message, request_object, args...) \
+    LOG_DEBUG_REQID(CACHECLIENT_EXTENDED_CONTEXT message, request_object, \
+        strCacheKey, hostname, serverConnection->GetId(), ##args)
+#define LOG_INFO_CACHECLIENT_EXTENDED(message, request_object, args...) \
+    LOG_INFO_REQID(CACHECLIENT_EXTENDED_CONTEXT message, request_object, \
+        strCacheKey, hostname, serverConnection->GetId(), ##args)
+#define LOG_WARN_CACHECLIENT_EXTENDED(message, request_object, args...) \
+    LOG_WARN_REQID(CACHECLIENT_EXTENDED_CONTEXT message, request_object, \
+        strCacheKey, hostname, serverConnection->GetId(), ##args)
+#define LOG_ERROR_CACHECLIENT_EXTENDED(message, request_object, args...) \
+    LOG_ERROR_REQID(CACHECLIENT_EXTENDED_CONTEXT message, request_object, \
+        strCacheKey, hostname, serverConnection->GetId(), ##args)
+//---------------------------------------------------------------------------------------------------------------------
 std::size_t CacheClientImpl::nDefaultConnectionPoolSize = 1024;
 //---------------------------------------------------------------------------------------------------------------------
 CacheClientImpl::CacheClientImpl()
@@ -343,14 +357,14 @@ CacheClientStatus CacheClientImpl::Upload(
 
         if(!bRet)
         {
-            LOG_WARN_REQID("couldn't send request, ignoring upload for file: {}", *uploadRequest, strCacheKey);
+            LOG_WARN_CACHECLIENT_EXTENDED("couldn't send upload request", *uploadRequest);
             m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
         if(nBufferLength > 0 && !cacheutils::WriteAllFinal(serverConnection.get(), pBuffer, nBufferLength))
         {
-            LOG_WARN_REQID("couldn't complete write to server, file: {}", *uploadRequest, strCacheKey);
+            LOG_WARN_CACHECLIENT_EXTENDED("couldn't complete upload write", *uploadRequest);
             m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
@@ -358,7 +372,7 @@ CacheClientStatus CacheClientImpl::Upload(
         std::string strResponse;
         if(!ReadMessageFromRemote(serverConnection.get(), strResponse))
         {
-            LOG_WARN_REQID("couldn't read response from server. file: {}", *uploadRequest, strCacheKey);
+            LOG_WARN_CACHECLIENT_EXTENDED("couldn't read upload response", *uploadRequest);
             m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
@@ -366,7 +380,24 @@ CacheClientStatus CacheClientImpl::Upload(
         UploadResponse response;
         if(!response.ParseFromString(strResponse))
         {
-            LOG_WARN_REQID("couldn't parse response from server. file: {}", *uploadRequest, strCacheKey);
+            LOG_WARN_CACHECLIENT_EXTENDED("couldn't parse upload response", *uploadRequest);
+            m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
+
+        if(response.requestid().empty())
+        {
+            LOG_DEBUG_CACHECLIENT_EXTENDED(
+                "Upload response request ID is unavailable; accepting for legacy compatibility",
+                *uploadRequest);
+        }
+        else if(response.requestid() != uploadRequest->requestid())
+        {
+            LOG_ERROR_CACHECLIENT_EXTENDED(
+                "Upload response request ID mismatch: requestedId={}, responseId={}",
+                *uploadRequest,
+                uploadRequest->requestid(),
+                response.requestid());
             m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
@@ -374,22 +405,25 @@ CacheClientStatus CacheClientImpl::Upload(
         CacheClientStatus status;
         if(response.result() == UploadResponse::SUCCESS)
         {
-            LOG_DEBUG_REQID("Uploaded to server successfully. file: {}", *uploadRequest, strCacheKey);
+            LOG_DEBUG_CACHECLIENT_EXTENDED("Uploaded to server successfully", *uploadRequest);
             status = CacheClientStatus::SUCCESS;
         }
         else if(response.result() == UploadResponse::FILE_EXISTS)
         {
-            LOG_WARN_REQID("Duplicate upload attempted for file: {}", *uploadRequest, strCacheKey);
+            LOG_WARN_CACHECLIENT_EXTENDED("Duplicate upload attempted", *uploadRequest);
             status = CacheClientStatus::KEY_EXISTS;
         }
         else if(response.result() == UploadResponse::AUTH_FAILED)
         {
-            LOG_ERROR_REQID("Authentication failed for file: {}", *uploadRequest, strCacheKey);
+            LOG_ERROR_CACHECLIENT_EXTENDED("Authentication failed", *uploadRequest);
             status = CacheClientStatus::AUTH_FAILED;
         }
         else
         {
-            LOG_WARN_REQID("Upload to server failed. file: {}, error: {}", *uploadRequest, strCacheKey, response.result());
+            LOG_WARN_CACHECLIENT_EXTENDED(
+                "Upload to server failed, error: {}",
+                *uploadRequest,
+                response.result());
             status = CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -506,14 +540,20 @@ CacheClientStatus CacheClientImpl::Download(
     std::unique_ptr<IConnection> serverConnection = std::move(m_spConnectionManager->GetConnection(hostname));
     if(!serverConnection.get())
     {
-        LOG_WARN_REQID("couldn't get server connection, key: {}", *downloadRequest, strCacheKey);
+        LOG_WARN_REQID(
+            "couldn't get server connection, key: {}, server: {}",
+            *downloadRequest,
+            strCacheKey,
+            hostname);
         return cacheClientStatus;
     }
     bool discardConnection = false;
 
     if(!SendMessageToRemoteFinal(serverConnection.get(), request))
     {
-        LOG_WARN_REQID("couldn't send message to server, key: {}", *downloadRequest, strCacheKey);
+        LOG_WARN_CACHECLIENT_EXTENDED(
+            "couldn't send message to server",
+            *downloadRequest);
         m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
         return cacheClientStatus;
     }
@@ -521,7 +561,9 @@ CacheClientStatus CacheClientImpl::Download(
     std::string responseMessage;
     if(!ReadMessageFromRemote(serverConnection.get(), responseMessage))
     {
-        LOG_WARN_REQID("couldn't read message from server, key: {}", *downloadRequest, strCacheKey);
+        LOG_WARN_CACHECLIENT_EXTENDED(
+            "couldn't read message from server",
+            *downloadRequest);
         m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
         return cacheClientStatus;
     }
@@ -529,41 +571,36 @@ CacheClientStatus CacheClientImpl::Download(
     DownloadResponse response;
     if(!response.ParseFromString(responseMessage))
     {
-        LOG_WARN_REQID("error: Failed to parse protobuf message, key: {}", *downloadRequest, strCacheKey);
+        LOG_WARN_CACHECLIENT_EXTENDED(
+            "Failed to parse response protobuf",
+            *downloadRequest);
         m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
         return cacheClientStatus;
     }
 
     if(response.requestid().empty())
     {
-        LOG_DEBUG_REQID(
-            "Download response request ID is unavailable; accepting for legacy compatibility: "
-            "server={}, connection={}, key={}",
-            *downloadRequest,
-            hostname,
-            serverConnection->GetId(),
-            strCacheKey);
+        LOG_DEBUG_CACHECLIENT_EXTENDED(
+            "Download response request ID is unavailable; accepting for legacy compatibility",
+            *downloadRequest);
     }
     else if(response.requestid() != downloadRequest->requestid())
     {
-        LOG_ERROR_REQID(
-            "Download response request ID mismatch: server={}, connection={}, requestedId={}, responseId={}, key={}",
+        LOG_ERROR_CACHECLIENT_EXTENDED(
+            "Download response request ID mismatch: requestedId={}, responseId={}",
             *downloadRequest,
-            hostname,
-            serverConnection->GetId(),
             downloadRequest->requestid(),
-            response.requestid(),
-            strCacheKey);
+            response.requestid());
         m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
         return cacheClientStatus;
     }
 
-    LOG_DEBUG_REQID("Download response from server: {}, key: {}, filesize: {}, isFullDownload: {}",
-                    *downloadRequest,
-                    response.result(),
-                    strCacheKey,
-                    response.filesize(),
-                    response.isfulldownload());
+    LOG_DEBUG_CACHECLIENT_EXTENDED(
+        "Download response: {}, filesize: {}, isFullDownload: {}",
+        *downloadRequest,
+        response.result(),
+        response.filesize(),
+        response.isfulldownload());
 
     std::size_t actualReadLen = -1;
     if(response.result() == DownloadResponse::SUCCESS)
@@ -571,13 +608,9 @@ CacheClientStatus CacheClientImpl::Download(
         actualReadLen = response.filesize();
         if(*nLength > 0 && actualReadLen > *nLength)
         {
-            LOG_ERROR_REQID(
-                "Received invalid response length: server={}, connection={}, key={}, "
-                "responseSize={}, requestedSize={}",
+            LOG_ERROR_CACHECLIENT_EXTENDED(
+                "Received invalid response length: responseSize={}, requestedSize={}",
                 *downloadRequest,
-                hostname,
-                serverConnection->GetId(),
-                strCacheKey,
                 actualReadLen,
                 *nLength);
             m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
@@ -587,8 +620,9 @@ CacheClientStatus CacheClientImpl::Download(
         {
             if(!pOutBuffer)
             {
-                LOG_ERROR_REQID(
-                    "actualReadLen > 0 but no read buffer supplied, key: {}", *downloadRequest, strCacheKey);
+                LOG_ERROR_CACHECLIENT_EXTENDED(
+                    "actualReadLen > 0 but no read buffer supplied",
+                    *downloadRequest);
                 m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
                 return cacheClientStatus;
             }
@@ -597,7 +631,10 @@ CacheClientStatus CacheClientImpl::Download(
                     response, serverConnection.get(), static_cast<char*>(pOutBuffer), 
                     actualReadLen))
             {
-                LOG_WARN_REQID("Failed to complete read from server, key: {}", *downloadRequest, strCacheKey);
+                LOG_WARN_CACHECLIENT_EXTENDED(
+                    "Failed to complete read from server, expectedBytes: {}",
+                    *downloadRequest,
+                    actualReadLen);
                 m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
                 return cacheClientStatus;
             }
@@ -605,7 +642,9 @@ CacheClientStatus CacheClientImpl::Download(
 
         if(m_bEnableValidateChecksum && response.isfulldownload())
         {
-            LOG_DEBUG_REQID("Validate Checksum enabled, key: {}", *downloadRequest, strCacheKey);
+            LOG_DEBUG_CACHECLIENT_EXTENDED(
+                "Validate Checksum enabled",
+                *downloadRequest);
             auto& metadata = response.metadata();
             auto checksumIter = metadata.find(CACHE_META_CHUNK_CHECKSUM_KEY);
 
@@ -636,19 +675,18 @@ CacheClientStatus CacheClientImpl::Download(
                             throw std::out_of_range("Checksum exceeds uint32_t range");
                         }
                         uint32_t expectedChecksum = static_cast<uint32_t>(checksumValue);
-                        LOG_DEBUG_REQID("Checksum for file: {}, algorithm: {}, expectedChecksum: {}, calculatedChecksum: {}",
-                                        *downloadRequest,
-                                        strCacheKey,
-                                        ChecksumFactory::GetAlgorithmName(algorithm),
-                                        expectedChecksum,
-                                        calculatedChecksum);
+                        LOG_DEBUG_CACHECLIENT_EXTENDED(
+                            "Checksum calculated: algorithm: {}, expectedChecksum: {}, calculatedChecksum: {}",
+                            *downloadRequest,
+                            ChecksumFactory::GetAlgorithmName(algorithm),
+                            expectedChecksum,
+                            calculatedChecksum);
                         if(expectedChecksum != calculatedChecksum)
                         {
-                            LOG_ERROR_REQID(
-                                "Checksum mismatch, key: {}, algorithm: {}, expectedChecksum: {}, "
-                                "calculatedChecksum: {}, responseSize: {}, requestedSize: {}",
+                            LOG_ERROR_CACHECLIENT_EXTENDED(
+                                "Checksum mismatch: algorithm: {}, expectedChecksum: {}, calculatedChecksum: {}, "
+                                "responseSize: {}, requestedSize: {}",
                                 *downloadRequest,
-                                strCacheKey,
                                 ChecksumFactory::GetAlgorithmName(algorithm),
                                 expectedChecksum,
                                 calculatedChecksum,
@@ -662,13 +700,9 @@ CacheClientStatus CacheClientImpl::Download(
                     }
                     catch (const std::exception& e)
                     {
-                        LOG_ERROR_REQID(
-                            "Exception during checksum validation: "
-                            "server={}, connection={}, key={}, algorithm={}, expectedChecksum={}, error={}",
+                        LOG_ERROR_CACHECLIENT_EXTENDED(
+                            "Exception during checksum validation: algorithm={}, expectedChecksum={}, error={}",
                             *downloadRequest,
-                            hostname,
-                            serverConnection->GetId(),
-                            strCacheKey,
                             algorithmIter->second,
                             checksumIter->second,
                             e.what());
@@ -679,25 +713,17 @@ CacheClientStatus CacheClientImpl::Download(
                 }
                 else
                 {
-                    LOG_WARN_REQID(
-                        "Checksum validation skipped because algorithm metadata is missing: "
-                        "server={}, connection={}, key={}",
-                        *downloadRequest,
-                        hostname,
-                        serverConnection->GetId(),
-                        strCacheKey);
+                    LOG_WARN_CACHECLIENT_EXTENDED(
+                        "Checksum validation skipped because algorithm metadata is missing",
+                        *downloadRequest);
                     discardConnection = true;
                 }
             }
             else
             {
-                LOG_WARN_REQID(
-                    "Checksum validation skipped because checksum metadata is missing: "
-                    "server={}, connection={}, key={}",
-                    *downloadRequest,
-                    hostname,
-                    serverConnection->GetId(),
-                    strCacheKey);
+                LOG_WARN_CACHECLIENT_EXTENDED(
+                    "Checksum validation skipped because checksum metadata is missing",
+                    *downloadRequest);
                 discardConnection = true;
             }
         }
@@ -734,7 +760,7 @@ CacheClientStatus CacheClientImpl::Download(
     }
     else
     {
-        LOG_ERROR_REQID("Server returned internal failure for key: {}", *downloadRequest, strCacheKey);
+        LOG_ERROR_CACHECLIENT_EXTENDED("Server returned internal failure", *downloadRequest);
         cacheClientStatus = CacheClientStatus::INTERNAL_ERROR;
         discardConnection = true;
     }
@@ -849,6 +875,27 @@ CacheClientStatus CacheClientImpl::DeleteGroupFromServer(
         return CacheClientStatus::INTERNAL_ERROR;
     }
 
+    if(response.requestid().empty())
+    {
+        LOG_DEBUG_REQID(
+            "Delete response request ID is unavailable; accepting for legacy compatibility: server={}, groupID={}",
+            *deleteGroupRequest,
+            hostname,
+            groupID);
+    }
+    else if(response.requestid() != deleteGroupRequest->requestid())
+    {
+        LOG_ERROR_REQID(
+            "Delete response request ID mismatch: server={}, requestedId={}, responseId={}, groupID={}",
+            *deleteGroupRequest,
+            hostname,
+            deleteGroupRequest->requestid(),
+            response.requestid(),
+            groupID);
+        m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), true);
+        return CacheClientStatus::INTERNAL_ERROR;
+    }
+
     switch(response.result())
     {
     case DeleteResponse::SUCCESS:
@@ -959,6 +1006,28 @@ CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
             LOG_ERROR_REQID("Error: Failed to parse protobuf message from server, access time distribution request for server: {}",
                             *lastAccessTimeDistributionRequest,
                             hostname);
+            m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), true);
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
+
+        if(response.requestid().empty())
+        {
+            LOG_DEBUG_REQID(
+                "Last access time distribution response request ID is unavailable; "
+                "accepting for legacy compatibility: server={}",
+                *lastAccessTimeDistributionRequest,
+                hostname);
+        }
+        else if(response.requestid() != lastAccessTimeDistributionRequest->requestid())
+        {
+            LOG_ERROR_REQID(
+                "Last access time distribution response request ID mismatch: "
+                "server={}, requestedId={}, responseId={}",
+                *lastAccessTimeDistributionRequest,
+                hostname,
+                lastAccessTimeDistributionRequest->requestid(),
+                response.requestid());
+            m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -1095,6 +1164,30 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
                             *deleteByLastAccessTimeRequest,
                             hostname,
                             lastAccessTime);
+            m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), true);
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
+
+        if(response.requestid().empty())
+        {
+            LOG_DEBUG_REQID(
+                "Delete by last access response request ID is unavailable; "
+                "accepting for legacy compatibility: server={}, lastAccessTime={}",
+                *deleteByLastAccessTimeRequest,
+                hostname,
+                lastAccessTime);
+        }
+        else if(response.requestid() != deleteByLastAccessTimeRequest->requestid())
+        {
+            LOG_ERROR_REQID(
+                "Delete by last access response request ID mismatch: "
+                "server={}, requestedId={}, responseId={}, lastAccessTime={}",
+                *deleteByLastAccessTimeRequest,
+                hostname,
+                deleteByLastAccessTimeRequest->requestid(),
+                response.requestid(),
+                lastAccessTime);
+            m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), true);
             return CacheClientStatus::INTERNAL_ERROR;
         }
 

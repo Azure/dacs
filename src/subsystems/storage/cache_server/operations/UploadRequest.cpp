@@ -403,6 +403,7 @@ bool UploadFile(IConnection& clientConnection,
 
     UploadResponse uploadResponse;
     const std::string& requestid = uploadRequest.requestid();
+    uploadResponse.set_requestid(requestid);
     if (!AuthenticateRequest(uploadRequest))
     {
         LOG_WARN_REQID("Failed to authenticate request", uploadRequest);
