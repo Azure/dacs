@@ -87,8 +87,8 @@ The 53-character limit ensures all derived resource names (longest suffix is `-d
 #### Resource Limits
 | Field | Rule | Error Message |
 |-------|------|---------------|
-| `spec.cpuLimit` | >= 1 | "must be at least 1" |
-| `spec.memoryLimitMB` | >= 1024 | "must be at least 1024" |
+| `spec.cpuLimit` | >= 0 (0 disables CPU requests and limits) | "must be at least 0" |
+| `spec.memoryLimitMB` | 0 or >= 1024 (0 disables memory requests and limits) | "must be 0 or at least 1024" |
 | `spec.egressBandwidthLimitGbps` | >= 1 (if set) | "must be at least 1" |
 | `spec.infinibandResourceLimitCount` | >= 0 | "must be at least 0" |
 

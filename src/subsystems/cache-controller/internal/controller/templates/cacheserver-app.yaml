@@ -95,8 +95,8 @@ spec:
           value: "{{- if .UseZeroCopy }}1{{- else }}0{{- end }}"
         resources:
           requests:
-            memory: "100Mi"
-            cpu: "0.25"
+            memory: "{{- if .DisableMemoryRequest }}0{{- else }}100Mi{{- end }}"
+            cpu: "{{- if .DisableCpuRequest }}0{{- else }}0.25{{- end }}"
             {{- if and .InfinibandResourceLimitName (gt .InfinibandResourceLimitCount 0) }}
             {{ .InfinibandResourceLimitName }}: {{ .InfinibandResourceLimitCount }}
             {{- end }}

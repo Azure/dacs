@@ -154,14 +154,15 @@ type CacheSpec struct {
 	// +kubebuilder:validation:Minimum=4
 	ServerThreads int32 `json:"serverThreads"`
 
-	// CPU limit per cache server pod (recommended when running cache on non-dedicated nodes)
+	// CPU limit per cache server pod. Set to 0 to disable CPU requests and limits.
 	// +optional
-	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Minimum=0
 	CpuLimit *int32 `json:"cpuLimit,omitempty"`
 
-	// Memory limit in MB per cache server pod (recommended when running cache on non-dedicated nodes)
+	// Memory limit in MB per cache server pod. Set to 0 to disable memory requests and limits.
 	// +optional
-	// +kubebuilder:validation:Minimum=1024
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:XValidation:rule="self == 0 || self >= 1024",message="must be 0 or at least 1024"
 	MemoryLimitMB *int32 `json:"memoryLimitMB,omitempty"`
 
 	// Egress Bandwidth limit in Gbps (recommended when running cache on non-dedicated nodes)

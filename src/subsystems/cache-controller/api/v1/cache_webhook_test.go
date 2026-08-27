@@ -464,11 +464,17 @@ func TestCacheWebhook_ValidateCreate(t *testing.T) {
 			},
 		},
 		{
-			name: "rejects cpuLimit = 0",
+			name: "rejects cpuLimit = -1",
+			mutate: func(c *Cache) {
+				c.Spec.CpuLimit = ptr.To(int32(-1))
+			},
+			expectedErr: "must be at least 0",
+		},
+		{
+			name: "accepts cpuLimit = 0",
 			mutate: func(c *Cache) {
 				c.Spec.CpuLimit = ptr.To(int32(0))
 			},
-			expectedErr: "must be at least 1",
 		},
 		{
 			name: "accepts cpuLimit = 1",
@@ -481,7 +487,13 @@ func TestCacheWebhook_ValidateCreate(t *testing.T) {
 			mutate: func(c *Cache) {
 				c.Spec.MemoryLimitMB = ptr.To(int32(1023))
 			},
-			expectedErr: "must be at least 1024",
+			expectedErr: "must be 0 or at least 1024",
+		},
+		{
+			name: "accepts memoryLimitMB = 0",
+			mutate: func(c *Cache) {
+				c.Spec.MemoryLimitMB = ptr.To(int32(0))
+			},
 		},
 		{
 			name: "accepts memoryLimitMB = 1024",
@@ -599,7 +611,7 @@ func TestCacheWebhook_ValidateUpdate(t *testing.T) {
 			mutateNew: func(c *Cache) {
 				c.Spec.MemoryLimitMB = ptr.To(int32(512))
 			},
-			expectedErr: "must be at least 1024",
+			expectedErr: "must be 0 or at least 1024",
 		},
 	}
 

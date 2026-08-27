@@ -207,6 +207,13 @@ var _ = Describe("Cache Controller", func() {
 			By("verifying the CacheServer StatefulSet is created with correct replicas")
 			Eventually(func() int32 { return getStatefulSetReplicasByName(cacheName) }, timeout, pollInterval).Should(Equal(int32(2)))
 
+			By("verifying positive limits retain the default resource requests")
+			resources := getStatefulSetByName(cacheName).Spec.Template.Spec.Containers[0].Resources
+			Expect(resources.Requests.Cpu().String()).To(Equal("250m"), "CPU request should retain its default")
+			Expect(resources.Requests.Memory().String()).To(Equal("100Mi"), "memory request should retain its default")
+			Expect(resources.Limits.Cpu().String()).To(Equal("1"), "CPU limit should match the Cache CR")
+			Expect(resources.Limits.Memory().String()).To(Equal("20Gi"), "memory limit should match the Cache CR")
+
 			By("Verifying the CacheServer StatefulSet has default-scheduler annotation")
 			Eventually(func() string { return getStatefulSetSchedulerByName(cacheName) }, timeout, pollInterval).Should(Equal("default-scheduler"))
 
@@ -378,6 +385,31 @@ var _ = Describe("Cache Controller", func() {
 				// reconciler sees zero pods and reports all scheduled.
 				g.Expect(meta.IsStatusConditionTrue(cache.Status.Conditions, "PodsScheduled")).To(BeTrue())
 			}, timeout, pollInterval).Should(Succeed())
+		})
+
+		It("should set CPU and memory requests and limits to zero when explicitly disabled", func() {
+			cacheName := "test-cache-zero-resources"
+			cache := createTestCache(cacheName, resourceNamespace, 1, true)
+			cache.Spec.CpuLimit = int32Ptr(0)
+			cache.Spec.MemoryLimitMB = int32Ptr(0)
+			Expect(k8sClient.Create(ctx, cache)).To(Succeed(), "creating Cache CR with resource limits disabled")
+			DeferCleanup(func() { deleteCache(cacheName) })
+
+			Eventually(func(g Gomega) {
+				statefulSet := getStatefulSetByName(cacheName)
+				g.Expect(statefulSet).NotTo(BeNil(), "CacheServer StatefulSet should exist")
+				resources := statefulSet.Spec.Template.Spec.Containers[0].Resources
+
+				for _, resourceName := range []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory} {
+					request, found := resources.Requests[resourceName]
+					g.Expect(found).To(BeTrue(), "%s request should be present", resourceName)
+					g.Expect(request.IsZero()).To(BeTrue(), "%s request should be zero", resourceName)
+
+					limit, found := resources.Limits[resourceName]
+					g.Expect(found).To(BeTrue(), "%s limit should be present", resourceName)
+					g.Expect(limit.IsZero()).To(BeTrue(), "%s limit should be zero", resourceName)
+				}
+			}, timeout, pollInterval).Should(Succeed(), "waiting for zero CPU and memory resources")
 		})
 	})
 
