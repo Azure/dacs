@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
@@ -33,12 +33,19 @@ fi
 CLUSTER_NAME="${CLUSTER_NAME:-minikube}"
 
 echo "Deleting Minikube cluster '$CLUSTER_NAME'..."
-minikube delete --profile "$CLUSTER_NAME"
+if ! minikube delete --profile "$CLUSTER_NAME"; then
+    echo "Warning: Minikube profile '$CLUSTER_NAME' could not be deleted; continuing with filesystem cleanup."
+fi
 
-# Clean up minikube data on /mnt if it exists
+# Clean up Minikube and kubelet data on /mnt even when cluster deletion failed.
 if [ -d "/mnt/minikube" ]; then
     echo "Cleaning up /mnt/minikube..."
     sudo rm -rf /mnt/minikube
 fi
 
-echo "Cluster deleted successfully!"
+if [ -d "/mnt/kubelet" ]; then
+    echo "Cleaning up /mnt/kubelet..."
+    sudo rm -rf /mnt/kubelet/*
+fi
+
+echo "Minikube cleanup completed."
