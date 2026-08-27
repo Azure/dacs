@@ -346,5 +346,5 @@ jobs:
         run: |
           status=0
           make undeploy || status=$?
-          minikube delete || status=$?
+          ./deploy/scripts/minikube/clean.sh || status=$?
           exit "$status"
