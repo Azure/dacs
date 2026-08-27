@@ -83,10 +83,10 @@ spec:
             description: spec defines the desired state of Cache
             properties:
               cpuLimit:
-                description: CPU limit per cache server pod (recommended when running
-                  cache on non-dedicated nodes)
+                description: CPU limit per cache server pod. Set to 0 to disable CPU
+                  requests and limits.
                 format: int32
-                minimum: 1
+                minimum: 0
                 type: integer
               egressBandwidthLimitGbps:
                 description: Egress Bandwidth limit in Gbps (recommended when running
@@ -148,11 +148,14 @@ spec:
                 description: Infiniband resource limit name
                 type: string
               memoryLimitMB:
-                description: Memory limit in MB per cache server pod (recommended
-                  when running cache on non-dedicated nodes)
+                description: Memory limit in MB per cache server pod. Set to 0 to disable
+                  memory requests and limits.
                 format: int32
-                minimum: 1024
+                minimum: 0
                 type: integer
+                x-kubernetes-validations:
+                - message: must be 0 or at least 1024
+                  rule: self == 0 || self >= 1024
               metricsPort:
                 default: 9096
                 description: Metrics port for cache server pods

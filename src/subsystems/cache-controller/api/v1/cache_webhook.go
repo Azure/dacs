@@ -253,11 +253,11 @@ func (r *Cache) validateCache() (admission.Warnings, error) { //nolint:gocyclo
 	}
 
 	// Validate optional resource limits
-	if r.Spec.CpuLimit != nil && *r.Spec.CpuLimit < 1 {
-		allErrs = append(allErrs, field.Invalid(specPath.Child("cpuLimit"), *r.Spec.CpuLimit, "must be at least 1"))
+	if r.Spec.CpuLimit != nil && *r.Spec.CpuLimit < 0 {
+		allErrs = append(allErrs, field.Invalid(specPath.Child("cpuLimit"), *r.Spec.CpuLimit, "must be at least 0"))
 	}
-	if r.Spec.MemoryLimitMB != nil && *r.Spec.MemoryLimitMB < 1024 {
-		allErrs = append(allErrs, field.Invalid(specPath.Child("memoryLimitMB"), *r.Spec.MemoryLimitMB, "must be at least 1024"))
+	if r.Spec.MemoryLimitMB != nil && *r.Spec.MemoryLimitMB != 0 && *r.Spec.MemoryLimitMB < 1024 {
+		allErrs = append(allErrs, field.Invalid(specPath.Child("memoryLimitMB"), *r.Spec.MemoryLimitMB, "must be 0 or at least 1024"))
 	}
 	if r.Spec.EgressBandwidthLimitGbps != nil && *r.Spec.EgressBandwidthLimitGbps < 1 {
 		allErrs = append(allErrs, field.Invalid(specPath.Child("egressBandwidthLimitGbps"), *r.Spec.EgressBandwidthLimitGbps, "must be at least 1"))

@@ -53,11 +53,11 @@ spec:
   {{- with .Values.cache.nodeSelectorValue }}
   nodeSelectorValue: {{ . | quote }}
   {{- end }}
-  {{- with .Values.cache.cpuLimit }}
-  cpuLimit: {{ . }}
+  {{- if ne .Values.cache.cpuLimit nil }}
+  cpuLimit: {{ .Values.cache.cpuLimit }}
   {{- end }}
-  {{- with .Values.cache.memoryLimitMB }}
-  memoryLimitMB: {{ . }}
+  {{- if ne .Values.cache.memoryLimitMB nil }}
+  memoryLimitMB: {{ .Values.cache.memoryLimitMB }}
   {{- end }}
   {{- with .Values.cache.egressBandwidthLimitGbps }}
   egressBandwidthLimitGbps: {{ . }}

@@ -290,6 +290,8 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		InfinibandResourceLimitName  string
 		MemoryLimitMB                *int32
 		CpuLimit                     *int32
+		DisableMemoryRequest         bool
+		DisableCpuRequest            bool
 		MountSsdPath                 string
 		Name                         string
 		ServerSizeInGB               int32
@@ -351,6 +353,8 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		InfinibandResourceLimitName:  *cache.Spec.InfinibandResourceLimitName,
 		MemoryLimitMB:                cache.Spec.MemoryLimitMB,
 		CpuLimit:                     cache.Spec.CpuLimit,
+		DisableMemoryRequest:         cache.Spec.MemoryLimitMB != nil && *cache.Spec.MemoryLimitMB == 0,
+		DisableCpuRequest:            cache.Spec.CpuLimit != nil && *cache.Spec.CpuLimit == 0,
 		MountSsdPath:                 nodeCachePath,
 		Name:                         cache.Name,
 		ServerSizeInGB:               cache.Spec.ServerSizeInGB,
