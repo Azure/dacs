@@ -49,15 +49,6 @@ on:
           ubuntu-24.04-arm) for arm64.
         type: string
         default: ubuntu-latest
-      python_package_version:
-        description: Version stamped into the built wheel (CI placeholder by default).
-        type: string
-        default: 0.0.0
-      package_channel:
-        description: Channel suffix for the wheel package name (dev/official).
-        type: string
-        default: dev
-
 permissions: {}
 
 jobs:
@@ -84,6 +75,8 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
@@ -200,6 +193,8 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Stage compliance files
         env:
@@ -260,6 +255,8 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Stage base image compliance files
         run: |
@@ -335,6 +332,8 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Restore build tree
         uses: ./.github/actions/restore-build
@@ -344,9 +343,6 @@ jobs:
 
       - name: Build wheel
         run: make python-package
-        env:
-          PYTHON_PACKAGE_VERSION: ${{ inputs.python_package_version }}
-          PACKAGE_CHANNEL: ${{ inputs.package_channel }}
 
       - name: Upload wheel
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -374,6 +370,8 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Restore build tree
         uses: ./.github/actions/restore-build

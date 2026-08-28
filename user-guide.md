@@ -109,8 +109,6 @@ helm install dacs \
   --version <version> \
   --namespace dacs-system \
   --create-namespace \
-  --set manager.image.repository=dacstest.azurecr.io/cache-controller \
-  --set manager.cacheServerImage.repository=dacstest.azurecr.io/cache-server \
   --wait --timeout 10m
 ```
 
@@ -123,8 +121,6 @@ helm upgrade dacs \
   oci://dacstest.azurecr.io/acstor/charts/dacs \
   --version <version> \
   --namespace dacs-system \
-  --set manager.image.repository=dacstest.azurecr.io/cache-controller \
-  --set manager.cacheServerImage.repository=dacstest.azurecr.io/cache-server \
   --set cache.enabled=true \
   --set cache.scaling.static.numServers=3 \
   --set cache.serverSizeInGB=100
@@ -201,8 +197,6 @@ helm upgrade dacs \
   oci://dacstest.azurecr.io/acstor/charts/dacs \
   --version <version> \
   --namespace dacs-system \
-  --set manager.image.repository=dacstest.azurecr.io/cache-controller \
-  --set manager.cacheServerImage.repository=dacstest.azurecr.io/cache-server \
   --set cache.enabled=true \
   --set cache.scaling.static.numServers=5 \
   --set cache.serverSizeInGB=100 \

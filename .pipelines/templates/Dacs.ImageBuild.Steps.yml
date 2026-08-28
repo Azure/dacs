@@ -24,8 +24,10 @@ steps:
   - template: Dacs.RestoreBuild.Steps.yml
     parameters:
       architecture: ${{ parameters.architecture }}
-      fetchDepth: 2
+      fetchDepth: 0
       persistCredentials: true
+
+  - template: Dacs.Version.Steps.yml
 
   - bash: |
       set -euo pipefail
@@ -65,45 +67,20 @@ steps:
   - bash: |
       set -euo pipefail
 
-      publish_latest=false
-      if [[ "$BUILD_SOURCEBRANCH" == "refs/heads/main" &&
-            "$BUILD_REASON" != "PullRequest" ]]; then
-        publish_latest=true
-      fi
-
       USE_AZURE_CFS=true \
       DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
       BUILD_TYPE=Release \
       BUILD_ARCH="${{ parameters.architecture }}" \
-      PUBLISH_LATEST="$publish_latest" \
         make images
     displayName: Build linux/${{ parameters.architecture }} images
     workingDirectory: $(Pipeline.Workspace)/s/dacs
 
   - bash: |
       set -euo pipefail
-      DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
+      DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io/dacs" \
       BUILD_NUMBER="$(finalTag)" \
       BUILD_ARCH="${{ parameters.architecture }}" \
       OUTPUT_DIR="$(Build.ArtifactStagingDirectory)/container-images" \
         ./.pipelines/scripts/publish/save-image-tarballs.sh
     displayName: Package linux/${{ parameters.architecture }} images
-    workingDirectory: $(Pipeline.Workspace)/s/dacs
-
-  - bash: |
-      set -euo pipefail
-
-      publish_latest=false
-      if [[ "$BUILD_SOURCEBRANCH" == "refs/heads/main" &&
-            "$BUILD_REASON" != "PullRequest" ]]; then
-        publish_latest=true
-      fi
-
-      DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
-      BUILD_NUMBER="$(finalTag)" \
-      BUILD_ARCH="${{ parameters.architecture }}" \
-      PUBLISH_LATEST="$publish_latest" \
-        ./.pipelines/scripts/publish/publish-images.sh
-      cp docker-images.txt "$(Build.ArtifactStagingDirectory)/container-images/"
-    displayName: Publish linux/${{ parameters.architecture }} images
     workingDirectory: $(Pipeline.Workspace)/s/dacs

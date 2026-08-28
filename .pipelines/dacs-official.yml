@@ -23,7 +23,7 @@ pr:
 
 schedules:
   - cron: "0 6 * * 0"
-    displayName: Weekly DACS ACR build
+    displayName: Weekly DACS build
     branches:
       include:
         - main
@@ -74,8 +74,6 @@ extends:
       - stage: Build_amd64
         displayName: Compile linux/amd64
         dependsOn: []
-        variables:
-          finalTag: git-$(Build.SourceVersion)-$(Build.BuildId)
         jobs:
           - job: Build_amd64
             displayName: Compile linux/amd64
@@ -88,10 +86,14 @@ extends:
                 - output: pipelineArtifact
                   path: $(Build.ArtifactStagingDirectory)/python-wheel
                   artifact: dacs-python-wheel-linux-amd64
+                - output: pipelineArtifact
+                  path: $(Build.ArtifactStagingDirectory)/rust-crate
+                  artifact: dacs-rust-crate-linux-amd64
             steps:
               - checkout: self
                 path: s/dacs
-                fetchDepth: 2
+                fetchDepth: 0
+                fetchTags: true
                 persistCredentials: true
               - template: /.pipelines/templates/Dacs.Build.Steps.yml@self
                 parameters:
@@ -102,8 +104,6 @@ extends:
       - stage: Build_arm64
         displayName: Compile linux/arm64
         dependsOn: []
-        variables:
-          finalTag: git-$(Build.SourceVersion)-$(Build.BuildId)
         pool:
           name: 1es-dacs-pool-arm64
           image: 1es-pt-linux-arm64
@@ -121,10 +121,14 @@ extends:
                 - output: pipelineArtifact
                   path: $(Build.ArtifactStagingDirectory)/python-wheel
                   artifact: dacs-python-wheel-linux-arm64
+                - output: pipelineArtifact
+                  path: $(Build.ArtifactStagingDirectory)/rust-crate
+                  artifact: dacs-rust-crate-linux-arm64
             steps:
               - checkout: self
                 path: s/dacs
-                fetchDepth: 2
+                fetchDepth: 0
+                fetchTags: true
                 persistCredentials: true
               - template: /.pipelines/templates/Dacs.Build.Steps.yml@self
                 parameters:
@@ -135,8 +139,6 @@ extends:
       - stage: Images_amd64
         displayName: Build linux/amd64 images
         dependsOn: Build_amd64
-        variables:
-          finalTag: git-$(Build.SourceVersion)-$(Build.BuildId)
         jobs:
           - job: Images_amd64
             displayName: Build linux/amd64 images
@@ -161,8 +163,6 @@ extends:
           image: 1es-pt-linux-arm64
           os: linux
           hostArchitecture: arm64
-        variables:
-          finalTag: git-$(Build.SourceVersion)-$(Build.BuildId)
         jobs:
           - job: Images_arm64
             displayName: Build linux/arm64 images
@@ -236,8 +236,8 @@ extends:
               azureServiceConnection: ${{ parameters.azureServiceConnection }}
               azureStorageBlobPath: ${{ parameters.azureStorageBlobPath }}
 
-      - stage: Publish
-        displayName: Publish DACS
+      - stage: Package
+        displayName: Package DACS artifacts
         dependsOn:
           - Images_amd64
           - Images_arm64
@@ -246,11 +246,9 @@ extends:
             in(dependencies.Images_amd64.result, 'Succeeded', 'SucceededWithIssues'),
             in(dependencies.Images_arm64.result, 'Succeeded', 'SucceededWithIssues')
           )
-        variables:
-          finalTag: git-$(Build.SourceVersion)-$(Build.BuildId)
         jobs:
-          - job: Publish
-            displayName: Publish artifacts
+          - job: Package
+            displayName: Package artifacts
             timeoutInMinutes: 120
             templateContext:
               outputs:
@@ -263,42 +261,23 @@ extends:
             steps:
               - checkout: self
                 path: s/dacs
-                fetchDepth: 1
+                fetchDepth: 0
+                fetchTags: true
               - task: HelmInstaller@1
                 displayName: Install Helm
                 inputs:
                   helmVersionToInstall: 3.21.3
-              - task: AzureCLI@2
-                displayName: Sign in to ACR
-                inputs:
-                  azureSubscription: ${{ parameters.azureServiceConnection }}
-                  scriptType: bash
-                  scriptLocation: inlineScript
-                  inlineScript: az acr login --name "${{ parameters.acrName }}"
+              - template: /.pipelines/templates/Dacs.Version.Steps.yml@self
               - bash: |
                   set -euo pipefail
-                  docker version
-                  docker buildx version
                   helm version
-                displayName: Check publication tools
+                  git version
+                displayName: Check packaging tools
               - bash: |
                   set -euo pipefail
                   readonly registry="${{ parameters.acrName }}.azurecr.io"
                   export DOCKER_REGISTRY="$registry"
-                  export BUILD_NUMBER="$(finalTag)"
-                  export HELM_REGISTRY_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}/config.json"
-
-                  publish_latest=false
-                  if [[ "$BUILD_SOURCEBRANCH" == "refs/heads/main" &&
-                        "$BUILD_REASON" != "PullRequest" ]]; then
-                    publish_latest=true
-                  fi
-
-                  BUILD_ARCHS="amd64 arm64" \
-                  PUBLISH_LATEST="$publish_latest" \
-                    ./.pipelines/scripts/publish/publish-multiplatform-manifests.sh
-                  PUBLISH_LATEST="$publish_latest" \
-                    ./.pipelines/scripts/publish/publish-helm-chart.sh --push
+                  ./.pipelines/scripts/publish/publish-helm-chart.sh
 
                   readonly helm_artifacts="$(Build.ArtifactStagingDirectory)/helm-charts"
                   readonly release_metadata="$(Build.ArtifactStagingDirectory)/release-metadata"
@@ -312,11 +291,16 @@ extends:
                   )
 
                   printf '%s\n' \
-                    "CACHE_SERVER_IMAGE=$registry/cache-server:$(finalTag)" \
-                    "CACHE_CLIENT_IMAGE=$registry/cache-test-client:$(finalTag)" \
-                    "CACHE_SERVER_SCHEDULER_IMAGE=$registry/cacheserver-scheduler:$(finalTag)" \
-                    "CACHE_CONTROLLER_IMAGE=$registry/cache-controller:$(finalTag)" \
+                    "SOURCE_VERSION=$(./.pipelines/scripts/get-version.sh source)" \
+                    "CONTAINER_VERSION=$(finalTag)" \
+                    "GIT_COMMIT=$(git rev-parse HEAD)" \
+                    "IMAGE_ARTIFACT_AMD64=container-images-linux-amd64" \
+                    "IMAGE_ARTIFACT_ARM64=container-images-linux-arm64" \
+                    "CACHE_SERVER_IMAGE=$registry/dacs/cache-server:$(finalTag)-linux-{amd64,arm64}" \
+                    "CACHE_CLIENT_IMAGE=$registry/dacs/cache-test-client:$(finalTag)-linux-{amd64,arm64}" \
+                    "CACHE_SERVER_SCHEDULER_IMAGE=$registry/dacs/cacheserver-scheduler:$(finalTag)-linux-{amd64,arm64}" \
+                    "CACHE_CONTROLLER_IMAGE=$registry/dacs/cache-controller:$(finalTag)-linux-{amd64,arm64}" \
                     > "$release_metadata/docker-images.txt"
                   cp helm-chart.txt "$release_metadata/"
-                displayName: Publish artifacts
+                displayName: Package versioned artifacts
                 workingDirectory: $(Pipeline.Workspace)/s/dacs

@@ -14,7 +14,7 @@ parameters:
     default: false
   - name: fetchDepth
     type: number
-    default: 1
+    default: 0
   - name: persistCredentials
     type: boolean
     default: false
@@ -23,6 +23,7 @@ steps:
   - checkout: self
     path: s/dacs
     fetchDepth: ${{ parameters.fetchDepth }}
+    fetchTags: true
     persistCredentials: ${{ parameters.persistCredentials }}
 
   - task: DownloadPipelineArtifact@2

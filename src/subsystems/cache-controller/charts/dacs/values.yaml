@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+global:
+  registry: dacstest.azurecr.io
+
 # Name prefix for all resources (e.g., dacs-manager, dacs-webhook)
 namePrefix: dacs
 
@@ -25,13 +28,13 @@ manager:
   logLevel: info
   
   image:
-    repository: acstor/dacs-controller
+    repository: dacs/cache-controller
     tag: ""  # Empty defaults to .Chart.AppVersion (e.g. "local" for dev, build number for published charts)
     pullPolicy: IfNotPresent
 
   # Cache server image used by controller to create cache server pods
   cacheServerImage:
-    repository: acstor/dacs-server
+    repository: dacs/cache-server
     tag: "" # Empty defaults to .Chart.AppVersion (e.g. "local" for dev, build number for published charts)
 
   # Feature gates to enable (e.g. "UseZeroCopy=true,Foo=false")

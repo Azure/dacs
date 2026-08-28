@@ -258,8 +258,11 @@ helm-uninstall: helm ## Uninstall cache-server chart.
 define helm_install_dacs_cache
 $(HELM_BIN) upgrade --install dacs ./$(DACS_CACHE_CHART_PATH) \
 	--namespace $(DACS_CACHE_NAMESPACE) --create-namespace \
+	--set-string global.registry= \
 	--set manager.image.repository=$(1) \
 	--set manager.image.tag=$(2) \
+	--set manager.cacheServerImage.repository=$(LOCAL_CACHE_SERVER_IMG) \
+	--set manager.cacheServerImage.tag=$(LOCAL_CACHE_SERVER_TAG) \
 	--set cache.enabled=true \
 	--wait --timeout 5m --atomic $(HELM_ARGS)
 endef
@@ -268,8 +271,9 @@ define helm_install_dacs_cache_remote
 $(HELM_BIN) upgrade --install dacs oci://$(DOCKER_REGISTRY)/$(DACS_CACHE_CHART_REPO) \
 	--version $(DACS_CACHE_CHART_VERSION) \
 	--namespace $(DACS_CACHE_NAMESPACE) --create-namespace \
-	--set manager.image.repository=$(CACHE_CONTROLLER_IMG) \
+	--set global.registry=$(DOCKER_REGISTRY) \
 	--set manager.image.tag=$(IMAGE_TAG) \
+	--set manager.cacheServerImage.tag=$(IMAGE_TAG) \
 	--set cache.enabled=true \
 	--wait --timeout 5m --atomic $(HELM_ARGS)
 endef

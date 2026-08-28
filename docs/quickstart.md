@@ -77,8 +77,6 @@ helm upgrade --install dacs "$CHART_REF" \
   --atomic \
   --wait \
   --timeout 10m \
-  --set manager.image.repository=dacstest.azurecr.io/cache-controller \
-  --set manager.cacheServerImage.repository=dacstest.azurecr.io/cache-server \
   --set cache.enabled=true \
   --set cache.name=cache-sample \
   --set cache.scaling.static.numServers=1 \
