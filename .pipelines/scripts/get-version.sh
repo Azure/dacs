@@ -20,6 +20,10 @@ readonly SCRIPT_DIR
 readonly REPOSITORY_ROOT="${DACS_REPOSITORY_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 readonly FORMAT="${1:-source}"
 
+git_repository() {
+    git -c "safe.directory=${REPOSITORY_ROOT}" -C "${REPOSITORY_ROOT}" "$@"
+}
+
 valid_number() {
     [[ "$1" == "0" || "$1" != 0* ]]
 }
@@ -29,19 +33,23 @@ valid_core() {
 }
 
 derive_source_version() {
+    local commit_count
     local description
     local reachable_tags
+    local sha
 
-    if ! description="$(git -C "${REPOSITORY_ROOT}" describe \
+    if ! description="$(git_repository describe \
         --tags --match='v*' --abbrev=14 HEAD 2>&1)"; then
-        if ! git -C "${REPOSITORY_ROOT}" rev-parse --verify HEAD >/dev/null 2>&1; then
+        if ! git_repository rev-parse --verify HEAD >/dev/null 2>&1; then
             echo "Unable to derive a version: ${description}" >&2
             return 1
         fi
 
-        reachable_tags="$(git -C "${REPOSITORY_ROOT}" tag --merged HEAD --list 'v*')"
+        reachable_tags="$(git_repository tag --merged HEAD --list 'v*')"
         if [[ -z "${reachable_tags}" ]]; then
-            echo "v0.1.0"
+            commit_count="$(git_repository rev-list --count HEAD)"
+            sha="$(git_repository rev-parse --short=14 HEAD)"
+            echo "v0.1.0-alpha.0.${commit_count}+${sha}"
             return
         fi
 
