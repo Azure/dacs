@@ -11,9 +11,9 @@ require (
 	github.com/spf13/viper v1.21.0
 	go.uber.org/zap v1.27.1
 	gotest.tools/v3 v3.5.2
-	k8s.io/api v0.35.7
+	k8s.io/api v0.35.8
 	k8s.io/apimachinery v0.35.8
-	k8s.io/client-go v0.35.7
+	k8s.io/client-go v0.35.8
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
 	sigs.k8s.io/controller-runtime v0.23.3
@@ -103,9 +103,9 @@ require (
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.35.7 // indirect
-	k8s.io/apiserver v0.35.7 // indirect
-	k8s.io/component-base v0.35.7 // indirect
+	k8s.io/apiextensions-apiserver v0.35.8 // indirect
+	k8s.io/apiserver v0.35.8 // indirect
+	k8s.io/component-base v0.35.8 // indirect
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.4 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
