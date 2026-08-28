@@ -15,9 +15,17 @@ Build automation derives the version from the nearest reachable Git tag:
 git describe --tags --match='v*' --abbrev=14 HEAD
 ```
 
-If no matching tag is reachable, the version defaults to `v0.1.0`. This
-bootstrap default does not create a stable release. Stable publication requires
-an exact stable tag on the release commit.
+If no matching tag is reachable, the version uses the initial release line,
+the total commit count, and the abbreviated commit ID:
+
+```text
+v0.1.0-alpha.0.<commit-count>+<commit-id>
+```
+
+For example, commit 42 with ID `a1b2c3d4e5f6a7` produces
+`v0.1.0-alpha.0.42+a1b2c3d4e5f6a7`. This bootstrap version is always a
+development version. Stable publication requires an exact stable tag on the
+release commit.
 
 Builds must fetch the Git tags and history required by `git describe`.
 
