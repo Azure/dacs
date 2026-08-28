@@ -3,6 +3,15 @@
   "type": "object",
   "required": ["manager"],
   "properties": {
+    "global": {
+      "type": "object",
+      "properties": {
+        "registry": {
+          "type": "string",
+          "description": "Registry used for DACS images (empty disables the registry prefix)"
+        }
+      }
+    },
     "manager": {
       "type": "object",
       "required": ["image"],

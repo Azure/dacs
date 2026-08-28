@@ -31,8 +31,8 @@ The package is built as `manylinux` wheels for both `x86_64` (amd64) and `aarch6
 Wheel filenames look like:
 
 ```
-dacs_client_official-<version>-py3-none-manylinux_X_Y_x86_64.whl
-dacs_client_official-<version>-py3-none-manylinux_X_Y_aarch64.whl
+dacs_client-<version>-py3-none-manylinux_X_Y_x86_64.whl
+dacs_client-<version>-py3-none-manylinux_X_Y_aarch64.whl
 ```
 
 The exact `manylinux_X_Y` tag depends on the glibc version of the build image; `pip` will pick the most compatible wheel.
@@ -42,7 +42,7 @@ The exact `manylinux_X_Y` tag depends on the glibc version of the build image; `
 Install the wheel selected for your platform:
 
 ```bash
-python3 -m pip install /path/to/dacs_client_official-<version>-*.whl
+python3 -m pip install /path/to/dacs_client-<version>-*.whl
 ```
 
 ---
@@ -893,46 +893,33 @@ The wheel is built by the helper script
 ### Build via the helper script (recommended)
 
 ```bash
-export PYTHON_PACKAGE_VERSION=0.9.0.20260521.1   # SemVer: 0.9.0.YYYYMMDDN
-export PACKAGE_CHANNEL=dev                       # 'official' or 'dev'
-export BUILD_ARCHITECTURE=amd64                  # 'amd64' or 'arm64' (auto-detected if unset)
+export BUILD_ARCHITECTURE=amd64 # 'amd64' or 'arm64' (auto-detected if unset)
 
 ./.pipelines/scripts/build/build-python-package.sh
 ls -al src/subsystems/storage/dacs_client/dist/
 ```
 
+The package version is derived from Git according to
+[VERSIONING.md](../../../../VERSIONING.md).
+
 The script:
 
-1. Substitutes the `0.9.0-PLACEHOLDER` value in `setup.py` with `PYTHON_PACKAGE_VERSION` and the `dacs_cache_PLACEHOLDER` name in `pyproject.toml` with `dacs-client-${PACKAGE_CHANNEL}`.
-2. Runs `python setup.py bdist_wheel`, producing a wheel named `dacs_client_<channel>-<version>-py3-none-linux_{x86_64,aarch64}.whl`.
-3. Restores `setup.py` and `pyproject.toml` from git.
+1. Substitutes the derived version in `py_dacs_client/__init__.py`; `pyproject.toml` keeps the fixed `dacs-client` distribution name.
+2. Runs `python -m build`, producing a wheel named `dacs_client-<version>-py3-none-linux_{x86_64,aarch64}.whl`.
+3. Restores `py_dacs_client/__init__.py`.
 4. Runs `auditwheel repair` on the produced wheel. This bundles all required native shared libraries into the wheel and re-tags it as `manylinux_X_Y_{x86_64,aarch64}`.
 5. Deletes the unrepaired `linux_*` wheel so only the `manylinux` wheel remains.
 
 The final artifact in `dist/` looks like (the `manylinux_X_Y` tag is set by `auditwheel` based on the build image's glibc, e.g. `manylinux_2_31` on Ubuntu 20.04):
 
 ```
-dacs_client_official-0.9.0.20260521.1-py3-none-manylinux_X_Y_x86_64.whl
+dacs_client-0.1.0-py3-none-manylinux_X_Y_x86_64.whl
 ```
 
 ### Build manually
 
-```bash
-cd src/subsystems/storage/dacs_client
-export BUILD_ARCHITECTURE=amd64
-export BUILD_CHANNEL=official
-# Inside the venv from the prerequisites step above, replace placeholders first:
-# sed -i "s/0.9.0-PLACEHOLDER/0.9.0.20260521.1/" setup.py
-# sed -i 's/dacs_cache_PLACEHOLDER/dacs-client-official/' pyproject.toml
-python3 setup.py bdist_wheel
-python3 -m auditwheel repair dist/*.whl -w dist/
-ls -al dist/
-# Don't forget to restore: git checkout setup.py pyproject.toml
-```
-
-> Note: `BUILD_ARCHITECTURE` and `BUILD_CHANNEL` are **required** by `setup.py`. They determine:
-> - the package name (`dacs-client-official` vs `dacs-client-dev`), and
-> - the wheel platform tag (`linux_x86_64` vs `linux_aarch64`) before `auditwheel` re-tags it.
+Use the helper script above so the wheel receives the Git-derived version and
+the staged package metadata is restored even when the build fails.
 
 ## To Publish
 

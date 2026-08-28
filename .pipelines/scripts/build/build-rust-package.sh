@@ -28,6 +28,11 @@ readonly LICENSE_SOURCE="${REPOSITORY_ROOT}/LICENSE"
 readonly NOTICE_SOURCE="${REPOSITORY_ROOT}/NOTICE.txt"
 readonly LICENSE_STAGE="${CRATE_DIR}/LICENSE"
 readonly NOTICE_STAGE="${CRATE_DIR}/NOTICE.txt"
+readonly MANIFEST_FILE="${CRATE_DIR}/Cargo.toml"
+readonly LOCK_FILE="${CRATE_DIR}/Cargo.lock"
+readonly TARGET_DIR="${CARGO_TARGET_DIR:-${CRATE_DIR}/target}"
+RUST_VERSION="$("${REPOSITORY_ROOT}/.pipelines/scripts/get-version.sh" rust)"
+readonly RUST_VERSION
 
 case "${BUILD_ARCH}" in
   amd64)
@@ -44,26 +49,6 @@ esac
 
 readonly LIBRARY_SOURCE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIG}/${BUILD_ARCH}/native-storage/storage/libStorageDirect.so"
 readonly NATIVE_STAGE_DIR="${CRATE_DIR}/native/${NATIVE_DIR}"
-BACKUP_DIR="$(mktemp -d)"
-readonly BACKUP_DIR
-HAD_NATIVE_STAGE=0
-STAGED_COMPLIANCE_FILES=()
-
-cleanup() {
-  local staged_file
-
-  rm -rf -- "${NATIVE_STAGE_DIR}"
-  for staged_file in "${STAGED_COMPLIANCE_FILES[@]}"; do
-    rm -f -- "${staged_file}"
-  done
-  if [[ "${HAD_NATIVE_STAGE}" -eq 1 ]]; then
-    mkdir -p -- "$(dirname "${NATIVE_STAGE_DIR}")"
-    mv -- "${BACKUP_DIR}/native-stage" "${NATIVE_STAGE_DIR}"
-  fi
-  rm -rf -- "${BACKUP_DIR}"
-}
-
-trap cleanup EXIT
 
 if [[ ! -f "${LIBRARY_SOURCE}" ]]; then
   echo "Native library not found: ${LIBRARY_SOURCE}" >&2
@@ -82,10 +67,36 @@ if [[ -e "${LICENSE_STAGE}" || -e "${NOTICE_STAGE}" ]]; then
   exit 1
 fi
 
+BACKUP_DIR="$(mktemp -d "${CRATE_DIR}/.dacs-rust-package.XXXXXX")"
+readonly BACKUP_DIR
+HAD_NATIVE_STAGE=0
+STAGED_COMPLIANCE_FILES=()
+
+cleanup() {
+  local staged_file
+
+  rm -rf -- "${NATIVE_STAGE_DIR}"
+  for staged_file in "${STAGED_COMPLIANCE_FILES[@]}"; do
+    rm -f -- "${staged_file}"
+  done
+  cp -- "${BACKUP_DIR}/Cargo.toml" "${MANIFEST_FILE}"
+  cp -- "${BACKUP_DIR}/Cargo.lock" "${LOCK_FILE}"
+  if [[ "${HAD_NATIVE_STAGE}" -eq 1 ]]; then
+    mkdir -p -- "$(dirname "${NATIVE_STAGE_DIR}")"
+    mv -- "${BACKUP_DIR}/native-stage" "${NATIVE_STAGE_DIR}"
+  fi
+  rm -rf -- "${BACKUP_DIR}"
+}
+
+cp -- "${MANIFEST_FILE}" "${BACKUP_DIR}/Cargo.toml"
+cp -- "${LOCK_FILE}" "${BACKUP_DIR}/Cargo.lock"
+
 if [[ -e "${NATIVE_STAGE_DIR}" ]]; then
   mv -- "${NATIVE_STAGE_DIR}" "${BACKUP_DIR}/native-stage"
   HAD_NATIVE_STAGE=1
 fi
+
+trap cleanup EXIT
 
 echo "Staging ${LIBRARY_SOURCE}..."
 mkdir -p -- "${NATIVE_STAGE_DIR}"
@@ -95,18 +106,25 @@ STAGED_COMPLIANCE_FILES+=("${LICENSE_STAGE}")
 cp -- "${NOTICE_SOURCE}" "${NOTICE_STAGE}"
 STAGED_COMPLIANCE_FILES+=("${NOTICE_STAGE}")
 
-rm -f -- "${CRATE_DIR}"/target/package/*.crate
+sed -i \
+  "/^\[package\]/,/^\[/ s/^version = \".*\"/version = \"${RUST_VERSION}\"/" \
+  "${MANIFEST_FILE}"
+sed -i \
+  "/^name = \"dacs-rust-client\"$/,/^$/ s/^version = \".*\"/version = \"${RUST_VERSION}\"/" \
+  "${LOCK_FILE}"
 
-echo "Packaging Rust client for ${BUILD_ARCH}..."
+rm -f -- "${TARGET_DIR}"/package/*.crate
+
+echo "Packaging Rust client ${RUST_VERSION} for ${BUILD_ARCH}..."
 cargo package \
   --allow-dirty \
   --locked \
   --manifest-path "${CRATE_DIR}/Cargo.toml" \
   --no-verify
 
-CRATE_FILE="$(find "${CRATE_DIR}/target/package" -maxdepth 1 -type f -name '*.crate' -print -quit)"
+CRATE_FILE="$(find "${TARGET_DIR}/package" -maxdepth 1 -type f -name '*.crate' -print -quit)"
 if [[ -z "${CRATE_FILE}" ]]; then
-  echo "Cargo did not produce a crate under ${CRATE_DIR}/target/package" >&2
+  echo "Cargo did not produce a crate under ${TARGET_DIR}/package" >&2
   exit 1
 fi
 

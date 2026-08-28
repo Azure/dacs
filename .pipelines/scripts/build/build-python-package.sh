@@ -14,10 +14,13 @@
 # limitations under the License.
 
 # Script to build Python package (build only, no publishing)
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+readonly VERSION_HELPER="$REPOSITORY_ROOT/.pipelines/scripts/get-version.sh"
+PYTHON_PACKAGE_VERSION="$("$VERSION_HELPER" python)"
+readonly PYTHON_PACKAGE_VERSION
 
 # Get architecture from environment (set by pipeline)
 BUILD_ARCH="${BUILD_ARCHITECTURE:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
@@ -55,11 +58,10 @@ fi
 cd "$REPOSITORY_ROOT/src/subsystems/storage/dacs_client"
 
 readonly INIT_FILE="py_dacs_client/__init__.py"
-readonly PYPROJECT_FILE="pyproject.toml"
 readonly PACKAGE_LICENSE="LICENSE"
 readonly PACKAGE_NOTICE="NOTICE.txt"
 STAGED_COMPLIANCE_FILES=()
-BACKUP_DIR="$(mktemp -d)"
+BACKUP_DIR="$(mktemp -d ".dacs-python-package.XXXXXX")"
 readonly BACKUP_DIR
 
 cleanup_package_build() {
@@ -68,12 +70,10 @@ cleanup_package_build() {
     rm -f -- "$staged_file"
   done
   cp -- "$BACKUP_DIR/__init__.py" "$INIT_FILE"
-  cp -- "$BACKUP_DIR/pyproject.toml" "$PYPROJECT_FILE"
   rm -rf -- "$BACKUP_DIR"
 }
 
 cp -- "$INIT_FILE" "$BACKUP_DIR/__init__.py"
-cp -- "$PYPROJECT_FILE" "$BACKUP_DIR/pyproject.toml"
 trap cleanup_package_build EXIT
 
 for source_file in "$REPOSITORY_ROOT/LICENSE" "$REPOSITORY_ROOT/NOTICE.txt"; do
@@ -93,19 +93,8 @@ STAGED_COMPLIANCE_FILES+=("$PACKAGE_LICENSE")
 cp -- "$REPOSITORY_ROOT/NOTICE.txt" "$PACKAGE_NOTICE"
 STAGED_COMPLIANCE_FILES+=("$PACKAGE_NOTICE")
 
-# =============================================================================
-# Version and channel - provided by pipeline via environment variables
-# =============================================================================
-if [ -z "${PYTHON_PACKAGE_VERSION:-}" ] || [ -z "${PACKAGE_CHANNEL:-}" ]; then
-  echo "ERROR: PYTHON_PACKAGE_VERSION and PACKAGE_CHANNEL must be set!"
-  echo "  PYTHON_PACKAGE_VERSION=${PYTHON_PACKAGE_VERSION:-<not set>}"
-  echo "  PACKAGE_CHANNEL=${PACKAGE_CHANNEL:-<not set>}"
-  exit 1
-fi
-
 echo ""
 echo "Python package version: $PYTHON_PACKAGE_VERSION"
-echo "Python package channel: $PACKAGE_CHANNEL"
 echo ""
 
 # Extract placeholder version from __init__.py (should be '0.9.0-PLACEHOLDER')
@@ -118,12 +107,7 @@ fi
 # Replace placeholder with actual calculated version
 sed -i "s/__version__ = \"${ORIGINAL_VERSION}\"/__version__ = \"${PYTHON_PACKAGE_VERSION}\"/" "$INIT_FILE"
 
-echo "Version updated in $INIT_FILE: $ORIGINAL_VERSION → $PYTHON_PACKAGE_VERSION"
-
-# Replace channel placeholder in pyproject.toml
-PACKAGE_NAME="dacs-client-${PACKAGE_CHANNEL}"
-sed -i "s/^name = \"dacs_cache_PLACEHOLDER\"/name = \"${PACKAGE_NAME}\"/" "$PYPROJECT_FILE"
-echo "Name updated in pyproject.toml: dacs_cache_PLACEHOLDER → ${PACKAGE_NAME}"
+echo "Version updated in $INIT_FILE: $ORIGINAL_VERSION -> $PYTHON_PACKAGE_VERSION"
 echo ""
 
 # Clean previous builds
@@ -144,11 +128,12 @@ $PYTHON_CMD -m pip install --upgrade build pip setuptools wheel packaging "audit
 # pip may install the patchelf/auditwheel entry points under the user site
 # (~/.local/bin) when running as a non-root container user; make sure auditwheel
 # can find the patchelf binary on PATH.
-export PATH="$($PYTHON_CMD -m site --user-base)/bin:$PATH"
+USER_BASE="$($PYTHON_CMD -c 'import site; print(site.getuserbase())')"
+readonly USER_BASE
+export PATH="${USER_BASE}/bin:$PATH"
 
-# Export architecture and channel for setup.py to use
+# Export architecture for setup.py to use
 export BUILD_ARCHITECTURE="$BUILD_ARCH"
-export BUILD_CHANNEL="$PACKAGE_CHANNEL"
 
 # Build wheel
 echo "Building Python wheel..."
@@ -208,7 +193,7 @@ ls -1 dist/*.whl | sed 's/^/  /'
 
 echo ""
 echo "=============================================="
-echo "✅ Build Complete!"
+echo "Build Complete!"
 echo "=============================================="
 echo "Architecture: $BUILD_ARCH"
 echo "Generated wheel(s):"

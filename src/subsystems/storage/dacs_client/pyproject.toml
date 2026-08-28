@@ -17,7 +17,7 @@ build-backend = "setuptools.build_meta"
 requires = [ "setuptools", "wheel" ]
 
 [project]
-name = "dacs_cache_PLACEHOLDER"
+name = "dacs-client"
 description = "Python package for DACS Client"
 readme = "README.md"
 license-files = [ "LICENSE", "NOTICE.txt", "LICENSES/*" ]
@@ -54,7 +54,7 @@ dynamic = [ "version" ]
 # blobfile is intentionally NOT a hard dep: it is only required if the user
 # opts into the blobfile monkey-patch via
 # `from py_dacs_client.dacs_blobfile_patcher import enable_dacs_backend`.
-# Install with `pip install dacs_cache[blobfile]` to enable that path.
+# Install with `pip install dacs-client[blobfile]` to enable that path.
 dependencies = [
   "azure-identity>=1.12",
 ]

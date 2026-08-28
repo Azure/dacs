@@ -35,10 +35,13 @@ helm install dacs ./charts/dacs \
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
+| `global.registry` | Registry used for DACS images | `dacstest.azurecr.io` |
 | `manager.replicas` | Number of controller replicas. Leader election is enabled automatically when `> 1`. | `1` |
-| `manager.image.repository` | Controller image repository | `acstor/dacs-controller` |
+| `manager.image.repository` | Controller image repository | `dacs/cache-controller` |
 | `manager.image.tag` | Controller image tag; empty uses the chart app version | `""` |
 | `manager.image.pullPolicy` | Image pull policy | `IfNotPresent` |
+| `manager.cacheServerImage.repository` | Cache server image repository | `dacs/cache-server` |
+| `manager.cacheServerImage.tag` | Cache server image tag; empty uses the chart app version | `""` |
 | `manager.logLevel` | Controller log level via env (`CACHE_CONTROLLER_LOGLEVEL`) | `info` |
 | `manager.resources.limits.cpu` | CPU limit | `500m` |
 | `manager.resources.limits.memory` | Memory limit | `512Mi` |

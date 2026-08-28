@@ -151,25 +151,18 @@ images:
 	@echo "Building Docker images..."
 	@./.pipelines/scripts/build/build-docker-images.sh
 
-## Python wheel build configuration (CI placeholders by default)
-PYTHON_PACKAGE_VERSION ?= 0.0.0
-PACKAGE_CHANNEL ?= dev
-
 # Build the dacs-client wheel from the compiled native library. Runs in the
 # native-build container (USE_CONTAINER=1) so the wheel links against the same
-# glibc the .so was built with. The version/channel are forwarded into the
-# container via bldenv.sh's --env allowlist (BUILD_ARCHITECTURE defaults to the
-# container's uname inside build-python-package.sh).
+# glibc the .so was built with. The package version is derived from Git.
 python-package:
 	@if [ "$(USE_CONTAINER)" = "1" ]; then \
 		echo "Building Python wheel (container mode)..." && \
-		BUILD_ARCH=$(BUILD_ARCH) PYTHON_PACKAGE_VERSION=$(PYTHON_PACKAGE_VERSION) PACKAGE_CHANNEL=$(PACKAGE_CHANNEL) ./bldenv.sh /bin/bash "./.pipelines/scripts/build/build-python-package.sh"; \
+		BUILD_ARCH=$(BUILD_ARCH) ./bldenv.sh /bin/bash "./.pipelines/scripts/build/build-python-package.sh"; \
 	else \
-		BUILD_ARCHITECTURE=$(BUILD_ARCH) PYTHON_PACKAGE_VERSION=$(PYTHON_PACKAGE_VERSION) PACKAGE_CHANNEL=$(PACKAGE_CHANNEL) ./.pipelines/scripts/build/build-python-package.sh; \
+		BUILD_ARCHITECTURE=$(BUILD_ARCH) ./.pipelines/scripts/build/build-python-package.sh; \
 	fi
 
-# For local use: publishes images and creates single-arch manifest
-# Pipeline uses publish-images.sh directly (without manifest) then calls publish-multiplatform-manifests.sh
+# Standalone local publication target. CI build pipelines do not invoke it.
 publish-images:
 	@echo "Publishing Docker images..."
 	@./.pipelines/scripts/publish/publish-images.sh
