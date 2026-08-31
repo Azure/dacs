@@ -17,6 +17,20 @@
 trigger: none
 pr: none
 
+parameters:
+  - name: acrName
+    displayName: ACR name without azurecr.io
+    type: string
+    default: dacstest
+  - name: azureServiceConnection
+    displayName: Azure Resource Manager service connection
+    type: string
+    default: dacs ARM Connection
+  - name: azureStorageBlobPath
+    displayName: Azure Blob fixture path
+    type: string
+    default: az://dacstest.blob.core.windows.net/dataset/client-integration
+
 resources:
   repositories:
     - repository: 1ESPipelineTemplates
@@ -32,12 +46,18 @@ extends:
       image: 1es-pt-linux-amd64
       os: linux
       hostArchitecture: amd64
+    sdl:
+      sourceAnalysisPool:
+        name: 1es-dacs-pool
+        image: 1es-windows-2022
+        os: windows
+      policheck:
+        enabled: true
+      credscan:
+        enabled: true
     stages:
-      - stage: Validate
-        displayName: Validate pull request pipeline
-        jobs:
-          - job: Placeholder
-            displayName: Run placeholder validation
-            steps:
-              - script: echo "Pull request pipeline is configured."
-                displayName: Validate pipeline configuration
+      - template: /.pipelines/templates/Dacs.Pipeline.Stages.yml@self
+        parameters:
+          acrName: ${{ parameters.acrName }}
+          azureServiceConnection: ${{ parameters.azureServiceConnection }}
+          azureStorageBlobPath: ${{ parameters.azureStorageBlobPath }}
