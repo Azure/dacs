@@ -25,58 +25,6 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type LockFileResponse_Result int32
-
-const (
-	LockFileResponse_SUCCESS        LockFileResponse_Result = 0
-	LockFileResponse_ALREADY_LOCKED LockFileResponse_Result = 1
-	LockFileResponse_AUTH_FAILED    LockFileResponse_Result = 2
-	LockFileResponse_INTERNAL_ERROR LockFileResponse_Result = 3
-)
-
-// Enum value maps for LockFileResponse_Result.
-var (
-	LockFileResponse_Result_name = map[int32]string{
-		0: "SUCCESS",
-		1: "ALREADY_LOCKED",
-		2: "AUTH_FAILED",
-		3: "INTERNAL_ERROR",
-	}
-	LockFileResponse_Result_value = map[string]int32{
-		"SUCCESS":        0,
-		"ALREADY_LOCKED": 1,
-		"AUTH_FAILED":    2,
-		"INTERNAL_ERROR": 3,
-	}
-)
-
-func (x LockFileResponse_Result) Enum() *LockFileResponse_Result {
-	p := new(LockFileResponse_Result)
-	*p = x
-	return p
-}
-
-func (x LockFileResponse_Result) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (LockFileResponse_Result) Descriptor() protoreflect.EnumDescriptor {
-	return file_cache_proto_enumTypes[0].Descriptor()
-}
-
-func (LockFileResponse_Result) Type() protoreflect.EnumType {
-	return &file_cache_proto_enumTypes[0]
-}
-
-func (x LockFileResponse_Result) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use LockFileResponse_Result.Descriptor instead.
-func (LockFileResponse_Result) EnumDescriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{2, 0}
-}
-
 type UploadResponse_Result int32
 
 const (
@@ -116,11 +64,11 @@ func (x UploadResponse_Result) String() string {
 }
 
 func (UploadResponse_Result) Descriptor() protoreflect.EnumDescriptor {
-	return file_cache_proto_enumTypes[1].Descriptor()
+	return file_cache_proto_enumTypes[0].Descriptor()
 }
 
 func (UploadResponse_Result) Type() protoreflect.EnumType {
-	return &file_cache_proto_enumTypes[1]
+	return &file_cache_proto_enumTypes[0]
 }
 
 func (x UploadResponse_Result) Number() protoreflect.EnumNumber {
@@ -129,7 +77,7 @@ func (x UploadResponse_Result) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use UploadResponse_Result.Descriptor instead.
 func (UploadResponse_Result) EnumDescriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{4, 0}
+	return file_cache_proto_rawDescGZIP(), []int{2, 0}
 }
 
 type DownloadResponse_Result int32
@@ -180,11 +128,11 @@ func (x DownloadResponse_Result) String() string {
 }
 
 func (DownloadResponse_Result) Descriptor() protoreflect.EnumDescriptor {
-	return file_cache_proto_enumTypes[2].Descriptor()
+	return file_cache_proto_enumTypes[1].Descriptor()
 }
 
 func (DownloadResponse_Result) Type() protoreflect.EnumType {
-	return &file_cache_proto_enumTypes[2]
+	return &file_cache_proto_enumTypes[1]
 }
 
 func (x DownloadResponse_Result) Number() protoreflect.EnumNumber {
@@ -193,7 +141,7 @@ func (x DownloadResponse_Result) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DownloadResponse_Result.Descriptor instead.
 func (DownloadResponse_Result) EnumDescriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{6, 0}
+	return file_cache_proto_rawDescGZIP(), []int{4, 0}
 }
 
 type DeleteResponse_Result int32
@@ -229,11 +177,11 @@ func (x DeleteResponse_Result) String() string {
 }
 
 func (DeleteResponse_Result) Descriptor() protoreflect.EnumDescriptor {
-	return file_cache_proto_enumTypes[3].Descriptor()
+	return file_cache_proto_enumTypes[2].Descriptor()
 }
 
 func (DeleteResponse_Result) Type() protoreflect.EnumType {
-	return &file_cache_proto_enumTypes[3]
+	return &file_cache_proto_enumTypes[2]
 }
 
 func (x DeleteResponse_Result) Number() protoreflect.EnumNumber {
@@ -242,7 +190,7 @@ func (x DeleteResponse_Result) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DeleteResponse_Result.Descriptor instead.
 func (DeleteResponse_Result) EnumDescriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{8, 0}
+	return file_cache_proto_rawDescGZIP(), []int{6, 0}
 }
 
 type IBInitResponse_Result int32
@@ -281,11 +229,11 @@ func (x IBInitResponse_Result) String() string {
 }
 
 func (IBInitResponse_Result) Descriptor() protoreflect.EnumDescriptor {
-	return file_cache_proto_enumTypes[4].Descriptor()
+	return file_cache_proto_enumTypes[3].Descriptor()
 }
 
 func (IBInitResponse_Result) Type() protoreflect.EnumType {
-	return &file_cache_proto_enumTypes[4]
+	return &file_cache_proto_enumTypes[3]
 }
 
 func (x IBInitResponse_Result) Number() protoreflect.EnumNumber {
@@ -294,7 +242,7 @@ func (x IBInitResponse_Result) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use IBInitResponse_Result.Descriptor instead.
 func (IBInitResponse_Result) EnumDescriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{10, 0}
+	return file_cache_proto_rawDescGZIP(), []int{8, 0}
 }
 
 type GetCacheLastAccessTimeDistributionResponse_Result int32
@@ -330,11 +278,11 @@ func (x GetCacheLastAccessTimeDistributionResponse_Result) String() string {
 }
 
 func (GetCacheLastAccessTimeDistributionResponse_Result) Descriptor() protoreflect.EnumDescriptor {
-	return file_cache_proto_enumTypes[5].Descriptor()
+	return file_cache_proto_enumTypes[4].Descriptor()
 }
 
 func (GetCacheLastAccessTimeDistributionResponse_Result) Type() protoreflect.EnumType {
-	return &file_cache_proto_enumTypes[5]
+	return &file_cache_proto_enumTypes[4]
 }
 
 func (x GetCacheLastAccessTimeDistributionResponse_Result) Number() protoreflect.EnumNumber {
@@ -343,7 +291,7 @@ func (x GetCacheLastAccessTimeDistributionResponse_Result) Number() protoreflect
 
 // Deprecated: Use GetCacheLastAccessTimeDistributionResponse_Result.Descriptor instead.
 func (GetCacheLastAccessTimeDistributionResponse_Result) EnumDescriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{12, 0}
+	return file_cache_proto_rawDescGZIP(), []int{10, 0}
 }
 
 type GetCacheServersResponse_Result int32
@@ -376,11 +324,11 @@ func (x GetCacheServersResponse_Result) String() string {
 }
 
 func (GetCacheServersResponse_Result) Descriptor() protoreflect.EnumDescriptor {
-	return file_cache_proto_enumTypes[6].Descriptor()
+	return file_cache_proto_enumTypes[5].Descriptor()
 }
 
 func (GetCacheServersResponse_Result) Type() protoreflect.EnumType {
-	return &file_cache_proto_enumTypes[6]
+	return &file_cache_proto_enumTypes[5]
 }
 
 func (x GetCacheServersResponse_Result) Number() protoreflect.EnumNumber {
@@ -389,7 +337,7 @@ func (x GetCacheServersResponse_Result) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use GetCacheServersResponse_Result.Descriptor instead.
 func (GetCacheServersResponse_Result) EnumDescriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{14, 0}
+	return file_cache_proto_rawDescGZIP(), []int{12, 0}
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -473,114 +421,6 @@ func (x *AuthParams) GetSignature() []byte {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Locking required to coordinate parallel uploads across workers
-// Only the client which succeeds should perform the upload
-type LockFileRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Requestid     string                 `protobuf:"bytes,999,opt,name=requestid,proto3" json:"requestid,omitempty"`
-	Filename      string                 `protobuf:"bytes,1,opt,name=filename,proto3" json:"filename,omitempty"`
-	Authparams    *AuthParams            `protobuf:"bytes,2,opt,name=authparams,proto3" json:"authparams,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *LockFileRequest) Reset() {
-	*x = LockFileRequest{}
-	mi := &file_cache_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *LockFileRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*LockFileRequest) ProtoMessage() {}
-
-func (x *LockFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cache_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use LockFileRequest.ProtoReflect.Descriptor instead.
-func (*LockFileRequest) Descriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *LockFileRequest) GetRequestid() string {
-	if x != nil {
-		return x.Requestid
-	}
-	return ""
-}
-
-func (x *LockFileRequest) GetFilename() string {
-	if x != nil {
-		return x.Filename
-	}
-	return ""
-}
-
-func (x *LockFileRequest) GetAuthparams() *AuthParams {
-	if x != nil {
-		return x.Authparams
-	}
-	return nil
-}
-
-// ---------------------------------------------------------------------------------------------------------------------
-type LockFileResponse struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Result        LockFileResponse_Result `protobuf:"varint,1,opt,name=result,proto3,enum=cache.LockFileResponse_Result" json:"result,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *LockFileResponse) Reset() {
-	*x = LockFileResponse{}
-	mi := &file_cache_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *LockFileResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*LockFileResponse) ProtoMessage() {}
-
-func (x *LockFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cache_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use LockFileResponse.ProtoReflect.Descriptor instead.
-func (*LockFileResponse) Descriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *LockFileResponse) GetResult() LockFileResponse_Result {
-	if x != nil {
-		return x.Result
-	}
-	return LockFileResponse_SUCCESS
-}
-
-// ---------------------------------------------------------------------------------------------------------------------
 // Upload the file contents into the cache
 type UploadRequest struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
@@ -605,7 +445,7 @@ type UploadRequest struct {
 
 func (x *UploadRequest) Reset() {
 	*x = UploadRequest{}
-	mi := &file_cache_proto_msgTypes[3]
+	mi := &file_cache_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -617,7 +457,7 @@ func (x *UploadRequest) String() string {
 func (*UploadRequest) ProtoMessage() {}
 
 func (x *UploadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cache_proto_msgTypes[3]
+	mi := &file_cache_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -630,7 +470,7 @@ func (x *UploadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadRequest.ProtoReflect.Descriptor instead.
 func (*UploadRequest) Descriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{3}
+	return file_cache_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *UploadRequest) GetRequestid() string {
@@ -699,7 +539,7 @@ type UploadResponse struct {
 
 func (x *UploadResponse) Reset() {
 	*x = UploadResponse{}
-	mi := &file_cache_proto_msgTypes[4]
+	mi := &file_cache_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -711,7 +551,7 @@ func (x *UploadResponse) String() string {
 func (*UploadResponse) ProtoMessage() {}
 
 func (x *UploadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cache_proto_msgTypes[4]
+	mi := &file_cache_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -724,7 +564,7 @@ func (x *UploadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadResponse.ProtoReflect.Descriptor instead.
 func (*UploadResponse) Descriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{4}
+	return file_cache_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *UploadResponse) GetResult() UploadResponse_Result {
@@ -752,7 +592,7 @@ type DownloadRequest struct {
 
 func (x *DownloadRequest) Reset() {
 	*x = DownloadRequest{}
-	mi := &file_cache_proto_msgTypes[5]
+	mi := &file_cache_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -764,7 +604,7 @@ func (x *DownloadRequest) String() string {
 func (*DownloadRequest) ProtoMessage() {}
 
 func (x *DownloadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cache_proto_msgTypes[5]
+	mi := &file_cache_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -777,7 +617,7 @@ func (x *DownloadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadRequest.ProtoReflect.Descriptor instead.
 func (*DownloadRequest) Descriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{5}
+	return file_cache_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *DownloadRequest) GetRequestid() string {
@@ -835,7 +675,7 @@ type DownloadResponse struct {
 
 func (x *DownloadResponse) Reset() {
 	*x = DownloadResponse{}
-	mi := &file_cache_proto_msgTypes[6]
+	mi := &file_cache_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -847,7 +687,7 @@ func (x *DownloadResponse) String() string {
 func (*DownloadResponse) ProtoMessage() {}
 
 func (x *DownloadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cache_proto_msgTypes[6]
+	mi := &file_cache_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -860,7 +700,7 @@ func (x *DownloadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadResponse.ProtoReflect.Descriptor instead.
 func (*DownloadResponse) Descriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{6}
+	return file_cache_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *DownloadResponse) GetResult() DownloadResponse_Result {
@@ -909,7 +749,7 @@ type DeleteRequest struct {
 
 func (x *DeleteRequest) Reset() {
 	*x = DeleteRequest{}
-	mi := &file_cache_proto_msgTypes[7]
+	mi := &file_cache_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -921,7 +761,7 @@ func (x *DeleteRequest) String() string {
 func (*DeleteRequest) ProtoMessage() {}
 
 func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cache_proto_msgTypes[7]
+	mi := &file_cache_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -934,7 +774,7 @@ func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRequest.ProtoReflect.Descriptor instead.
 func (*DeleteRequest) Descriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{7}
+	return file_cache_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *DeleteRequest) GetRequestid() string {
@@ -1020,7 +860,7 @@ type DeleteResponse struct {
 
 func (x *DeleteResponse) Reset() {
 	*x = DeleteResponse{}
-	mi := &file_cache_proto_msgTypes[8]
+	mi := &file_cache_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1032,7 +872,7 @@ func (x *DeleteResponse) String() string {
 func (*DeleteResponse) ProtoMessage() {}
 
 func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cache_proto_msgTypes[8]
+	mi := &file_cache_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1045,7 +885,7 @@ func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteResponse.ProtoReflect.Descriptor instead.
 func (*DeleteResponse) Descriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{8}
+	return file_cache_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *DeleteResponse) GetResult() DeleteResponse_Result {
@@ -1074,7 +914,7 @@ type IBInitRequest struct {
 
 func (x *IBInitRequest) Reset() {
 	*x = IBInitRequest{}
-	mi := &file_cache_proto_msgTypes[9]
+	mi := &file_cache_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1086,7 +926,7 @@ func (x *IBInitRequest) String() string {
 func (*IBInitRequest) ProtoMessage() {}
 
 func (x *IBInitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cache_proto_msgTypes[9]
+	mi := &file_cache_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1099,7 +939,7 @@ func (x *IBInitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IBInitRequest.ProtoReflect.Descriptor instead.
 func (*IBInitRequest) Descriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{9}
+	return file_cache_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *IBInitRequest) GetRequestid() string {
@@ -1162,7 +1002,7 @@ type IBInitResponse struct {
 
 func (x *IBInitResponse) Reset() {
 	*x = IBInitResponse{}
-	mi := &file_cache_proto_msgTypes[10]
+	mi := &file_cache_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1174,7 +1014,7 @@ func (x *IBInitResponse) String() string {
 func (*IBInitResponse) ProtoMessage() {}
 
 func (x *IBInitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cache_proto_msgTypes[10]
+	mi := &file_cache_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1187,7 +1027,7 @@ func (x *IBInitResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IBInitResponse.ProtoReflect.Descriptor instead.
 func (*IBInitResponse) Descriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{10}
+	return file_cache_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *IBInitResponse) GetResult() IBInitResponse_Result {
@@ -1237,7 +1077,7 @@ type GetCacheLastAccessTimeDistributionRequest struct {
 
 func (x *GetCacheLastAccessTimeDistributionRequest) Reset() {
 	*x = GetCacheLastAccessTimeDistributionRequest{}
-	mi := &file_cache_proto_msgTypes[11]
+	mi := &file_cache_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1249,7 +1089,7 @@ func (x *GetCacheLastAccessTimeDistributionRequest) String() string {
 func (*GetCacheLastAccessTimeDistributionRequest) ProtoMessage() {}
 
 func (x *GetCacheLastAccessTimeDistributionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cache_proto_msgTypes[11]
+	mi := &file_cache_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1262,7 +1102,7 @@ func (x *GetCacheLastAccessTimeDistributionRequest) ProtoReflect() protoreflect.
 
 // Deprecated: Use GetCacheLastAccessTimeDistributionRequest.ProtoReflect.Descriptor instead.
 func (*GetCacheLastAccessTimeDistributionRequest) Descriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{11}
+	return file_cache_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetCacheLastAccessTimeDistributionRequest) GetRequestid() string {
@@ -1297,7 +1137,7 @@ type GetCacheLastAccessTimeDistributionResponse struct {
 
 func (x *GetCacheLastAccessTimeDistributionResponse) Reset() {
 	*x = GetCacheLastAccessTimeDistributionResponse{}
-	mi := &file_cache_proto_msgTypes[12]
+	mi := &file_cache_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1309,7 +1149,7 @@ func (x *GetCacheLastAccessTimeDistributionResponse) String() string {
 func (*GetCacheLastAccessTimeDistributionResponse) ProtoMessage() {}
 
 func (x *GetCacheLastAccessTimeDistributionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cache_proto_msgTypes[12]
+	mi := &file_cache_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1322,7 +1162,7 @@ func (x *GetCacheLastAccessTimeDistributionResponse) ProtoReflect() protoreflect
 
 // Deprecated: Use GetCacheLastAccessTimeDistributionResponse.ProtoReflect.Descriptor instead.
 func (*GetCacheLastAccessTimeDistributionResponse) Descriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{12}
+	return file_cache_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GetCacheLastAccessTimeDistributionResponse) GetResult() GetCacheLastAccessTimeDistributionResponse_Result {
@@ -1349,7 +1189,7 @@ type GetCacheServersRequest struct {
 
 func (x *GetCacheServersRequest) Reset() {
 	*x = GetCacheServersRequest{}
-	mi := &file_cache_proto_msgTypes[13]
+	mi := &file_cache_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1361,7 +1201,7 @@ func (x *GetCacheServersRequest) String() string {
 func (*GetCacheServersRequest) ProtoMessage() {}
 
 func (x *GetCacheServersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cache_proto_msgTypes[13]
+	mi := &file_cache_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1374,7 +1214,7 @@ func (x *GetCacheServersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCacheServersRequest.ProtoReflect.Descriptor instead.
 func (*GetCacheServersRequest) Descriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{13}
+	return file_cache_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GetCacheServersRequest) GetRequestid() string {
@@ -1396,7 +1236,7 @@ type GetCacheServersResponse struct {
 
 func (x *GetCacheServersResponse) Reset() {
 	*x = GetCacheServersResponse{}
-	mi := &file_cache_proto_msgTypes[14]
+	mi := &file_cache_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1408,7 +1248,7 @@ func (x *GetCacheServersResponse) String() string {
 func (*GetCacheServersResponse) ProtoMessage() {}
 
 func (x *GetCacheServersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cache_proto_msgTypes[14]
+	mi := &file_cache_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1421,7 +1261,7 @@ func (x *GetCacheServersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCacheServersResponse.ProtoReflect.Descriptor instead.
 func (*GetCacheServersResponse) Descriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{14}
+	return file_cache_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *GetCacheServersResponse) GetResult() GetCacheServersResponse_Result {
@@ -1447,7 +1287,7 @@ type EndMarker struct {
 
 func (x *EndMarker) Reset() {
 	*x = EndMarker{}
-	mi := &file_cache_proto_msgTypes[15]
+	mi := &file_cache_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1459,7 +1299,7 @@ func (x *EndMarker) String() string {
 func (*EndMarker) ProtoMessage() {}
 
 func (x *EndMarker) ProtoReflect() protoreflect.Message {
-	mi := &file_cache_proto_msgTypes[15]
+	mi := &file_cache_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1472,7 +1312,7 @@ func (x *EndMarker) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EndMarker.ProtoReflect.Descriptor instead.
 func (*EndMarker) Descriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{15}
+	return file_cache_proto_rawDescGZIP(), []int{13}
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -1480,7 +1320,6 @@ type Request struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Type:
 	//
-	//	*Request_Lockrequest
 	//	*Request_Uploadrequest
 	//	*Request_Downloadrequest
 	//	*Request_Deleterequest
@@ -1495,7 +1334,7 @@ type Request struct {
 
 func (x *Request) Reset() {
 	*x = Request{}
-	mi := &file_cache_proto_msgTypes[16]
+	mi := &file_cache_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1507,7 +1346,7 @@ func (x *Request) String() string {
 func (*Request) ProtoMessage() {}
 
 func (x *Request) ProtoReflect() protoreflect.Message {
-	mi := &file_cache_proto_msgTypes[16]
+	mi := &file_cache_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1520,21 +1359,12 @@ func (x *Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Request.ProtoReflect.Descriptor instead.
 func (*Request) Descriptor() ([]byte, []int) {
-	return file_cache_proto_rawDescGZIP(), []int{16}
+	return file_cache_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Request) GetType() isRequest_Type {
 	if x != nil {
 		return x.Type
-	}
-	return nil
-}
-
-func (x *Request) GetLockrequest() *LockFileRequest {
-	if x != nil {
-		if x, ok := x.Type.(*Request_Lockrequest); ok {
-			return x.Lockrequest
-		}
 	}
 	return nil
 }
@@ -1606,10 +1436,6 @@ type isRequest_Type interface {
 	isRequest_Type()
 }
 
-type Request_Lockrequest struct {
-	Lockrequest *LockFileRequest `protobuf:"bytes,1,opt,name=lockrequest,proto3,oneof"`
-}
-
 type Request_Uploadrequest struct {
 	Uploadrequest *UploadRequest `protobuf:"bytes,2,opt,name=uploadrequest,proto3,oneof"`
 }
@@ -1638,8 +1464,6 @@ type Request_Endmarker struct {
 	Endmarker *EndMarker `protobuf:"bytes,10,opt,name=endmarker,proto3,oneof"`
 }
 
-func (*Request_Lockrequest) isRequest_Type() {}
-
 func (*Request_Uploadrequest) isRequest_Type() {}
 
 func (*Request_Downloadrequest) isRequest_Type() {}
@@ -1665,20 +1489,7 @@ const file_cache_proto_rawDesc = "" +
 	"\aversion\x18\x02 \x01(\rR\aversion\x12 \n" +
 	"\vaccountname\x18\x03 \x01(\tR\vaccountname\x12\x1c\n" +
 	"\ttimestamp\x18\x04 \x01(\rR\ttimestamp\x12\x1c\n" +
-	"\tsignature\x18\x05 \x01(\fR\tsignature\"\x7f\n" +
-	"\x0fLockFileRequest\x12\x1d\n" +
-	"\trequestid\x18\xe7\a \x01(\tR\trequestid\x12\x1a\n" +
-	"\bfilename\x18\x01 \x01(\tR\bfilename\x121\n" +
-	"\n" +
-	"authparams\x18\x02 \x01(\v2\x11.cache.AuthParamsR\n" +
-	"authparams\"\x9a\x01\n" +
-	"\x10LockFileResponse\x126\n" +
-	"\x06result\x18\x01 \x01(\x0e2\x1e.cache.LockFileResponse.ResultR\x06result\"N\n" +
-	"\x06Result\x12\v\n" +
-	"\aSUCCESS\x10\x00\x12\x12\n" +
-	"\x0eALREADY_LOCKED\x10\x01\x12\x0f\n" +
-	"\vAUTH_FAILED\x10\x02\x12\x12\n" +
-	"\x0eINTERNAL_ERROR\x10\x03\"\xf6\x02\n" +
+	"\tsignature\x18\x05 \x01(\fR\tsignature\"\xf6\x02\n" +
 	"\rUploadRequest\x12\x1d\n" +
 	"\trequestid\x18\xe7\a \x01(\tR\trequestid\x12\x1a\n" +
 	"\bfilename\x18\x01 \x01(\tR\bfilename\x12\x1a\n" +
@@ -1790,9 +1601,8 @@ const file_cache_proto_rawDesc = "" +
 	"\x06Result\x12\v\n" +
 	"\aSUCCESS\x10\x00\x12\x12\n" +
 	"\x0eINTERNAL_ERROR\x10\x01\"\v\n" +
-	"\tEndMarker\"\x9f\x05\n" +
-	"\aRequest\x12:\n" +
-	"\vlockrequest\x18\x01 \x01(\v2\x16.cache.LockFileRequestH\x00R\vlockrequest\x12<\n" +
+	"\tEndMarker\"\xf6\x04\n" +
+	"\aRequest\x12<\n" +
 	"\ruploadrequest\x18\x02 \x01(\v2\x14.cache.UploadRequestH\x00R\ruploadrequest\x12B\n" +
 	"\x0fdownloadrequest\x18\x03 \x01(\v2\x16.cache.DownloadRequestH\x00R\x0fdownloadrequest\x12<\n" +
 	"\rdeleterequest\x18\x06 \x01(\v2\x14.cache.DeleteRequestH\x00R\rdeleterequest\x12<\n" +
@@ -1801,7 +1611,7 @@ const file_cache_proto_rawDesc = "" +
 	"\x16getcacheserversrequest\x18\t \x01(\v2\x1d.cache.GetCacheServersRequestH\x00R\x16getcacheserversrequest\x120\n" +
 	"\tendmarker\x18\n" +
 	" \x01(\v2\x10.cache.EndMarkerH\x00R\tendmarkerB\x06\n" +
-	"\x04typeJ\x04\b\x04\x10\x05J\x04\b\x05\x10\x06R\x13getattributerequestR\x13putattributerequestb\x06proto3"
+	"\x04typeJ\x04\b\x01\x10\x02J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06R\vlockrequestR\x13getattributerequestR\x13putattributerequestb\x06proto3"
 
 var (
 	file_cache_proto_rawDescOnce sync.Once
@@ -1815,67 +1625,61 @@ func file_cache_proto_rawDescGZIP() []byte {
 	return file_cache_proto_rawDescData
 }
 
-var file_cache_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_cache_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_cache_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
+var file_cache_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_cache_proto_goTypes = []any{
-	(LockFileResponse_Result)(0),                           // 0: cache.LockFileResponse.Result
-	(UploadResponse_Result)(0),                             // 1: cache.UploadResponse.Result
-	(DownloadResponse_Result)(0),                           // 2: cache.DownloadResponse.Result
-	(DeleteResponse_Result)(0),                             // 3: cache.DeleteResponse.Result
-	(IBInitResponse_Result)(0),                             // 4: cache.IBInitResponse.Result
-	(GetCacheLastAccessTimeDistributionResponse_Result)(0), // 5: cache.GetCacheLastAccessTimeDistributionResponse.Result
-	(GetCacheServersResponse_Result)(0),                    // 6: cache.GetCacheServersResponse.Result
-	(*AuthParams)(nil),                                     // 7: cache.AuthParams
-	(*LockFileRequest)(nil),                                // 8: cache.LockFileRequest
-	(*LockFileResponse)(nil),                               // 9: cache.LockFileResponse
-	(*UploadRequest)(nil),                                  // 10: cache.UploadRequest
-	(*UploadResponse)(nil),                                 // 11: cache.UploadResponse
-	(*DownloadRequest)(nil),                                // 12: cache.DownloadRequest
-	(*DownloadResponse)(nil),                               // 13: cache.DownloadResponse
-	(*DeleteRequest)(nil),                                  // 14: cache.DeleteRequest
-	(*DeleteResponse)(nil),                                 // 15: cache.DeleteResponse
-	(*IBInitRequest)(nil),                                  // 16: cache.IBInitRequest
-	(*IBInitResponse)(nil),                                 // 17: cache.IBInitResponse
-	(*GetCacheLastAccessTimeDistributionRequest)(nil),      // 18: cache.GetCacheLastAccessTimeDistributionRequest
-	(*GetCacheLastAccessTimeDistributionResponse)(nil),     // 19: cache.GetCacheLastAccessTimeDistributionResponse
-	(*GetCacheServersRequest)(nil),                         // 20: cache.GetCacheServersRequest
-	(*GetCacheServersResponse)(nil),                        // 21: cache.GetCacheServersResponse
-	(*EndMarker)(nil),                                      // 22: cache.EndMarker
-	(*Request)(nil),                                        // 23: cache.Request
-	nil,                                                    // 24: cache.UploadRequest.MetadataEntry
-	nil,                                                    // 25: cache.DownloadResponse.MetadataEntry
-	nil,                                                    // 26: cache.GetCacheLastAccessTimeDistributionResponse.DistributionmapEntry
+	(UploadResponse_Result)(0),                             // 0: cache.UploadResponse.Result
+	(DownloadResponse_Result)(0),                           // 1: cache.DownloadResponse.Result
+	(DeleteResponse_Result)(0),                             // 2: cache.DeleteResponse.Result
+	(IBInitResponse_Result)(0),                             // 3: cache.IBInitResponse.Result
+	(GetCacheLastAccessTimeDistributionResponse_Result)(0), // 4: cache.GetCacheLastAccessTimeDistributionResponse.Result
+	(GetCacheServersResponse_Result)(0),                    // 5: cache.GetCacheServersResponse.Result
+	(*AuthParams)(nil),                                     // 6: cache.AuthParams
+	(*UploadRequest)(nil),                                  // 7: cache.UploadRequest
+	(*UploadResponse)(nil),                                 // 8: cache.UploadResponse
+	(*DownloadRequest)(nil),                                // 9: cache.DownloadRequest
+	(*DownloadResponse)(nil),                               // 10: cache.DownloadResponse
+	(*DeleteRequest)(nil),                                  // 11: cache.DeleteRequest
+	(*DeleteResponse)(nil),                                 // 12: cache.DeleteResponse
+	(*IBInitRequest)(nil),                                  // 13: cache.IBInitRequest
+	(*IBInitResponse)(nil),                                 // 14: cache.IBInitResponse
+	(*GetCacheLastAccessTimeDistributionRequest)(nil),      // 15: cache.GetCacheLastAccessTimeDistributionRequest
+	(*GetCacheLastAccessTimeDistributionResponse)(nil),     // 16: cache.GetCacheLastAccessTimeDistributionResponse
+	(*GetCacheServersRequest)(nil),                         // 17: cache.GetCacheServersRequest
+	(*GetCacheServersResponse)(nil),                        // 18: cache.GetCacheServersResponse
+	(*EndMarker)(nil),                                      // 19: cache.EndMarker
+	(*Request)(nil),                                        // 20: cache.Request
+	nil,                                                    // 21: cache.UploadRequest.MetadataEntry
+	nil,                                                    // 22: cache.DownloadResponse.MetadataEntry
+	nil,                                                    // 23: cache.GetCacheLastAccessTimeDistributionResponse.DistributionmapEntry
 }
 var file_cache_proto_depIdxs = []int32{
-	7,  // 0: cache.LockFileRequest.authparams:type_name -> cache.AuthParams
-	0,  // 1: cache.LockFileResponse.result:type_name -> cache.LockFileResponse.Result
-	24, // 2: cache.UploadRequest.metadata:type_name -> cache.UploadRequest.MetadataEntry
-	7,  // 3: cache.UploadRequest.authparams:type_name -> cache.AuthParams
-	1,  // 4: cache.UploadResponse.result:type_name -> cache.UploadResponse.Result
-	7,  // 5: cache.DownloadRequest.authparams:type_name -> cache.AuthParams
-	2,  // 6: cache.DownloadResponse.result:type_name -> cache.DownloadResponse.Result
-	25, // 7: cache.DownloadResponse.metadata:type_name -> cache.DownloadResponse.MetadataEntry
-	7,  // 8: cache.DeleteRequest.authparams:type_name -> cache.AuthParams
-	3,  // 9: cache.DeleteResponse.result:type_name -> cache.DeleteResponse.Result
-	7,  // 10: cache.IBInitRequest.authparams:type_name -> cache.AuthParams
-	4,  // 11: cache.IBInitResponse.result:type_name -> cache.IBInitResponse.Result
-	7,  // 12: cache.GetCacheLastAccessTimeDistributionRequest.authparams:type_name -> cache.AuthParams
-	5,  // 13: cache.GetCacheLastAccessTimeDistributionResponse.result:type_name -> cache.GetCacheLastAccessTimeDistributionResponse.Result
-	26, // 14: cache.GetCacheLastAccessTimeDistributionResponse.distributionmap:type_name -> cache.GetCacheLastAccessTimeDistributionResponse.DistributionmapEntry
-	6,  // 15: cache.GetCacheServersResponse.result:type_name -> cache.GetCacheServersResponse.Result
-	8,  // 16: cache.Request.lockrequest:type_name -> cache.LockFileRequest
-	10, // 17: cache.Request.uploadrequest:type_name -> cache.UploadRequest
-	12, // 18: cache.Request.downloadrequest:type_name -> cache.DownloadRequest
-	14, // 19: cache.Request.deleterequest:type_name -> cache.DeleteRequest
-	16, // 20: cache.Request.ibinitrequest:type_name -> cache.IBInitRequest
-	18, // 21: cache.Request.getcachelastaccesstimedistributionrequest:type_name -> cache.GetCacheLastAccessTimeDistributionRequest
-	20, // 22: cache.Request.getcacheserversrequest:type_name -> cache.GetCacheServersRequest
-	22, // 23: cache.Request.endmarker:type_name -> cache.EndMarker
-	24, // [24:24] is the sub-list for method output_type
-	24, // [24:24] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	21, // 0: cache.UploadRequest.metadata:type_name -> cache.UploadRequest.MetadataEntry
+	6,  // 1: cache.UploadRequest.authparams:type_name -> cache.AuthParams
+	0,  // 2: cache.UploadResponse.result:type_name -> cache.UploadResponse.Result
+	6,  // 3: cache.DownloadRequest.authparams:type_name -> cache.AuthParams
+	1,  // 4: cache.DownloadResponse.result:type_name -> cache.DownloadResponse.Result
+	22, // 5: cache.DownloadResponse.metadata:type_name -> cache.DownloadResponse.MetadataEntry
+	6,  // 6: cache.DeleteRequest.authparams:type_name -> cache.AuthParams
+	2,  // 7: cache.DeleteResponse.result:type_name -> cache.DeleteResponse.Result
+	6,  // 8: cache.IBInitRequest.authparams:type_name -> cache.AuthParams
+	3,  // 9: cache.IBInitResponse.result:type_name -> cache.IBInitResponse.Result
+	6,  // 10: cache.GetCacheLastAccessTimeDistributionRequest.authparams:type_name -> cache.AuthParams
+	4,  // 11: cache.GetCacheLastAccessTimeDistributionResponse.result:type_name -> cache.GetCacheLastAccessTimeDistributionResponse.Result
+	23, // 12: cache.GetCacheLastAccessTimeDistributionResponse.distributionmap:type_name -> cache.GetCacheLastAccessTimeDistributionResponse.DistributionmapEntry
+	5,  // 13: cache.GetCacheServersResponse.result:type_name -> cache.GetCacheServersResponse.Result
+	7,  // 14: cache.Request.uploadrequest:type_name -> cache.UploadRequest
+	9,  // 15: cache.Request.downloadrequest:type_name -> cache.DownloadRequest
+	11, // 16: cache.Request.deleterequest:type_name -> cache.DeleteRequest
+	13, // 17: cache.Request.ibinitrequest:type_name -> cache.IBInitRequest
+	15, // 18: cache.Request.getcachelastaccesstimedistributionrequest:type_name -> cache.GetCacheLastAccessTimeDistributionRequest
+	17, // 19: cache.Request.getcacheserversrequest:type_name -> cache.GetCacheServersRequest
+	19, // 20: cache.Request.endmarker:type_name -> cache.EndMarker
+	21, // [21:21] is the sub-list for method output_type
+	21, // [21:21] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_cache_proto_init() }
@@ -1883,13 +1687,12 @@ func file_cache_proto_init() {
 	if File_cache_proto != nil {
 		return
 	}
-	file_cache_proto_msgTypes[7].OneofWrappers = []any{
+	file_cache_proto_msgTypes[5].OneofWrappers = []any{
 		(*DeleteRequest_Filename)(nil),
 		(*DeleteRequest_Groupid)(nil),
 		(*DeleteRequest_Lastaccesstime)(nil),
 	}
-	file_cache_proto_msgTypes[16].OneofWrappers = []any{
-		(*Request_Lockrequest)(nil),
+	file_cache_proto_msgTypes[14].OneofWrappers = []any{
 		(*Request_Uploadrequest)(nil),
 		(*Request_Downloadrequest)(nil),
 		(*Request_Deleterequest)(nil),
@@ -1903,8 +1706,8 @@ func file_cache_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cache_proto_rawDesc), len(file_cache_proto_rawDesc)),
-			NumEnums:      7,
-			NumMessages:   20,
+			NumEnums:      6,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -18,13 +18,6 @@ package cache;
 /** 
  * RPC Mechanism
  *
- * Lock API
- *
- * Client has to first send a 4 byte buffer containing the proto message length,
- *         then followed by the "Request" proto message with the appropriate LockFileRequest fields populated.
- * The server will respond with a 4 byte buffer containing the proto message length and 
- *         then followed by the LockFileResponse proto message.
- *
  * Upload API
  *
  * Client has to first send a 4 byte buffer containing the proto message length, 
@@ -80,27 +73,6 @@ message AuthParams
 
     // HMACSHA256 signature using account key and message constructed from request parameters
     bytes signature = 5;
-}
-//---------------------------------------------------------------------------------------------------------------------
-// Locking required to coordinate parallel uploads across workers
-// Only the client which succeeds should perform the upload
-message LockFileRequest
-{
-    string requestid = 999;
-    string filename = 1;
-    AuthParams authparams = 2;
-}
-//---------------------------------------------------------------------------------------------------------------------
-message LockFileResponse
-{
-    enum Result
-    {
-        SUCCESS = 0;
-        ALREADY_LOCKED = 1;
-        AUTH_FAILED = 2;
-        INTERNAL_ERROR = 3;
-    }
-    Result result = 1;
 }
 //---------------------------------------------------------------------------------------------------------------------
 // Upload the file contents into the cache
@@ -296,11 +268,10 @@ message EndMarker
 //---------------------------------------------------------------------------------------------------------------------
 message Request
 {
-    reserved 4, 5;
-    reserved "getattributerequest", "putattributerequest";
+    reserved 1, 4, 5;
+    reserved "lockrequest", "getattributerequest", "putattributerequest";
     oneof type
     {
-        LockFileRequest lockrequest = 1;
         UploadRequest uploadrequest = 2;
         DownloadRequest downloadrequest = 3;
         DeleteRequest deleterequest = 6;

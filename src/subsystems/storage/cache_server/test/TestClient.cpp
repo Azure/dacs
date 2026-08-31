@@ -15,7 +15,6 @@
 #include "SocketConnection.h"
 #include "CacheUtils.h"
 #include "UploadRequest.h"
-#include "LockRequest.h"
 #include "CommonLogger.h"
 #include "DownloadRequest.h"
 #include "IBConstants.h"
@@ -133,114 +132,6 @@ void ReleaseConnection(unique_ptr<IConnection> &connection)
 {
     lock_guard lock(LockPool);
     ServerConnections.push(std::move(connection));
-}
-//---------------------------------------------------------------------------------------------------------------------
-bool TestLockAPI(const string& filename, bool locked)
-{
-    unique_ptr<IConnection> serverConnection = GetConnection();
-    if (!serverConnection)
-    {
-        return false;
-    }
-
-    Request request;
-
-    LockFileRequest* lockRequest = request.mutable_lockrequest();
-    lockRequest->set_filename(filename.c_str());
-
-    if (!SendMessageToRemote(serverConnection.get(), request))
-    {
-        cout << "couldn't send message to server" << endl;
-        return false;
-    }
-
-    string requestMessage;
-    if (!ReadMessageFromRemote(serverConnection.get(), requestMessage))
-    {
-        cout << "couldn't read message from server" << endl;
-        return false;
-    }
-
-    LockFileResponse response;
-    if (!response.ParseFromString(requestMessage))
-    {
-        std::cout << "Failed to parse protobuf message" << endl;
-        return false;
-    }
-
-    bool status = true;
-    if (locked)
-    {
-        if (response.result() != LockFileResponse::SUCCESS)
-        {
-            //std::cout << "error: file already locked" << endl;
-            status = false;
-        }
-    }
-    else
-    {
-        if (response.result() == LockFileResponse::SUCCESS)
-        {
-            //std::cout << "error: file not locked" << endl;
-            status = false;
-        }
-    }
-
-    ReleaseConnection(serverConnection);
-    return status;
-}
-//---------------------------------------------------------------------------------------------------------------------
-bool TestParallelLock(int parallelism, int durationInSeconds)
-{
-	auto t1 = std::chrono::high_resolution_clock::now();
-
-    std::atomic_uint_fast64_t totalLocked(0);
-    std::atomic_bool stop(false);
-    std::vector<std::thread *> threads;
-
-    string filePrefix = GetUniqueFilename("paralelleltest-" + std::to_string(rand()) + "-");
-    for (int threadId = 0; threadId < parallelism; threadId++)
-    {
-        auto t = new std::thread([&filePrefix, &totalLocked, parallelism, &stop]()
-        {
-            int i = 0;
-            while (!stop)
-            {
-                string fileName = filePrefix + std::to_string(i);
-                bool bRet = TestLockAPI(fileName, true);
-                if (bRet)
-                {
-                    totalLocked++;
-                }
-                i = (i + 1) % parallelism;
-            }
-        });
-        threads.push_back(t);
-    }
-
-    std::this_thread::sleep_for(std::chrono::seconds(durationInSeconds));
-    stop = true;
-
-    for (int i = 0; i < threads.size(); ++i)
-    {
-        auto t = threads[i];
-        t->join();
-        delete t;
-    }
-
-	auto t2 = std::chrono::high_resolution_clock::now();
-
-	auto durationSum = chrono::duration_cast<chrono::milliseconds>(t2 - t1);
-
-    if (totalLocked == parallelism)
-    {
-        return true;
-    }
-
-    cout << "Total locked: " << totalLocked << ", expected: " << parallelism << endl;
-    //cout << "Total time in millis: " << durationSum.count() << endl;
-
-    return false;
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool TestUploadAPI(
@@ -951,23 +842,6 @@ bool TestMetadata(const google::protobuf::Map<string, string>& metadata)
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-void TestLockAPIs()
-{
-    cout << "Test lock APIs" << endl;
-    string testlock1 = GetUniqueFilename("testlock1");
-    string testlock2 = GetUniqueFilename("testlock2");
-    RUNTEST(TestLockAPI(testlock1, true));
-    RUNTEST(TestLockAPI(testlock1, false));
-    RUNTEST(TestLockAPI(testlock1, false));
-    RUNTEST(TestLockAPI(testlock1, false));
-    RUNTEST(TestLockAPI(testlock1, false));
-    RUNTEST(TestLockAPI(testlock2, true));
-    RUNTEST(TestLockAPI(testlock2, false));
-    RUNTEST(TestLockAPI(testlock1, false));
-    RUNTEST(TestLockAPI(testlock1, false));
-    RUNTEST(TestLockAPI(testlock2, false));
-}
-//---------------------------------------------------------------------------------------------------------------------
 void TestUploadDownload()
 {
     cout << "Basic upload/download tests" << endl;
@@ -1058,11 +932,6 @@ void TestUploadDownload()
 //---------------------------------------------------------------------------------------------------------------------
 void TestParallelism()
 {
-    cout << "test parallel lock" << endl;
-    RUNTEST(TestParallelLock(200, 5));
-    RUNTEST(TestParallelLock(1, 2));
-    RUNTEST(TestParallelLock(100, 5));
-
     cout << "test parallel upload/download" << endl;
     RUNTEST(TestParallelUploadDownload(200, 5));
     RUNTEST(TestParallelUploadDownload(1, 2));
@@ -1937,7 +1806,6 @@ int main(int argc, char *argv[])
 
     if (!runIBOnly)
     {
-        TestLockAPIs();
         TestUploadDownload();
         TestParallelism();
         TestCacheMetadata();
