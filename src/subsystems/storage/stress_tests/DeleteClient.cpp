@@ -14,7 +14,6 @@
 
 // DACS includes
 #include "UploadRequest.h"
-#include "LockRequest.h"
 #include "DownloadRequest.h"
 #include "cache.pb.h"
 #include "cache.pb.cc"

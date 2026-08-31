@@ -35,7 +35,7 @@ class MetricsStore
     prometheus::Histogram* m_pUploadRequestSizeHistogram;
     constexpr static std::array<const char*, (int)Request::TypeCase::kEndmarker> m_arrRequestTypes = {
         "Unknown",
-        "Lock",
+        "Reserved1",
         "Upload",
         "Download",
         "Reserved4",

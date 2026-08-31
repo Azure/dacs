@@ -16,7 +16,6 @@
 #include "Utils.h"
 #include "ConnectionUtils.h"
 #include "UploadRequest.h"
-#include "LockRequest.h"
 #include "DownloadRequest.h"
 #include "DeleteRequest.h"
 #include "IBInitRequest.h"
@@ -76,10 +75,6 @@ bool HandleRequest(IConnection& clientConnection,
     {
         bRet = UploadFile(clientConnection, request.uploadrequest(), eResponseCode, filesize);
     } 
-    else if (eRequestType == Request::kLockrequest)
-    {
-        bRet = LockFile(clientConnection, request.lockrequest());
-    }
     else if (eRequestType == Request::kDeleterequest)
     {
         bRet = DeleteFile(clientConnection, request.deleterequest(), eResponseCode);
