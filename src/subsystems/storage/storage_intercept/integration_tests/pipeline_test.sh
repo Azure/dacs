@@ -38,10 +38,9 @@
 # Section 4: Test Utility Functions
 # Section 5: Performance and Benchmark Tests
 # Section 6: Unit and Integration Tests (No Cache Server Required)
-# Section 7: Cache-Enabled Tests (Snapshot and Auth Disabled)
-# Section 8: Cache-Enabled Tests (Auth Enabled) 
-# Section 9: Cache-Enabled Tests (Snapshot Enabled, Comprehensive Testing)
-# Section 10: Specialized Integration Tests
+# Section 7: Cache-Enabled Tests (Snapshot Disabled)
+# Section 8: Cache-Enabled Tests (Snapshot Enabled, Comprehensive Testing)
+# Section 9: Specialized Integration Tests
 #===============================================================================
 
 #===============================================================================
@@ -571,7 +570,7 @@ fi
 echo -e "Blob Integration test with dynamic account mount passed\n\n"
 
 #===============================================================================
-# SECTION 7: CACHE-ENABLED TESTS (SNAPSHOT AND AUTH DISABLED)
+# SECTION 7: CACHE-ENABLED TESTS (SNAPSHOT DISABLED)
 #===============================================================================
 # This section tests cache server functionality with default configuration:
 # - Snapshot generation: Disabled  
@@ -656,43 +655,13 @@ echo -e "cache client lib integration test passed\n\n"
 
 stop_cache_server
 
-#===============================================================================
-# SECTION 8: CACHE-ENABLED TESTS (AUTHENTICATION ENABLED)
-#===============================================================================
-# This section tests cache server functionality with authentication enabled:
-# - Snapshot generation: Disabled
-# - Authentication: Enabled (using test credentials)
-# - Tests: Cache client library with authentication validation
-
-export CACHESERVER_AUTH_ENABLED="true"
-export CACHESERVER_AUTH_ACCOUNTNAME="us3rn@m3"
-CACHESERVER_AUTH_ACCOUNTKEY="$(head -c 24 /dev/urandom | base64)"
-export CACHESERVER_AUTH_ACCOUNTKEY
-start_cache_server /dev/null
-sleep 10
-
-echo "Running cache client lib test with authentication enabled"
-cd ${REPOSITORY_ROOT}/build/$BUILD_CONFIGURATION/$BUILD_ARCH
-eval "ctest -V --no-tests=error -j -1 -R CacheClientLibTests"
-if [ $? -ne 0 ]
-then
-echo "cache client lib unit test with authentication failed"
-exit 1
-fi
-echo -e "cache client lib unit test with authentication passed\n\n"
-
-stop_cache_server
-unset CACHESERVER_AUTH_ENABLED
-unset CACHESERVER_AUTH_ACCOUNTNAME
-unset CACHESERVER_AUTH_ACCOUNTKEY
 echo ""
 
 #===============================================================================
-# SECTION 9: CACHE-ENABLED TESTS (SNAPSHOT ENABLED, COMPREHENSIVE TESTING)
+# SECTION 8: CACHE-ENABLED TESTS (SNAPSHOT ENABLED, COMPREHENSIVE TESTING)
 #===============================================================================
 # This section contains the most comprehensive cache server testing:
 # - Snapshot generation: Enabled (1-second intervals)
-# - Authentication: Disabled  
 # - Eviction: Enabled (30-second frequency)
 # - Tests: Full integration suite including cache, encryption, multi-mount,
 #   remote cache, local SSD cache, and various storage configurations
@@ -829,7 +798,7 @@ reset_local_ssd_cache
 stop_cache_server
 
 #===============================================================================
-# SECTION 10: SPECIALIZED VALIDATION AND INTEGRATION TESTS
+# SECTION 9: SPECIALIZED VALIDATION AND INTEGRATION TESTS
 #===============================================================================
 # This section contains specialized tests for advanced features:
 # - Snapshot validation and restart scenarios

@@ -38,6 +38,14 @@ extern "C" CacheClientStatus Initialize(
     /*[in]*/ bool bEnableConsistentHashing,
     /*[in]*/ CacheClientRetryConfig retryConfig)
 {
+    // Cache authentication has been removed. Credentials are no longer supported; reject
+    // any caller that still supplies them rather than silently ignoring a security setting.
+    if (pAuthCredentials != nullptr)
+    {
+        LOG_ERROR("Initialize called with non-null AuthCredentials, but cache authentication is no longer supported");
+        return CacheClientStatus::INVALID_ARGUMENT;
+    }
+
     return GetImplInstance()->Initialize(arrServers,
                                          nServers,
                                          nPort,
@@ -46,9 +54,6 @@ extern "C" CacheClientStatus Initialize(
                                          bEnableValidateChecksum,
                                          strChecksumAlgorithm,
                                          0,                             /* nConnectionPoolSize */
-                                         (pAuthCredentials != nullptr), /* bEnableAuth */
-                                         pAuthCredentials ? pAuthCredentials->m_strAccountKey : nullptr,
-                                         pAuthCredentials ? pAuthCredentials->m_strAccountName : nullptr,
                                          false, /* bUseLocalServer */
                                          true,  /* bReuseConnections */
                                          false, /* bCacheServerDiscoveryEnabled */

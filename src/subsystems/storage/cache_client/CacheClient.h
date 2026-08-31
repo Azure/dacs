@@ -36,6 +36,8 @@ typedef enum
     NOTFOUND,
     NOTFOUND_LOCKED,
     INVALID_ARGUMENT,
+    // Deprecated: cache authentication has been removed. Retained (and never returned by the
+    // cache server) so that the numeric values of subsequent entries remain ABI-stable.
     AUTH_FAILED,
     INTERNAL_ERROR,
     CHECKSUM_MISMATCH,
@@ -53,6 +55,8 @@ typedef struct
     uint32_t nKeyValuePairs;
 } Metadata;
 //---------------------------------------------------------------------------------------------------------------------
+// Deprecated: cache authentication has been removed. Retained only so that Initialize() keeps a
+// stable ABI; Initialize() requires this to be NULL and rejects non-null values.
 typedef struct
 {
     char* m_strAccountName;
@@ -91,18 +95,18 @@ typedef struct
  * @param bEnableCalculateChecksum Enable checksum calculation when uploading data to the cache-servers, (would impact performance)
  * @param bEnableValidateChecksum Enable checksum validation when downloading data from the cache-servers, (would impact performance)
  * @param strChecksumAlgorithm Algorithm to use for checksum calculation. default- xxhash32
- * @param pAuthCredentials Credentials to be used to connect to the cache-servers. Set the value to `NULL` to indicate
- *        authentication disabled. If enabled, each request to the cache-server will include account name, timestamp
- *        and signature of request header generated using the account key.
+ * @param pAuthCredentials Deprecated. Cache server authentication is no longer supported; this
+ *        parameter is retained only for ABI compatibility. Must be `NULL` - passing a non-null
+ *        value returns INVALID_ARGUMENT and the client is not initialized.
  * @param bEnableConsistentHashing Enable consistent hashing for server selection
  * @param retryConfig Retry configuration for transient cache failures. Retries are disabled if nMaxAttempts is 1.
  *        All values must be valid: nMaxAttempts >= 1, nBaseDelayMillis > 0, nMaxDelayMillis > 0, and nBaseDelayMillis <= nMaxDelayMillis.
  * 
  * @returns CacheClientStatus indicating the status of the upload operation
- * 1. SUCCESS -- If the cache client is initialized successfully
- * 2. INVALID_ARGUMENT -- If the input parameters are invalid or out of range, e.g., nPort is larger than 65535, or
- *    any of the server names in arrServers is null or empty.
- * 3. INTERNAL_ERROR -- If the cache client fails to initialize due to some internal error.
+ * 1. SUCCESS - If the cache client is initialized successfully
+ * 2. INVALID_ARGUMENT - If the input parameters are invalid or out of range, e.g., nPort is larger than 65535,
+ *    any of the server names in arrServers is null or empty, or pAuthCredentials is non-null.
+ * 3. INTERNAL_ERROR - If the cache client fails to initialize due to some internal error.
 */
 CacheClientStatus Initialize(
     /*[in]*/ const char* const* arrServers,
@@ -226,7 +230,6 @@ CacheClientStatus DeleteGroup(/*[in]*/ const char* strGroupId);
  * 1. SUCCESS -- The access time distribution was successfully retrieved
  * 2. INTERNAL_ERROR -- The access time distribution could not be retrieved due to an internal error
  * 3. INVALID_ARGUMENT -- If the input parameters are invalid or out of range, e.g., nDistributionBucketSizeInHours <= 0
- * 4. AUTH_FAILED -- If the request failed to authenticate
  */
 CacheClientStatus GetLastAccessTimeDistribution(
     /*[in]*/ uint64_t nDistributionBucketSizeInHours,
@@ -244,7 +247,6 @@ CacheClientStatus GetLastAccessTimeDistribution(
  * 1. SUCCESS -- The delete operation was successfully initiated
  * 2. INTERNAL_ERROR -- The delete operation could not be initiated due to an internal error
  * 3. INVALID_ARGUMENT -- If the input parameters are invalid or null
- * 4. AUTH_FAILED -- If the request is not authenticated
  */
 CacheClientStatus DeleteByLastAccessTime(/*[in]*/ const char* strLastAccessTime);
 //---------------------------------------------------------------------------------------------------------------------

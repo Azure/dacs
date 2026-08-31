@@ -32,7 +32,6 @@ namespace cacheutils
     bool SendMessageToRemoteFinal(IConnection* connection, const ::google::protobuf::Message& message);
     bool ReadMessageFromRemote(IConnection* connection, std::string& message);
     uint32_t GetServerIndex(const char* filePath, uint32_t numServers);
-    bool AddAuthParams(cache::Request& request, const std::string& strCacheAccountName, const std::string& strCacheAccountKey);
     bool IsValidLastAccessTime(const char* lastAccessTime);
     std::string GetSHA256Hex(const std::string& message);
 

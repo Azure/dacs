@@ -94,11 +94,6 @@ class StorageInterceptConfig
         bool GetAttributesCacheUseRemoteServer();
         bool GetAttributesCachePutAllOnReaddir();
 
-        // Getters for authentication
-        bool GetCacheAuthEnabled();
-        std::string GetCacheAuthAccountName();
-        std::string GetCacheAuthAccountKey();
-
         // Getters for encryption
         bool GetCacheEncryptionEnabled(const std::string& mountName);
         std::string GetCacheEncryptionKey(const std::string& mountName);

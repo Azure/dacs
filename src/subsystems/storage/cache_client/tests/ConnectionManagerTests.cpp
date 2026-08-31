@@ -127,9 +127,6 @@ std::unique_ptr<ConnectionManager> ConnectionManagerTests::CreateConnectionManag
         TEST_PORT,              // serverPort
         useLocalServer,         // useLocalServer
         servers,                // cacheServers
-        false,                  // bAuthEnabled
-        "",                     // strCacheAccountName
-        "",                     // strCacheAccountKey
         maxConnectionsReuseSize,// nMaxConnectionsReuseSize
         reuseConnections,       // bReuseServerConnections
         false,                  // bUseInfiniband
@@ -239,9 +236,6 @@ TEST_F(ConnectionManagerTests, DiscoveryThreadExitsPromptlyOnShutdown)
         TEST_PORT,
         false,                  // useLocalServer
         std::vector<std::string>{LOCALHOST},
-        false,                  // bAuthEnabled
-        "",                     // strCacheAccountName
-        "",                     // strCacheAccountKey
         10,                     // nMaxConnectionsReuseSize
         true,                   // bReuseServerConnections
         false,                  // bUseInfiniband
@@ -315,7 +309,7 @@ TEST_F(ConnectionManagerTests, ConnectionToNonListeningPortFails)
         59999,  // Port with no server
         false,
         servers,
-        false, "", "", 10, true, false, false, 2, "", false,
+        10, true, false, false, 2, "", false,
         DEFAULT_SOCKET_BUF_SIZE, DEFAULT_SOCKET_BUF_SIZE
     );
     

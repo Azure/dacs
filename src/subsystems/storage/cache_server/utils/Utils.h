@@ -27,11 +27,8 @@ void CleanupFolder(const std::string& folderPath);
 void ResetCacheFolder();
 void InitializeUtils();
 unsigned int GetHashBucket(const std::string& strKey);
-bool IsAuthEnabled();
 std::string GetServerHostName();
 std::string GetCacheServerMetricPort();
-bool ValidateAuthSignature(const std::string& clientAccountName, const std::string& clientSignature,
-    const std::string& message, time_t timestamp);
 std::string GetUuid();
 std::string FileNameEncode(const std::string& fileName);
 bool GetCacheServersHelper(::google::protobuf::RepeatedPtrField<::std::string>& serveraddresses, const std::string& requestid);

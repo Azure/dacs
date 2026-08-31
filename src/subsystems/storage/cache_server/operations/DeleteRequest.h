@@ -29,9 +29,6 @@ inline ResponseCode TranslateResponseCode(DeleteResponse_Result deleteResponseCo
     case DeleteResponse_Result::DeleteResponse_Result_SUCCESS:
         eResponseCode = ResponseCode::SUCCESS;
         break;
-    case DeleteResponse_Result::DeleteResponse_Result_AUTH_FAILED:
-        eResponseCode = ResponseCode::BAD_REQUEST;
-        break;
     case DeleteResponse_Result::DeleteResponse_Result_INTERNAL_ERROR:
         eResponseCode = ResponseCode::INTERNAL_ERROR;
         break;

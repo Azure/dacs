@@ -109,13 +109,6 @@ fn test_initialize() {
     };
     let checksum_algorithm = std::ptr::null();
 
-    let accountName = "admin";
-    let accountKey = "1234";
-    let auth_credentials = AuthCredentials {
-        m_strAccountName: CString::new(accountName.to_string()).unwrap().into_raw(),
-        m_strAccountKey: CString::new(accountKey.to_string()).unwrap().into_raw(),
-    };
-
     let c_strings: Vec<CString> = servers.iter().map(|s| CString::new(*s).unwrap()).collect();
     let c_string_ptrs: Vec<*const c_char> = c_strings.iter().map(|s| s.as_ptr()).collect();
     let c_string_array: *const *const c_char = c_string_ptrs.as_ptr();
@@ -129,7 +122,7 @@ fn test_initialize() {
             enable_calculate_crc,
             enable_validate_crc,
             checksum_algorithm,
-            &auth_credentials as *const AuthCredentials,
+            std::ptr::null(), // Cache authentication has been removed; pAuthCredentials must be null.
             enable_consistent_hashing,
             retry_config,
         );

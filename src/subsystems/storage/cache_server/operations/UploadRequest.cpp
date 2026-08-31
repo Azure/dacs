@@ -39,41 +39,6 @@
 using namespace std;
 using namespace cache;
 //---------------------------------------------------------------------------------------------------------------------
-bool AuthenticateRequest(const UploadRequest& request)
-{
-    if (!IsAuthEnabled())
-    {
-        return true;
-    }
-
-    time_t timestamp = request.authparams().timestamp();
-    string serializedHeaders = 
-        std::string("U") + 
-        request.filename() + 
-        std::to_string(request.filesize()) +
-        (request.ignorelock() ? "1" : "0") +
-        std::to_string(request.expiryseconds()) +
-        std::to_string(timestamp);
-
-   if (!request.authparams().enabled())
-    {
-        LOG_WARN_REQID("Auth params not sent by client", request);
-        return false;
-    }
-
-    if (!ValidateAuthSignature(
-        request.authparams().accountname(),
-        request.authparams().signature(),
-        serializedHeaders,
-        timestamp))
-    {
-        LOG_WARN_REQID("Auth validation failure", request);
-        return false;
-    }
-
-    return true;
-}
-//---------------------------------------------------------------------------------------------------------------------
 // Forward declaration — buffered path defined below
 static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
                         /*[in]*/ const cache::UploadRequest& uploadRequest,
@@ -404,17 +369,6 @@ bool UploadFile(IConnection& clientConnection,
     UploadResponse uploadResponse;
     const std::string& requestid = uploadRequest.requestid();
     uploadResponse.set_requestid(requestid);
-    if (!AuthenticateRequest(uploadRequest))
-    {
-        LOG_WARN_REQID("Failed to authenticate request", uploadRequest);
-        if (ReadAndDiscardFileData(
-               clientConnection, uploadRequest, eResponseCode, uploadResponse))
-        {
-            SET_RESULT(uploadResponse, eResponseCode, UploadResponse::AUTH_FAILED);
-            return SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
-        }
-        return false;
-    }
 
     // Note: On the behavior of connection reuse
     // The return value of this function indicates whether the server should teardown or reuse the client connection

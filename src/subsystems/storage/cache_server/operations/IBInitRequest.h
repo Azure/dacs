@@ -29,7 +29,6 @@ inline ResponseCode TranslateResponseCode(IBInitResponse_Result ibInitResponseCo
         case IBInitResponse_Result::IBInitResponse_Result_SUCCESS:
             eResponseCode = ResponseCode::SUCCESS;
             break;
-        case IBInitResponse_Result::IBInitResponse_Result_AUTH_FAILED:
         case IBInitResponse_Result::IBInitResponse_Result_IB_NOT_SUPPORTED:
             eResponseCode = ResponseCode::BAD_REQUEST;
             break;

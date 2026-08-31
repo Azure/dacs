@@ -749,9 +749,6 @@ int PerfClient(int argc, char *argv[])
                                                      bEnableValidateChecksum,      /*bEnableValidateChecksum*/
                                                      strChecksumAlgo.c_str(),      /*strChecksumAlgorithm*/
                                                      nConnectionPoolSize,           /*nConnectionPoolSize*/
-                                                     false,                        /*bEnableAuth*/
-                                                     nullptr,                      /*strAccountName*/
-                                                     nullptr,                      /*strAccountKey*/
                                                      false,                        /*bUseLocalServer*/
                                                      true,                         /*bReuseConnections*/
                                                      bIsDiscoveryEnabled,          /*bIsCacheServerDiscoveryEnabled*/
@@ -930,9 +927,6 @@ int EvictionClient(int argc, char* argv[])
                       false,                       /*bEnableValidateChecksum*/
                       nullptr,                     /*strChecksumAlgorithm*/
                       vecCstrHostnames.size() * 2, /*nConnectionPoolSize*/
-                      false,                       /*bEnableAuth*/
-                      nullptr,                     /*strAccountName*/
-                      nullptr,                     /*strAccountKey*/
                       false,                       /*bUseLocalServer*/
                       true,                        /*bReuseConnections*/
                       false,                       /*bIsCacheServerDiscoveryEnabled*/
@@ -988,9 +982,6 @@ int LastAccessTimeDistributionClient(int argc, char* argv[])
                       false,                       /*bEnableValidateChecksum*/
                       nullptr,                    /*strChecksumAlgorithm*/
                       vecCstrHostnames.size() * 2, /*nConnectionPoolSize*/
-                      false,                       /*bEnableAuth*/
-                      nullptr,                     /*strAccountName*/
-                      nullptr,                     /*strAccountKey*/
                       false,                       /*bUseLocalServer*/
                       true,                        /*bReuseConnections*/
                       false,                       /*bIsCacheServerDiscoveryEnabled*/

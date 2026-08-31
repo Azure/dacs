@@ -21,8 +21,7 @@
 # Runs in ~20 minutes. Single cache server lifecycle.
 #
 # Tests included:
-# - Cache server with default configuration (no snapshots, no auth)
-# - Cache server with authentication enabled
+# - Cache server with default configuration (no snapshots)
 # - Performance client tests (upload/download)
 # - Cache eviction client tests
 # - Last access distribution client tests
@@ -43,7 +42,7 @@ echo "CACHE BASIC INTEGRATION TESTS - Starting"
 echo "================================================"
 
 #===============================================================================
-# SECTION 7: CACHE-ENABLED TESTS (SNAPSHOT AND AUTH DISABLED)
+# SECTION 7: CACHE-ENABLED TESTS (SNAPSHOT DISABLED)
 #===============================================================================
 
 start_cache_server /dev/null
@@ -133,33 +132,6 @@ fi
 echo -e "Sub-chunk read integration test passed\n\n"
 
 stop_cache_server
-
-#===============================================================================
-# SECTION 8: CACHE-ENABLED TESTS (AUTHENTICATION ENABLED)
-#===============================================================================
-
-export CACHESERVER_AUTH_ENABLED="true"
-export CACHESERVER_AUTH_ACCOUNTNAME="us3rn@m3"
-# Generate a random per-run test key; consumed via env by both server and client.
-CACHESERVER_AUTH_ACCOUNTKEY="$(head -c 24 /dev/urandom | base64)"
-export CACHESERVER_AUTH_ACCOUNTKEY
-start_cache_server /dev/null
-sleep 10
-
-echo "Running cache client lib test with authentication enabled"
-cd ${REPOSITORY_ROOT}/build/$BUILD_CONFIGURATION/$BUILD_ARCH
-eval "ctest -V --no-tests=error -j -1 -R CacheClientLibTests"
-if [ $? -ne 0 ]
-then
-echo "cache client lib unit test with authentication failed"
-exit 1
-fi
-echo -e "cache client lib unit test with authentication passed\n\n"
-
-stop_cache_server
-unset CACHESERVER_AUTH_ENABLED
-unset CACHESERVER_AUTH_ACCOUNTNAME
-unset CACHESERVER_AUTH_ACCOUNTKEY
 
 #===============================================================================
 # SECTION: LOCAL SSD CACHE TESTS

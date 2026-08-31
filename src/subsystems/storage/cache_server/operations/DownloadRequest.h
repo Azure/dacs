@@ -42,7 +42,6 @@ inline ResponseCode TranslateResponseCode(DownloadResponse_Result downloadRespon
             break;
         case DownloadResponse_Result::DownloadResponse_Result_INVALID_OFFSET_LENGTH:
         case DownloadResponse_Result::DownloadResponse_Result_FILENAME_LIMIT_EXCEEDED:
-        case DownloadResponse_Result::DownloadResponse_Result_AUTH_FAILED:
             eResponseCode = ResponseCode::BAD_REQUEST;
             break;
         case DownloadResponse_Result::DownloadResponse_Result_INTERNAL_ERROR:
