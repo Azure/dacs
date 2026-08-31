@@ -277,7 +277,7 @@ The official pipeline does not provision AKS or run AKS scenario, upgrade,
 scale, restart, Helm upgrade, or full-scale performance tests.
 
 Python results appear as architecture-qualified test runs. Native storage jobs
-print their existing diagnostics in the job log, matching the Tachyon PR
+print their existing diagnostics in the job log, matching the established PR
 pipeline structure.
 
 See
