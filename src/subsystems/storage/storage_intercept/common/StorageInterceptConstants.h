@@ -66,9 +66,6 @@ namespace StorageInterceptConstants
     const char* const ConfigNameCacheMaxConnectionsReuseSize = "cacheMaxConnectionsReuseSize";
     const char* const ConfigNameCacheKeyExpirySeconds = "cacheKeyExpirySeconds";
     const char* const ConfigNameCacheKeyGroupId = "cacheKeyGroupId";
-    const char* const ConfigNameCacheAuthEnabled = "cacheAuthEnabled";
-    const char* const ConfigNameCacheAuthAccountName = "cacheAuthAccountName";
-    const char* const ConfigNameCacheAuthAccountKey = "cacheAuthAccountKey";
     const char* const ConfigNameCacheEncryptionEnabled = "cacheEncryptionEnabled";
     const char* const ConfigNameCacheEncryptionKey = "cacheEncryptionKey";
     const char* const ConfigNameCacheIBEnabled = "cacheIBEnabled";

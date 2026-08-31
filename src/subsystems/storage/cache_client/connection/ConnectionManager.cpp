@@ -102,9 +102,6 @@ ConnectionManager::ConnectionManager(
     /*[in]*/ const uint16_t serverPort,
     /*[in]*/ const bool useLocalServer,
     /*[in]*/ const std::vector<std::string>& vecCacheServers,
-    /*[in]*/ const bool bAuthEnabled,
-    /*[in]*/ const std::string& strCacheAccountName,
-    /*[in]*/ const std::string& strCacheAccountKey,
     /*[in]*/ const uint32_t nMaxConnectionsReuseSize,
     /*[in]*/ const bool bReuseServerConnections,
     /*[in]*/ const bool bUseInfiniband,
@@ -115,9 +112,6 @@ ConnectionManager::ConnectionManager(
     /*[in]*/ const int nSocketSndbufSize,
     /*[in]*/ const int nSocketRcvbufSize)
     :  m_ServerPort(serverPort)
-    ,  m_bAuthEnabled(bAuthEnabled)
-    ,  m_strCacheAccountName(strCacheAccountName)
-    ,  m_strCacheAccountKey(strCacheAccountKey)
     ,  m_nMaxConnectionsReuseSize(nMaxConnectionsReuseSize)
     ,  m_nMaxConnsPerServer(0)
     ,  m_bReuseServerConnections(bReuseServerConnections)
@@ -441,14 +435,6 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(std::unique_p
     }
 
     // serverFd will be auto-closed by socketConnection
-    
-    if (m_bAuthEnabled && !AddAuthParams(request, m_strCacheAccountName, m_strCacheAccountKey))
-    {
-        LOG_WARN_REQID("failed to create auth request", *ibRequest);
-        std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
-        m_mapIbSetupStatus[cacheserver] = IBSetupStatus::FAILURE;
-        return socketConnection;
-    }
 
     if (!SendMessageToRemoteFinal(socketConnection.get(), request))
     {
@@ -902,12 +888,6 @@ ConnectionManager::HandshakeStatus ConnectionManager::NewIBHandshake(
     downloadRequest->set_length(nReadLength);
     downloadRequest->set_enablelock(false);
 
-    // Add authentication headers if enabled
-    if (m_bAuthEnabled && !AddAuthParams(request, m_strCacheAccountName, m_strCacheAccountKey))
-    {
-        LOG_WARN("Failed to add authentication headers to handshake request");
-        return HandshakeStatus::FAILURE;
-    }
     // Send the request message to the server
     bool bRet = SendMessageToRemoteFinal(connection, request);
     if (!bRet)

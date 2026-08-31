@@ -41,9 +41,6 @@ class CacheClientImpl
         /*[in]*/ const bool bEnableValidateChecksum,
         /*[in]*/ const char* strChecksumAlgorithm,
         /*[in]*/ const uint32_t nConnectionPoolSize,
-        /*[in]*/ const bool bEnableAuth,
-        /*[in]*/ const char* strAccountName,
-        /*[in]*/ const char* strAccountKey,
         /*[in]*/ const bool bUseLocalServer,
         /*[in]*/ const bool bReuseConnections,
         /*[in]*/ const bool bIsCacheServerDiscoveryEnabled,
@@ -97,11 +94,8 @@ class CacheClientImpl
     std::atomic<bool> m_bInitialized;
     std::mutex m_mtxInitialization;
     bool m_bEnableIB;
-    bool m_bEnableAuth;
     bool m_bEnableCalculateChecksum;
     bool m_bEnableValidateChecksum;
-    std::string m_strAccountName;
-    std::string m_strAccountKey;
     ChecksumAlgorithm m_checksumAlgorithm;
     uint32_t m_nConnectionPoolSize;
     CacheClientRetryConfig m_retryConfig;

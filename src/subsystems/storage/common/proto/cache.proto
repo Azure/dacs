@@ -61,20 +61,6 @@ package cache;
  *
  */
 //---------------------------------------------------------------------------------------------------------------------
-// Authentication params
-message AuthParams
-{
-    bool enabled = 1;
-    uint32 version = 2;
-    string accountname = 3;
-
-    // Current timestamp, number of seconds since epoch
-    uint32 timestamp = 4;
-
-    // HMACSHA256 signature using account key and message constructed from request parameters
-    bytes signature = 5;
-}
-//---------------------------------------------------------------------------------------------------------------------
 // Upload the file contents into the cache
 message UploadRequest
 {
@@ -92,8 +78,9 @@ message UploadRequest
     // optional arbitrary key,value pairs which will be persisted and returned when the file is downloaded
     map<string, bytes> metadata = 5;
 
-    // authentication params required if authentication is enabled for the cache server APIs 
-    AuthParams authparams = 6;
+    // Auth support removed; field/name reserved for wire compatibility.
+    reserved 6;
+    reserved "authparams";
 
     // optional client managed groupid this key belongs too. Clients need to ensure uniqueness of this id
     bytes groupid = 7;
@@ -105,7 +92,9 @@ message UploadResponse
     {
         SUCCESS = 0;
         FILE_EXISTS = 1;
-        AUTH_FAILED = 2;
+        // Auth support removed; value/name reserved for wire compatibility.
+        reserved 2;
+        reserved "AUTH_FAILED";
         INTERNAL_ERROR = 3;
         BAD_REQUEST = 4;
     }
@@ -124,7 +113,10 @@ message DownloadRequest
     // Set length to 0 to fetch entire cached contents 
     uint64 length = 3;
     bool enablelock = 4;
-    AuthParams authparams = 5;
+
+    // Auth support removed; field/name reserved for wire compatibility.
+    reserved 5;
+    reserved "authparams";
 }
 //---------------------------------------------------------------------------------------------------------------------
 message DownloadResponse
@@ -137,7 +129,9 @@ message DownloadResponse
         NOT_FOUND = 3;
         INVALID_OFFSET_LENGTH = 4;
         FILENAME_LIMIT_EXCEEDED = 5;
-        AUTH_FAILED = 6;
+        // Auth support removed; value/name reserved for wire compatibility.
+        reserved 6;
+        reserved "AUTH_FAILED";
         INTERNAL_ERROR = 7;
     }
     Result result = 1;
@@ -162,7 +156,10 @@ message DeleteRequest
         // if lastaccesstime is selected, all files older than lastaccesstime will be deleted
         bytes lastaccesstime = 4; 
     }
-    AuthParams authparams = 3;
+
+    // Auth support removed; field/name reserved for wire compatibility.
+    reserved 3;
+    reserved "authparams";
 }
 //---------------------------------------------------------------------------------------------------------------------
 message DeleteResponse
@@ -170,7 +167,9 @@ message DeleteResponse
     enum Result
     {
         SUCCESS = 0;
-        AUTH_FAILED = 1;
+        // Auth support removed; value/name reserved for wire compatibility.
+        reserved 1;
+        reserved "AUTH_FAILED";
         INTERNAL_ERROR = 2;
     }
     Result result = 1;
@@ -194,7 +193,9 @@ message IBInitRequest
     // The client created qp identifiers to establish one-one connections with server
     repeated uint32 clientqpn = 4;
 
-    AuthParams authparams = 5;
+    // Auth support removed; field/name reserved for wire compatibility.
+    reserved 5;
+    reserved "authparams";
 }
 //---------------------------------------------------------------------------------------------------------------------
 message IBInitResponse
@@ -202,7 +203,9 @@ message IBInitResponse
     enum Result
     {
         SUCCESS = 0;
-        AUTH_FAILED = 1;
+        // Auth support removed; value/name reserved for wire compatibility.
+        reserved 1;
+        reserved "AUTH_FAILED";
         IB_NOT_SUPPORTED = 2;
         INTERNAL_ERROR = 3;
     }
@@ -226,7 +229,10 @@ message GetCacheLastAccessTimeDistributionRequest
 {
     string requestid = 999;
     uint64 distributionbucketsizeinhours = 1;
-    AuthParams authparams = 2;
+
+    // Auth support removed; field/name reserved for wire compatibility.
+    reserved 2;
+    reserved "authparams";
 }
 //-----------------------------------------------------------------------------------------------------------------------
 message GetCacheLastAccessTimeDistributionResponse
@@ -234,7 +240,9 @@ message GetCacheLastAccessTimeDistributionResponse
     enum Result
     {
         SUCCESS = 0;
-        AUTH_FAILED = 1;
+        // Auth support removed; value/name reserved for wire compatibility.
+        reserved 1;
+        reserved "AUTH_FAILED";
         INTERNAL_ERROR = 2;
     }
     Result result = 1;

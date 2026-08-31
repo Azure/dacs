@@ -42,40 +42,6 @@
 using namespace std;
 using namespace cache;
 //---------------------------------------------------------------------------------------------------------------------
-bool AuthenticateRequest(const DownloadRequest& request)
-{
-    if (!IsAuthEnabled())
-    {
-        return true;
-    }
-
-    time_t timestamp = request.authparams().timestamp();
-    string serializedHeaders = 
-        std::string("D") + 
-        request.filename() + 
-        std::to_string(request.offset()) +
-        std::to_string(request.length()) +
-        (request.enablelock() ? "1" : "0") +
-        std::to_string(timestamp);
-    if (!request.authparams().enabled())
-    {
-        LOG_WARN_REQID("Auth params not sent by client", request);
-        return false;
-    }
-
-    if (!ValidateAuthSignature(
-        request.authparams().accountname(),
-        request.authparams().signature(),
-        serializedHeaders,
-        timestamp))
-    {
-        LOG_WARN_REQID("Auth validation failure", request);
-        return false;
-    }
-
-    return true;
-}
-//---------------------------------------------------------------------------------------------------------------------
 bool DownloadFile(IConnection& clientConnection, const DownloadRequest& downloadRequest, enum ResponseCode& eResponseCode, std::size_t& nFileSize)
 {
     LOG_DEBUG_REQID("filename: {}, offset: {}, length: {}",
@@ -84,12 +50,6 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
     DownloadResponse downloadResponse;
     const std::string& requestid = downloadRequest.requestid();
     downloadResponse.set_requestid(requestid);
-    if (!AuthenticateRequest(downloadRequest))
-    {
-        LOG_WARN_REQID("Failed to authenticate request", downloadRequest);
-        SET_RESULT(downloadResponse, eResponseCode, DownloadResponse::AUTH_FAILED);
-        return SendMessageToRemoteFinal(clientConnection, downloadResponse, requestid);
-    }
 
     // Set limit on filename length
     if (downloadRequest.filename().size() > UPLOAD_FILENAME_LIMIT)

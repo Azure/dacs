@@ -703,28 +703,6 @@ bool StorageInterceptConfig::GetAttributesCachePutAllOnReaddir()
         false);
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool StorageInterceptConfig::GetCacheAuthEnabled()
-{
-    return StorageInterceptConfig::GetOptionalConfigBoolean(
-        m_ConfigProps,
-        StorageInterceptConstants::ConfigNameCacheAuthEnabled,
-        false);
-}
-//---------------------------------------------------------------------------------------------------------------------
-std::string StorageInterceptConfig::GetCacheAuthAccountName()
-{
-    return StorageInterceptConfig::GetConfigStr(
-        m_ConfigProps,
-        StorageInterceptConstants::ConfigNameCacheAuthAccountName);
-}
-//---------------------------------------------------------------------------------------------------------------------
-std::string StorageInterceptConfig::GetCacheAuthAccountKey()
-{
-    return StorageInterceptConfig::GetConfigStr(
-        m_ConfigProps,
-        StorageInterceptConstants::ConfigNameCacheAuthAccountKey);
-}
-//---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetCacheEncryptionEnabled(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(

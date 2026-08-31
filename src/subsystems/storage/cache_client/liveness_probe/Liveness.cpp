@@ -61,9 +61,6 @@ int main(int argc, char** argv)
                            false,   /*bEnableValidateChecksum*/
                            nullptr, /*strChecksumAlgorithm*/
                            0,       /*nConnectionPoolSize*/
-                           false,   /*bEnableAuth*/
-                           nullptr, /*strAccountName*/
-                           nullptr, /*strAccountKey*/
                            false,   /*bUseLocalServer*/
                            true,    /*bReuseConnections*/
                            false,   /*bIsCacheServerDiscoveryEnabled*/

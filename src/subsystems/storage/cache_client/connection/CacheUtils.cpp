@@ -18,8 +18,6 @@
 #include "IConnection.h"
 #include <sys/socket.h>
 #include <iomanip>
-#include <openssl/evp.h>
-#include <openssl/hmac.h>
 #include <openssl/sha.h>
 #include <map>
 #include <regex>
@@ -187,88 +185,6 @@ namespace cacheutils
         {
             return 0;
         }
-    }
-//---------------------------------------------------------------------------------------------------------------------
-    std::string getHMACSHA256(const string& key, const string& message)
-    {
-        string hashValue(EVP_MAX_MD_SIZE, '\0');
-        unsigned int hashLen = EVP_MAX_MD_SIZE;
-        
-        if (!HMAC(EVP_sha256(), key.data(), key.length(),  (const unsigned char *)message.data(), message.length(),
-            (unsigned char*)hashValue.data(), &hashLen))
-        {
-            LOG_ERROR("Failed to generate HMAC signature");
-            return "";
-        }
-
-        return hashValue.substr(0, hashLen);
-    }
-//---------------------------------------------------------------------------------------------------------------------
-    bool AddAuthParams(Request& request, const string& strCacheAccountName, const string& strCacheAccountKey)
-    {
-        LOG_DEBUG("AddAuthParams cache auth enabled")
-        AuthParams* authParams = nullptr;
-        time_t timestamp = time(NULL);
-        string serializedHeaders;
-        if (request.type_case() == Request::kDownloadrequest)
-        {
-            serializedHeaders = 
-                std::string("D") + 
-                request.mutable_downloadrequest()->filename() + 
-                std::to_string(request.mutable_downloadrequest()->offset()) +
-                std::to_string(request.mutable_downloadrequest()->length()) +
-                (request.mutable_downloadrequest()->enablelock() ? "1" : "0") +
-                std::to_string(timestamp);
-            authParams = request.mutable_downloadrequest()->mutable_authparams();
-        }
-        else if (request.type_case() == Request::kUploadrequest)
-        {
-            serializedHeaders = 
-                std::string("U") + 
-                request.mutable_uploadrequest()->filename() + 
-                std::to_string(request.mutable_uploadrequest()->filesize()) +
-                (request.mutable_uploadrequest()->ignorelock() ? "1" : "0") +
-                std::to_string(request.mutable_uploadrequest()->expiryseconds()) +
-                std::to_string(timestamp);
-            authParams = request.mutable_uploadrequest()->mutable_authparams();
-        }
-        else if (request.type_case() == Request::kIbinitrequest)
-        {
-            serializedHeaders =
-                std::string("IB") +
-                std::to_string(request.ibinitrequest().clientlid()) +
-                std::to_string(request.ibinitrequest().clientibport()) +
-                std::to_string(request.ibinitrequest().clientmtu()) +
-                std::to_string(request.ibinitrequest().clientqpn_size()) +
-                std::to_string(timestamp);
-            authParams = request.mutable_ibinitrequest()->mutable_authparams();
-        }
-        else if(request.type_case() == Request::kDeleterequest)
-        {
-            serializedHeaders = std::string("Del") + request.mutable_deleterequest()->filename() +
-                                request.mutable_deleterequest()->groupid() +
-                                request.mutable_deleterequest()->lastaccesstime() + std::to_string(timestamp);
-            authParams = request.mutable_deleterequest()->mutable_authparams();
-        }
-        else if(request.type_case() == Request::kGetcachelastaccesstimedistributionrequest)
-        {
-            serializedHeaders = std::string("GATD") +
-                                std::to_string(request.mutable_getcachelastaccesstimedistributionrequest()->distributionbucketsizeinhours()) +
-                                std::to_string(timestamp);
-            authParams = request.mutable_getcachelastaccesstimedistributionrequest()->mutable_authparams();
-        }
-        else
-        {
-            LOG_ERROR("unkown req type: {}", request.type_case());
-            return false;
-        }
-
-        authParams->set_enabled(true);
-        authParams->set_accountname(strCacheAccountName);
-        authParams->set_timestamp(timestamp);
-        authParams->set_signature(getHMACSHA256(strCacheAccountKey, serializedHeaders));
-
-        return authParams->signature().length() > 0;
     }
 //---------------------------------------------------------------------------------------------------------------------
 bool IsValidLastAccessTime(const char* lastAccessTime)

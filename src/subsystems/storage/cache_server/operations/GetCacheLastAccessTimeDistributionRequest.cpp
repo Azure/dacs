@@ -22,38 +22,6 @@
 using namespace std;
 using namespace cache;
 //---------------------------------------------------------------------------------------------------------------------
-bool AuthenticateRequest(const GetCacheLastAccessTimeDistributionRequest& request)
-{
-    if (!IsAuthEnabled())
-    {
-        return true;
-    }
-
-    if (!request.authparams().enabled())
-    {
-        LOG_WARN_REQID("Auth params not sent by client", request);
-        return false;
-    }
-
-    time_t timestamp = request.authparams().timestamp();
-    string serializedHeaders = 
-        std::string("GATD") + 
-        std::to_string(request.distributionbucketsizeinhours()) +  
-        std::to_string(timestamp);
-
-    if (!ValidateAuthSignature(
-        request.authparams().accountname(),
-        request.authparams().signature(),
-        serializedHeaders,
-        timestamp))
-    {
-        LOG_WARN_REQID("Auth validation failure", request);
-        return false;
-    }
-
-    return true;
-}
-//---------------------------------------------------------------------------------------------------------------------
 bool GetLastAccessTimeDistribution(
     IConnection& clientConnection,
     const GetCacheLastAccessTimeDistributionRequest& getLastAccessTimeDistributionRequest,
@@ -65,12 +33,6 @@ bool GetLastAccessTimeDistribution(
     GetCacheLastAccessTimeDistributionResponse getCacheLastAccessTimeDistributionResponse;
     const std::string& requestid = getLastAccessTimeDistributionRequest.requestid();
     getCacheLastAccessTimeDistributionResponse.set_requestid(requestid);
-    if (!AuthenticateRequest(getLastAccessTimeDistributionRequest))
-    {
-        LOG_WARN_REQID("Failed to authenticate request", getLastAccessTimeDistributionRequest);
-        SET_RESULT(getCacheLastAccessTimeDistributionResponse, eResponseCode, GetCacheLastAccessTimeDistributionResponse::AUTH_FAILED);
-        return SendMessageToRemoteFinal(clientConnection, getCacheLastAccessTimeDistributionResponse, requestid);
-    }
 
     if (std::to_string(getLastAccessTimeDistributionRequest.distributionbucketsizeinhours()).empty() ||
         getLastAccessTimeDistributionRequest.distributionbucketsizeinhours() <= 0)

@@ -146,8 +146,6 @@ void CacheClientTests::InitializeClient(
     bool bEnableConsistentHashing)
 {
     static uint32_t nPort = atoi(getenv("CACHE_SERVER_PORT"));
-    static char* authAccountName = getenv("CACHESERVER_AUTH_ACCOUNTNAME");
-    static char* authAccountKey = getenv("CACHESERVER_AUTH_ACCOUNTKEY");
 
     const char* arrServers[] = {"127.0.0.1"};
     uint32_t nServers = 1;
@@ -156,7 +154,6 @@ void CacheClientTests::InitializeClient(
     bool enableIB = true;
     bool enableCalculateChecksum = bEnableCalculateChecksum;
     bool enableValidateChecksum = bEnableValidateChecksum;
-    bool enableAuth = authAccountKey != nullptr && authAccountName != nullptr;
 
     const CacheClientRetryConfig retryConfig{1, 0, 0};
 
@@ -176,9 +173,6 @@ void CacheClientTests::InitializeClient(
                       enableValidateChecksum, /** enableValidateChecksum*/
                       strChecksumAlgorithm,   /** strChecksumAlgorithm*/
                       0, /** nConnectionPoolSize*/
-                      enableAuth, /** enableAuth*/
-                      authAccountName ? authAccountName : "", /** strAccountName*/
-                      authAccountKey ? authAccountKey : "", /** strAccountKey*/
                       false, /** bUseLocalServer*/
                       true, /** bReuseConnections*/
                       bIsDiscoveryEnabled, /** bIsCacheServerDiscoveryEnabled*/
@@ -352,8 +346,6 @@ TEST_P(CacheClientTests, Initialization)
     bool enableCalculateChecksum = false;
     bool enableValidateChecksum = false;
     const char* checksumAlgorithm = nullptr;
-    const char* accountName = "my_account";
-    const char* accountKey = "my_secret_key";
 
     const CacheClientRetryConfig retryConfig{1, 0, 0};
 
@@ -372,9 +364,6 @@ TEST_P(CacheClientTests, Initialization)
                                 enableValidateChecksum /**enableValidateChecksum*/,
                                 checksumAlgorithm /**strChecksumAlgorithm */,
                                 0 /**nConnectionPoolSize*/,
-                                true /**enableAuth*/,
-                                accountName /**accountName*/,
-                                accountKey /**accountKey*/,
                                 false /**useLocalServer*/,
                                 true /**bReuseConnections*/,
                                 false /**bIsCacheServerDiscoveryEnabled*/,
@@ -393,9 +382,6 @@ TEST_P(CacheClientTests, Initialization)
                                 enableValidateChecksum /**enableValidateChecksum*/,
                                 checksumAlgorithm /**strChecksumAlgorithm */,
                                 0 /**nConnectionPoolSize*/,
-                                true /**enableAuth*/,
-                                accountName /**accountName*/,
-                                accountKey /**accountKey*/,
                                 false /**useLocalServer*/,
                                 true /**bReuseConnections*/,
                                 false /**bIsCacheServerDiscoveryEnabled*/,
@@ -414,9 +400,6 @@ TEST_P(CacheClientTests, Initialization)
                                 enableValidateChecksum /**enableValidateChecksum*/,
                                 checksumAlgorithm /**strChecksumAlgorithm */,
                                 0 /**nConnectionPoolSize*/,
-                                true /**enableAuth*/,
-                                accountName /**accountName*/,
-                                accountKey /**accountKey*/,
                                 false /**useLocalServer*/,
                                 true /**bReuseConnections*/,
                                 true /**bIsCacheServerDiscoveryEnabled*/,
@@ -442,9 +425,6 @@ TEST_P(CacheClientTests, Initialization)
                              false, /**enableValidateChecksum*/
                              nullptr, /**strChecksumAlgorithm */
                              0, /**nConnectionPoolSize*/
-                             false, /**enableAuth*/
-                             "", /**accountName*/
-                             "", /**accountKey*/
                              false, /**useLocalServer*/
                              true, /**bReuseConnections*/
                              true, /**bIsCacheServerDiscoveryEnabled*/
@@ -453,33 +433,28 @@ TEST_P(CacheClientTests, Initialization)
                              false /**bEnableConsistentHashing*/,
                              retryConfig));
     }
-
-    // This test checks the behavior of CacheClientImpl initialization
-    // with no auth credentials.
-    {
-        CacheClientImpl client;
-        // No auth credentials
-        ASSERT_EQ(CacheClientStatus::SUCCESS,
-            client.Initialize(arrServers /**arrServers*/,
-                nServers /**nServers*/,
-                nPort /**nPort*/,
-                enableIB /**enableIB*/,
-                enableCalculateChecksum /**enableCalculateChecksum*/,
-                enableValidateChecksum /**enableValidateChecksum*/,
-                checksumAlgorithm /**strChecksumAlgorithm */,
-                0 /**nConnectionPoolSize*/,
-                true /**enableAuth*/,
-                "" /**accountName*/,
-                "" /**accountKey*/,
-                false /**useLocalServer*/,
-                true /**bReuseConnections*/,
-                false /**bIsCacheServerDiscoveryEnabled*/,
-                5 /**nCacheServerDiscoveryIntervalInSeconds*/,
-                arrServers[0] /**nCacheServerDiscoveryEndpoint*/,
-                false /**bEnableConsistentHashing*/,
-                retryConfig));
-    }
 }   
+//---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, InitializeRejectsNonNullAuthCredentials)
+{
+    // Cache authentication has been removed. The public C API must reject any caller that
+    // still supplies credentials rather than silently ignoring them.
+    AuthCredentials authCredentials{const_cast<char*>("admin"), const_cast<char*>("1234")};
+    const char* arrServers[] = {"127.0.0.1"};
+    CacheClientRetryConfig retryConfig{1, 0, 0};
+
+    ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT,
+        Initialize(arrServers, /**arrServers*/
+                   1, /**nServers*/
+                   9065, /**nPort*/
+                   false, /**bEnableIB*/
+                   false, /**bEnableCalculateChecksum*/
+                   false, /**bEnableValidateChecksum*/
+                   nullptr, /**strChecksumAlgorithm*/
+                   &authCredentials, /**pAuthCredentials*/
+                   false, /**bEnableConsistentHashing*/
+                   retryConfig));
+}
 //---------------------------------------------------------------------------------------------------------------------
 TEST_P(CacheClientTests, DownloadNonExistent)
 {
@@ -1264,7 +1239,7 @@ TEST_P(CacheClientTests, DiscoveryEndpointConfigurationValidation) {
         uint32_t nPort = atoi(getenv("CACHE_SERVER_PORT"));
         
         ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT,
-            client.Initialize(nullptr, 0, nPort, false, false, false, nullptr, 0, false, "", "", 
+            client.Initialize(nullptr, 0, nPort, false, false, false, nullptr, 0,
                              false, true, true, 2, "", false,
                              CacheClientRetryConfig{1, 0, 0}));  // Empty endpoint
     }
@@ -1287,7 +1262,7 @@ TEST_P(CacheClientTests, ResilientInitializationWithNetworkFailures) {
     
     // Should succeed with unreachable endpoint (graceful degradation)
     ASSERT_EQ(CacheClientStatus::SUCCESS,
-        client.Initialize(nullptr, 0, nPort, false, false, false, nullptr, 0, false, "", "", 
+        client.Initialize(nullptr, 0, nPort, false, false, false, nullptr, 0,
                          false, true, true, 2, UNREACHABLE_ENDPOINT, false,
                          CacheClientRetryConfig{1, 0, 0}));
     

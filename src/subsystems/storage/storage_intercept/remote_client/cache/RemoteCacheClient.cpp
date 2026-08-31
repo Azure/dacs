@@ -39,11 +39,6 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
     int serverPort = StorageInterceptConfig::GetInstance().GetCacheServerPort();
     bool enableRemoteCache = StorageInterceptConfig::GetInstance().GetCacheEnableRemote();
     int numUploadThreads = StorageInterceptConfig::GetInstance().GetCacheNumUploadThreadsPerProcess();
-    bool bCacheAuthEnabled = StorageInterceptConfig::GetInstance().GetCacheAuthEnabled();
-    const std::string strCacheAccountName =
-        bCacheAuthEnabled ? StorageInterceptConfig::GetInstance().GetCacheAuthAccountName() : "";
-    const std::string strCacheAccountKey =
-        bCacheAuthEnabled ? StorageInterceptConfig::GetInstance().GetCacheAuthAccountKey() : "";
     int nMaxConnectionsReuseSize = StorageInterceptConfig::GetInstance().GetCacheMaxConnectionsReuseSize();
     bool bReuseServerConnections = StorageInterceptConfig::GetInstance().GetCacheReuseServerConnections();
     bool bUseInfiniband = StorageInterceptConfig::GetInstance().GetCacheIBEnabled();
@@ -97,9 +92,6 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
         m_numServerNodes = 1;
     }
 
-    bool bAuthEnabled = StorageInterceptConfig::GetInstance().GetCacheAuthEnabled();
-    std::string accountName = bAuthEnabled ? StorageInterceptConfig::GetInstance().GetCacheAuthAccountName() : "";
-    std::string accountKey = bAuthEnabled ? StorageInterceptConfig::GetInstance().GetCacheAuthAccountKey() : "";
     bool bIsCacheServerDiscoveryEnabled = StorageInterceptConfig::GetInstance().IsCacheServerDiscoveryEnabled();
     uint32_t nDiscoveryIntervalInSeconds = StorageInterceptConfig::GetInstance().CacheServerDiscoveryIntervalInSeconds();
     std::string nDiscoveryEndpoint = StorageInterceptConfig::GetInstance().CacheServerDiscoveryEndpoint();
@@ -126,9 +118,6 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
                                                        bEnableValidateChecksum,
                                                        strChecksumAlgorithm.c_str(),
                                                        nMaxConnectionsReuseSize,
-                                                       bAuthEnabled,
-                                                       accountName.c_str(),
-                                                       accountKey.c_str(),
                                                        !enableRemoteCache,
                                                        bReuseServerConnections,
                                                        bIsCacheServerDiscoveryEnabled,

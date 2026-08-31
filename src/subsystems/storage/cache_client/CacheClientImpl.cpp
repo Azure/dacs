@@ -48,7 +48,6 @@ std::size_t CacheClientImpl::nDefaultConnectionPoolSize = 1024;
 CacheClientImpl::CacheClientImpl()
 : m_bInitialized{false}
 , m_bEnableIB(false)
-, m_bEnableAuth(false)
 , m_bEnableCalculateChecksum(true)
 , m_bEnableValidateChecksum(false)
 , m_checksumAlgorithm(DEFAULT_CHECKSUM_ALGORITHM)
@@ -67,9 +66,6 @@ CacheClientStatus CacheClientImpl::Initialize(
     /*[in]*/ const bool bEnableValidateChecksum,
     /*[in]*/ const char* strChecksumAlgorithm,
     /*[in]*/ const uint32_t nConnectionPoolSize,
-    /*[in]*/ const bool bEnableAuth,
-    /*[in]*/ const char* strAccountName,
-    /*[in]*/ const char* strAccountKey,
     /*[in]*/ const bool bUseLocalServer,
     /*[in]*/ const bool bReuseConnections,
     /*[in]*/ const bool bIsCacheServerDiscoveryEnabled,
@@ -82,12 +78,6 @@ CacheClientStatus CacheClientImpl::Initialize(
     /*[inopt]*/ const int nSocketRcvbufSize)
 {
     std::lock_guard<std::mutex> lock(m_mtxInitialization);
-
-    if((strAccountName == nullptr || strAccountKey == nullptr) && bEnableAuth)
-    {
-        LOG_ERROR("Invalid empty account name or key when auth is enabled");
-        return CacheClientStatus::INVALID_ARGUMENT;
-    }
 
     if(m_bInitialized)
     {
@@ -137,7 +127,6 @@ CacheClientStatus CacheClientImpl::Initialize(
     m_nMaxBufferSizeBytes = nMaxBufferSizeBytes;
     m_bEnableIB = bEnableIB;
     m_nConnectionPoolSize = nConnectionPoolSize == 0 ? nDefaultConnectionPoolSize : nConnectionPoolSize;
-    m_bEnableAuth = bEnableAuth;
     m_bEnableCalculateChecksum = bEnableCalculateChecksum;
     m_bEnableValidateChecksum = bEnableValidateChecksum;
 
@@ -146,8 +135,6 @@ CacheClientStatus CacheClientImpl::Initialize(
         return CacheClientStatus::INVALID_ARGUMENT;
     }
     m_retryConfig = retryConfig;
-    m_strAccountName = strAccountName == nullptr ? "" : std::string(strAccountName);
-    m_strAccountKey = strAccountKey == nullptr ? "" : std::string(strAccountKey);
     std::string algorithmStr = (strChecksumAlgorithm == nullptr || strlen(strChecksumAlgorithm) == 0) ? 
         "" : std::string(strChecksumAlgorithm);
     
@@ -161,9 +148,6 @@ CacheClientStatus CacheClientImpl::Initialize(
     m_spConnectionManager = std::make_unique<ConnectionManager>(nPort,
                                                                 bUseLocalServer,
                                                                 vecServers,
-                                                                bEnableAuth,
-                                                                m_strAccountName,
-                                                                m_strAccountKey,
                                                                 m_nConnectionPoolSize,
                                                                 bReuseConnections,
                                                                 bEnableIB,
@@ -305,12 +289,6 @@ CacheClientStatus CacheClientImpl::Upload(
         }
     }
 
-    if(m_bEnableAuth && !AddAuthParams(request, m_strAccountName, m_strAccountKey))
-    {
-        LOG_ERROR_REQID("Failed to create auth request for file: {}", *uploadRequest, strCacheKey);
-        return CacheClientStatus::AUTH_FAILED;
-    }
-
     EncryptionUtil encryptionUtil =
         EncryptionUtil(strEncryptionKey != nullptr /* isEncyptionEnabled */, strEncryptionKey);
     std::unique_ptr<char[]> encBuffer;
@@ -412,11 +390,6 @@ CacheClientStatus CacheClientImpl::Upload(
         {
             LOG_WARN_CACHECLIENT_EXTENDED("Duplicate upload attempted", *uploadRequest);
             status = CacheClientStatus::KEY_EXISTS;
-        }
-        else if(response.result() == UploadResponse::AUTH_FAILED)
-        {
-            LOG_ERROR_CACHECLIENT_EXTENDED("Authentication failed", *uploadRequest);
-            status = CacheClientStatus::AUTH_FAILED;
         }
         else
         {
@@ -531,11 +504,6 @@ CacheClientStatus CacheClientImpl::Download(
         return CacheClientStatus::INTERNAL_ERROR;
     }
     LOG_DEBUG_REQID("Cache server hostname for file: {} is {}", *downloadRequest, strCacheKey, hostname);
-    if(m_bEnableAuth && !AddAuthParams(request, m_strAccountName, m_strAccountKey))
-    {
-        LOG_WARN_REQID("failed to create auth request, key: {}", *downloadRequest, strCacheKey);
-        return CacheClientStatus::AUTH_FAILED;
-    }
 
     std::unique_ptr<IConnection> serverConnection = std::move(m_spConnectionManager->GetConnection(hostname));
     if(!serverConnection.get())
@@ -753,11 +721,6 @@ CacheClientStatus CacheClientImpl::Download(
     {
         cacheClientStatus = CacheClientStatus::NOTFOUND;
     }
-    else if(response.result() == DownloadResponse::AUTH_FAILED)
-    {
-        cacheClientStatus = CacheClientStatus::AUTH_FAILED;
-        discardConnection = true;
-    }
     else
     {
         LOG_ERROR_CACHECLIENT_EXTENDED("Server returned internal failure", *downloadRequest);
@@ -824,13 +787,6 @@ CacheClientStatus CacheClientImpl::DeleteGroupFromServer(
     DeleteRequest* deleteGroupRequest = request.mutable_deleterequest();
     deleteGroupRequest->set_requestid(strCorrelationId);
     deleteGroupRequest->set_groupid(groupID);
-
-    if(m_bEnableAuth && !AddAuthParams(request, m_strAccountName, m_strAccountKey))
-    {
-        LOG_ERROR_REQID(
-            "Failed to set auth for delete group request for group ID: {}", *deleteGroupRequest, groupID);
-        return CacheClientStatus::AUTH_FAILED;
-    }
 
     std::unique_ptr<IConnection> connection = std::move(m_spConnectionManager->GetConnection(hostname));
 
@@ -902,11 +858,6 @@ CacheClientStatus CacheClientImpl::DeleteGroupFromServer(
         m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), false);
         return CacheClientStatus::SUCCESS;
 
-    case DeleteResponse::AUTH_FAILED:
-        LOG_ERROR_REQID("Delete request failed due to auth failure for server: {}", *deleteGroupRequest, hostname);
-        m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), true);
-        return CacheClientStatus::AUTH_FAILED;
-
     case DeleteResponse::INTERNAL_ERROR:
         LOG_ERROR_REQID(
             "Delete request failed due to internal error for server: {}", *deleteGroupRequest, hostname);
@@ -963,14 +914,6 @@ CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
         GetCacheLastAccessTimeDistributionRequest* lastAccessTimeDistributionRequest = request.mutable_getcachelastaccesstimedistributionrequest();
         lastAccessTimeDistributionRequest->set_requestid(strCorrelationId);
         lastAccessTimeDistributionRequest->set_distributionbucketsizeinhours(nDistributionBucketSizeInHours);
-
-        if(m_bEnableAuth && !AddAuthParams(request, m_strAccountName, m_strAccountKey))
-        {
-            LOG_ERROR_REQID("Failed to set auth for Last access time distribution request for server: {}",
-                            *lastAccessTimeDistributionRequest,
-                            hostname);
-            return CacheClientStatus::AUTH_FAILED;
-        }
 
         std::unique_ptr<IConnection> connection = std::move(m_spConnectionManager->GetConnection(hostname));
         if(!connection || !connection.get())
@@ -1046,12 +989,6 @@ CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
             m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), false);
             continue;
 
-        case GetCacheLastAccessTimeDistributionResponse::AUTH_FAILED:
-            LOG_ERROR_REQID("Last access time distribution request failed due to auth failure for server: {}",
-                            *lastAccessTimeDistributionRequest,
-                            hostname);
-            return CacheClientStatus::AUTH_FAILED;
-
         case GetCacheLastAccessTimeDistributionResponse::INTERNAL_ERROR:
             LOG_ERROR_REQID("Last access time distribution request failed due to internal error for server: {}",
                             *lastAccessTimeDistributionRequest,
@@ -1117,13 +1054,6 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
         DeleteRequest* deleteByLastAccessTimeRequest = request.mutable_deleterequest();
         deleteByLastAccessTimeRequest->set_requestid(strCorrelationId);
         deleteByLastAccessTimeRequest->set_lastaccesstime(lastAccessTime);
-
-        if(m_bEnableAuth && !AddAuthParams(request, m_strAccountName, m_strAccountKey))
-        {
-            LOG_ERROR_REQID(
-                "Failed to set auth for delete by last access request for lastAccessTime: {}", *deleteByLastAccessTimeRequest, lastAccessTime);
-            return CacheClientStatus::AUTH_FAILED;
-        }
 
         std::unique_ptr<IConnection> connection = std::move(m_spConnectionManager->GetConnection(hostname));
 
@@ -1202,10 +1132,6 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
         case DeleteResponse::SUCCESS:
             m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), false);
             continue;
-
-        case DeleteResponse::AUTH_FAILED:
-            LOG_ERROR_REQID("Delete by last access request failed due to auth failure for server: {}", *deleteByLastAccessTimeRequest, hostname);
-            return CacheClientStatus::AUTH_FAILED;
 
         case DeleteResponse::INTERNAL_ERROR:
             LOG_ERROR_REQID(

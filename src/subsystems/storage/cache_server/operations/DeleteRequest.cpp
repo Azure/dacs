@@ -22,40 +22,6 @@
 using namespace std;
 using namespace cache;
 //---------------------------------------------------------------------------------------------------------------------
-bool AuthenticateRequest(const DeleteRequest& request)
-{
-    if (!IsAuthEnabled())
-    {
-        return true;
-    }
-
-    if (!request.authparams().enabled())
-    {
-        LOG_WARN_REQID("Auth params not sent by client", request);
-        return false;
-    }
-
-    time_t timestamp = request.authparams().timestamp();
-    string serializedHeaders = 
-        std::string("Del") + 
-        request.filename() + 
-        request.groupid() + 
-        request.lastaccesstime() +
-        std::to_string(timestamp);
-
-    if (!ValidateAuthSignature(
-        request.authparams().accountname(),
-        request.authparams().signature(),
-        serializedHeaders,
-        timestamp))
-    {
-        LOG_WARN_REQID("Auth validation failure", request);
-        return false;
-    }
-
-    return true;
-}
-//---------------------------------------------------------------------------------------------------------------------
 bool DeleteFile(IConnection& clientConnection, const DeleteRequest& deleteRequest, enum ResponseCode& eResponseCode)
 {
     LOG_INFO_REQID("filename: {}, group-id: {} lastaccesstime: {}",
@@ -64,12 +30,6 @@ bool DeleteFile(IConnection& clientConnection, const DeleteRequest& deleteReques
     DeleteResponse deleteResponse;
     const std::string& requestid = deleteRequest.requestid();
     deleteResponse.set_requestid(requestid);
-    if (!AuthenticateRequest(deleteRequest))
-    {
-        LOG_WARN_REQID("Failed to authenticate request", deleteRequest);
-        SET_RESULT(deleteResponse, eResponseCode, DeleteResponse::AUTH_FAILED);
-        return SendMessageToRemoteFinal(clientConnection, deleteResponse, requestid);
-    }
 
     if (deleteRequest.type_case() == DeleteRequest::kGroupid)
     {

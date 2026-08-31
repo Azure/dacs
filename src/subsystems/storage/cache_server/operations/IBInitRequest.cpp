@@ -24,41 +24,6 @@
 using namespace std;
 using namespace cache;
 //---------------------------------------------------------------------------------------------------------------------
-bool AuthenticateRequest(const IBInitRequest& request)
-{
-    if (!IsAuthEnabled())
-    {
-        return true;
-    }
-
-    time_t timestamp = request.authparams().timestamp();
-    string serializedHeaders = 
-        std::string("IB") + 
-        std::to_string(request.clientlid()) +
-        std::to_string(request.clientibport()) +
-        std::to_string(request.clientmtu()) +
-        std::to_string(request.clientqpn_size()) +
-        std::to_string(timestamp);
-
-   if (!request.authparams().enabled())
-    {
-        LOG_WARN_REQID("Auth params not sent by client", request);
-        return false;
-    }
-    
-    if (!ValidateAuthSignature(
-        request.authparams().accountname(),
-        request.authparams().signature(),
-        serializedHeaders,
-        timestamp))
-    {
-        LOG_WARN_REQID("Auth validation failure", request);
-        return false;
-    }
-
-    return true;
-}
-//---------------------------------------------------------------------------------------------------------------------
 bool IBInitializeClient(IConnection& clientConnection, const IBInitRequest& ibRequest, enum ResponseCode& eResponseCode)
 {
     LOG_INFO_REQID("received ib init request={}", ibRequest, ibRequest.clientlid());
@@ -66,12 +31,6 @@ bool IBInitializeClient(IConnection& clientConnection, const IBInitRequest& ibRe
     IBInitResponse ibResponse;
     const std::string& requestid = ibRequest.requestid();
     ibResponse.set_requestid(requestid);
-    if (!AuthenticateRequest(ibRequest))
-    {
-        LOG_WARN_REQID("Failed to authenticate request", ibRequest);
-        SET_RESULT(ibResponse, eResponseCode, IBInitResponse::AUTH_FAILED);
-        return SendMessageToRemoteFinal(clientConnection, ibResponse, requestid);
-    }
 
     if (!IBManager::GetInstance().IBEnabled())
     {

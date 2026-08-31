@@ -42,9 +42,6 @@ class ConnectionManager
             /*[in]*/ const uint16_t serverPort,
             /*[in]*/ const bool useLocalServer,
             /*[in]*/ const std::vector<std::string>& cacheServers,
-            /*[in]*/ const bool bAuthEnabled,
-            /*[in]*/ const std::string& strCacheAccountName,
-            /*[in]*/ const std::string& strCacheAccountKey,
             /*[in]*/ const uint32_t nMaxConnectionsReuseSize,
             /*[in]*/ const bool bReuseServerConnections,
             /*[in]*/ const bool bUseInfiniband,
@@ -110,9 +107,6 @@ class ConnectionManager
         void MonitorCacheServers();
     
         const int                                                                   m_ServerPort;
-        const bool                                                                  m_bAuthEnabled;
-        const std::string                                                           m_strCacheAccountName;
-        const std::string                                                           m_strCacheAccountKey;
         const int                                                                   m_nMaxConnectionsReuseSize;
         mutable std::mutex                                                          m_lockCacheServerConnections;
         mutable std::shared_mutex                                                   m_sharedLockCacheServerData;

@@ -30,14 +30,10 @@
 #include <iomanip>
 #include <errno.h>
 #include <atomic>
-#include <openssl/hmac.h>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
 string CacheRootFolder = ".";
-string AuthAccountName = "";
-string AuthAccountKey = "";
-bool AuthEnabled = false;
 string ServerHostName = "";
 string CacheServerMetricPort = "";
 //---------------------------------------------------------------------------------------------------------------------
@@ -133,22 +129,6 @@ void InitializeUtils()
 
     mkdir(GetSnapshotFolderPath().c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
-    char* authEnabled = std::getenv("CACHESERVER_AUTH_ENABLED");
-    if (authEnabled != NULL && strcasecmp(authEnabled, "true") == 0)
-    {
-        AuthEnabled = true;
-        char* accountName = std::getenv("CACHESERVER_AUTH_ACCOUNTNAME");
-        char* accountKey = std::getenv("CACHESERVER_AUTH_ACCOUNTKEY");
-        if (accountName == NULL || accountKey == NULL)
-        {
-            LOG_CRITICAL("Auth is enabled but Account name or key not set");
-            exit(-1);
-        }
-
-        AuthAccountName = accountName;
-        AuthAccountKey = accountKey;
-    }
-
     char* serverHostName = std::getenv("CACHESERVER_HOSTNAME");
     if (serverHostName != NULL && strlen(serverHostName) > 0)
     {
@@ -180,48 +160,6 @@ unsigned int GetHashBucket(const std::string& strKey)
     static thread_local hash<string> hasher;
     auto hash_val = hasher(strKey);
     return hash_val % NUM_MAPS;
-}
-//---------------------------------------------------------------------------------------------------------------------
-bool IsAuthEnabled()
-{
-    return AuthEnabled;
-}
-//---------------------------------------------------------------------------------------------------------------------
-bool ValidateAuthSignature(const string& clientAccountName, const string& clientSignature, const string& message,
-    time_t timestamp)
-{
-    time_t currentTimeStamp = time(NULL);
-    
-    // Allowing only 2 minutes drift in timestamp
-    if (abs(currentTimeStamp - timestamp) > 120)
-    {
-        LOG_WARN("Timestamp not within bound, server ts: {}, client ts: {}", currentTimeStamp, timestamp);
-        return false;
-    }
-
-    if (clientAccountName != AuthAccountName)
-    {
-        LOG_WARN("Account name does not match, client: {}, server: {}", clientAccountName, AuthAccountName);
-        return false;
-    }
-
-    string hashValue(EVP_MAX_MD_SIZE, '\0');
-    unsigned int hashLen = EVP_MAX_MD_SIZE;
-    
-    if (!HMAC(EVP_sha256(), AuthAccountKey.data(), AuthAccountKey.length(),
-        (const unsigned char *)message.data(), message.length(), (unsigned char *)hashValue.data(), &hashLen))
-    {
-        LOG_ERROR("Failed to generate HMAC signature");
-        return false;
-    }
-
-    if (clientSignature != hashValue.substr(0, hashLen))
-    {
-        LOG_WARN("Auth signatures don't match");
-        return false;
-    }
-
-    return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
 string GetServerHostName()

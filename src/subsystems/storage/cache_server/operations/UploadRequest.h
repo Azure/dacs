@@ -31,7 +31,6 @@ inline ResponseCode TranslateResponseCode(UploadResponse_Result uploadResponseCo
         case UploadResponse_Result::UploadResponse_Result_FILE_EXISTS:
             eResponseCode = ResponseCode::INVALID_TRANSITION;
             break;
-        case UploadResponse_Result::UploadResponse_Result_AUTH_FAILED:
         case UploadResponse_Result::UploadResponse_Result_BAD_REQUEST:
             eResponseCode = ResponseCode::BAD_REQUEST;
             break;

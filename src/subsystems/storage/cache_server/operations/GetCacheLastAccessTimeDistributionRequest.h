@@ -29,9 +29,6 @@ inline ResponseCode TranslateResponseCode(GetCacheLastAccessTimeDistributionResp
     case GetCacheLastAccessTimeDistributionResponse_Result::GetCacheLastAccessTimeDistributionResponse_Result_SUCCESS:
         eResponseCode = ResponseCode::SUCCESS;
         break;
-    case GetCacheLastAccessTimeDistributionResponse_Result::GetCacheLastAccessTimeDistributionResponse_Result_AUTH_FAILED:
-        eResponseCode = ResponseCode::BAD_REQUEST;
-        break;
     case GetCacheLastAccessTimeDistributionResponse_Result::GetCacheLastAccessTimeDistributionResponse_Result_INTERNAL_ERROR:
         eResponseCode = ResponseCode::INTERNAL_ERROR;
         break;
