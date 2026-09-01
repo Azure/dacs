@@ -48,6 +48,12 @@ add_dependencies(CacheServerUtils
 file(GLOB CACHE_SERVER_SOURCES *cpp ./operations/*cpp ./utils/*cpp ./state/*cpp ./infiniband/*cpp
     ./snapshot/*cpp ./snapshot/proto/*cc ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/*cpp)
 
+# Statically link Boost::program_options so the CacheServer runtime image (built from a slim
+# base image without Boost installed) does not need libboost_program_options.so at startup.
+set(Boost_USE_STATIC_LIBS ON)
+find_package(Boost COMPONENTS program_options REQUIRED)
+include_directories(${Boost_INCLUDE_DIRS})
+
 add_executable(${CACHE_SERVER_EXEC} ${CACHE_SERVER_SOURCES})
 
 target_include_directories(${CACHE_SERVER_EXEC} PRIVATE
@@ -90,6 +96,7 @@ target_link_libraries(CacheServer
     crypto
     diagnostics
     staticprotobuf
+    Boost::program_options
 )
 
 add_custom_command(
@@ -141,6 +148,7 @@ target_link_libraries(CacheServerUnitTests
         stdc++fs
         prometheus-cpp-pull
         prometheus-cpp-core
+        Boost::program_options
         ${GMOCK_LIBRARY}
         ${GMOCK_MAIN_LIBRARY}
         ${GTEST_LIBRARY}

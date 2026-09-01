@@ -60,7 +60,7 @@ spec:
           export CACHESERVER_CACHE_PATH=/host/mnt/ssd0//cache
           export CACHESERVER_CACHE_SIZE_BYTES=2147483648000
           mkdir -p $CACHESERVER_CACHE_PATH
-          /root/CacheServer $CACHESERVER_PORT $CACHESERVER_CACHE_PATH $CACHESERVER_CACHE_SIZE_BYTES
+          /root/CacheServer --port $CACHESERVER_PORT --cacheRoot $CACHESERVER_CACHE_PATH --sizeLimitBytes $CACHESERVER_CACHE_SIZE_BYTES
         command:
         - /bin/sh
         - -cx
