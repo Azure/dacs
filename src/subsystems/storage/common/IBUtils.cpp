@@ -146,7 +146,9 @@ namespace ibutils
                 continue;
             }
 
-            for(int port = 0; port <= devAttr.phys_port_cnt; port++)
+            // Verbs port numbers are one-based. Stop after selecting a port because
+            // context is moved into ibvContext and must not be used afterward.
+            for(int port = 1; port <= devAttr.phys_port_cnt; port++)
             {
                 struct ibv_port_attr portAttr{};
                 rc = ibv_query_port(context.get(), port, &portAttr);
@@ -183,6 +185,7 @@ namespace ibutils
                 LOG_INFO("Found active IB device: {},{}:{},{},{},{},{},{},{}",
                     deviceId, (devices.get())[deviceId]->name, port, devAttr.sys_image_guid, portAttr.active_speed,
                     portAttr.active_width, portAttr.active_mtu, devAttr.max_qp, portAttr.lid);
+                break;
             }
 
             if (bDeviceFound)
