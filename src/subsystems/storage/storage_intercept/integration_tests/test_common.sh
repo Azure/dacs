@@ -57,8 +57,14 @@ CACHE_SERVER_PORT_RANGE_START=20100
 CACHE_SERVER_PORT_RANGE_LENGTH=10000
 export CACHE_SERVER_PORT=${CACHE_SERVER_PORT_RANGE_START}
 CACHE_SERVER_PID=-1
-CACHE_SERVER_PATH=/_cache
-CACHE_LOCAL_SSD_PATH=/_localcache
+# Atomically create unique paths because concurrent containers can have the
+# same PID while sharing the host-backed TMPDIR mounted by bldenv.sh.
+if [[ -z "${CACHE_SERVER_PATH:-}" ]]; then
+  CACHE_SERVER_PATH="$(mktemp -d "${TMPDIR:-/tmp}/dacs-cache-server.XXXXXX")"
+fi
+if [[ -z "${CACHE_LOCAL_SSD_PATH:-}" ]]; then
+  CACHE_LOCAL_SSD_PATH="$(mktemp -d "${TMPDIR:-/tmp}/dacs-local-cache.XXXXXX")"
+fi
 
 # 1.3 Cache Server Metrics Configuration
 CACHESERVER_METRICS_PORT_START=9096

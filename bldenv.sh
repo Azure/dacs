@@ -164,6 +164,14 @@ if [ -d /dev/infiniband ]; then
     IB_EXTRA_FLAGS="--network=host --cap-add=IPC_LOCK --ulimit memlock=-1:-1 -v /sys/class/infiniband:/sys/class/infiniband:ro"
 fi
 
+# Keep large test scratch files off the container writable layer when TMPDIR
+# points to a host directory with sufficient capacity.
+TMPDIR_DOCKER_FLAGS=()
+if [ -n "${TMPDIR:-}" ] && [ -d "${TMPDIR}" ]; then
+    TMPDIR_DOCKER_FLAGS=(--env TMPDIR -v "${TMPDIR}:${TMPDIR}")
+    echo "Mounting host TMPDIR into build container: ${TMPDIR}"
+fi
+
 docker run \
     --rm \
     -i \
@@ -204,6 +212,7 @@ docker run \
     -v $DIR:/workspaces/$WORKSPACE_NAME \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -w /workspaces/$WORKSPACE_NAME \
+    "${TMPDIR_DOCKER_FLAGS[@]}" \
     $IB_DEVICES \
     $IB_EXTRA_FLAGS \
     $nativeBuildImage $CMD
