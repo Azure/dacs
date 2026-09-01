@@ -41,6 +41,7 @@
 #include <cstdlib>
 #include <limits>
 #include "Metrics.h"
+#include "ServerArgs.h"
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 using namespace cache;
@@ -337,31 +338,25 @@ int main(int argc, char *argv[])
     LoggingApi::FlushCachedLog();
     LOG_INFO("Cache Server build commit hash " BUILD_GIT_COMMIT_HASH " built on " __DATE__);
 
-    if (argc < 2) 
+    ServerArgs serverArgs;
+    std::string usageMessage;
+    ParseServerArgsResult parseResult = ParseServerArgs(argc, argv, serverArgs, usageMessage);
+    if (parseResult == ParseServerArgsResult::HelpRequested)
     {
-        LOG_CRITICAL("Usage: ./CacheServer <port> <cache folder root> <cache size in bytes - default 1TB>"
-        " <unused - reserved> <cache expiry ttl window size in seconds - default 60 seconds>");
+        std::cout << usageMessage << std::endl;
+        return 0;
+    }
+    if (parseResult == ParseServerArgsResult::Error)
+    {
+        std::cout << usageMessage << std::endl;
+        LOG_CRITICAL("{}", usageMessage);
         return -1;
     }
-    int port = atoi(argv[1]);
 
-    if (argc > 2)
-    {
-        SetCacheRootPath(argv[2]);
-    }
-
-    if (argc > 3)
-    {
-        CacheManager::GetInstance().SetCacheSizeLimit(stoull(argv[3]));
-    }
-
-    // Note: argv[4] is reserved (previously used for attribute cache limit, now unused) to preserve
-    // positional compatibility with existing callers that pass all 5 arguments.
-
-    if (argc > 5)
-    {
-        CacheManager::GetInstance().SetCacheTTLWindowSize(stoull(argv[5]));
-    }
+    int port = serverArgs.port;
+    SetCacheRootPath(serverArgs.cacheRootPath);
+    CacheManager::GetInstance().SetCacheSizeLimit(serverArgs.cacheSizeLimitBytes);
+    CacheManager::GetInstance().SetCacheTTLWindowSize(serverArgs.cacheTTLWindowSeconds);
 
     InitializeUtils();
 

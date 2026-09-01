@@ -38,7 +38,7 @@ spec:
           # Cache server big enough to fit entire dataset
           # The port which the cache server listens on should match the container port exposed
           # in the line above
-        command: ['/bin/sh', '-c', '/home/dacsuser/CacheServer 9065 /tmp %CACHE_SIZE%']
+        command: ['/bin/sh', '-c', '/home/dacsuser/CacheServer --port 9065 --cacheRoot /tmp --sizeLimitBytes %CACHE_SIZE%']
         resources:
           limits:
             ephemeral-storage: %EPHEMERAL_LIMIT%Gi

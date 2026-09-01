@@ -73,7 +73,7 @@ spec:
           name: cacheserver
         - containerPort: 9096
           name: metrics
-        command: ['/bin/sh', '-c', 'CACHESERVER_HOSTNAME=$HOSTNAME /root/CacheServer 9065 /host/mnt/ssd0/cache 4396972769280']
+        command: ['/bin/sh', '-c', 'CACHESERVER_HOSTNAME=$HOSTNAME /root/CacheServer --port 9065 --cacheRoot /host/mnt/ssd0/cache --sizeLimitBytes 4396972769280']
         volumeMounts:
         - mountPath: /host/mnt/ssd0
           name: cacheserver-storage-ultradisk-pvc

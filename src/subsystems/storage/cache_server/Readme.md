@@ -1,7 +1,7 @@
 ## Cache server
 
-Usage: ./CacheServer <port> <cache folder root> <cache size in bytes - default 1TB> \
-<unused - reserved> <cache expiry ttl window size in seconds - default 60 seconds>
+Usage: ./CacheServer --port <port> [--cacheRoot <cache folder root>] [--sizeLimitBytes <cache size in bytes - default 1TB>] \
+[--ttlWindowSeconds <cache expiry ttl window size in seconds - default 60 seconds>]
 
 ### Supported environment variables:
 

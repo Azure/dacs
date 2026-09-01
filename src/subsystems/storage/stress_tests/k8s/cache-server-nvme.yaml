@@ -58,7 +58,7 @@ spec:
           value: "9066"
         - name: CACHESERVER_EVICTION_ENABLED
           value: "true"
-        command: ['/bin/sh', '-c', 'CACHESERVER_HOSTNAME=$HOSTNAME /root/CacheServer 9065 /mnt/local 1825361100800']
+        command: ['/bin/sh', '-c', 'CACHESERVER_HOSTNAME=$HOSTNAME /root/CacheServer --port 9065 --cacheRoot /mnt/local --sizeLimitBytes 1825361100800']
         volumeMounts:
           - name: persistent-storage
             mountPath: /mnt/local

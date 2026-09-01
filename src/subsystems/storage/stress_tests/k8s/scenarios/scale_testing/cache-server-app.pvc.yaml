@@ -51,7 +51,7 @@ spec:
           # Cache server big enough to fit entire dataset
           # The port which the cache server listens on should match the container port exposed
           # in the line above
-        command: ['/bin/sh', '-c', '/root/CacheServer 9065 /tmp/cache 107374182400']
+        command: ['/bin/sh', '-c', '/root/CacheServer --port 9065 --cacheRoot /tmp/cache --sizeLimitBytes 107374182400']
         volumeMounts:
         - name: disk
           mountPath: /tmp/cache

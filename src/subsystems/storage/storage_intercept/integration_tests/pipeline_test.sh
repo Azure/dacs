@@ -390,7 +390,7 @@ function start_cache_server() {
   
   # Start cache server in the background and save pid
   CACHE_SERVER_EXE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/CacheServer"
-  CacheServerCommand="${CACHE_SERVER_EXE} ${CACHE_SERVER_PORT} ${CACHE_SERVER_PATH} 100000000000 10000000 1 $"
+  CacheServerCommand="${CACHE_SERVER_EXE} --port ${CACHE_SERVER_PORT} --cacheRoot ${CACHE_SERVER_PATH} --sizeLimitBytes 100000000000 --ttlWindowSeconds 1"
 
   echo "Starting CacheServer using command: ${CacheServerCommand}"
   if [[ -n "$output_redirect_file" ]]; then

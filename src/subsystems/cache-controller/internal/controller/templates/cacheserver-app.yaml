@@ -158,7 +158,7 @@ spec:
           {{- end }}
 
           /root/check_space_overuse.sh $CACHESERVER_CACHE_PATH $CACHESERVER_CACHE_SIZE_BYTES
-          /root/CacheServer $CACHESERVER_PORT $CACHESERVER_CACHE_PATH $CACHESERVER_CACHE_SIZE_BYTES
+          /root/CacheServer --port $CACHESERVER_PORT --cacheRoot $CACHESERVER_CACHE_PATH --sizeLimitBytes $CACHESERVER_CACHE_SIZE_BYTES
         volumeMounts:
         - mountPath: {{ .MountSsdPath }}
           name: cache-data-volume

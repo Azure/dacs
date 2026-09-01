@@ -733,8 +733,8 @@ int TestLimits()
     cout << "Test complete. Total tests: " << TotalTests << ". Failed: " << TestsFailed << endl;
     if (TestsFailed > 0)
     {
-        // The fourth argument is an unused placeholder retained for positional compatibility.
-        cout << "Ensure cache server is started as: ./CacheServer 20000 <folder path on ssd> 104857600 0 1" << endl;
+        // Usage strings reflect the named CacheServer CLI arguments (see ServerArgs.h).
+        cout << "Ensure cache server is started as: ./CacheServer --port 20000 --cacheRoot <folder path on ssd> --sizeLimitBytes 104857600 --ttlWindowSeconds 1" << endl;
     }
     return 0;
 }
@@ -1825,9 +1825,9 @@ int main(int argc, char *argv[])
     
     if (TestsFailed > 0)
     {
-        // The fourth argument is an unused placeholder retained for positional compatibility.
+        // Usage strings reflect the named CacheServer CLI arguments (see ServerArgs.h).
         cout << endl << "Ensure cache server is started as "
-            "./CacheServer 20000 <folder path on ssd> 100000000000 0 1" << endl;
+            "./CacheServer --port 20000 --cacheRoot <folder path on ssd> --sizeLimitBytes 100000000000 --ttlWindowSeconds 1" << endl;
         cout << endl << "Failed tests: " << endl;
         for (string test: FailedTests)
         {
