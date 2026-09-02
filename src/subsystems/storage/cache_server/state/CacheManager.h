@@ -37,6 +37,7 @@ class CacheManager
     FRIEND_TEST(CacheManagerTest, TakeAndLoadSnapshot);
     FRIEND_TEST(CacheManagerTest, RembemberPendingGroupIdDeletionAfterSnapshotLoad);
     FRIEND_TEST(CacheManagerTest, TestParseTimeIntervalString);
+    FRIEND_TEST(CacheManagerTest, CleanupWorkerStartsWithConfiguredInterval);
     FRIEND_TEST(CacheManagerTest, TestEviction);
     FRIEND_TEST(CacheManagerTest, TestDynamicEviction);
 
@@ -120,7 +121,8 @@ class CacheManager
         void SetCacheSizeLimit(
             /*[in] */ const uint64_t limitCacheSizeBytes);
 
-        void SetCacheTTLWindowSize(
+        // Starts the cleanup worker after applying the startup-only TTL window configuration.
+        void StartCacheCleanupWorker(
             /*[in] */ const uint32_t cacheTTLWindowSizeSeconds);
 
         std::shared_ptr<snapshot::Snapshot> TakeSnapshot() const;
