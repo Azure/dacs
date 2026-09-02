@@ -141,6 +141,13 @@ class CacheManager
             return (std::size_t)m_cacheSizeLimitBytes.load();
         }
 
+        // Reset the cache size counter to 0. Used as a recovery mechanism when
+        // unsigned underflow is detected (counter wrapped to a huge value).
+        void ResetCacheSizeCounter()
+        {
+            m_totalCachedSize.store(0);
+        }
+
         inline double GetCacheServerUtilizationPercentage() const
         {
             return (double)m_totalCachedSize.load() * 100.0 / m_cacheSizeLimitBytes;

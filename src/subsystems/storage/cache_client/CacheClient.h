@@ -23,7 +23,7 @@
 extern "C" {
 #endif
 //---------------------------------------------------------------------------------------------------------------------
-#define MAX_BUFFER_SIZE_BYTES (128 * 1024 * 1024)
+#define MAX_BUFFER_SIZE_BYTES (256 * 1024 * 1024)
 #define MAX_CACHE_KEY_LEN 127
 #define MAX_METADATA_KEY_VALUE_PAIRS 32
 #define MAX_GROUPID_LEN 127
@@ -205,6 +205,56 @@ CacheClientStatus Download(
     /*[inout] */ uint64_t* nLength,
     /*[out]*/ Metadata* pMetadata,
     /*[in] */ const char* strEncryptionKey);
+//---------------------------------------------------------------------------------------------------------------------
+/**
+ * Upload to a specific cache server, bypassing consistent hash routing.
+ * Same semantics as Upload(), but targets the specified server hostname.
+ */
+CacheClientStatus UploadToServer(
+    /*[in]*/ const char* strTargetServer,
+    /*[in]*/ const char* strCacheKey,
+    /*[in]*/ const void* pBuffer,
+    /*[in]*/ const uint64_t nLength,
+    /*[in]*/ const uint32_t nExpirySeconds,
+    /*[in]*/ const char* strGroupId,
+    /*[in]*/ const Metadata* pMetadata,
+    /*[in]*/ const char* strEncryptionKey);
+//---------------------------------------------------------------------------------------------------------------------
+/**
+ * Download from a specific cache server, bypassing consistent hash routing.
+ * Same semantics as Download(), but targets the specified server hostname.
+ */
+CacheClientStatus DownloadFromServer(
+    /*[in]    */ const char* strTargetServer,
+    /*[in]    */ const char* strCacheKey,
+    /*[out]   */ void* pBuffer,
+    /*[inout] */ uint64_t* nLength,
+    /*[out]*/ Metadata* pMetadata,
+    /*[in] */ const char* strEncryptionKey);
+//---------------------------------------------------------------------------------------------------------------------
+/**
+ * Download a byte range from a specific cache server.
+ * Same semantics as DownloadFromServer(), but reads only [nOffset, nOffset+*nLength) bytes.
+ * Set nOffset=0 and *nLength to the full size for a complete download.
+ *
+ * @param strTargetServer Target cache server hostname
+ * @param strCacheKey     Cache key to download
+ * @param pBuffer         Pre-allocated output buffer of at least *nLength bytes
+ * @param nOffset         Byte offset into the cached value to start reading from
+ * @param nLength         [inout] In: max bytes to read. Out: actual bytes downloaded
+ * @param pMetadata       [out] Optional metadata (set NULL to skip). Caller must free.
+ * @param strEncryptionKey Encryption key (NULL for no decryption). Not supported with nOffset>0.
+ *
+ * @returns CacheClientStatus
+ */
+CacheClientStatus DownloadRangeFromServer(
+    /*[in]    */ const char* strTargetServer,
+    /*[in]    */ const char* strCacheKey,
+    /*[out]   */ void* pBuffer,
+    /*[in]    */ uint64_t nOffset,
+    /*[inout] */ uint64_t* nLength,
+    /*[outopt]*/ Metadata* pMetadata,
+    /*[inopt] */ const char* strEncryptionKey);
 //---------------------------------------------------------------------------------------------------------------------
 /**
  * Delete all keys belonging to the group strGroupId and their associated data and metadata from all cache servers.

@@ -57,51 +57,55 @@ target_include_directories(CacheClientLib PUBLIC ${CMAKE_CURRENT_LIST_DIR})
 target_link_libraries(CacheClientSharedLib ${CommonLinks})
 target_link_libraries(CacheClientLib ${CommonLinks})
 
-enable_testing()
-add_executable(CacheClientLibTests tests/TestMain.cpp tests/CacheClientTests.cpp tests/ConsistentHashingTests.cpp tests/CacheClientRetryUtilTests.cpp tests/ConnectionManagerTests.cpp)
-add_dependencies(CacheClientLibTests CacheClientLib)
-target_link_libraries(CacheClientLibTests
-    CacheClientLib
-    pthread
-    ibverbs
-    xxhash
-    diagnostics
-    ${GMOCK_LIBRARY}
-    ${GMOCK_MAIN_LIBRARY}
-    ${GTEST_LIBRARY}
-    ${GTEST_MAIN_LIBRARY}
-)
+add_library(DACS::CacheClient ALIAS CacheClientLib)
+add_library(DACS::CacheClientShared ALIAS CacheClientSharedLib)
 
-target_include_directories(CacheClientLibTests PRIVATE 
-    ${CMAKE_CURRENT_LIST_DIR}
-    ${CMAKE_CURRENT_LIST_DIR}/connection
-    tests  
-)
+if(DACS_BUILD_TESTS)
+    enable_testing()
+    add_executable(CacheClientLibTests tests/TestMain.cpp tests/CacheClientTests.cpp tests/ConsistentHashingTests.cpp tests/CacheClientRetryUtilTests.cpp tests/ConnectionManagerTests.cpp)
+    add_dependencies(CacheClientLibTests CacheClientLib)
+    target_link_libraries(CacheClientLibTests
+        CacheClientLib
+        pthread
+        ibverbs
+        xxhash
+        diagnostics
+        ${GMOCK_LIBRARY}
+        ${GMOCK_MAIN_LIBRARY}
+        ${GTEST_LIBRARY}
+        ${GTEST_MAIN_LIBRARY}
+    )
 
-# Separate test binary for IBConnection with fake ibverbs stubs.
-# Compiles IBConnection.cpp directly and provides its own ibverbs symbols,
-# avoiding the DlsymWrapper so tests run without real IB hardware.
-add_executable(IBConnectionTests
-    tests/IBConnectionTests.cpp
-    tests/TestMain.cpp
-    connection/IBConnection.cpp
-)
-add_dependencies(IBConnectionTests StorageCommon StorageLibcDlsymWrapper diagnostics)
-target_link_libraries(IBConnectionTests
-    diagnostics
-    pthread
-    dl
-    xxhash
-    ${GTEST_LIBRARY}
-    ${GTEST_MAIN_LIBRARY}
-)
-target_include_directories(IBConnectionTests PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}
-    ${CMAKE_CURRENT_LIST_DIR}/connection
-    $<TARGET_PROPERTY:StorageCommon,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:StorageLibcDlsymWrapper,INTERFACE_INCLUDE_DIRECTORIES>
-    tests
-)
+    target_include_directories(CacheClientLibTests PRIVATE
+        ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR}/connection
+        tests
+    )
+
+    add_executable(IBConnectionTests
+        tests/IBConnectionTests.cpp
+        tests/TestMain.cpp
+        connection/IBConnection.cpp
+    )
+    add_dependencies(IBConnectionTests StorageCommon StorageLibcDlsymWrapper diagnostics)
+    target_link_libraries(IBConnectionTests
+        diagnostics
+        pthread
+        dl
+        xxhash
+        ${GTEST_LIBRARY}
+        ${GTEST_MAIN_LIBRARY}
+    )
+    target_include_directories(IBConnectionTests PRIVATE
+        ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR}/connection
+        $<TARGET_PROPERTY:StorageCommon,INTERFACE_INCLUDE_DIRECTORIES>
+        $<TARGET_PROPERTY:StorageLibcDlsymWrapper,INTERFACE_INCLUDE_DIRECTORIES>
+        tests
+    )
+
+    add_test(NAME CacheClientLibTests COMMAND CacheClientLibTests)
+endif()
 
 # CMake archives dont include dependencies, only references.
 # So, merge all dependent objects into one archive.
@@ -127,10 +131,7 @@ add_custom_command(
         /opt/protobufstatic-3.0.0/lib/libprotobuf.a
 )
 
-add_test(NAME CacheClientLibTests
-    COMMAND CacheClientLibTests)
-
 add_custom_command(
     TARGET CacheClientLib POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_client/CacheClient.h
+    COMMAND ${CMAKE_COMMAND} -E copy ${DACS_SOURCE_ROOT}/src/subsystems/storage/cache_client/CacheClient.h
     ${CMAKE_REMOTE_PUBLISH_DIRECTORY}/)

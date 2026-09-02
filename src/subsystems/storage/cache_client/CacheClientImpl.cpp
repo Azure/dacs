@@ -178,7 +178,8 @@ CacheClientStatus CacheClientImpl::Upload(
     /*[in]*/ const Metadata* pMetadata,
     /*[in]*/ const char* strEncryptionKey,
     /*[inopt]*/ bool bIgnoreLock,
-    /*[inopt]*/ const char* strCorrelationId)
+    /*[inopt]*/ const char* strCorrelationId,
+    /*[inopt]*/ const char* strTargetServer)
 {
     std::string strRandId;
     if(strCorrelationId == nullptr)
@@ -309,7 +310,9 @@ CacheClientStatus CacheClientImpl::Upload(
 
     auto uploadAttempt = [&]() -> CacheClientStatus
     {
-        const std::string hostname = m_spConnectionManager->GetCacheServerHostname(strCacheKey);
+        const std::string hostname = strTargetServer != nullptr
+            ? std::string(strTargetServer)
+            : m_spConnectionManager->GetCacheServerHostname(strCacheKey);
         if (hostname.empty())
         {
         LOG_DEBUG_REQID("No cache servers available for upload, key: {}. Cache discovery may be in progress.", *uploadRequest, strCacheKey);
@@ -436,7 +439,8 @@ CacheClientStatus CacheClientImpl::Download(
     /*[in]*/ const char* strEncryptionKey,
     /*[inopt]*/ std::size_t nStartOffset,
     /*[inopt]*/ bool bEnableLock,
-    /*[inopt]*/ const char* strCorrelationId)
+    /*[inopt]*/ const char* strCorrelationId,
+    /*[inopt]*/ const char* strTargetServer)
 {
     std::string strRandId;
     if(strCorrelationId == nullptr || *strCorrelationId == '\0')
@@ -497,7 +501,9 @@ CacheClientStatus CacheClientImpl::Download(
                     *nLength,
                     bEnableLock);
 
-    const std::string hostname = m_spConnectionManager->GetCacheServerHostname(strCacheKey);
+    const std::string hostname = strTargetServer != nullptr
+        ? std::string(strTargetServer)
+        : m_spConnectionManager->GetCacheServerHostname(strCacheKey);
     if (hostname.empty())
     {
         LOG_DEBUG_REQID("No cache servers available for download, key: {}. Cache discovery may be in progress.", *downloadRequest, strCacheKey);

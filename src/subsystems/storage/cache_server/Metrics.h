@@ -33,4 +33,11 @@ class Metrics {
                                            double dLatency,
                                            std::size_t nBytes);
         static void UpdateCacheSize(std::size_t nBytes);
+
+        // TachyonKV locator cache metrics
+        static void IncrementLocatorLookups(bool bHit);
+        static void IncrementLocatorRegistrations();
+        static void IncrementTTLExtensions();
+        static void SetLocatorEntryCount(std::size_t nCount);
+        static void SetLocatorReplicaCount(std::size_t nCount);
 };

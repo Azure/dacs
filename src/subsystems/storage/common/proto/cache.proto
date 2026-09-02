@@ -274,9 +274,177 @@ message EndMarker
 
 }
 //---------------------------------------------------------------------------------------------------------------------
+// Locator Cache RPC messages for TachyonKV
+//---------------------------------------------------------------------------------------------------------------------
+message LocatorContentReplica
+{
+    uint32 nodeId = 1;
+    uint64 expiresAt = 2;       // Epoch ms
+    uint64 lastRefreshed = 3;   // Epoch ms
+    uint64 contentSize = 4;     // Logical size of stored value in bytes (0 = unknown)
+
+    // Tier this replica lives in. Additive for rolling upgrades: old nodes ignore it and it
+    // defaults to 0 (Cache), so existing cache-tier registrations are unchanged.
+    //   0 = Cache - warm copy on a cache node (nodeId + short TTL in expiresAt).
+    //   1 = Blob - durable copy in Azure Blob (nodeId unused; expiresAt is a conservative
+    //               soft-TTL; the location is derived from the key, not stored here).
+    uint32 tier = 5;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message LocatorRegisterRequest
+{
+    string key = 1;
+    LocatorContentReplica replica = 2;
+    string requestId = 3;
+    string parentHash = 4;   // prefix_hash of the parent block (0 for root); enables prefix-tree bookkeeping
+    string rootHash = 5;     // prefix_hash of the chain's root block (0 for root)
+}
+
+message LocatorRegisterResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        INTERNAL_ERROR = 1;
+    }
+    Result result = 1;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message LocatorLookupRequest
+{
+    string key = 1;
+    string requestId = 2;
+}
+
+message LocatorLookupResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        NOT_FOUND = 1;
+        INTERNAL_ERROR = 2;
+    }
+    Result result = 1;
+    repeated LocatorContentReplica replicas = 2;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message LocatorRefreshRequest
+{
+    string key = 1;
+    uint32 nodeId = 2;
+    uint64 newExpiresAt = 3;    // Epoch ms
+    string requestId = 4;
+}
+
+message LocatorRefreshResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        NOT_FOUND = 1;
+        INTERNAL_ERROR = 2;
+    }
+    Result result = 1;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message LocatorUnregisterRequest
+{
+    string key = 1;
+    uint32 nodeId = 2;
+    string requestId = 3;
+}
+
+message LocatorUnregisterResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        NOT_FOUND = 1;
+        INTERNAL_ERROR = 2;
+    }
+    Result result = 1;
+}
+//---------------------------------------------------------------------------------------------------------------------
+message LocatorPrefixLookupRequest
+{
+    repeated string keys = 1;      // storage_key() for each block in chain order
+    string requestId = 2;
+    string baseParentHash = 3;     // storage_key of the parent of keys[0] ("" when the chain roots here)
+}
+
+message LocatorPrefixLookupResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        INTERNAL_ERROR = 1;
+    }
+    Result result = 1;
+
+    // matched contains only blocks with a live replica; matched_count truncates at the
+    // first block that is missing or expired. matched[i] corresponds to keys[i].
+    uint32 matched_count = 2;
+    repeated LocatorPrefixEntry matched = 3;   // one entry per matched block, in chain order
+}
+//---------------------------------------------------------------------------------------------------------------------
+// A single resolved block in a prefix-lookup response.
+//
+// NOTE: Each entry conveys a single node replica (the server's chosen live replica). If clients
+// should choose among replicas (locality-aware selection, failover/retries), change node_replica
+// to a repeated field (or add a repeated replicas field) so the full live-replica set reaches
+// the client instead of being collapsed to one node server-side.
+message LocatorPrefixEntry
+{
+    uint64 content_size = 1;   // logical size of the stored value in bytes (0 = unknown), common to all location kinds
+
+    oneof location
+    {
+        LocatorNodeReplica node_replica = 2;   // resident in an in-memory cache-server node
+        LocatorBlobReference blob_ref = 3;     // future: durable/blob-tier location
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+message LocatorNodeReplica
+{
+    uint32 node_id = 1;      // node_id of the best live replica
+}
+//---------------------------------------------------------------------------------------------------------------------
+// NOTE: If the container/blob name can be derived deterministically from the block key (rather
+// than stored per entry), blob_path could collapse to a bool "present in blob tier" flag - the
+// client would reconstruct the location itself, cutting the per-entry string and its allocation.
+message LocatorBlobReference
+{
+    string blob_path = 1;    // durable/blob-tier location (URI or container+blob-name)
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Batch chain registration - registers all blocks in a chain with a single RPC.
+message LocatorRegisterChainEntry
+{
+    string key = 1;
+    LocatorContentReplica replica = 2;
+    string parentHash = 3;
+    string rootHash = 4;
+}
+
+message LocatorRegisterChainRequest
+{
+    repeated LocatorRegisterChainEntry entries = 1;
+    string requestId = 2;
+}
+
+message LocatorRegisterChainResponse
+{
+    enum Result
+    {
+        SUCCESS = 0;
+        INTERNAL_ERROR = 1;
+    }
+    Result result = 1;
+}
+//---------------------------------------------------------------------------------------------------------------------
 message Request
 {
-    reserved 1, 4, 5;
+    reserved 1, 4, 5, 10;
     reserved "lockrequest", "getattributerequest", "putattributerequest";
     oneof type
     {
@@ -286,7 +454,13 @@ message Request
         IBInitRequest ibinitrequest = 7;
         GetCacheLastAccessTimeDistributionRequest getcachelastaccesstimedistributionrequest = 8;
         GetCacheServersRequest getcacheserversrequest = 9;
-        EndMarker endmarker = 10;
+        LocatorRegisterRequest locatorregisterrequest = 11;
+        LocatorLookupRequest locatorlookuprequest = 12;
+        LocatorRefreshRequest locatorrefreshrequest = 13;
+        LocatorUnregisterRequest locatorunregisterrequest = 14;
+        LocatorPrefixLookupRequest locatorprefixlookuprequest = 15;
+        LocatorRegisterChainRequest locatorregisterchainrequest = 16;
+        EndMarker endmarker = 17;
     }
 }
 //---------------------------------------------------------------------------------------------------------------------

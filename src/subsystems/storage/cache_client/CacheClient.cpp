@@ -86,6 +86,48 @@ extern "C" CacheClientStatus Download(
     return GetImplInstance()->Download(strCacheKey, pBuffer, nLength, pMetadata, strEncryptionKey);
 }
 //---------------------------------------------------------------------------------------------------------------------
+extern "C" CacheClientStatus UploadToServer(
+    /*[in]*/ const char* strTargetServer,
+    /*[in]*/ const char* strCacheKey,
+    /*[in]*/ const void* pBuffer,
+    /*[in]*/ const uint64_t nLength,
+    /*[in]*/ const uint32_t nExpirySeconds,
+    /*[in]*/ const char* strGroupId,
+    /*[in]*/ const Metadata* pMetadata,
+    /*[in]*/ const char* strEncryptionKey)
+{
+    return GetImplInstance()->Upload(
+        strCacheKey, pBuffer, nLength, nExpirySeconds, strGroupId, pMetadata, strEncryptionKey,
+        true, nullptr, strTargetServer);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" CacheClientStatus DownloadFromServer(
+    /*[in]*/ const char* strTargetServer,
+    /*[in]*/ const char* strCacheKey,
+    /*[out]*/ void* pBuffer,
+    /*[inout]*/ uint64_t* nLength,
+    /*[outopt]*/ Metadata* pMetadata,
+    /*[inopt]*/ const char* strEncryptionKey)
+{
+    return GetImplInstance()->Download(
+        strCacheKey, pBuffer, nLength, pMetadata, strEncryptionKey,
+        0, true, nullptr, strTargetServer);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" CacheClientStatus DownloadRangeFromServer(
+    /*[in]*/ const char* strTargetServer,
+    /*[in]*/ const char* strCacheKey,
+    /*[out]*/ void* pBuffer,
+    /*[in]*/ uint64_t nOffset,
+    /*[inout]*/ uint64_t* nLength,
+    /*[outopt]*/ Metadata* pMetadata,
+    /*[inopt]*/ const char* strEncryptionKey)
+{
+    return GetImplInstance()->Download(
+        strCacheKey, pBuffer, nLength, pMetadata, strEncryptionKey,
+        nOffset, true, nullptr, strTargetServer);
+}
+//---------------------------------------------------------------------------------------------------------------------
 extern "C" CacheClientStatus DeleteGroup(/*[in]*/ const char* strGroupId)
 {
     return GetImplInstance()->DeleteGroup(strGroupId);
