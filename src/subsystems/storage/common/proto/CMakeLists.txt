@@ -47,3 +47,5 @@ set_target_properties(staticprotobuf PROPERTIES
         IMPORTED_LOCATION /opt/protobufstatic-3.0.0/lib/libprotobuf.a)
 
 target_link_libraries(CacheProto staticprotobuf)
+
+add_library(DACS::CacheProto ALIAS CacheProto)

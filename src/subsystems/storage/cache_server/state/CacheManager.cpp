@@ -16,6 +16,7 @@
 #include "Constants.h"
 #include "Utils.h"
 #include "Logger.h"
+#include "ServerLocatorCache.h"
 #include <chrono>
 #include <ctime>
 #include <dirent.h>
@@ -551,7 +552,10 @@ void CacheManager::ScanForSnapshotConsistency(const Snapshot& snapshot)
 
         LOG_INFO("Deleted {} files on disk not found in snapshot. bucket: {}", nDeletedFromDisk, bucket);
 
-        // Delete from cache index the files present in snapshot but not found on disk
+        // Delete from cache index the files present in snapshot but not found on disk.
+        // Only adjust the size counter for entries that are actually in the cache map
+        // (i.e., were loaded by InitializeFromSnapshot). Expired entries are skipped
+        // during snapshot load, so subtracting their size would cause counter underflow.
         int nDeletedFromCacheIndex = 0;
         unordered_map<string, unordered_set<string>> groupIDMapEntriesToCleanup;
         std::unique_lock lock(m_vCacheInfoMapMutex[bucketIndex]);
@@ -561,9 +565,18 @@ void CacheManager::ScanForSnapshotConsistency(const Snapshot& snapshot)
             if (filesOnDisk.find(fileInSnapshot) == filesOnDisk.end())
             {
                 LOG_INFO("File in snapshot not found on disk. bucket: {}, filename: {}", bucket, fileInSnapshot);
+
+                auto nErased = m_vCacheInfoMap[bucketIndex].erase(fileInSnapshot);
+                if (nErased == 0)
+                {
+                    // Entry was not in the cache map (e.g., skipped during snapshot
+                    // load because its TTL had expired, or already cleaned up by
+                    // another thread). Skip counter adjustment to avoid underflow.
+                    continue;
+                }
+
                 nDeletedFromCacheIndex++;
 
-                m_vCacheInfoMap[bucketIndex].erase(fileInSnapshot);
                 if (snapshotBucket.entries(fileIndex).expirytimestamp() > 0)
                 {
                     m_vCacheTTLMap[bucketIndex][static_cast<time_t>(snapshotBucket.entries(fileIndex).expirytimestamp())].remove(fileInSnapshot);
@@ -973,6 +986,7 @@ void CacheManager::EvictByAccessTime(time_t nEvictionLastAccessTime)
     uint64_t nDeleteFileSize = 0;
     int nNumFilesDeleted = 0;
     vector<string> vecFilesToDelete;
+    vector<string> vecKVKeysToUnregister; // KV entries to unregister from locator cache
     LOG_INFO("Started evict by access time, Eviction last access time: {}", 
              LOG_READABLE_TIME_UTC(nEvictionLastAccessTime));
 
@@ -1011,6 +1025,13 @@ void CacheManager::EvictByAccessTime(time_t nEvictionLastAccessTime)
                 nNumFilesDeleted++;
                 nDeleteFileSize += iter->second.m_fileSize;
                 vecFilesToDelete.emplace_back(iter->first);
+
+                // Track KV entries for locator cache unregistration
+                auto kvMeta = iter->second.m_metadata.find("tachyonkv");
+                if (kvMeta != iter->second.m_metadata.end())
+                {
+                    vecKVKeysToUnregister.emplace_back(iter->first);
+                }
 
                 iter = m_vCacheInfoMap[bucket].erase(iter);
             }
@@ -1057,6 +1078,18 @@ void CacheManager::EvictByAccessTime(time_t nEvictionLastAccessTime)
         // In the download path, we gracefully handle the case where cache entry
         // is present in the map, but absent on disk
         DeleteFile(filename);
+    }
+
+    // Unregister evicted KV entries from locator cache (fire-and-forget)
+    if (!vecKVKeysToUnregister.empty())
+    {
+        uint32_t nLocalNodeId = kvclient::GetServerLocatorCache().GetNodeId();
+        for (const auto& key : vecKVKeysToUnregister)
+        {
+            kvclient::GetServerLocatorCache().Unregister(key, nLocalNodeId);
+        }
+        LOG_INFO("Unregistered {} KV entries from locator cache after eviction",
+                 vecKVKeysToUnregister.size());
     }
 }
 //---------------------------------------------------------------------------------------------------------------------

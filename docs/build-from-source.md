@@ -93,6 +93,28 @@ tools, libraries, and populated `/dependency` tree supplied by the native
 build image. Use this mode inside the devcontainer, not on an otherwise clean
 host.
 
+### Embed DACS storage targets in another CMake build
+
+Parent projects can add `src/subsystems/storage` as a subdirectory. Configure
+the component options before calling `add_subdirectory`:
+
+```cmake
+set(DACS_BUILD_CACHE_CLIENT ON)
+set(DACS_BUILD_CACHE_SERVER ON)
+set(DACS_BUILD_STORAGE_INTERCEPT ON)
+set(DACS_BUILD_LIVENESS_PROBE ON)
+set(DACS_BUILD_TESTS OFF)
+set(DACS_BUILD_TOOLS OFF)
+
+add_subdirectory(
+    "${DACS_SOURCE_DIR}/src/subsystems/storage"
+    "${CMAKE_BINARY_DIR}/dacs-storage")
+```
+
+The embedded build exposes `DACS::CacheProto`, `DACS::Locator`,
+`DACS::CacheClient`, `DACS::CacheClientShared`,
+`DACS::StorageRemoteClient`, and `DACS::CacheServer`.
+
 ## Build the Go cache controller
 
 Outside the devcontainer, install Go 1.25.5 or a newer compatible Go release.

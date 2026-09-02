@@ -127,6 +127,38 @@ void Metrics::Init()
             .Register(*MetricsStore::s_instance.m_spRegistry)
             .Add({{"instance", MetricsStore::s_instance.m_serverHostName}}, sizeBuckets);
 
+    // TachyonKV locator cache metrics
+    MetricsStore::s_instance.m_pLocatorLookupsHit = &prometheus::BuildCounter()
+            .Name("tachyonkv_locator_lookups_total")
+            .Help("Locator cache lookups.")
+            .Register(*MetricsStore::s_instance.m_spRegistry)
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}, {"result", "hit"}});
+    MetricsStore::s_instance.m_pLocatorLookupsMiss = &prometheus::BuildCounter()
+            .Name("tachyonkv_locator_lookups_total")
+            .Help("Locator cache lookups.")
+            .Register(*MetricsStore::s_instance.m_spRegistry)
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}, {"result", "miss"}});
+    MetricsStore::s_instance.m_pLocatorRegistrations = &prometheus::BuildCounter()
+            .Name("tachyonkv_locator_registrations_total")
+            .Help("Locator cache registrations.")
+            .Register(*MetricsStore::s_instance.m_spRegistry)
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}});
+    MetricsStore::s_instance.m_pTTLExtensions = &prometheus::BuildCounter()
+            .Name("tachyonkv_ttl_extensions_total")
+            .Help("TTL refresh operations.")
+            .Register(*MetricsStore::s_instance.m_spRegistry)
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}});
+    MetricsStore::s_instance.m_pLocatorEntryCount = &prometheus::BuildGauge()
+            .Name("tachyonkv_locator_entries")
+            .Help("Number of locator cache entries.")
+            .Register(*MetricsStore::s_instance.m_spRegistry)
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}});
+    MetricsStore::s_instance.m_pLocatorReplicaCount = &prometheus::BuildGauge()
+            .Name("tachyonkv_locator_replicas")
+            .Help("Number of locator cache replicas.")
+            .Register(*MetricsStore::s_instance.m_spRegistry)
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}});
+
 }
 //---------------------------------------------------------------------------------------------------------------------
 void Metrics::IncrementActiveConnections()
@@ -245,5 +277,55 @@ void Metrics::IncrementAcceptError(int errnum)
     }
 
     it->second->Increment();
+}
+//---------------------------------------------------------------------------------------------------------------------
+void Metrics::IncrementLocatorLookups(bool bHit)
+{
+    if (MetricsStore::s_instance.m_pLocatorLookupsHit == nullptr ||
+        MetricsStore::s_instance.m_pLocatorLookupsMiss == nullptr)
+    {
+        return;
+    }
+
+    if (bHit)
+        MetricsStore::s_instance.m_pLocatorLookupsHit->Increment();
+    else
+        MetricsStore::s_instance.m_pLocatorLookupsMiss->Increment();
+}
+//---------------------------------------------------------------------------------------------------------------------
+void Metrics::IncrementLocatorRegistrations()
+{
+    if (MetricsStore::s_instance.m_pLocatorRegistrations == nullptr)
+    {
+        return;
+    }
+    MetricsStore::s_instance.m_pLocatorRegistrations->Increment();
+}
+//---------------------------------------------------------------------------------------------------------------------
+void Metrics::IncrementTTLExtensions()
+{
+    if (MetricsStore::s_instance.m_pTTLExtensions == nullptr)
+    {
+        return;
+    }
+    MetricsStore::s_instance.m_pTTLExtensions->Increment();
+}
+//---------------------------------------------------------------------------------------------------------------------
+void Metrics::SetLocatorEntryCount(std::size_t nCount)
+{
+    if (MetricsStore::s_instance.m_pLocatorEntryCount == nullptr)
+    {
+        return;
+    }
+    MetricsStore::s_instance.m_pLocatorEntryCount->Set(nCount);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void Metrics::SetLocatorReplicaCount(std::size_t nCount)
+{
+    if (MetricsStore::s_instance.m_pLocatorReplicaCount == nullptr)
+    {
+        return;
+    }
+    MetricsStore::s_instance.m_pLocatorReplicaCount->Set(nCount);
 }
 //---------------------------------------------------------------------------------------------------------------------

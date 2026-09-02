@@ -26,6 +26,7 @@
 #include "HandleRequest.h"
 #include "GetCacheServers.h"
 #include <limits>
+#include "LocatorRequest.h"
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 using namespace cache;
@@ -93,6 +94,30 @@ bool HandleRequest(IConnection& clientConnection,
     else if (eRequestType == Request::kGetcacheserversrequest)
     {
         bRet = GetCacheServers(clientConnection, request.getcacheserversrequest(), eResponseCode);
+    }
+    else if (eRequestType == Request::kLocatorregisterrequest)
+    {
+        bRet = HandleLocatorRegister(clientConnection, request.locatorregisterrequest());
+    }
+    else if (eRequestType == Request::kLocatorlookuprequest)
+    {
+        bRet = HandleLocatorLookup(clientConnection, request.locatorlookuprequest());
+    }
+    else if (eRequestType == Request::kLocatorrefreshrequest)
+    {
+        bRet = HandleLocatorRefresh(clientConnection, request.locatorrefreshrequest());
+    }
+    else if (eRequestType == Request::kLocatorunregisterrequest)
+    {
+        bRet = HandleLocatorUnregister(clientConnection, request.locatorunregisterrequest());
+    }
+    else if (eRequestType == Request::kLocatorprefixlookuprequest)
+    {
+        bRet = HandleLocatorPrefixLookup(clientConnection, request.locatorprefixlookuprequest());
+    }
+    else if (eRequestType == Request::kLocatorregisterchainrequest)
+    {
+        bRet = HandleLocatorRegisterChain(clientConnection, request.locatorregisterchainrequest());
     }
     else
     {

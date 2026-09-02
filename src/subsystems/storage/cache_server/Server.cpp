@@ -18,6 +18,8 @@
 #include "HandleRequest.h"
 #include "CacheManager.h"
 #include "SnapshotManager.h"
+#include "ServerLocatorCache.h"
+#include "LocatorEntry.h"
 #include "SocketConnection.h"
 #include "IBManager.h"
 #include "cache.pb.h"
@@ -50,6 +52,30 @@ using namespace std;
 using namespace cache;
 //---------------------------------------------------------------------------------------------------------------------
 void CacheServerMetricsBackgroundThread();
+
+namespace
+{
+uint32_t GetLocatorEnv(const char* strName, uint32_t nDefault, bool bAllowZero)
+{
+    const char* strValue = std::getenv(strName);
+    if (strValue == nullptr || *strValue == '\0')
+    {
+        return nDefault;
+    }
+
+    char* strEnd = nullptr;
+    errno = 0;
+    const unsigned long nValue = std::strtoul(strValue, &strEnd, 10);
+    if (errno != 0 || strEnd == strValue || *strEnd != '\0' ||
+        (!bAllowZero && nValue == 0) || nValue > std::numeric_limits<uint32_t>::max())
+    {
+        LOG_WARN("Invalid {} value '{}'; using {}", strName, strValue, nDefault);
+        return nDefault;
+    }
+
+    return static_cast<uint32_t>(nValue);
+}
+} // namespace
 //---------------------------------------------------------------------------------------------------------------------
 void HandleSocket(int epollFd)
 {
@@ -436,6 +462,17 @@ int main(int argc, char *argv[])
 
     InitializeUtils();
 
+    const uint32_t nLocatorNodeId = GetLocatorEnv("TACHYONKV_LOCATOR_NODE_ID", 0, true);
+    const uint32_t nLocatorNumNodes = GetLocatorEnv("TACHYONKV_LOCATOR_NUM_NODES", 1, false);
+    const char* strLocatorIndex = std::getenv("CACHESERVER_LOCATOR_INDEX");
+    const std::string strLocatorIndexBackend = strLocatorIndex != nullptr ? strLocatorIndex : "";
+    kvclient::InitServerLocatorCache(strLocatorIndexBackend, nLocatorNodeId, nLocatorNumNodes);
+    LOG_INFO("Initialized locator cache: nodeId={}, numNodes={}, index={}",
+             nLocatorNodeId,
+             nLocatorNumNodes,
+             strLocatorIndexBackend.empty() ? "flatmap" : strLocatorIndexBackend);
+
+    std::thread* snapshotThread = nullptr;
     if (SnapshotManager::GetInstance().IsSnapshotEnabled())
     {
         auto snapshot = SnapshotManager::GetInstance().LoadSnapshotOnStartup();
@@ -443,6 +480,36 @@ int main(int argc, char *argv[])
         {
             LOG_INFO("Loaded snapshot with version: {}", snapshot->version());
             CacheManager::GetInstance().InitializeFromSnapshot(*snapshot);
+
+            uint32_t nKVEntries = 0;
+            const uint64_t nNowMs = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count());
+            for (const auto& bucket : snapshot->buckets())
+            {
+                for (const auto& entry : bucket.entries())
+                {
+                    if (entry.metadata().find("tachyonkv") == entry.metadata().end())
+                    {
+                        continue;
+                    }
+
+                    const uint64_t nExpiresAtMs = static_cast<uint64_t>(entry.expirytimestamp()) * 1000;
+                    if (nExpiresAtMs <= nNowMs)
+                    {
+                        continue;
+                    }
+
+                    const ContentReplica replica(
+                        nLocatorNodeId,
+                        nExpiresAtMs,
+                        nNowMs,
+                        entry.filesize());
+                    kvclient::GetServerLocatorCache().Register(entry.filename(), replica);
+                    ++nKVEntries;
+                }
+            }
+            LOG_INFO("Re-registered {} KV entries in locator cache from snapshot", nKVEntries);
 
             if (SnapshotManager::GetInstance().WaitForSnapshotConsistencyScan())
             {

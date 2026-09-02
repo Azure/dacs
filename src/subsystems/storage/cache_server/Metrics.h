@@ -41,4 +41,11 @@ class Metrics {
         static void IncrementPassiveOpens(uint64_t delta);
         static void UpdateOpenFdCount(std::size_t count);
         static void IncrementAcceptError(int errnum);
+
+        // TachyonKV locator cache metrics
+        static void IncrementLocatorLookups(bool bHit);
+        static void IncrementLocatorRegistrations();
+        static void IncrementTTLExtensions();
+        static void SetLocatorEntryCount(std::size_t nCount);
+        static void SetLocatorReplicaCount(std::size_t nCount);
 };

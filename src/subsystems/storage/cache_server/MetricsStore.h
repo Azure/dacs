@@ -55,6 +55,13 @@ class MetricsStore
         "Ibinit",
         "Getcachelastaccesstimedistributionrequest",
         "Getcacheservers",
+        "Reserved10",
+        "LocatorRegister",
+        "LocatorLookup",
+        "LocatorRefresh",
+        "LocatorUnregister",
+        "LocatorPrefixLookup",
+        "LocatorRegisterChain",
     };
     constexpr static std::array<const char*, (int)ResponseCode::END_MARKER> m_arrResponseCodes = {
       "Success",
@@ -65,4 +72,12 @@ class MetricsStore
       "NotSet"
   };
     static MetricsStore s_instance;
+
+    // TachyonKV locator cache metrics
+    prometheus::Counter* m_pLocatorLookupsHit = nullptr;
+    prometheus::Counter* m_pLocatorLookupsMiss = nullptr;
+    prometheus::Counter* m_pLocatorRegistrations = nullptr;
+    prometheus::Counter* m_pTTLExtensions = nullptr;
+    prometheus::Gauge* m_pLocatorEntryCount = nullptr;
+    prometheus::Gauge* m_pLocatorReplicaCount = nullptr;
 };

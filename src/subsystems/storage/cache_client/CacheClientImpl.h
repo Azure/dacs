@@ -62,7 +62,8 @@ class CacheClientImpl
         /*[in]*/ const Metadata* pMetadata,
         /*[in]*/ const char* strEncryptionKey,
         /*[in]*/ bool bEnableLock = true,
-        /*[inopt]*/ const char* strCorrelationId = nullptr);
+        /*[inopt]*/ const char* strCorrelationId = nullptr,
+        /*[inopt]*/ const char* strTargetServer = nullptr);
 
     CacheClientStatus Download(
         /*[in]*/ const char* strCacheKey,
@@ -72,7 +73,8 @@ class CacheClientImpl
         /*[in]*/ const char* strEncryptionKey,
         /*[inopt]*/ std::size_t nStartOffset = 0, // Default to download from the start
         /*[inopt]*/ bool bEnableLock = true,
-        /*[inopt]*/ const char* strCorrelationId = nullptr);
+        /*[inopt]*/ const char* strCorrelationId = nullptr,
+        /*[inopt]*/ const char* strTargetServer = nullptr);
 
     CacheClientStatus DeleteGroup(/*[in]*/ const char* groupID,
                                   /*[inopt]*/ const char* strCorrelationId = nullptr);
