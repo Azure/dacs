@@ -100,6 +100,36 @@ TEST_F(CacheManagerTest, PutAndGetCacheEntry)
     ValidateCacheEntry(fileName, fileSize, expiryTime, groupId);
 }
 //---------------------------------------------------------------------------------------------------------------------
+TEST_F(CacheManagerTest, CleanupWorkerStartsWithConfiguredInterval)
+{
+    CacheManager cacheManager;
+    const std::string fileName = "/test/configuredCleanupInterval";
+    const std::string groupId = "configuredCleanupIntervalGroup";
+
+    ASSERT_FALSE(cacheManager.m_cleanupThread);
+    cacheManager.StartCacheCleanupWorker(1);
+
+    ASSERT_TRUE(cacheManager.InitCacheInfo(fileName, true, 100));
+    ASSERT_TRUE(cacheManager.UpdateCacheInfo(
+        fileName, 100, google::protobuf::Map<std::string, std::string>(), 0, groupId));
+    ASSERT_TRUE(cacheManager.DeleteCacheEntryByGroupID(groupId));
+
+    const auto startTime = std::chrono::steady_clock::now();
+    const auto deadline = startTime + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline &&
+           cacheManager.GetCacheInfo(fileName).m_status != CacheManager::CacheStatus::NOTFOUND)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    const auto elapsedMillis = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - startTime).count();
+    const bool deleted = cacheManager.GetCacheInfo(fileName).m_status == CacheManager::CacheStatus::NOTFOUND;
+
+    EXPECT_TRUE(deleted) << "Cleanup worker did not use the configured startup interval";
+    EXPECT_LT(elapsedMillis, 5000);
+}
+//---------------------------------------------------------------------------------------------------------------------
 TEST_F(CacheManagerTest, TakeAndLoadSnapshot)
 {
     std::string fileName = "/test/takeAndLoadSnapshot";

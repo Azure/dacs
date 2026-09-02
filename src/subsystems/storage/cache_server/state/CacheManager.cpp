@@ -44,10 +44,6 @@ CacheManager::CacheManager()
 {
     InitializeEviction();
 
-    m_cleanupThread = make_unique<thread>([this]() {
-        this->CacheCleanupWorker();
-    });
-
     if (m_bEvictionEnabled)
     {
         m_evictionThread = make_unique<thread>([this]() {
@@ -58,9 +54,12 @@ CacheManager::CacheManager()
 //---------------------------------------------------------------------------------------------------------------------
 CacheManager::~CacheManager()
 {
-    m_stopCleanupThread = true;
-    m_cvQueue.notify_all();
-    m_cleanupThread->join();
+    if (m_cleanupThread)
+    {
+        m_stopCleanupThread = true;
+        m_cvQueue.notify_all();
+        m_cleanupThread->join();
+    }
 
     if (m_bEvictionEnabled)
     {
@@ -81,9 +80,12 @@ void CacheManager::SetCacheSizeLimit(const uint64_t limitCacheSizeBytes)
     m_cacheSizeLimitBytes = limitCacheSizeBytes;
 }
 //---------------------------------------------------------------------------------------------------------------------
-void CacheManager::SetCacheTTLWindowSize(const uint32_t cacheTTLWindowSizeSeconds)
+void CacheManager::StartCacheCleanupWorker(const uint32_t cacheTTLWindowSizeSeconds)
 {
     m_ttlWindowSizeSeconds = cacheTTLWindowSizeSeconds;
+    m_cleanupThread = make_unique<thread>([this]() {
+        this->CacheCleanupWorker();
+    });
 }
 //---------------------------------------------------------------------------------------------------------------------
 CacheManager::CacheInfo CacheManager::GetAndInitCacheInfo(const std::string& fileName)

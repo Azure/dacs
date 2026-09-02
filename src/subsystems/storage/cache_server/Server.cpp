@@ -356,7 +356,7 @@ int main(int argc, char *argv[])
     int port = serverArgs.port;
     SetCacheRootPath(serverArgs.cacheRootPath);
     CacheManager::GetInstance().SetCacheSizeLimit(serverArgs.cacheSizeLimitBytes);
-    CacheManager::GetInstance().SetCacheTTLWindowSize(serverArgs.cacheTTLWindowSeconds);
+    CacheManager::GetInstance().StartCacheCleanupWorker(serverArgs.cacheTTLWindowSeconds);
 
     InitializeUtils();
 
