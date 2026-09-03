@@ -80,6 +80,7 @@ src/images/native-build/requirements.in -filter -diff -merge text eol=lf
 src/subsystems/storage/dacs_client/requirements-*.in -filter -diff -merge text eol=lf
 src/subsystems/storage/storage_intercept/integration_tests/requirements.in -filter -diff -merge text eol=lf
 src/subsystems/storage/stress_tests/container/requirements.in -filter -diff -merge text eol=lf
+*.cmake.in !filter !diff !merge text eol=lf
 ###############################################################################
 # Set the merge driver for project and solution files
 #
