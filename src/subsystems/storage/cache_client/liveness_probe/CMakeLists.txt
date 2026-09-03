@@ -32,3 +32,8 @@ target_link_libraries(LivenessProbe CacheClientLib StorageCommon)
 add_custom_command(
     TARGET LivenessProbe POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:LivenessProbe> ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
+
+if(DACS_INSTALL_SDK)
+    install(TARGETS LivenessProbe
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()

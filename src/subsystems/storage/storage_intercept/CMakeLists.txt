@@ -92,6 +92,18 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy ${DACS_SOURCE_ROOT}/src/subsystems/storage/storage_intercept/interceptors/CacheClientInterface.h
         ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/include)
 
+if(DACS_INSTALL_SDK)
+    install(TARGETS CacheClient
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(FILES
+        remote_client/IRemoteClient.h
+        remote_client/RemoteClientProvider.h
+        common/DirectoryEntry.h
+        common/FileAttributes.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dacs/storage_remote)
+endif()
+
 if(DACS_BUILD_TOOLS)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(FUSE3 REQUIRED fuse3 IMPORTED_TARGET)

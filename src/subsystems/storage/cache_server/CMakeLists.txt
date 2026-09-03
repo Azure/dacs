@@ -101,6 +101,11 @@ add_custom_command(
 
 add_executable(DACS::CacheServer ALIAS CacheServer)
 
+if(DACS_INSTALL_SDK)
+    install(TARGETS CacheServer
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
 if(DACS_BUILD_TESTS)
     add_subdirectory(./test/)
     enable_testing()

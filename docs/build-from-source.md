@@ -96,7 +96,10 @@ host.
 ### Embed DACS storage targets in another CMake build
 
 Parent projects can add `src/subsystems/storage` as a subdirectory. Configure
-the component options before calling `add_subdirectory`:
+the component options before calling `add_subdirectory`. The parent must
+provide the same native dependencies and imported targets as the DACS root
+build, so this mode is intended for builds that already use the DACS native
+dependency environment:
 
 ```cmake
 set(DACS_BUILD_CACHE_CLIENT ON)
@@ -114,6 +117,52 @@ add_subdirectory(
 The embedded build exposes `DACS::CacheProto`, `DACS::Locator`,
 `DACS::CacheClient`, `DACS::CacheClientShared`,
 `DACS::StorageRemoteClient`, and `DACS::CacheServer`.
+
+### Install and consume the cache client package
+
+Enable `DACS_INSTALL_SDK` to install the cache client libraries, public header,
+and CMake package metadata:
+
+```bash
+cmake \
+  -S . \
+  -B build/dacs-sdk \
+  -DDACS_BUILD_CACHE_SERVER=OFF \
+  -DDACS_BUILD_STORAGE_INTERCEPT=OFF \
+  -DDACS_BUILD_LIVENESS_PROBE=OFF \
+  -DDACS_BUILD_TESTS=OFF \
+  -DDACS_BUILD_TOOLS=OFF \
+  -DDACS_INSTALL_SDK=ON \
+  -DCMAKE_INSTALL_PREFIX=/path/to/dacs-sdk
+cmake --build build/dacs-sdk
+cmake --install build/dacs-sdk
+```
+
+Consumers can then locate the installed package and link either the shared or
+merged static cache client:
+
+```cmake
+find_package(DACS CONFIG REQUIRED)
+
+target_link_libraries(my_target PRIVATE DACS::CacheClientShared)
+```
+
+Request the `Static` component to use the merged static cache client:
+
+```cmake
+find_package(DACS CONFIG REQUIRED COMPONENTS Static)
+
+target_link_libraries(my_target PRIVATE DACS::CacheClient)
+```
+
+The `Static` component requires CURL, OpenSSL, Threads, `uuid`, `jsoncpp`,
+and `xxhash`. Their installation prefixes must also be available through
+`CMAKE_PREFIX_PATH` or CMake's standard library search locations. Shared-only
+consumers do not need these development dependencies.
+
+Set `DACS_DIR` to the directory containing `DACSConfig.cmake`, or add the
+installation prefix to `CMAKE_PREFIX_PATH` if it is outside CMake's default
+search locations.
 
 ## Build the Go cache controller
 

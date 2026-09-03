@@ -15,12 +15,15 @@
 get_filename_component(DACS_SOURCE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
 set(DACS_SOURCE_ROOT "${DACS_SOURCE_ROOT}" CACHE PATH "DACS source root")
 
+include(GNUInstallDirs)
+
 option(DACS_BUILD_CACHE_CLIENT "Build the DACS cache client" ON)
 option(DACS_BUILD_CACHE_SERVER "Build the DACS cache server" ON)
 option(DACS_BUILD_STORAGE_INTERCEPT "Build DACS storage interception libraries" ON)
 option(DACS_BUILD_LIVENESS_PROBE "Build the DACS cache client liveness probe" ON)
 option(DACS_BUILD_TESTS "Build DACS storage tests" ON)
 option(DACS_BUILD_TOOLS "Build DACS storage tools" ON)
+option(DACS_INSTALL_SDK "Install the DACS client SDK and runtime artifacts" OFF)
 
 if(NOT TARGET diagnostics)
     add_subdirectory(${DACS_SOURCE_ROOT}/src/subsystems/common/native_lib/diagnostics diagnostics)
@@ -46,4 +49,25 @@ endif()
 
 if(DACS_BUILD_CACHE_SERVER)
     add_subdirectory(cache_server)
+endif()
+
+if(DACS_INSTALL_SDK AND DACS_BUILD_CACHE_CLIENT)
+    include(CMakePackageConfigHelpers)
+
+    set(DACS_CONFIG_INSTALL_DIR
+        "${CMAKE_INSTALL_LIBDIR}/cmake/DACS")
+
+    configure_package_config_file(
+        "${CMAKE_CURRENT_LIST_DIR}/cmake/DACSConfig.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/DACSConfig.cmake"
+        INSTALL_DESTINATION "${DACS_CONFIG_INSTALL_DIR}")
+
+    install(EXPORT DACSTargets
+        FILE DACSTargets.cmake
+        NAMESPACE DACS::
+        DESTINATION "${DACS_CONFIG_INSTALL_DIR}")
+
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/DACSConfig.cmake"
+        DESTINATION "${DACS_CONFIG_INSTALL_DIR}")
 endif()
