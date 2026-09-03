@@ -14,7 +14,6 @@
 
 #pragma once
 #include <atomic>
-#include <gtest/gtest.h>
 #include <memory>
 #include <mutex>
 #include <stdint.h>
@@ -23,6 +22,7 @@
 #include "CacheClient.h"
 #include "ConnectionManager.h"
 #include "ChecksumFactory.h"
+#include "TestFriend.h"
 //---------------------------------------------------------------------------------------------------------------------
 class CacheClientTests;
 class ConsistentHashingTests;
@@ -114,27 +114,28 @@ class CacheClientImpl
     // Friends for testing
     friend class CacheClientTests;
     friend class ConsistentHashingTests;
-    FRIEND_TEST(CacheClientTests, ForceReuseConnections);
-    FRIEND_TEST(CacheClientTests, Initialization);
-    FRIEND_TEST(CacheClientTests, RefreshCacheServersWithDiscoveryEndpoint);
-    FRIEND_TEST(CacheClientTests, DiscoveryEndpointConfigurationValidation);
-    FRIEND_TEST(CacheClientTests, ResilientInitializationWithNetworkFailures);
-    FRIEND_TEST(CacheClientTests, DiscoveryResilience);
+    DACS_FRIEND_TEST(CacheClientTests, ForceReuseConnections);
+    DACS_FRIEND_TEST(CacheClientTests, Initialization);
+    DACS_FRIEND_TEST(CacheClientTests, RefreshCacheServersWithDiscoveryEndpoint);
+    DACS_FRIEND_TEST(CacheClientTests, DiscoveryEndpointConfigurationValidation);
+    DACS_FRIEND_TEST(CacheClientTests, ResilientInitializationWithNetworkFailures);
+    DACS_FRIEND_TEST(CacheClientTests, DiscoveryResilience);
     
     // Checksum validation test friends
-    FRIEND_TEST(CacheClientTests, ChecksumValidationWithXXH32Default);
-    FRIEND_TEST(CacheClientTests, ChecksumValidationSkippedWhenMissingMetadata);
-    FRIEND_TEST(CacheClientTests, DownloadFileWithChecksumMismatch);
-    FRIEND_TEST(CacheClientTests, ChecksumValidationDetectsBitFlipCorruptionXXH32);
-    FRIEND_TEST(CacheClientTests, ChecksumValidationWithCRC32Algorithm);
-    FRIEND_TEST(CacheClientTests, ChecksumValidationDetectsAlgorithmMismatch);
-    FRIEND_TEST(CacheClientTests, ChecksumValidationEdgeCases);
+    DACS_FRIEND_TEST(CacheClientTests, ChecksumValidationWithXXH32Default);
+    DACS_FRIEND_TEST(CacheClientTests, ChecksumValidationSkippedWhenMissingMetadata);
+    DACS_FRIEND_TEST(CacheClientTests, DownloadFileWithChecksumMismatch);
+    DACS_FRIEND_TEST(CacheClientTests, ChecksumValidationDetectsBitFlipCorruptionXXH32);
+    DACS_FRIEND_TEST(CacheClientTests, ChecksumValidationWithCRC32Algorithm);
+    DACS_FRIEND_TEST(CacheClientTests, ChecksumValidationDetectsAlgorithmMismatch);
+    DACS_FRIEND_TEST(CacheClientTests, ChecksumValidationEdgeCases);
 
-    FRIEND_TEST(ConsistentHashingTests, ServerSelectionConsistency);
-    FRIEND_TEST(ConsistentHashingTests, ServerDistribution);
-    FRIEND_TEST(ConsistentHashingTests, ScaleUpDown);
-    FRIEND_TEST(ConsistentHashingTests, ThreadSafety);
-    FRIEND_TEST(ConsistentHashingTests, Performance);
-    FRIEND_TEST(ConsistentHashingTests, DistributionAnalysis);
+    DACS_FRIEND_TEST(ConsistentHashingTests, ServerSelectionConsistency);
+    DACS_FRIEND_TEST(ConsistentHashingTests, ServerDistribution);
+    DACS_FRIEND_TEST(ConsistentHashingTests, ScaleUpDown);
+    DACS_FRIEND_TEST(ConsistentHashingTests, ThreadSafety);
+    DACS_FRIEND_TEST(ConsistentHashingTests, Performance);
+    DACS_FRIEND_TEST(ConsistentHashingTests, DistributionAnalysis);
 };
+
 //---------------------------------------------------------------------------------------------------------------------

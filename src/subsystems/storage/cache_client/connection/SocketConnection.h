@@ -15,7 +15,7 @@
 #pragma once
 //---------------------------------------------------------------------------------------------------------------------
 #include "IConnection.h"
-#include "gtest/gtest_prod.h"
+#include "TestFriend.h"
 //---------------------------------------------------------------------------------------------------------------------
 class SocketConnection : public IConnection
 {
@@ -56,10 +56,10 @@ class SocketConnection : public IConnection
         int m_sndTimeoutMillis;
         uint64_t m_requestBytesWritten;
 
-        FRIEND_TEST(ConnectionManagerTests, RecvTimeoutSocketOptionIsSetAfterReceive);
-        FRIEND_TEST(ConnectionManagerTests, RecvTimeoutSocketOptionUpdatedForDifferentSize);
-        FRIEND_TEST(ConnectionManagerTests, RequestBytesWrittenControlsReceiveTimeout);
-        FRIEND_TEST(ConnectionManagerTests, SndTimeoutSocketOptionIsSetAfterSend);
+        DACS_FRIEND_TEST(ConnectionManagerTests, RecvTimeoutSocketOptionIsSetAfterReceive);
+        DACS_FRIEND_TEST(ConnectionManagerTests, RecvTimeoutSocketOptionUpdatedForDifferentSize);
+        DACS_FRIEND_TEST(ConnectionManagerTests, RequestBytesWrittenControlsReceiveTimeout);
+        DACS_FRIEND_TEST(ConnectionManagerTests, SndTimeoutSocketOptionIsSetAfterSend);
         friend struct ScopedMinTimeout;
 };
 //---------------------------------------------------------------------------------------------------------------------

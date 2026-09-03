@@ -21,7 +21,7 @@
 #include <set>
 #include <shared_mutex>
 #include "FileData.h"
-#include <gtest/gtest.h>
+#include "TestFriend.h"
 //---------------------------------------------------------------------------------------------------------------------
 /*
  * Cache to store the downloaded chunks of a file in memory.
@@ -33,8 +33,8 @@ class PrefetchCacheTest;
 class PrefetchCache
 {
     // Friends for testing
-    FRIEND_TEST(PrefetchCacheTest, PrefetchCachePutGetPurgeTest);
-    FRIEND_TEST(PrefetchCacheTest, PrefetchCacheVersionAwareTest);
+    DACS_FRIEND_TEST(PrefetchCacheTest, PrefetchCachePutGetPurgeTest);
+    DACS_FRIEND_TEST(PrefetchCacheTest, PrefetchCacheVersionAwareTest);
 
     public:
 

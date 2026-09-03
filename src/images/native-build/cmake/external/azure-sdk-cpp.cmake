@@ -24,6 +24,7 @@ set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_PERFORMANCE_TESTS OFF CACHE BOOL "" FORCE)
 set(WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
+set(AZ_ALL_LIBRARIES ON CACHE BOOL "" FORCE)
 
 # azure-storage-blobs 12.17.0+ provides the Structured Message (XSM/1.0) validation APIs
 # used by SdkBlobClient for CRC64 download validation.
@@ -35,5 +36,20 @@ FetchContent_Declare(azuresdkforcpp
 FetchContent_GetProperties(azuresdkforcpp)
 if(NOT azuresdkforcpp_POPULATED)
     FetchContent_Populate(azuresdkforcpp)
-    add_subdirectory(${azuresdkforcpp_SOURCE_DIR} ${azuresdkforcpp_BINARY_DIR} EXCLUDE_FROM_ALL)
+    add_subdirectory(
+        ${azuresdkforcpp_SOURCE_DIR}/sdk/core/azure-core
+        ${azuresdkforcpp_BINARY_DIR}/sdk/core/azure-core
+        EXCLUDE_FROM_ALL)
+    add_subdirectory(
+        ${azuresdkforcpp_SOURCE_DIR}/sdk/identity/azure-identity
+        ${azuresdkforcpp_BINARY_DIR}/sdk/identity/azure-identity
+        EXCLUDE_FROM_ALL)
+    add_subdirectory(
+        ${azuresdkforcpp_SOURCE_DIR}/sdk/storage/azure-storage-common
+        ${azuresdkforcpp_BINARY_DIR}/sdk/storage/azure-storage-common
+        EXCLUDE_FROM_ALL)
+    add_subdirectory(
+        ${azuresdkforcpp_SOURCE_DIR}/sdk/storage/azure-storage-blobs
+        ${azuresdkforcpp_BINARY_DIR}/sdk/storage/azure-storage-blobs
+        EXCLUDE_FROM_ALL)
 endif()

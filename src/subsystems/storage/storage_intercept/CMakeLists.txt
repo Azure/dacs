@@ -34,8 +34,6 @@ include_directories(
         ./remote_client
         ./handlers
         ./remote_client/cache
-	/opt/protobufstatic-3.0.0/include
-	/opt/azure-storage-cpplite-0.3.0/include
 )
 
 file(GLOB STORAGE_INTERCEPT_SOURCES_COMMON ./remote_client/*cpp ./remote_client/adls/*cpp
@@ -47,16 +45,8 @@ file(GLOB STORAGE_INTERCEPT_SOURCES_CACHE_CLIENT ${STORAGE_INTERCEPT_SOURCES_COM
 add_library(CacheClient SHARED ${STORAGE_INTERCEPT_SOURCES_CACHE_CLIENT})
 add_library(DACS::StorageRemoteClient ALIAS CacheClient)
 
-# Statically link to precompiled protobuf and azurestorage sdk library to prevent mismatch with system installed versions
-ADD_LIBRARY(staticprotobuf STATIC IMPORTED)
-SET_TARGET_PROPERTIES(staticprotobuf PROPERTIES
-        IMPORTED_LOCATION /opt/protobufstatic-3.0.0/lib/libprotobuf.a)
-ADD_LIBRARY(static-azurestorage STATIC IMPORTED)
-SET_TARGET_PROPERTIES(static-azurestorage PROPERTIES
-        IMPORTED_LOCATION /opt/azure-storage-cpplite-0.3.0/lib/libazure-storage-lite.a)
-
 set(CommonDeps CacheClientLib StorageCommon CacheProto ClientConnections EncryptionUtils diagnostics
-    curl static-azurestorage jsoncpp dl uuid crypto staticprotobuf Azure::azure-identity
+    curl azure-storage-lite jsoncpp dl uuid crypto protobuf::libprotobuf Azure::azure-identity
     Azure::azure-storage-blobs)
 
 # Linker flags to hide static symbols
@@ -179,12 +169,12 @@ if(DACS_BUILD_TESTS)
         ${GMOCK_MAIN_LIBRARY}
         ${GTEST_LIBRARY}
         ${GTEST_MAIN_LIBRARY}
-        -L${DEP_INSTALL_DIR}/lib
-        backtrace
-        )
+        backtrace)
 
     add_test(NAME StorageInterceptUnitTests
         COMMAND StorageInterceptUnitTests)
 
-    add_subdirectory(./integration_tests/)
+    if(DACS_BUILD_INTEGRATION_TESTS)
+        add_subdirectory(./integration_tests/)
+    endif()
 endif()

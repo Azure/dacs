@@ -12,47 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-project(cache_proto LANGUAGES CXX C)
-cmake_minimum_required(VERSION 3.10)
+set(_cache_proto_output_dir "${CMAKE_CURRENT_BINARY_DIR}/compiled")
+set(_cache_proto_source "${_cache_proto_output_dir}/cache.pb.cc")
+set(_cache_proto_header "${_cache_proto_output_dir}/cache.pb.h")
 
-set(CMAKE_REMOTE_PUBLISH_DIRECTORY "${CMAKE_REMOTE_PUBLISH_DIRECTORY}-storage/storage")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}-storage/storage")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}-storage/storage")
+add_custom_command(
+    OUTPUT "${_cache_proto_source}" "${_cache_proto_header}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_cache_proto_output_dir}"
+    COMMAND $<TARGET_FILE:protobuf::protoc>
+        --proto_path=${CMAKE_CURRENT_LIST_DIR}
+        --cpp_out=${_cache_proto_output_dir}
+        "${CMAKE_CURRENT_LIST_DIR}/cache.proto"
+    DEPENDS "${CMAKE_CURRENT_LIST_DIR}/cache.proto" protobuf::protoc
+    VERBATIM)
 
-message("Current CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
-message("Current CMAKE_LIBRARY_OUTPUT_DIRECTORY from ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
-message("Current CMAKE_REMOTE_PUBLISH_DIRECTORY ${CMAKE_REMOTE_PUBLISH_DIRECTORY}")
-
-set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS_INIT} -fPIC")
-
-# Generate protobuf source files
-execute_process(COMMAND mkdir -p ${CMAKE_CURRENT_LIST_DIR}/compiled)
-execute_process(
-    COMMAND /opt/protobufstatic-3.0.0/bin/protoc
-                --proto_path=${CMAKE_CURRENT_LIST_DIR} 
-                --cpp_out=${CMAKE_CURRENT_LIST_DIR}/compiled/
-                ${CMAKE_CURRENT_LIST_DIR}/cache.proto)
-
-include_directories(${CMAKE_CURRENT_LIST_DIR}/compiled
-                    /opt/protobufstatic-3.0.0/include
-                    )
-
-add_library(staticprotobuf STATIC IMPORTED)
-
-add_library(CacheProto STATIC ${CMAKE_CURRENT_LIST_DIR}/compiled/cache.pb.cc)
+add_library(CacheProto STATIC "${_cache_proto_source}")
+set_target_properties(CacheProto PROPERTIES
+    POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(CacheProto
     PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/compiled>
+        $<BUILD_INTERFACE:${_cache_proto_output_dir}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/dacs/proto>)
 
-set_target_properties(staticprotobuf PROPERTIES
-        IMPORTED_LOCATION /opt/protobufstatic-3.0.0/lib/libprotobuf.a)
-
 target_link_libraries(CacheProto
-    PUBLIC
-        $<BUILD_INTERFACE:staticprotobuf>
-        $<INSTALL_INTERFACE:protobuf::libprotobuf>)
+    PUBLIC protobuf::libprotobuf)
 
 set_target_properties(CacheProto PROPERTIES
     EXPORT_NAME CacheProto)
@@ -63,6 +47,6 @@ if(DACS_INSTALL_SDK)
     install(TARGETS CacheProto
         EXPORT DACSTargets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-    install(FILES ${CMAKE_CURRENT_LIST_DIR}/compiled/cache.pb.h
+    install(FILES "${_cache_proto_header}"
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dacs/proto)
 endif()

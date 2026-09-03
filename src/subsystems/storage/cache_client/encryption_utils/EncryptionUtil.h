@@ -15,14 +15,14 @@
 #pragma once
 #include "cache.pb.h"
 #include "IConnection.h"
+#include "TestFriend.h"
 #include <openssl/sha.h>
-#include <gtest/gtest.h>
 //---------------------------------------------------------------------------------------------------------------------
 class EncryptionUtilTest;
 class EncryptionUtil
 {
     // Friends for testing
-    FRIEND_TEST(EncryptionUtilTest, EncryptDecryptTest);
+    DACS_FRIEND_TEST(EncryptionUtilTest, EncryptDecryptTest);
 
     public:
         EncryptionUtil(bool encryptionEnabled, const char* encryptionKey);
