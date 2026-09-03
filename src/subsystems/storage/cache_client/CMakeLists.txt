@@ -52,11 +52,17 @@ set(CommonLinks StorageLibcDlsymWrapper
 add_dependencies(CacheClientSharedLib ${CommonDeps})
 add_dependencies(CacheClientLib ${CommonDeps})
 
-target_include_directories(CacheClientSharedLib PUBLIC ${CMAKE_CURRENT_LIST_DIR})
+target_include_directories(CacheClientSharedLib
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/dacs/cache_client>)
 target_include_directories(CacheClientLib PUBLIC ${CMAKE_CURRENT_LIST_DIR})
 
-target_link_libraries(CacheClientSharedLib ${CommonLinks})
-target_link_libraries(CacheClientLib ${CommonLinks})
+target_link_libraries(CacheClientSharedLib PRIVATE ${CommonLinks})
+target_link_libraries(CacheClientLib PUBLIC ${CommonLinks})
+
+set_target_properties(CacheClientSharedLib PROPERTIES
+    EXPORT_NAME CacheClientShared)
 
 add_library(DACS::CacheClient ALIAS CacheClientLib)
 add_library(DACS::CacheClientShared ALIAS CacheClientSharedLib)
@@ -123,17 +129,43 @@ add_library(CacheClientStaticLibWithoutProtobuf STATIC
 )
 
 # Merge protobuf into the final archive.
+set(CACHE_CLIENT_STATIC_ARCHIVE
+    "${CMAKE_CURRENT_BINARY_DIR}/libCacheClientStaticLib.a")
 add_custom_command(
-    TARGET CacheClientStaticLibWithoutProtobuf 
+    TARGET CacheClientStaticLibWithoutProtobuf
     POST_BUILD
+    BYPRODUCTS ${CACHE_CLIENT_STATIC_ARCHIVE}
     COMMAND 
         ${CMAKE_CURRENT_SOURCE_DIR}/merge_archives.sh 
-        ${CMAKE_REMOTE_PUBLISH_DIRECTORY}/libCacheClientStaticLib.a 
+        ${CACHE_CLIENT_STATIC_ARCHIVE}
         $<TARGET_FILE:CacheClientStaticLibWithoutProtobuf> 
         /opt/protobufstatic-3.0.0/lib/libprotobuf.a
+    COMMAND
+        ${CMAKE_COMMAND} -E make_directory
+        ${CMAKE_REMOTE_PUBLISH_DIRECTORY}
+    COMMAND
+        ${CMAKE_COMMAND} -E copy
+        ${CACHE_CLIENT_STATIC_ARCHIVE}
+        ${CMAKE_REMOTE_PUBLISH_DIRECTORY}/libCacheClientStaticLib.a
 )
 
 add_custom_command(
     TARGET CacheClientLib POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        ${CMAKE_REMOTE_PUBLISH_DIRECTORY}
     COMMAND ${CMAKE_COMMAND} -E copy ${DACS_SOURCE_ROOT}/src/subsystems/storage/cache_client/CacheClient.h
-    ${CMAKE_REMOTE_PUBLISH_DIRECTORY}/)
+        ${CMAKE_REMOTE_PUBLISH_DIRECTORY}/)
+
+if(DACS_INSTALL_SDK)
+    install(TARGETS CacheClientSharedLib
+        EXPORT DACSTargets
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dacs/cache_client)
+    install(FILES
+        ${CACHE_CLIENT_STATIC_ARCHIVE}
+        DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    install(FILES CacheClient.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dacs/cache_client)
+endif()

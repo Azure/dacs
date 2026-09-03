@@ -22,3 +22,11 @@ target_include_directories(DACSLocator PUBLIC ${CMAKE_CURRENT_LIST_DIR})
 target_link_libraries(DACSLocator PUBLIC pthread PRIVATE diagnostics)
 
 add_library(DACS::Locator ALIAS DACSLocator)
+
+if(DACS_INSTALL_SDK)
+    install(TARGETS DACSLocator
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    install(DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dacs/locator
+        FILES_MATCHING PATTERN "*.h")
+endif()

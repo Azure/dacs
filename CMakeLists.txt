@@ -62,8 +62,18 @@ add_subdirectory(${CMAKE_DEP_INSTALL_DIR}/cmake ${CMAKE_DEP_INSTALL_DIR} EXCLUDE
 # The GTest git hub project for testing and testing related vars
 include(${CMAKE_EXTERNAL_PROJECT}/gtest_include.cmake)
 
-# The fmt project for formatting and related vars
-include(${CMAKE_EXTERNAL_PROJECT}/fmt_include.cmake)
+# The fmt project for formatting and related vars. Embedded consumers may use
+# a dependency image that does not preinstall DACS's fmt project.
+if(EXISTS "${CMAKE_EXTERNAL_PROJECT}/fmt_include.cmake")
+    include(${CMAKE_EXTERNAL_PROJECT}/fmt_include.cmake)
+else()
+    include(FetchContent)
+    FetchContent_Declare(fmt
+        URL "https://github.com/fmtlib/fmt/releases/download/7.1.0/fmt-7.1.0.zip"
+        URL_HASH "SHA256=308af4e36ee3ab527b51014a2a5d862682c84f5d16f7a597aea34c84853cbcb0")
+    FetchContent_MakeAvailable(fmt)
+    include_directories(${fmt_SOURCE_DIR}/include)
+endif()
 
 # serialization support through json. It supports json, bson, cbor etc.
 include(${CMAKE_EXTERNAL_PROJECT}/json_include.cmake)
@@ -120,7 +130,11 @@ include_directories(src/subsystems/common/native_lib/diagnostics/)
 enable_testing()
 
 add_subdirectory(src/subsystems/storage/)
-add_subdirectory(src/subsystems/common/native_lib/diagnostics.tests)
-add_subdirectory(src/subsystems/storage/utils/)
-add_subdirectory(src/subsystems/storage/stress_tests/)
-add_subdirectory(src/subsystems/storage/tools/)
+if(DACS_BUILD_TESTS)
+    add_subdirectory(src/subsystems/common/native_lib/diagnostics.tests)
+endif()
+if(DACS_BUILD_TOOLS)
+    add_subdirectory(src/subsystems/storage/utils/)
+    add_subdirectory(src/subsystems/storage/stress_tests/)
+    add_subdirectory(src/subsystems/storage/tools/)
+endif()

@@ -49,3 +49,10 @@ set_target_properties(staticprotobuf PROPERTIES
 target_link_libraries(CacheProto staticprotobuf)
 
 add_library(DACS::CacheProto ALIAS CacheProto)
+
+if(DACS_INSTALL_SDK)
+    install(TARGETS CacheProto
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    install(FILES ${CMAKE_CURRENT_LIST_DIR}/compiled/cache.pb.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dacs/proto)
+endif()
