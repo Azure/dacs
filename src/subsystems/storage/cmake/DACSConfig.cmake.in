@@ -1,3 +1,44 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:59f18a13ec4721310db8b74ab662e4b9ec33e255ed6b66adbbe062d2969bb154
-size 1499
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+find_dependency(Threads REQUIRED)
+find_dependency(Protobuf CONFIG REQUIRED)
+
+include("${CMAKE_CURRENT_LIST_DIR}/DACSTargets.cmake")
+set(DACS_Shared_FOUND TRUE)
+set(DACS_Proto_FOUND TRUE)
+set(DACS_Locator_FOUND TRUE)
+
+if(TARGET DACS::StorageRemoteClient)
+    set(DACS_StorageRemote_FOUND TRUE)
+endif()
+
+if("Static" IN_LIST DACS_FIND_COMPONENTS)
+    find_dependency(CURL REQUIRED)
+    find_dependency(OpenSSL REQUIRED)
+    find_dependency(Threads REQUIRED)
+
+    find_library(DACS_JSONCPP_LIBRARY NAMES jsoncpp REQUIRED)
+    find_library(DACS_UUID_LIBRARY NAMES uuid REQUIRED)
+    find_library(DACS_XXHASH_LIBRARY NAMES xxhash REQUIRED)
+
+    set_and_check(
+        DACS_CACHE_CLIENT_STATIC_LIBRARY
+        "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/libCacheClientStaticLib.a")
+
+    if(NOT TARGET DACS::CacheClient)
+        add_library(DACS::CacheClient STATIC IMPORTED)
+        set_target_properties(DACS::CacheClient PROPERTIES
+            IMPORTED_LINK_INTERFACE_LANGUAGES CXX
+            IMPORTED_LOCATION "${DACS_CACHE_CLIENT_STATIC_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES
+                "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_INCLUDEDIR@/dacs/cache_client"
+            INTERFACE_LINK_LIBRARIES
+                "CURL::libcurl;OpenSSL::Crypto;Threads::Threads;${CMAKE_DL_LIBS};${DACS_UUID_LIBRARY};${DACS_JSONCPP_LIBRARY};${DACS_XXHASH_LIBRARY}")
+    endif()
+
+    set(DACS_Static_FOUND TRUE)
+endif()
+
+check_required_components(DACS)
