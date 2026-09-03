@@ -27,10 +27,14 @@ set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS_INIT} -fPIC")
 # Wiring things up for compile and the runtime
 target_link_libraries(diagnostics PRIVATE -L${DEP_INSTALL_DIR}/lib)
 target_link_libraries(diagnostics PRIVATE Threads::Threads)
-target_include_directories(diagnostics PUBLIC ${CMAKE_CURRENT_LIST_DIR})
+target_include_directories(diagnostics
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}>)
+set_target_properties(diagnostics PROPERTIES
+    EXPORT_NAME Diagnostics)
 
 if(DACS_INSTALL_SDK)
     install(TARGETS diagnostics
+        EXPORT DACSTargets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif()

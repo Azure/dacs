@@ -18,13 +18,23 @@ add_library(DACSLocator STATIC
     LocatorCache.cpp
 )
 
-target_include_directories(DACSLocator PUBLIC ${CMAKE_CURRENT_LIST_DIR})
-target_link_libraries(DACSLocator PUBLIC pthread PRIVATE diagnostics)
+target_include_directories(DACSLocator
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/dacs/locator>)
+target_compile_features(DACSLocator PUBLIC cxx_std_20)
+target_link_libraries(DACSLocator
+    PUBLIC Threads::Threads
+    PRIVATE diagnostics)
+
+set_target_properties(DACSLocator PROPERTIES
+    EXPORT_NAME Locator)
 
 add_library(DACS::Locator ALIAS DACSLocator)
 
 if(DACS_INSTALL_SDK)
     install(TARGETS DACSLocator
+        EXPORT DACSTargets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
     install(DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dacs/locator
