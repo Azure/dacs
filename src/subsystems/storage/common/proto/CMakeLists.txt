@@ -41,17 +41,27 @@ add_library(staticprotobuf STATIC IMPORTED)
 
 add_library(CacheProto STATIC ${CMAKE_CURRENT_LIST_DIR}/compiled/cache.pb.cc)
 
-target_include_directories(CacheProto PUBLIC ${CMAKE_CURRENT_LIST_DIR}/compiled)
+target_include_directories(CacheProto
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/compiled>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/dacs/proto>)
 
 set_target_properties(staticprotobuf PROPERTIES
         IMPORTED_LOCATION /opt/protobufstatic-3.0.0/lib/libprotobuf.a)
 
-target_link_libraries(CacheProto staticprotobuf)
+target_link_libraries(CacheProto
+    PUBLIC
+        $<BUILD_INTERFACE:staticprotobuf>
+        $<INSTALL_INTERFACE:protobuf::libprotobuf>)
+
+set_target_properties(CacheProto PROPERTIES
+    EXPORT_NAME CacheProto)
 
 add_library(DACS::CacheProto ALIAS CacheProto)
 
 if(DACS_INSTALL_SDK)
     install(TARGETS CacheProto
+        EXPORT DACSTargets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
     install(FILES ${CMAKE_CURRENT_LIST_DIR}/compiled/cache.pb.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dacs/proto)

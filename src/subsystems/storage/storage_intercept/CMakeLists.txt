@@ -84,8 +84,15 @@ target_link_libraries(StorageDirect StorageLibcDirectWrapper ${CommonDeps})
 target_link_options(StorageDirect PRIVATE ${HIDE_STATIC_SYMBOLS_FLAGS})
 
 add_dependencies(CacheClient StorageLibcDirectWrapper ${STORAGE_CORE_DEPS})
-target_link_libraries(CacheClient StorageLibcDirectWrapper ${CommonDeps})
+target_link_libraries(CacheClient PRIVATE StorageLibcDirectWrapper ${CommonDeps})
 target_link_options(CacheClient PRIVATE ${HIDE_STATIC_SYMBOLS_FLAGS})
+target_include_directories(CacheClient
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/remote_client>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/common>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/dacs/storage_remote>)
+set_target_properties(CacheClient PROPERTIES
+    EXPORT_NAME StorageRemoteClient)
 
 add_custom_command(
     TARGET CacheClient POST_BUILD
@@ -98,8 +105,10 @@ add_custom_command(
 
 if(DACS_INSTALL_SDK)
     install(TARGETS CacheClient
+        EXPORT DACSTargets
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dacs/storage_remote)
     install(FILES
         remote_client/IRemoteClient.h
         remote_client/RemoteClientProvider.h

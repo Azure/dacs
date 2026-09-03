@@ -16,6 +16,7 @@ get_filename_component(DACS_SOURCE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../.." ABS
 set(DACS_SOURCE_ROOT "${DACS_SOURCE_ROOT}" CACHE PATH "DACS source root")
 
 include(GNUInstallDirs)
+find_package(Threads REQUIRED)
 
 option(DACS_BUILD_CACHE_CLIENT "Build the DACS cache client" ON)
 option(DACS_BUILD_CACHE_SERVER "Build the DACS cache server" ON)

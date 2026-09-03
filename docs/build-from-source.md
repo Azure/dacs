@@ -139,12 +139,16 @@ cmake --install build/dacs-sdk
 ```
 
 Consumers can then locate the installed package and link either the shared or
-merged static cache client:
+merged static cache client. The package also exports the protobuf and locator
+targets used by higher-level clients:
 
 ```cmake
-find_package(DACS CONFIG REQUIRED)
+find_package(DACS CONFIG REQUIRED COMPONENTS Proto Locator)
 
-target_link_libraries(my_target PRIVATE DACS::CacheClientShared)
+target_link_libraries(my_target PRIVATE
+    DACS::CacheClientShared
+    DACS::CacheProto
+    DACS::Locator)
 ```
 
 Request the `Static` component to use the merged static cache client:
@@ -155,10 +159,19 @@ find_package(DACS CONFIG REQUIRED COMPONENTS Static)
 target_link_libraries(my_target PRIVATE DACS::CacheClient)
 ```
 
-The `Static` component requires CURL, OpenSSL, Threads, `uuid`, `jsoncpp`,
-and `xxhash`. Their installation prefixes must also be available through
-`CMAKE_PREFIX_PATH` or CMake's standard library search locations. Shared-only
-consumers do not need these development dependencies.
+When `DACS_BUILD_STORAGE_INTERCEPT=ON`, request the `StorageRemote` component
+to consume the Blob/remote-storage interface:
+
+```cmake
+find_package(DACS CONFIG REQUIRED COMPONENTS StorageRemote)
+
+target_link_libraries(my_target PRIVATE DACS::StorageRemoteClient)
+```
+
+The package requires Protobuf and Threads. The `Static` component additionally
+requires CURL, OpenSSL, `uuid`, `jsoncpp`, and `xxhash`. Their installation
+prefixes must be available through `CMAKE_PREFIX_PATH` or CMake's standard
+library search locations.
 
 Set `DACS_DIR` to the directory containing `DACSConfig.cmake`, or add the
 installation prefix to `CMAKE_PREFIX_PATH` if it is outside CMake's default
