@@ -128,26 +128,34 @@ add_library(CacheClientStaticLibWithoutProtobuf STATIC
     $<TARGET_OBJECTS:diagnostics>
 )
 
-# Merge protobuf into the final archive.
-set(CACHE_CLIENT_STATIC_ARCHIVE
-    "${CMAKE_CURRENT_BINARY_DIR}/libCacheClientStaticLib.a")
-add_custom_command(
-    TARGET CacheClientStaticLibWithoutProtobuf
-    POST_BUILD
-    BYPRODUCTS ${CACHE_CLIENT_STATIC_ARCHIVE}
-    COMMAND 
-        ${CMAKE_CURRENT_SOURCE_DIR}/merge_archives.sh 
-        ${CACHE_CLIENT_STATIC_ARCHIVE}
-        $<TARGET_FILE:CacheClientStaticLibWithoutProtobuf> 
-        /opt/protobufstatic-3.0.0/lib/libprotobuf.a
-    COMMAND
-        ${CMAKE_COMMAND} -E make_directory
-        ${CMAKE_REMOTE_PUBLISH_DIRECTORY}
-    COMMAND
-        ${CMAKE_COMMAND} -E copy
-        ${CACHE_CLIENT_STATIC_ARCHIVE}
-        ${CMAKE_REMOTE_PUBLISH_DIRECTORY}/libCacheClientStaticLib.a
-)
+if(DACS_BUILD_CACHE_CLIENT_STATIC_ARCHIVE)
+    get_target_property(_protobuf_library_type
+        protobuf::libprotobuf TYPE)
+    if(NOT _protobuf_library_type STREQUAL "STATIC_LIBRARY")
+        message(FATAL_ERROR
+            "DACS_BUILD_CACHE_CLIENT_STATIC_ARCHIVE requires a static "
+            "protobuf::libprotobuf target")
+    endif()
+
+    set(CACHE_CLIENT_STATIC_ARCHIVE
+        "${CMAKE_CURRENT_BINARY_DIR}/libCacheClientStaticLib.a")
+    add_custom_command(
+        TARGET CacheClientStaticLibWithoutProtobuf
+        POST_BUILD
+        BYPRODUCTS ${CACHE_CLIENT_STATIC_ARCHIVE}
+        COMMAND
+            ${CMAKE_CURRENT_SOURCE_DIR}/merge_archives.sh
+            ${CACHE_CLIENT_STATIC_ARCHIVE}
+            $<TARGET_FILE:CacheClientStaticLibWithoutProtobuf>
+            $<TARGET_FILE:protobuf::libprotobuf>
+        COMMAND
+            ${CMAKE_COMMAND} -E make_directory
+            ${CMAKE_REMOTE_PUBLISH_DIRECTORY}
+        COMMAND
+            ${CMAKE_COMMAND} -E copy
+            ${CACHE_CLIENT_STATIC_ARCHIVE}
+            ${CMAKE_REMOTE_PUBLISH_DIRECTORY}/libCacheClientStaticLib.a)
+endif()
 
 add_custom_command(
     TARGET CacheClientLib POST_BUILD
@@ -163,9 +171,11 @@ if(DACS_INSTALL_SDK)
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dacs/cache_client)
-    install(FILES
-        ${CACHE_CLIENT_STATIC_ARCHIVE}
-        DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    if(DACS_BUILD_CACHE_CLIENT_STATIC_ARCHIVE)
+        install(FILES
+            ${CACHE_CLIENT_STATIC_ARCHIVE}
+            DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    endif()
     install(FILES CacheClient.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dacs/cache_client)
 endif()

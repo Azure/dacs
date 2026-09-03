@@ -16,9 +16,9 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "IConnection.h"
 #include "IBUtils.h"
+#include "TestFriend.h"
 #include "hashing/HashingFactory.h"
 #include "cache.pb.h"
-#include <gtest/gtest.h>
 #include <vector>
 #include <map>
 #include <queue>
@@ -152,10 +152,10 @@ class ConnectionManager
         const HashingStrategy m_hashingStrategy;
 
     // Friends for testing
-    FRIEND_TEST(CacheClientTests, RefreshCacheServersWithDiscoveryEndpoint);
-    FRIEND_TEST(ConsistentHashingTests, ScaleUpDown);
-    FRIEND_TEST(ConsistentHashingTests, DistributionAnalysis);
-    FRIEND_TEST(ConnectionManagerTests, WaitForSocketWritableWorksAboveFdSetSize);
-    FRIEND_TEST(ConnectionManagerTests, IsIbZeroCopyEnabledRespectsEnvVar);
+    DACS_FRIEND_TEST(CacheClientTests, RefreshCacheServersWithDiscoveryEndpoint);
+    DACS_FRIEND_TEST(ConsistentHashingTests, ScaleUpDown);
+    DACS_FRIEND_TEST(ConsistentHashingTests, DistributionAnalysis);
+    DACS_FRIEND_TEST(ConnectionManagerTests, WaitForSocketWritableWorksAboveFdSetSize);
+    DACS_FRIEND_TEST(ConnectionManagerTests, IsIbZeroCopyEnabledRespectsEnvVar);
 };
 //---------------------------------------------------------------------------------------------------------------------

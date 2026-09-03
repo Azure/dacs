@@ -15,18 +15,18 @@
 #pragma once
 #include "cache.pb.h"
 #include "IConnection.h"
+#include "TestFriend.h"
 #include <openssl/sha.h>
-#include <gtest/gtest.h>
 //---------------------------------------------------------------------------------------------------------------------
 class EncryptionUtilTest;
 class EncryptionUtil
 {
     // Friends for testing
-    FRIEND_TEST(EncryptionUtilTest, EncryptDecryptTest);
-    FRIEND_TEST(EncryptionUtilTest, DecryptFailureDoesNotLeakPlaintextTest);
-    FRIEND_TEST(EncryptionUtilTest, DoDecryptFailureCleansesCallerBufferTest);
-    FRIEND_TEST(EncryptionUtilTest, DecryptRejectsUndersizedTagAndIvTest);
-    FRIEND_TEST(EncryptionUtilTest, RejectsLengthsLargerThanOpenSslIntTest);
+    DACS_FRIEND_TEST(EncryptionUtilTest, EncryptDecryptTest);
+    DACS_FRIEND_TEST(EncryptionUtilTest, DecryptFailureDoesNotLeakPlaintextTest);
+    DACS_FRIEND_TEST(EncryptionUtilTest, DoDecryptFailureCleansesCallerBufferTest);
+    DACS_FRIEND_TEST(EncryptionUtilTest, DecryptRejectsUndersizedTagAndIvTest);
+    DACS_FRIEND_TEST(EncryptionUtilTest, RejectsLengthsLargerThanOpenSslIntTest);
 
     public:
         EncryptionUtil(bool encryptionEnabled, const char* encryptionKey);
