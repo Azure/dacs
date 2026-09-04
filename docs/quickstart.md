@@ -40,7 +40,7 @@ Read that chart's metadata first so the smoke-test client uses the matching
 `appVersion`, which is the published image build number:
 
 ```bash
-export CHART_REF="oci://dacstest.azurecr.io/acstor/charts/dacs"
+export CHART_REF="oci://dacstest.azurecr.io/dacs/charts/dacs"
 CHART_METADATA=$(helm show chart "$CHART_REF")
 
 export CHART_VERSION=$(
