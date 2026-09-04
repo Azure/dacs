@@ -17,6 +17,9 @@ FROM mcr.microsoft.com/mirror/docker/library/ubuntu:22.04
 
 # Docker BuildKit argument for multi-platform builds
 ARG TARGETARCH
+ARG RUST_VERSION=1.98.1
+ARG RUSTUP_VERSION=1.29.0
+ARG KUBEBUILDER_VERSION=4.10.1
 ARG UBUNTU_ARCHIVE_MIRROR=""
 
 USER root
@@ -101,16 +104,45 @@ ENV PATH="/opt/cargo/bin:${PATH}"
 # Architecture-specific Rust installation
 RUN TARGETARCH=${TARGETARCH:-amd64} && \
     if [ "$TARGETARCH" = "amd64" ]; then \
-        curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path && \
-        ${CARGO_HOME}/bin/rustup self update && \
-        ${CARGO_HOME}/bin/rustup component remove rust-docs || true; \
+        RUST_TARGET=x86_64-unknown-linux-gnu; \
+        RUSTUP_SHA256=4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10; \
     elif [ "$TARGETARCH" = "arm64" ]; then \
-        curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --default-toolchain stable-aarch64-unknown-linux-gnu; \
-    fi
+        RUST_TARGET=aarch64-unknown-linux-gnu; \
+        RUSTUP_SHA256=9732d6c5e2a098d3521fca8145d826ae0aaa067ef2385ead08e6feac88fa5792; \
+    else \
+        echo "Unsupported TARGETARCH: $TARGETARCH" >&2; \
+        exit 1; \
+    fi && \
+    RUSTUP_INIT=/tmp/rustup-init && \
+    curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+        --output "$RUSTUP_INIT" \
+        "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${RUST_TARGET}/rustup-init" && \
+    echo "${RUSTUP_SHA256}  ${RUSTUP_INIT}" | sha256sum --check --strict && \
+    chmod 0755 "$RUSTUP_INIT" && \
+    "$RUSTUP_INIT" -y --no-modify-path --default-toolchain "${RUST_VERSION}-${RUST_TARGET}" && \
+    rm "$RUSTUP_INIT" && \
+    (${CARGO_HOME}/bin/rustup component remove rust-docs --toolchain "${RUST_VERSION}-${RUST_TARGET}" || true)
 
 # Kubebuilder installation (for controller project)
-RUN curl -L -o kubebuilder "https://go.kubebuilder.io/dl/latest/$(go env GOOS)/$(go env GOARCH)"
-RUN chmod +x kubebuilder && mv kubebuilder /usr/local/bin/
+RUN TARGETARCH=${TARGETARCH:-amd64} && \
+    if [ "$TARGETARCH" = "amd64" ]; then \
+        KUBEBUILDER_ARCH=amd64; \
+        KUBEBUILDER_SHA256=d502bb409ef2f27ce7e69a6eddaf50501f876bb7fe4730c2fa087fe4e14a7e12; \
+    elif [ "$TARGETARCH" = "arm64" ]; then \
+        KUBEBUILDER_ARCH=arm64; \
+        KUBEBUILDER_SHA256=de100c05583ba618ffb44240c63189f38a9abf9b3c959acb18fbf8a1d6ba3d33; \
+    else \
+        echo "Unsupported TARGETARCH: $TARGETARCH" >&2; \
+        exit 1; \
+    fi && \
+    KUBEBUILDER_DOWNLOAD=/tmp/kubebuilder && \
+    curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+        --output "$KUBEBUILDER_DOWNLOAD" \
+        "https://github.com/kubernetes-sigs/kubebuilder/releases/download/v${KUBEBUILDER_VERSION}/kubebuilder_linux_${KUBEBUILDER_ARCH}" && \
+    echo "${KUBEBUILDER_SHA256}  ${KUBEBUILDER_DOWNLOAD}" | sha256sum --check --strict && \
+    install -m 0755 "$KUBEBUILDER_DOWNLOAD" /usr/local/bin/.kubebuilder.new && \
+    mv /usr/local/bin/.kubebuilder.new /usr/local/bin/kubebuilder && \
+    rm "$KUBEBUILDER_DOWNLOAD"
 
 # Configure Git to trust mounted repository directories
 RUN git config --global --add safe.directory '*'
