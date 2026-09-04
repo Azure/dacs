@@ -107,6 +107,11 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
       - name: Download component image
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -160,11 +165,10 @@ jobs:
       BUILD_TYPE: Release
       BUILD_ARCH: ${{ matrix.arch }}
     steps:
-      # Temporarily disabled (step-security); re-enable before public release.
-      # - name: Harden Runner
-      #   uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
-      #   with:
-      #     egress-policy: audit
+      - name: Harden Runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
 
       - name: Check out the code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -215,6 +219,9 @@ jobs:
     env:
       MINIKUBE_VERSION: v1.38.1
     steps:
+      # Harden Runner Community breaks Minikube Docker networking because it
+      # cannot resolve host.docker.internal. See step-security/harden-runner#418.
+
       - name: Free disk space for Minikube
         run: |
           echo "Disk space before cleanup:"
