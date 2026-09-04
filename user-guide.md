@@ -80,7 +80,7 @@ Install the prerequisite chart to automatically set up RAID on each node:
 
 ```sh
 helm install dacs-prereq \
-  oci://dacstest.azurecr.io/acstor/charts/dacs-prereq \
+  oci://dacstest.azurecr.io/dacs/charts/dacs-prereq \
   --version <version> \
   --namespace dacs-system \
   --create-namespace \
@@ -105,7 +105,7 @@ infrastructure through a Cache custom resource (CR).
 
 ```sh
 helm install dacs \
-  oci://dacstest.azurecr.io/acstor/charts/dacs \
+  oci://dacstest.azurecr.io/dacs/charts/dacs \
   --version <version> \
   --namespace dacs-system \
   --create-namespace \
@@ -118,7 +118,7 @@ Create a cache cluster by enabling the Cache CR:
 
 ```sh
 helm upgrade dacs \
-  oci://dacstest.azurecr.io/acstor/charts/dacs \
+  oci://dacstest.azurecr.io/dacs/charts/dacs \
   --version <version> \
   --namespace dacs-system \
   --set cache.enabled=true \
@@ -194,7 +194,7 @@ The most common configuration options:
 
 ```sh
 helm upgrade dacs \
-  oci://dacstest.azurecr.io/acstor/charts/dacs \
+  oci://dacstest.azurecr.io/dacs/charts/dacs \
   --version <version> \
   --namespace dacs-system \
   --set cache.enabled=true \
@@ -245,7 +245,7 @@ Install with the values file:
 
 ```sh
 helm upgrade --install dacs \
-  oci://dacstest.azurecr.io/acstor/charts/dacs \
+  oci://dacstest.azurecr.io/dacs/charts/dacs \
   --version <version> \
   --namespace dacs-system \
   -f values.yaml
@@ -258,7 +258,7 @@ used for the deployment:
 
 ```sh
 helm upgrade dacs \
-  oci://dacstest.azurecr.io/acstor/charts/dacs \
+  oci://dacstest.azurecr.io/dacs/charts/dacs \
   --version <version> \
   --namespace dacs-system \
   --reuse-values \
