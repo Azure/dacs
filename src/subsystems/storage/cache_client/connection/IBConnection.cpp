@@ -26,6 +26,7 @@ using namespace std;
 IBConnection::IBConnection(unique_ibv_qp qp, unique_ibv_comp_channel eventChannel, unique_ibv_cq cq, unique_ibv_mr mr,
     unique_ptr<char[]> mrBuffer, bool directMrEnabled)
     : m_qp(std::move(qp))
+    , m_qpNum(m_qp ? static_cast<int>(m_qp->qp_num) : -1)
     , m_eventChannel(std::move(eventChannel))
     , m_cq(std::move(cq))
     , m_mr(std::move(mr))
@@ -517,7 +518,7 @@ int IBConnection::Receive(char* buffer, uint64_t size)
 //---------------------------------------------------------------------------------------------------------------------
 int IBConnection::GetId()
 {
-    return m_qp->qp_num;
+    return m_qpNum;
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool IBConnection::IsValidConnection()

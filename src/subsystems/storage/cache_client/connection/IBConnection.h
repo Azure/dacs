@@ -79,6 +79,9 @@ class IBConnection : public IConnection
         // The queue pair from where we read and write data from/to the remote IB device
         ibutils::unique_ibv_qp m_qp;
 
+        // Cached identity remains available after failure paths destroy the QP.
+        const int m_qpNum;
+
         // The event channel to wait for send and receive completions
         ibutils::unique_ibv_comp_channel m_eventChannel;
 
