@@ -859,6 +859,7 @@ TEST_F(IBConnectionTest, DirectMR_PostRecvFailure_CleansMrAndInvalidates)
 TEST_F(IBConnectionTest, DirectMR_PostSendFailure_CleansMrAndInvalidates)
 {
     auto conn = CreateConnection();
+    const int qpId = conn->GetId();
 
     conn->Send("header", 6);
     fake_ib::post_send_fail_next = 1;
@@ -873,6 +874,7 @@ TEST_F(IBConnectionTest, DirectMR_PostSendFailure_CleansMrAndInvalidates)
     EXPECT_EQ(1, fake_ib::post_send_call_count.load());
     EXPECT_EQ(1, fake_ib::dereg_mr_call_count.load()); // MR cleaned up
     EXPECT_FALSE(conn->IsValidConnection());
+    EXPECT_EQ(qpId, conn->GetId()); // Safe after the failed send destroys the QP
 }
 
 TEST_F(IBConnectionTest, DeregMrFailure_InvalidatesConnection)
@@ -1800,6 +1802,7 @@ TEST_F(IBConnectionTest, WaitForSendWC_CQEventFailure_InvalidatesConnection)
     // ibv_get_cq_event returns -1 (e.g., channel closed, kernel error)
     // The CQ event is NOT available, so ibv_get_cq_event will fail.
     auto conn = CreateConnection();
+    const int qpId = conn->GetId();
 
     conn->Send("hdr", 3);
     const uint64_t size = 4 * 1024 * 1024;
@@ -1815,6 +1818,7 @@ TEST_F(IBConnectionTest, WaitForSendWC_CQEventFailure_InvalidatesConnection)
     EXPECT_FALSE(conn->IsValidConnection());
     // MR should still be cleaned up on failure
     EXPECT_EQ(1, fake_ib::dereg_mr_call_count.load());
+    EXPECT_EQ(qpId, conn->GetId()); // Safe after failure cleanup destroys the QP
 }
 
 TEST_F(IBConnectionTest, WaitForSendWC_WCErrorStatus_InvalidatesConnection)
