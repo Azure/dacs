@@ -15,6 +15,8 @@
 #include <prometheus/exposer.h>
 #include <prometheus/gauge.h>
 #include <prometheus/registry.h>
+#include <prometheus/counter.h>
+#include <unordered_map>
 #include "ResponseCode.h"
 #include "cache.pb.h"
 
@@ -29,10 +31,19 @@ class MetricsStore
     std::string m_sExposerAddress;
     prometheus::Gauge* m_pActiveConnectionsGauge;
     prometheus::Gauge* m_pCacheSizeGauge;
+    prometheus::Gauge* m_pListenBacklogMaxGauge;
     std::vector<prometheus::Histogram*> m_vecSuccessfulRequestLatencies;
     std::vector<std::vector<prometheus::Counter*>> m_vecRequestCounter;
     prometheus::Histogram* m_pDownloadRequestSizeHistogram;
     prometheus::Histogram* m_pUploadRequestSizeHistogram;
+    prometheus::Counter* m_pAcceptQueueOverflowsCounter;
+    prometheus::Counter* m_pListenDropsCounter;
+    prometheus::Counter* m_pSynQueueFullDropsCounter;
+    prometheus::Counter* m_pSynCookiesSentCounter;
+    prometheus::Counter* m_pPassiveOpensCounter;
+    prometheus::Gauge* m_pOpenFdCountGauge;
+    prometheus::Family<prometheus::Counter>* m_pAcceptErrorsFamily;
+    std::unordered_map<int, prometheus::Counter*> m_mapAcceptErrorCounters;
     constexpr static std::array<const char*, (int)Request::TypeCase::kEndmarker> m_arrRequestTypes = {
         "Unknown",
         "Reserved1",

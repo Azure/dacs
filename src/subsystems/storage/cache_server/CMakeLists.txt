@@ -59,6 +59,7 @@ add_executable(${CACHE_SERVER_EXEC} ${CACHE_SERVER_SOURCES})
 target_include_directories(${CACHE_SERVER_EXEC} PRIVATE
     ${CMAKE_SOURCE_DIR}/src/subsystems/common/native_lib/diagnostics
     ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common
+    ${CMAKE_SOURCE_DIR}/src/subsystems/storage/utils
     ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/proto/compiled
     ${CMAKE_CURRENT_LIST_DIR}
     ./operations
@@ -80,11 +81,13 @@ add_dependencies(${CACHE_SERVER_EXEC}
     StorageCommon
     CacheProto
     diagnostics
+    storage_utils
 )
 
 target_link_libraries(CacheServer 
     StorageCommon
     CacheProto
+    storage_utils
     xxhash
     stdc++fs
     dl
