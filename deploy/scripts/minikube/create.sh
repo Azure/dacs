@@ -38,6 +38,12 @@ CLUSTER_NAME="${CLUSTER_NAME:-minikube}"
 NUM_NODES="${MINIKUBE_NODES:-4}"
 MEMORY="${MINIKUBE_MEMORY:-2048}"
 CPUS="${MINIKUBE_CPUS:-2}"
+NODE_ADD_MAX_ATTEMPTS="${MINIKUBE_NODE_ADD_MAX_ATTEMPTS:-2}"
+
+if ! [[ "$NODE_ADD_MAX_ATTEMPTS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: MINIKUBE_NODE_ADD_MAX_ATTEMPTS must be a positive integer."
+  exit 1
+fi
 
 echo "Cluster config: $NUM_NODES nodes, ${MEMORY}MB RAM, $CPUS CPUs"
 
@@ -71,12 +77,43 @@ minikube start \
 # Add worker nodes one at a time with delays to reduce resource contention
 WORKERS=$((NUM_NODES - 1))
 echo -e "\nStep 2: Adding $WORKERS worker nodes sequentially..."
-for i in $(seq 2 $NUM_NODES); do
-  NODE_NUM=$(printf "%02d" $i)
+for i in $(seq 2 "$NUM_NODES"); do
+  NODE_NUM=$(printf "%02d" "$i")
+  NODE_ID="m${NODE_NUM}"
   NODE_NAME="minikube-m${NODE_NUM}"
   echo -e "\n--- Adding worker node $i of $NUM_NODES (${NODE_NAME}) ---"
-  
-  minikube node add --worker=true -v=1
+
+  NODE_ADDED=false
+  for attempt in $(seq 1 "$NODE_ADD_MAX_ATTEMPTS"); do
+    echo "Adding ${NODE_NAME} (attempt ${attempt}/${NODE_ADD_MAX_ATTEMPTS})..."
+    if minikube node add --worker=true -v=1; then
+      NODE_ADDED=true
+      break
+    fi
+
+    echo "WARNING: Failed to add ${NODE_NAME} on attempt ${attempt}."
+    minikube status --output=json || true
+    kubectl get nodes -o wide || true
+    kubectl describe node "$NODE_NAME" || true
+    kubectl get pods -n kube-system -o wide || true
+    kubectl get events -A --sort-by=.lastTimestamp | tail -100 || true
+    minikube ssh -n "$NODE_ID" -- "sudo journalctl -u kubelet --no-pager -n 200" || true
+    minikube ssh -n "$NODE_ID" -- "sudo journalctl -u containerd --no-pager -n 200" || true
+    minikube ssh -n "$NODE_ID" -- "sudo ls -la /etc/cni/net.d /opt/cni/bin" || true
+    kubectl logs -n kube-system -l app=kindnet --all-containers --prefix --tail=200 || true
+    minikube logs --node="$NODE_ID" --problems || true
+
+    if [ "$attempt" -lt "$NODE_ADD_MAX_ATTEMPTS" ]; then
+      echo "Deleting the failed node before retrying..."
+      minikube node delete "$NODE_ID" || true
+      sleep 15
+    fi
+  done
+
+  if [ "$NODE_ADDED" != true ]; then
+    echo "ERROR: Failed to add ${NODE_NAME} after ${NODE_ADD_MAX_ATTEMPTS} attempts."
+    exit 1
+  fi
   
   echo "Node $i added successfully, waiting for stabilization..."
   # Brief sleep to let the new node register with the API server, then wait for all nodes Ready
