@@ -385,7 +385,7 @@ ssize_t StorageInterceptorImpl::SI_pread(int fd, void* buf, size_t count, off64_
 
     try
     {
-        int ret = ContentHandler::GetInstance().HandlePRead(fd, buf, count, offset);
+        ssize_t ret = ContentHandler::GetInstance().HandlePRead(fd, buf, count, offset);
         if(ret < 0)
         {
             *errorString = ::strdup(::strerror(errno));

@@ -405,13 +405,21 @@ ssize_t blob_read(
     // Guard against unsigned-to-signed overflow (size_t → ssize_t/off64_t)
     if (length > static_cast<size_t>(SSIZE_MAX))
     {
+        LOG_ERROR("blob_read: requested length exceeds SSIZE_MAX. length={} max={}", length, SSIZE_MAX);
         set_error(error_buf, error_buf_size, "length exceeds SSIZE_MAX");
         return -1;
     }
     if (offset > static_cast<size_t>(std::numeric_limits<off64_t>::max()))
     {
+        LOG_ERROR("blob_read: requested offset exceeds maximum file offset. offset={} max={}",
+            offset, std::numeric_limits<off64_t>::max());
         set_error(error_buf, error_buf_size, "offset exceeds maximum file offset");
         return -1;
+    }
+
+    if (length > static_cast<size_t>(std::numeric_limits<int>::max()))
+    {
+        LOG_RARELY(30, INFO, "blob_read: processing large request. length={} offset={}", length, offset);
     }
 
     // Build cache path: <mount_path>/<account>.blob.core.windows.net/<container>/<blob>

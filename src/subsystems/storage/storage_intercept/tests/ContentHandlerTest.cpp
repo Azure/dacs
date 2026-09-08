@@ -165,6 +165,30 @@ TEST_F(ContentHandlerTest, OpenReadCloseOneThreadTest)
     OpenReadAndCloseCheck(task);
 }
 //---------------------------------------------------------------------------------------------------------------------
+TEST_F(ContentHandlerTest, PReadLargeRequestsTrimAtEofMockTest)
+{
+    if (!m_bUsingMock)
+    {
+        GTEST_SKIP() << "Large read request test runs only with the mock remote client";
+    }
+
+    const std::string filePath = m_strInterceptPath + '/' + m_strRemoteFilePath;
+    const int fd = ContentHandler::GetInstance().HandleOpen64(filePath.c_str(), O_RDONLY);
+    ASSERT_NE(fd, -1);
+
+    std::vector<char> readBuf(REMOTE_FILE_SIZE);
+    constexpr size_t GiB = 1024ULL * 1024 * 1024;
+    constexpr size_t largeReadSizes[] = {2 * GiB, 3 * GiB, 4 * GiB, 5 * GiB};
+    for (const size_t largeReadSize : largeReadSizes)
+    {
+        const ssize_t nBytesRead = ContentHandler::GetInstance().HandlePRead(
+            fd, readBuf.data(), largeReadSize, 0);
+
+        EXPECT_EQ(nBytesRead, REMOTE_FILE_SIZE) << "Requested read size: " << largeReadSize;
+    }
+    EXPECT_EQ(ContentHandler::GetInstance().HandleClose(fd), 0);
+}
+//---------------------------------------------------------------------------------------------------------------------
 TEST_F(ContentHandlerTest, OpenFileNonExistentTest)
 {
     std::string nonExistentPath = m_strInterceptPath + "/non-existent-file";

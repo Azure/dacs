@@ -24,6 +24,35 @@
 #include <dirent.h>
 #include <time.h>
 #include <fcntl.h>
+#include <limits>
+//---------------------------------------------------------------------------------------------------------------------
+namespace
+{
+bool ValidateIoRequest(const char* operation, const void* buffer, size_t nBytes, off64_t offset)
+{
+    if (buffer == nullptr && nBytes > 0)
+    {
+        LOG_ERROR("{} request has a null buffer. nBytes={} offset={}", operation, nBytes, offset);
+        errno = EFAULT;
+        return false;
+    }
+
+    if (offset < 0)
+    {
+        LOG_ERROR("{} request has a negative offset. nBytes={} offset={}", operation, nBytes, offset);
+        errno = EINVAL;
+        return false;
+    }
+
+    if (nBytes > static_cast<size_t>(std::numeric_limits<int>::max()))
+    {
+        LOG_RARELY(30, INFO, "Processing large {} request. nBytes={} offset={}",
+            operation, nBytes, offset);
+    }
+
+    return true;
+}
+}
 //---------------------------------------------------------------------------------------------------------------------
 /* Initialize logging during shared object init. This is to avoid cyclic dependencies during logging initialization 
  * when log init is invoked during first log api call.
@@ -717,6 +746,11 @@ ssize_t ContentHandler::HandleRead(int fd, void *buf, size_t nBytes)
     }
 
     const off64_t readOffset = fdIt->second->FileOffset;
+    if (!ValidateIoRequest("read", buf, nBytes, readOffset))
+    {
+        return -1;
+    }
+
     const off64_t fileSize = fdIt->second->Attributes.size;
     const std::string path = fdIt->second->RemotePath;
     const std::string version = fdIt->second->Attributes.version;
@@ -781,6 +815,11 @@ ssize_t ContentHandler::HandlePRead(int fd, void *buf, size_t nBytes, off64_t of
         return StorageLibcApiWrapper::pread(fd, buf, nBytes, offset);
     }
 
+    if (!ValidateIoRequest("pread", buf, nBytes, offset))
+    {
+        return -1;
+    }
+
     const std::string path = fdIt->second->RemotePath;
     off64_t fileSize = fdIt->second->Attributes.size;
     const std::string version = fdIt->second->Attributes.version;
@@ -840,6 +879,12 @@ ssize_t ContentHandler::WriteInternal(
     }
     STORAGE_ASSERT(StorageInterceptConfig::GetInstance().IsWriteSupportEnabled(), 
         "Write support must be enabled to receive write calls on write-enabled file descriptors.");
+
+    const off64_t writeOffset = isPwrite ? offset : fdIt->second->FileOffset;
+    if (!ValidateIoRequest(isPwrite ? "pwrite" : "write", buf, nBytes, writeOffset))
+    {
+        return -1;
+    }
     
     if (fdIt->second->IsWriteInProgress)
     {
@@ -849,7 +894,6 @@ ssize_t ContentHandler::WriteInternal(
     }
     fdIt->second->IsWriteInProgress = true;
 
-    const off64_t writeOffset = isPwrite ? offset : fdIt->second->FileOffset;
     const std::string path = fdIt->second->RemotePath;
     MountInfo& mountInfo = GetMountInfo(fdIt->second->MountName);
     openHandlesLock.unlock();
