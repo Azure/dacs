@@ -33,4 +33,12 @@ class Metrics {
                                            double dLatency,
                                            std::size_t nBytes);
         static void UpdateCacheSize(std::size_t nBytes);
+        static void SetListenBacklogMax(std::size_t backlog);
+        static void IncrementAcceptQueueOverflows(uint64_t delta);
+        static void IncrementListenDrops(uint64_t delta);
+        static void IncrementSynQueueFullDrops(uint64_t delta);
+        static void IncrementSynCookiesSent(uint64_t delta);
+        static void IncrementPassiveOpens(uint64_t delta);
+        static void UpdateOpenFdCount(std::size_t count);
+        static void IncrementAcceptError(int errnum);
 };

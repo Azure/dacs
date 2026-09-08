@@ -40,11 +40,15 @@
 #include <errno.h>
 #include <cstdlib>
 #include <limits>
+#include <string>
 #include "Metrics.h"
+#include "NetworkCounters.h"
 #include "ServerArgs.h"
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 using namespace cache;
+//---------------------------------------------------------------------------------------------------------------------
+void CacheServerMetricsBackgroundThread();
 //---------------------------------------------------------------------------------------------------------------------
 void HandleSocket(int epollFd)
 {
@@ -230,6 +234,8 @@ void StartServer(int port)
     }
 
     LOG_INFO("Started server on port: {}, threadpool: {}, tcp backlog: {}", port, threadPoolSize, tcpBacklogSize);
+    Metrics::SetListenBacklogMax(tcpBacklogSize);
+    std::thread(CacheServerMetricsBackgroundThread).detach();
 
     // main loop accepting connections 
     while (true)
@@ -240,6 +246,7 @@ void StartServer(int port)
         if (clientFd < 0) 
         {
             LOG_WARN("accept failed on server port, errno: {}:{}", errno, strerror(errno));
+            Metrics::IncrementAcceptError(errno);
             continue;
         }
         int enable = 1;
@@ -314,12 +321,82 @@ void SnapshotBackgroundThread(std::shared_ptr<snapshot::Snapshot> startingSnapho
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-void CacheServerSizeBackgroundThread()
+void CacheServerMetricsBackgroundThread()
 {
-    LOG_INFO("Starting cache server size background thread");
+    LOG_INFO("Starting cache server metrics background thread");
+
+    auto incrementIfMonotonic = [](uint64_t current, uint64_t previous, const char* counterName, auto increment) {
+        if (current < previous)
+        {
+            LOG_WARN("Network counter '{}' decreased (current={} previous={}); skipping delta and resetting baseline",
+                     counterName,
+                     current,
+                     previous);
+            return;
+        }
+
+        increment(current - previous);
+    };
+
+    NetworkCounters previousCounters;
+    bool hasProcNetstatBaseline = ReadNetstatCounters(previousCounters);
+    bool hasTcpOpensBaseline = ReadTcpOpenCounters(previousCounters.passiveOpens, previousCounters.activeOpens);
+    (void)ReadOpenFdCount(previousCounters.openFdCount);
+
     while (true)
     {
         std::this_thread::sleep_for(std::chrono::seconds(60));
+
+        NetworkCounters currentCounters;
+        const bool procNetstatRead = ReadNetstatCounters(currentCounters);
+        if (procNetstatRead)
+        {
+            if (hasProcNetstatBaseline)
+            {
+                incrementIfMonotonic(currentCounters.listenOverflows,
+                                     previousCounters.listenOverflows,
+                                     "listenOverflows",
+                                     Metrics::IncrementAcceptQueueOverflows);
+                incrementIfMonotonic(
+                    currentCounters.listenDrops, previousCounters.listenDrops, "listenDrops", Metrics::IncrementListenDrops);
+                incrementIfMonotonic(currentCounters.synQueueFullDrops,
+                                     previousCounters.synQueueFullDrops,
+                                     "synQueueFullDrops",
+                                     Metrics::IncrementSynQueueFullDrops);
+                incrementIfMonotonic(currentCounters.synCookiesSent,
+                                     previousCounters.synCookiesSent,
+                                     "synCookiesSent",
+                                     Metrics::IncrementSynCookiesSent);
+            }
+            previousCounters.listenOverflows = currentCounters.listenOverflows;
+            previousCounters.listenDrops = currentCounters.listenDrops;
+            previousCounters.synQueueFullDrops = currentCounters.synQueueFullDrops;
+            previousCounters.synCookiesSent = currentCounters.synCookiesSent;
+            hasProcNetstatBaseline = true;
+        }
+
+        const bool tcpOpensRead = ReadTcpOpenCounters(currentCounters.passiveOpens, currentCounters.activeOpens);
+        if (tcpOpensRead)
+        {
+            if (hasTcpOpensBaseline)
+            {
+                incrementIfMonotonic(currentCounters.passiveOpens,
+                                     previousCounters.passiveOpens,
+                                     "passiveOpens",
+                                     Metrics::IncrementPassiveOpens);
+            }
+            previousCounters.passiveOpens = currentCounters.passiveOpens;
+            previousCounters.activeOpens = currentCounters.activeOpens;
+            hasTcpOpensBaseline = true;
+        }
+
+        const bool openFdRead = ReadOpenFdCount(currentCounters.openFdCount);
+        if (openFdRead)
+        {
+            Metrics::UpdateOpenFdCount(currentCounters.openFdCount);
+            previousCounters.openFdCount = currentCounters.openFdCount;
+        }
+
         size_t cacheSize = CacheManager::GetInstance().GetCacheServerSize();
         size_t cacheSizeLimit = CacheManager::GetInstance().GetCacheServerSizeLimit();
         double cacheSizePercentage = CacheManager::GetInstance().GetCacheServerUtilizationPercentage();
@@ -401,7 +478,6 @@ int main(int argc, char *argv[])
     // ignore signal when write to socket fails, this is handled by -1 return value of the write call
     signal(SIGPIPE, SIG_IGN);
     Metrics::Init();
-    std::thread* cacheServerSizeThread = new std::thread(CacheServerSizeBackgroundThread);
     StartServer(port);
 }
 //---------------------------------------------------------------------------------------------------------------------

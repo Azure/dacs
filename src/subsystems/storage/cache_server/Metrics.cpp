@@ -17,6 +17,7 @@
 #include <iostream>
 #include "Logger.h"
 #include "MetricsStore.h"
+#include <string>
 
 using namespace std;
 
@@ -47,6 +48,45 @@ void Metrics::Init()
             .Help("Size of the cache in bytes.")
             .Register(*MetricsStore::s_instance.m_spRegistry)
             .Add({{"instance", MetricsStore::s_instance.m_serverHostName}});
+        MetricsStore::s_instance.m_pListenBacklogMaxGauge = &prometheus::BuildGauge()
+            .Name("cache_server_listen_backlog_max")
+            .Help("Configured listen backlog passed to listen().")
+            .Register(*MetricsStore::s_instance.m_spRegistry)
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}});
+        MetricsStore::s_instance.m_pAcceptQueueOverflowsCounter = &prometheus::BuildCounter()
+            .Name("cache_server_accept_queue_overflows_total")
+            .Help("Total accept queue overflows from TcpExt.ListenOverflows.")
+            .Register(*MetricsStore::s_instance.m_spRegistry)
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}});
+        MetricsStore::s_instance.m_pListenDropsCounter = &prometheus::BuildCounter()
+            .Name("cache_server_listen_drops_total")
+            .Help("Total listen drops from TcpExt.ListenDrops.")
+            .Register(*MetricsStore::s_instance.m_spRegistry)
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}});
+        MetricsStore::s_instance.m_pSynQueueFullDropsCounter = &prometheus::BuildCounter()
+            .Name("cache_server_syn_queue_full_drops_total")
+            .Help("Total SYN request queue drops from TcpExt.TCPReqQFullDrop.")
+            .Register(*MetricsStore::s_instance.m_spRegistry)
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}});
+        MetricsStore::s_instance.m_pSynCookiesSentCounter = &prometheus::BuildCounter()
+            .Name("cache_server_syn_cookies_sent_total")
+            .Help("Total SYN cookies sent from TcpExt.TCPReqQFullDoCookies.")
+            .Register(*MetricsStore::s_instance.m_spRegistry)
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}});
+        MetricsStore::s_instance.m_pPassiveOpensCounter = &prometheus::BuildCounter()
+            .Name("cache_server_passive_opens_total")
+            .Help("Total PassiveOpens from Tcp.PassiveOpens via nstat.")
+            .Register(*MetricsStore::s_instance.m_spRegistry)
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}});
+        MetricsStore::s_instance.m_pOpenFdCountGauge = &prometheus::BuildGauge()
+            .Name("cache_server_open_fds")
+            .Help("Current number of open file descriptors from /proc/sys/fs/file-nr.")
+            .Register(*MetricsStore::s_instance.m_spRegistry)
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}});
+        MetricsStore::s_instance.m_pAcceptErrorsFamily = &prometheus::BuildCounter()
+            .Name("cache_server_accept_errors_total")
+            .Help("Total accept() errors, labeled by errno value.")
+            .Register(*MetricsStore::s_instance.m_spRegistry);
 
     int nSize = MetricsStore::m_arrRequestTypes.size();
     MetricsStore::s_instance.m_vecSuccessfulRequestLatencies.resize(nSize);
@@ -141,5 +181,69 @@ void Metrics::RegisterRequest(enum Request::TypeCase eRequestType,
 void Metrics::UpdateCacheSize(std::size_t nBytes)
 {
     MetricsStore::s_instance.m_pCacheSizeGauge->Set(nBytes);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void Metrics::SetListenBacklogMax(std::size_t backlog)
+{
+    MetricsStore::s_instance.m_pListenBacklogMaxGauge->Set(backlog);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void Metrics::IncrementAcceptQueueOverflows(uint64_t delta)
+{
+    if (delta > 0)
+    {
+        MetricsStore::s_instance.m_pAcceptQueueOverflowsCounter->Increment(static_cast<double>(delta));
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void Metrics::IncrementListenDrops(uint64_t delta)
+{
+    if (delta > 0)
+    {
+        MetricsStore::s_instance.m_pListenDropsCounter->Increment(static_cast<double>(delta));
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void Metrics::IncrementSynQueueFullDrops(uint64_t delta)
+{
+    if (delta > 0)
+    {
+        MetricsStore::s_instance.m_pSynQueueFullDropsCounter->Increment(static_cast<double>(delta));
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void Metrics::IncrementSynCookiesSent(uint64_t delta)
+{
+    if (delta > 0)
+    {
+        MetricsStore::s_instance.m_pSynCookiesSentCounter->Increment(static_cast<double>(delta));
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void Metrics::IncrementPassiveOpens(uint64_t delta)
+{
+    if (delta > 0)
+    {
+        MetricsStore::s_instance.m_pPassiveOpensCounter->Increment(static_cast<double>(delta));
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+void Metrics::UpdateOpenFdCount(std::size_t count)
+{
+    MetricsStore::s_instance.m_pOpenFdCountGauge->Set(count);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void Metrics::IncrementAcceptError(int errnum)
+{
+    auto it = MetricsStore::s_instance.m_mapAcceptErrorCounters.find(errnum);
+    if (it == MetricsStore::s_instance.m_mapAcceptErrorCounters.end())
+    {
+        std::string errString = std::to_string(errnum);
+        auto& counter = MetricsStore::s_instance.m_pAcceptErrorsFamily->Add(
+            {{"instance", MetricsStore::s_instance.m_serverHostName}, {"errno", errString}});
+        it = MetricsStore::s_instance.m_mapAcceptErrorCounters.emplace(errnum, &counter).first;
+    }
+
+    it->second->Increment();
 }
 //---------------------------------------------------------------------------------------------------------------------
