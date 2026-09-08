@@ -92,7 +92,7 @@ spec:
                 echo "NVMe setup failed -- emitting K8s Warning event"
                 TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
                 NOW=$(date -u +%Y-%m-%dT%H:%M:%S.000000Z)
-                curl -s -k -X POST \
+                curl -s --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt -X POST \
                   -H "Authorization: Bearer ${TOKEN}" \
                   -H "Content-Type: application/json" \
                   -d '{
