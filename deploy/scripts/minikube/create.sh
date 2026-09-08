@@ -47,6 +47,9 @@ fi
 
 echo "Cluster config: $NUM_NODES nodes, ${MEMORY}MB RAM, $CPUS CPUs"
 
+sudo sysctl -w fs.inotify.max_user_instances=1024 >/dev/null 2>&1 || echo "Warning: could not raise fs.inotify.max_user_instances"
+sudo sysctl -w fs.inotify.max_user_watches=1048576 >/dev/null 2>&1 || echo "Warning: could not raise fs.inotify.max_user_watches"
+
 # Check if cluster already exists and delete it
 if minikube profile list 2>/dev/null | grep -q "$CLUSTER_NAME"; then
   echo "Existing Minikube cluster found. Deleting it..."
