@@ -29,6 +29,7 @@
 #include <pthread.h>
 #include <fcntl.h>
 #include <thread>
+#include <limits>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cacheutils;
 using namespace std;
@@ -301,6 +302,14 @@ ssize_t StreamingClient::ReadFile(
     LOG_DEBUG("ReadFile: remotePath={} version={} readOffset={} readSize={}",
         remotePath, version, readOffset, readSize);
 
+    if (readOffset < 0 || fileSize < 0)
+    {
+        LOG_ERROR("ReadFile received an invalid offset or file size. remotePath={} readOffset={} fileSize={}",
+            remotePath, readOffset, fileSize);
+        errno = EINVAL;
+        return -1;
+    }
+
     UpdateReadStats(readSize, false);
 
     if (readOffset >= fileSize)
@@ -308,10 +317,30 @@ ssize_t StreamingClient::ReadFile(
         return 0; // EOF reached.
     }
 
-    if (readOffset + readSize > fileSize)
+    const size_t availableBytes = static_cast<size_t>(fileSize - readOffset);
+    const size_t requestedReadSize = readSize;
+    if (readSize > availableBytes)
     {
         // Trim readSize so that we don't trigger unnecessary reads beyond file size.
-        readSize = (fileSize - readOffset);
+        readSize = availableBytes;
+        LOG_DEBUG("ReadFile trimmed request at EOF. remotePath={} readOffset={} requestedSize={} effectiveSize={}",
+            remotePath, readOffset, requestedReadSize, readSize);
+    }
+
+    if (readSize > static_cast<size_t>(std::numeric_limits<ssize_t>::max()))
+    {
+        LOG_ERROR("ReadFile effective size cannot be represented by ssize_t. remotePath={} readOffset={} "
+            "requestedSize={} effectiveSize={}", remotePath, readOffset, requestedReadSize, readSize);
+        errno = EOVERFLOW;
+        return -1;
+    }
+
+    if (pUserBuf == nullptr && readSize > 0)
+    {
+        LOG_ERROR("ReadFile received a null buffer. remotePath={} readOffset={} readSize={}",
+            remotePath, readOffset, readSize);
+        errno = EFAULT;
+        return -1;
     }
 
     // If large prefetch is enabled and read size less than prefetch window size,
@@ -353,15 +382,41 @@ ssize_t StreamingClient::WriteFile(
     /*[in] */ size_t writeSize,
     /*[in] */ off64_t writeOffset)
 {
+    if (writeSize > static_cast<size_t>(std::numeric_limits<ssize_t>::max()))
+    {
+        LOG_ERROR("WriteFile request size cannot be represented by ssize_t. remotePath={} writeOffset={} writeSize={}",
+            remotePath, writeOffset, writeSize);
+        errno = EOVERFLOW;
+        return -1;
+    }
+
+    if (writeOffset < 0)
+    {
+        LOG_ERROR("WriteFile received a negative offset. remotePath={} writeOffset={} writeSize={}",
+            remotePath, writeOffset, writeSize);
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (writeSize > static_cast<size_t>(std::numeric_limits<off64_t>::max() - writeOffset))
+    {
+        LOG_ERROR("WriteFile offset and size exceed the supported file range. remotePath={} writeOffset={} writeSize={}",
+            remotePath, writeOffset, writeSize);
+        errno = EOVERFLOW;
+        return -1;
+    }
+
     if(!m_bEnableWrite)
     {
         LOG_ERROR("Write operation not enabled");
         return -1;
     }
 
-    if(buf == nullptr)
+    if(buf == nullptr && writeSize > 0)
     {
-        LOG_ERROR("Empty write buffer passed");
+        LOG_ERROR("Empty write buffer passed. remotePath={} writeOffset={} writeSize={}",
+            remotePath, writeOffset, writeSize);
+        errno = EFAULT;
         return -1;
     }
 
@@ -442,19 +497,21 @@ ssize_t StreamingClient::ReadChunksSequential(
     const std::string& version)
 {
     ssize_t nBytesRead = 0;
-    const size_t readEnd = readOffset + totalReadSize;
+    const size_t readStart = static_cast<size_t>(readOffset);
+    const size_t readEnd = readStart + totalReadSize;
 
     // Divide into chunks and read sequentially
-    off64_t chunkOffset = readOffset - (readOffset % m_nChunkSize);
+    size_t chunkOffset = readStart - (readStart % m_nChunkSize);
     size_t bufOffset = 0;
     while(chunkOffset < readEnd)
     {
         // Proceed only when we are not exceeding the max allowed concurrency.
         PreChunkOpCheck(false /* isLowPriority */);
 
-        const off64_t currentOffset = readOffset + bufOffset;
+        const size_t currentOffset = readStart + bufOffset;
 
-        const size_t bufSizeForChunkCopy = std::min(readEnd, (size_t)m_nChunkSize + chunkOffset) - currentOffset;
+        const size_t chunkEnd = std::min(readEnd, chunkOffset + m_nChunkSize);
+        const size_t bufSizeForChunkCopy = chunkEnd - currentOffset;
         const size_t chunkCopyOffset = currentOffset - chunkOffset;
 
         LOG_DEBUG("ReadChunksSequential. remotePath={} chunkOffset={} currentOffset={} chunkCopyOffset={}"
@@ -470,7 +527,7 @@ ssize_t StreamingClient::ReadChunksSequential(
 
         ssize_t bytesReadIntoBuffer = ReadChunkAndCopyToBuffer(
                 remotePath,
-                chunkOffset,
+            static_cast<off64_t>(chunkOffset),
                 (char*)pUserBuf + bufOffset,
                 bufSizeForChunkCopy,
                 chunkCopyOffset,
@@ -487,7 +544,6 @@ ssize_t StreamingClient::ReadChunksSequential(
 
         bufOffset += bufSizeForChunkCopy;
         chunkOffset += m_nChunkSize;
-
         nBytesRead += bytesReadIntoBuffer;
         if (bytesReadIntoBuffer < bufSizeForChunkCopy)
         {
@@ -506,20 +562,23 @@ ssize_t StreamingClient::ReadChunksParallel(
     off64_t readOffset,
     const std::string& version)
 {
-    const size_t readEnd = readOffset + totalReadSize;
+    const size_t readStart = static_cast<size_t>(readOffset);
+    const size_t readEnd = readStart + totalReadSize;
 
     // Divide into chunks and read parallely
-    off64_t chunkOffset = readOffset - (readOffset % m_nChunkSize);
+    size_t chunkOffset = readStart - (readStart % m_nChunkSize);
     size_t bufOffset = 0;
     std::vector<AsyncReadChunkInfo> asyncReadChunks;
+
     while(chunkOffset < readEnd)
     {
         // Proceed only when we are not exceeding the max allowed concurrency
         PreChunkOpCheck(false /* isLowPriority */);
 
-        const off64_t currentOffset = readOffset + bufOffset;
+        const size_t currentOffset = readStart + bufOffset;
 
-        const size_t bufSizeForChunkCopy = std::min(readEnd, (size_t)m_nChunkSize + chunkOffset) - currentOffset;
+        const size_t chunkEnd = std::min(readEnd, chunkOffset + m_nChunkSize);
+        const size_t bufSizeForChunkCopy = chunkEnd - currentOffset;
         const size_t chunkCopyOffset = currentOffset - chunkOffset;
 
         LOG_DEBUG("ReadChunksParallel. remotePath={} chunkOffset={} currentOffset={} chunkCopyOffset={} bufSizeForChunkCopy={} bufOffset={} readSize={} readEnd={} buf={}",
@@ -540,7 +599,7 @@ ssize_t StreamingClient::ReadChunksParallel(
             &StreamingClient::ReadChunkAndCopyToBuffer,
             this,
             std::ref(remotePath),
-            chunkOffset,
+            static_cast<off64_t>(chunkOffset),
             (char*)pUserBuf + bufOffset,
             bufSizeForChunkCopy,
             chunkCopyOffset,
@@ -568,13 +627,11 @@ ssize_t StreamingClient::ReadChunksParallel(
                 asyncReadChunk.ChunkOffset);
             throw RemoteClientException("InternalError: ReadChunkAndCopyToBuffer failed");
         }
-        else
-        {
-            LOG_DEBUG("ReadChunkAndCopyToBuffer completed. remotePath={} chunkOffset={}",
-                remotePath,
-                asyncReadChunk.ChunkOffset);
-            nBytesRead += bytesRead;
-        }
+
+        LOG_DEBUG("ReadChunkAndCopyToBuffer completed. remotePath={} chunkOffset={}",
+            remotePath,
+            asyncReadChunk.ChunkOffset);
+        nBytesRead += bytesRead;
     }
 
     return nBytesRead;

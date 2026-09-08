@@ -24,6 +24,7 @@
 #include <mutex>
 #include <thread>
 #include <dirent.h>
+#include <limits>
 //---------------------------------------------------------------------------------------------------------------------
 #define ASSERT_IF(condition, stmt)                                                         { if (condition) { stmt; } }
 //---------------------------------------------------------------------------------------------------------------------
@@ -181,6 +182,69 @@ bool StreamingClientTest::BufferEquals(
     }
     bool bResult = BufferEqualsInRange(vecFirst, vecSecond, 0, 0, vecFirst.size());
     return bResult;
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadTrimsUnrepresentableRequestedLengthAtEndOfFile)
+{
+    std::vector<char> readBuf(REMOTE_FILE_SIZE);
+    const size_t oversizedRequest = static_cast<size_t>(std::numeric_limits<ssize_t>::max()) + 1;
+    EXPECT_EQ(m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, readBuf.data(), oversizedRequest, 0, REMOTE_FILE_SIZE, m_strFileVersion),
+        REMOTE_FILE_SIZE);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadRejectsNegativeOffset)
+{
+    errno = 0;
+    EXPECT_EQ(m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, nullptr, 1, -1, REMOTE_FILE_SIZE, m_strFileVersion), -1);
+    EXPECT_EQ(errno, EINVAL);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadRejectsNullBuffer)
+{
+    errno = 0;
+    EXPECT_EQ(m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath, nullptr, 1, 0, REMOTE_FILE_SIZE, m_strFileVersion), -1);
+    EXPECT_EQ(errno, EFAULT);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, ReadAtEndOfFileReturnsZeroWithoutOffsetOverflow)
+{
+    EXPECT_EQ(m_spStreamingClient->ReadFile(
+        m_strRemoteFilePath,
+        nullptr,
+        static_cast<size_t>(std::numeric_limits<ssize_t>::max()),
+        std::numeric_limits<off64_t>::max(),
+        std::numeric_limits<off64_t>::max(),
+        m_strFileVersion), 0);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, WriteRejectsUnrepresentableLength)
+{
+    char byte = 0;
+    errno = 0;
+    EXPECT_EQ(m_spStreamingClient->WriteFile(
+        "invalid-large-write", &byte,
+        static_cast<size_t>(std::numeric_limits<ssize_t>::max()) + 1, 0), -1);
+    EXPECT_EQ(errno, EOVERFLOW);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, WriteRejectsNegativeOffset)
+{
+    char byte = 0;
+    errno = 0;
+    EXPECT_EQ(m_spStreamingClient->WriteFile("invalid-negative-offset", &byte, 1, -1), -1);
+    EXPECT_EQ(errno, EINVAL);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, WriteRejectsOffsetRangeOverflow)
+{
+    char byte = 0;
+    errno = 0;
+    EXPECT_EQ(m_spStreamingClient->WriteFile(
+        "invalid-offset-range", &byte, 1, std::numeric_limits<off64_t>::max()), -1);
+    EXPECT_EQ(errno, EOVERFLOW);
 }
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClientTest::PerformReadTest(size_t bufferSize,
@@ -910,6 +974,17 @@ TEST_F(StreamingClientTest, ResetStreamingClientForWriteTests)
 
     // Validate that the streaming client instance has changed
     ASSERT_NE(originalStreamingClient, m_spStreamingClient);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(StreamingClientTest, WriteZeroBytesWithNullBufferTest)
+{
+    if (!StorageInterceptConfig::GetInstance().IsWriteSupportEnabled())
+    {
+        GTEST_SKIP();
+    }
+
+    EXPECT_EQ(m_spStreamingClient->WriteFile(
+        "zeroByteWriteTest" + GenerateRandomString(4), nullptr, 0, 0), 0);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(StreamingClientTest, WriteWholeFileTest)
