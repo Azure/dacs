@@ -15,6 +15,13 @@ management components.
 > pre-release software. APIs, configuration, and deployment behavior may
 > change.
 
+> [!WARNING]
+> **Security model:** DACS currently assumes a single trust domain equal to the
+> entire Kubernetes cluster. It does not yet provide tenant isolation and is
+> **not suitable for multi-tenant clusters**. Any workload that can reach a DACS
+> endpoint is treated as fully trusted with all cached data and operations.
+> Read the **[security model](docs/security-model.md)** before deploying.
+
 ## Choose your path
 
 ### Get running in 10 minutes
@@ -76,6 +83,7 @@ See [Architecture](docs/architecture.md) for the detailed request flow.
 | --- | --- |
 | Evaluate DACS on AKS | [Get running in 10 minutes](docs/quickstart.md) |
 | Understand the system architecture | [Architecture](docs/architecture.md) |
+| Understand the security model and trust boundary | [Security model](docs/security-model.md) |
 | Install and operate DACS | [Deployment user guide](user-guide.md) |
 | Build from a clean clone | [Build from source](docs/build-from-source.md) |
 | Run tests | [Testing](test/README.md) |
@@ -104,6 +112,8 @@ indexes; build them from this source distribution.
 - Follow the [Microsoft Open Source Code of Conduct](CODE_OF_CONDUCT.md).
 - Report vulnerabilities using the private process in
   [SECURITY.md](SECURITY.md), not through a public issue.
+- Understand the assumed trust boundary before deploying: see the
+  [security model](docs/security-model.md).
 - Use the channels in [SUPPORT.md](SUPPORT.md) for questions, bugs, and feature
   requests.
 
