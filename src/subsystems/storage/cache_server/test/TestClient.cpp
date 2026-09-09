@@ -662,6 +662,16 @@ void MeasurePerf(int parallelism, uint64_t GBUpload, uint64_t GBDownload)
          << "--download_time_ms " << downloadDurationMs << " " << endl;
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool WaitForDownloadResult(
+    const string& filename,
+    bool lock,
+    DownloadResponse_Result expectedResult,
+    std::chrono::seconds timeout);
+bool WaitForDownloadResults(
+    const vector<string>& filenames,
+    DownloadResponse_Result expectedResult,
+    std::chrono::seconds timeout);
+//---------------------------------------------------------------------------------------------------------------------
 int TestLimits()
 {
     // Assuming cache server is started with cache limits set to
@@ -673,9 +683,12 @@ int TestLimits()
     cout << "Test cache size limits" << endl;
 
     uint64_t hashValue = 0;
+    vector<string> group1FileNames;
+    group1FileNames.reserve(100);
     for (int i = 0; i < 100; i++)
     {
         string fileName = GetUniqueFilename(string("test-") + to_string(i));
+        group1FileNames.push_back(fileName);
         RUNTEST(TestDownloadAPI(fileName, 0, 1024*1024, false, DownloadResponse::NOT_FOUND));
         RUNTEST(TestUploadAPI(fileName, 1024*1024, true, UploadResponse::SUCCESS, &hashValue, "groupid1"));
         RUNTEST(TestDownloadAPI(fileName, 0, 1024*1024, false, DownloadResponse::SUCCESS, &hashValue));
@@ -687,8 +700,8 @@ int TestLimits()
     RUNTEST(TestDownloadAPI(extraFileName, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, &hashValue));
 
     RUNTEST(TestDeleteAPI("groupid1", std::string(), DeleteResponse::SUCCESS));
-
-    std::this_thread::sleep_for(std::chrono::seconds(3));
+    RUNTEST(WaitForDownloadResults(
+        group1FileNames, DownloadResponse::NOT_FOUND, std::chrono::seconds(5)));
 
     for (int i = 0; i < 99; i++)
     {
@@ -709,7 +722,8 @@ int TestLimits()
     RUNTEST(TestDownloadAPI(fileName2, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, &hashValue));
 
     RUNTEST(TestDeleteAPI("groupid2", std::string(), DeleteResponse::SUCCESS));
-    std::this_thread::sleep_for(std::chrono::seconds(3));
+    RUNTEST(WaitForDownloadResult(
+        fileName1, false, DownloadResponse::NOT_FOUND, std::chrono::seconds(5)));
 
     RUNTEST(TestDownloadAPI(fileName1, 0, 1024*1024, false, DownloadResponse::NOT_FOUND));
     RUNTEST(TestDownloadAPI(fileName2, 0, 1024*1024, false, DownloadResponse::NOT_FOUND));
@@ -720,7 +734,8 @@ int TestLimits()
     RUNTEST(TestUploadAPI(fileName1, 1024*1024, true, UploadResponse::SUCCESS, &hashValue, "groupid2") == false);
     RUNTEST(TestDownloadAPI(fileName1, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, &hashValue));
 
-    std::this_thread::sleep_for(std::chrono::seconds(3));
+    RUNTEST(WaitForDownloadResult(
+        fileName2, false, DownloadResponse::NOT_FOUND, std::chrono::seconds(5)));
 
     RUNTEST(TestDownloadAPI(fileName1, 0, 1024*1024, false, DownloadResponse::NOT_FOUND));
     RUNTEST(TestUploadAPI(fileName1, 1024*1024, true, UploadResponse::SUCCESS, &hashValue, "groupid2"));
@@ -840,6 +855,86 @@ bool TestMetadata(const google::protobuf::Map<string, string>& metadata)
 
     ReleaseConnection(serverConnection);
     return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool WaitForDownloadResult(
+    const string& filename,
+    bool lock,
+    DownloadResponse_Result expectedResult,
+    std::chrono::seconds timeout)
+{
+    const auto startTime = std::chrono::steady_clock::now();
+    const auto deadline = startTime + timeout;
+    uint32_t attempts = 0;
+
+    do
+    {
+        attempts++;
+        if (TestDownloadAPI(filename, 0, 1024*1024, lock, expectedResult))
+        {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    while (std::chrono::steady_clock::now() < deadline);
+
+    const auto elapsedMillis = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - startTime).count();
+    cout << "Timed out waiting for download result. filename: " << filename
+         << ", expected result: " << expectedResult
+         << ", elapsed ms: " << elapsedMillis
+         << ", attempts: " << attempts << endl;
+    return false;
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool WaitForDownloadResults(
+    const vector<string>& filenames,
+    DownloadResponse_Result expectedResult,
+    std::chrono::seconds timeout)
+{
+    const auto startTime = std::chrono::steady_clock::now();
+    const auto deadline = startTime + timeout;
+    vector<bool> completed(filenames.size(), false);
+    size_t remaining = filenames.size();
+    uint32_t attempts = 0;
+
+    while (remaining > 0)
+    {
+        attempts++;
+        for (size_t i = 0; i < filenames.size(); i++)
+        {
+            if (completed[i])
+            {
+                continue;
+            }
+            if (std::chrono::steady_clock::now() >= deadline)
+            {
+                break;
+            }
+            if (TestDownloadAPI(filenames[i], 0, 1024*1024, false, expectedResult))
+            {
+                completed[i] = true;
+                remaining--;
+            }
+        }
+        if (remaining == 0)
+        {
+            return true;
+        }
+        if (std::chrono::steady_clock::now() >= deadline)
+        {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    const auto elapsedMillis = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - startTime).count();
+    cout << "Timed out waiting for download results. expected result: " << expectedResult
+         << ", remaining files: " << remaining
+         << ", elapsed ms: " << elapsedMillis
+         << ", attempts: " << attempts << endl;
+    return false;
 }
 //---------------------------------------------------------------------------------------------------------------------
 void TestUploadDownload()
@@ -970,14 +1065,23 @@ void TestDeletes()
     string groupid2 = GetUniqueFilename("group2");
     string deleteFilename1 = GetUniqueFilename("deletefile1");
     string deleteFilename2 = GetUniqueFilename("deletefile2");
+    vector<string> group1FileNames;
+    vector<string> group2FileNames;
+    group1FileNames.reserve(100);
+    group2FileNames.reserve(100);
+    bool uploadsSucceeded = true;
     for (int i = 0; i < 100; i++)
     {
-        TestUploadAPI(deleteFilename1 + to_string(i), 1024*1024, true, UploadResponse::SUCCESS, nullptr,
-            groupid1);
-        TestUploadAPI(deleteFilename2 + to_string(i), 1024*1024, true, UploadResponse::SUCCESS, nullptr,
-            groupid2);
+        group1FileNames.push_back(deleteFilename1 + to_string(i));
+        group2FileNames.push_back(deleteFilename2 + to_string(i));
+        uploadsSucceeded &= TestUploadAPI(
+            group1FileNames.back(), 1024*1024, true, UploadResponse::SUCCESS, nullptr, groupid1);
+        uploadsSucceeded &= TestUploadAPI(
+            group2FileNames.back(), 1024*1024, true, UploadResponse::SUCCESS, nullptr, groupid2);
     }
+    RUNTEST(uploadsSucceeded);
 
+    // Validate both groups before issuing the asynchronous delete.
     RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(1), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
     RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(50), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
     RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(99), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
@@ -988,15 +1092,10 @@ void TestDeletes()
     // Delete groupid1, should reflect after a few seconds
     RUNTEST(TestDeleteAPI(groupid1, std::string(), DeleteResponse::SUCCESS));
 
-    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(1), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
-    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(50), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
-    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(99), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
-    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(1), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
-    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(50), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
-    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(99), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
-
-    std::this_thread::sleep_for(std::chrono::seconds(3));
-
+    RUNTEST(WaitForDownloadResults(
+        group1FileNames, DownloadResponse::NOT_FOUND, std::chrono::seconds(5)));
+    // Preserve the original validation after cleanup reaches a stable state: groupid1 is gone
+    // while the unrelated groupid2 remains available.
     RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(1), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
         nullptr));
     RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(50), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
@@ -1010,18 +1109,9 @@ void TestDeletes()
     // Delete groupid2, should reflect after a few seconds
     RUNTEST(TestDeleteAPI(groupid2, std::string(), DeleteResponse::SUCCESS));
 
-    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(1), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
-        nullptr));
-    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(50), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
-        nullptr));
-    RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(99), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
-        nullptr));
-    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(1), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
-    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(50), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
-    RUNTEST(TestDownloadAPI(deleteFilename2 + to_string(99), 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
-
-    std::this_thread::sleep_for(std::chrono::seconds(3));
-
+    RUNTEST(WaitForDownloadResults(
+        group2FileNames, DownloadResponse::NOT_FOUND, std::chrono::seconds(5)));
+    // Preserve the original validation that both groups are absent once groupid2 cleanup completes.
     RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(1), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
         nullptr));
     RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(50), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
@@ -1040,46 +1130,40 @@ void TestDeletes()
         groupid1));
     RUNTEST(TestDeleteAPI(groupid1, std::string(), DeleteResponse::SUCCESS));
 
-    int retryCount = 1;
-    while (true)
+    bool deleteCompleted = WaitForDownloadResult(
+        deleteFilename1 + to_string(1), true, DownloadResponse::NOT_FOUND_GOT_LOCK,
+        std::chrono::seconds(5));
+    RUNTEST(deleteCompleted);
+    if (deleteCompleted)
     {
-        if (retryCount % 1000 == 0)
-        {
-            cout << "retryCount: " << retryCount << ". Still retrying upload after delete" << endl;
-            if (TestDownloadAPI(deleteFilename1 + to_string(1), 0, 1024*1024, true,
-                DownloadResponse::NOT_FOUND_GOT_LOCK))
-            {
-                RUNTEST(TestUploadAPI(deleteFilename1 + to_string(1), 1024*1024, true, UploadResponse::SUCCESS,
-                    nullptr, groupid1));
-                break;
-            }
-        }
-        retryCount++;
+        uint64_t reuploadedHash = 0;
+        RUNTEST(TestUploadAPI(deleteFilename1 + to_string(1), 1024*1024, true, UploadResponse::SUCCESS,
+            &reuploadedHash, groupid1));
+        RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(1), 0, 1024*1024, false,
+            DownloadResponse::SUCCESS, &reuploadedHash));
     }
 
     RUNTEST(TestDeleteAPI(groupid1, std::string(), DeleteResponse::SUCCESS));
 
-    retryCount = 1;
-    while (true)
+    deleteCompleted = WaitForDownloadResult(
+        deleteFilename1 + to_string(1), false, DownloadResponse::NOT_FOUND,
+        std::chrono::seconds(5));
+    RUNTEST(deleteCompleted);
+    if (deleteCompleted)
     {
-        if (retryCount % 1000 == 0)
-        {
-            cout << "retryCount: " << retryCount << ". Still retrying upload after delete" << endl;
-            if (TestDownloadAPI(deleteFilename1 + to_string(1), 0, 1024*1024, false,
-                DownloadResponse::NOT_FOUND))
-            {
-                RUNTEST(TestUploadAPI(deleteFilename1 + to_string(1), 1024*1024, true, UploadResponse::SUCCESS,
-                    nullptr, groupid1));
-                break;
-            }
-        }
-        retryCount++;
+        uint64_t reuploadedHash = 0;
+        RUNTEST(TestUploadAPI(deleteFilename1 + to_string(1), 1024*1024, true, UploadResponse::SUCCESS,
+            &reuploadedHash, groupid1));
+        RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(1), 0, 1024*1024, false,
+            DownloadResponse::SUCCESS, &reuploadedHash));
     }
+    bool olderUploadsSucceeded = true;
     for (int i = 100; i < 120; i++)
     {
-        TestUploadAPI(deleteFilename1 + to_string(i), 1024*1024, true, UploadResponse::SUCCESS, nullptr,
-            std::string());
+        olderUploadsSucceeded &= TestUploadAPI(
+            deleteFilename1 + to_string(i), 1024*1024, true, UploadResponse::SUCCESS, nullptr, std::string());
     }
+    RUNTEST(olderUploadsSucceeded);
 
     time_t timestamp = time(nullptr);
     std::ostringstream oss;
@@ -1088,13 +1172,17 @@ void TestDeletes()
     string lastAccessTime = oss.str();
     // test last access time based deletion
     std::this_thread::sleep_for(std::chrono::seconds(5));
+    bool newerUploadsSucceeded = true;
     for (int i = 120; i < 140; i++)
     {
-        TestUploadAPI(deleteFilename1 + to_string(i), 1024*1024, true, UploadResponse::SUCCESS, nullptr,
-            std::string());
+        newerUploadsSucceeded &= TestUploadAPI(
+            deleteFilename1 + to_string(i), 1024*1024, true, UploadResponse::SUCCESS, nullptr, std::string());
     }
+    RUNTEST(newerUploadsSucceeded);
 
     RUNTEST(TestDeleteAPI(std::string(), lastAccessTime.c_str(), DeleteResponse::SUCCESS));
+    // Downloads update the file's access timestamp, so polling the eviction targets can make them
+    // ineligible before the asynchronous eviction worker reaches their buckets.
     std::this_thread::sleep_for(std::chrono::seconds(5));
 
     RUNTEST(TestDownloadAPI(deleteFilename1 + to_string(100), 0, 1024*1024, false, DownloadResponse::NOT_FOUND,
@@ -1146,6 +1234,10 @@ void TestDistribution()
 void TestExpiry()
 {
     cout << "Test cache expiry" << endl;
+    constexpr uint32_t shortExpirySeconds = 1;
+    constexpr uint32_t mediumExpirySeconds = 10;
+    constexpr uint32_t longExpirySeconds = 30;
+    constexpr uint32_t expiryGraceSeconds = 3;
     string file1 = GetUniqueFilename("file1");
     string file2 = GetUniqueFilename("file2");
     string file3 = GetUniqueFilename("file3");
@@ -1155,14 +1247,21 @@ void TestExpiry()
     string file7 = GetUniqueFilename("file7");
     string file8 = GetUniqueFilename("file8");
 
-    TestUploadAPI(file1, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 0);
-    TestUploadAPI(file2, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 1);
-    TestUploadAPI(file3, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 4);
-    TestUploadAPI(file4, 0, true, UploadResponse::SUCCESS, nullptr, "", 4);
-    TestUploadAPI(file5, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", UINT32_MAX);
-    TestUploadAPI(file6, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 1);
-    TestUploadAPI(file7, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 1);
-    TestUploadAPI(file8, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 20);
+    bool uploadsSucceeded = TestUploadAPI(file1, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", 0);
+    uploadsSucceeded &= TestUploadAPI(
+        file2, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", shortExpirySeconds);
+    uploadsSucceeded &= TestUploadAPI(
+        file3, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", mediumExpirySeconds);
+    uploadsSucceeded &= TestUploadAPI(
+        file4, 0, true, UploadResponse::SUCCESS, nullptr, "", mediumExpirySeconds);
+    uploadsSucceeded &= TestUploadAPI(file5, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", UINT32_MAX);
+    uploadsSucceeded &= TestUploadAPI(
+        file6, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", shortExpirySeconds);
+    uploadsSucceeded &= TestUploadAPI(
+        file7, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", shortExpirySeconds);
+    uploadsSucceeded &= TestUploadAPI(
+        file8, 1024*1024, true, UploadResponse::SUCCESS, nullptr, "", longExpirySeconds);
+    RUNTEST(uploadsSucceeded);
 
     RUNTEST(TestDownloadAPI(file1, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
     RUNTEST(TestDownloadAPI(file2, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
@@ -1173,7 +1272,9 @@ void TestExpiry()
     RUNTEST(TestDownloadAPI(file7, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
     RUNTEST(TestDownloadAPI(file8, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
 
-    std::this_thread::sleep_for(std::chrono::seconds(3));
+    RUNTEST(WaitForDownloadResults(
+        {file2, file6, file7}, DownloadResponse::NOT_FOUND,
+        std::chrono::seconds(shortExpirySeconds + expiryGraceSeconds)));
 
     RUNTEST(TestDownloadAPI(file1, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
     RUNTEST(TestDownloadAPI(file2, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, nullptr));
@@ -1184,7 +1285,9 @@ void TestExpiry()
     RUNTEST(TestDownloadAPI(file7, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, nullptr));
     RUNTEST(TestDownloadAPI(file8, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
 
-    std::this_thread::sleep_for(std::chrono::seconds(3));
+    RUNTEST(WaitForDownloadResults(
+        {file3, file4}, DownloadResponse::NOT_FOUND,
+        std::chrono::seconds(mediumExpirySeconds + expiryGraceSeconds)));
 
     RUNTEST(TestDownloadAPI(file1, 0, 1024*1024, false, DownloadResponse::SUCCESS, nullptr));
     RUNTEST(TestDownloadAPI(file2, 0, 1024*1024, false, DownloadResponse::NOT_FOUND, nullptr));
