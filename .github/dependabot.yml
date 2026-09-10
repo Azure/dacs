@@ -39,9 +39,8 @@ updates:
 
   - package-ecosystem: gomod
     directories:
-      - /src/subsystems/cache-controller
+      - /
       - /src/subsystems/storage/cache_server_scheduler
-      - /test
     schedule:
       interval: "daily"
     groups:
