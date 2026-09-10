@@ -18,7 +18,7 @@
 # runs.
 repos:
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
-    rev: e3eebf65325ccc992422292cb7a4baee967cf815 # v1.26.1
+    rev: cef8b8350da46d8114c7e6b7272aebdccdf193ce # v1.30.0
     hooks:
       - id: zizmor
         args:
