@@ -240,5 +240,95 @@ stages:
                 "CACHE_CONTROLLER_IMAGE=$registry/dacs/cache-controller:$(finalTag)-linux-{amd64,arm64}" \
                 > "$release_metadata/docker-images.txt"
               cp helm-chart.txt "$release_metadata/"
+
+              printf '%s\n' \
+                "CONTAINER_VERSION=$(finalTag)" \
+                "GIT_COMMIT=$(git rev-parse HEAD)" \
+                "IMAGE_REGISTRY=$registry/dacs" \
+                > "$release_metadata/release.env"
             displayName: Package versioned artifacts
             workingDirectory: $(Pipeline.Workspace)/s/dacs
+
+  - stage: PublishImages
+    displayName: Publish immutable DACS images
+    dependsOn:
+      - Package
+      - AzureTests_amd64
+      - AzureTests_arm64
+    jobs:
+      - job: PublishImages
+        displayName: Publish immutable images
+        timeoutInMinutes: 120
+        steps:
+          - checkout: self
+            path: s/dacs
+            fetchDepth: 1
+
+          - task: DownloadPipelineArtifact@2
+            displayName: Download linux/amd64 images
+            inputs:
+              buildType: current
+              artifact: container-images-linux-amd64
+              targetPath: $(Pipeline.Workspace)/artifacts/container-images-linux-amd64
+
+          - task: DownloadPipelineArtifact@2
+            displayName: Download linux/arm64 images
+            inputs:
+              buildType: current
+              artifact: container-images-linux-arm64
+              targetPath: $(Pipeline.Workspace)/artifacts/container-images-linux-arm64
+
+          - task: DownloadPipelineArtifact@2
+            displayName: Download release metadata
+            inputs:
+              buildType: current
+              artifact: release-metadata
+              targetPath: $(Pipeline.Workspace)/artifacts/release-metadata
+
+          - task: AzureCLI@2
+            displayName: Publish immutable images
+            inputs:
+              azureSubscription: ${{ parameters.azureServiceConnection }}
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+
+                readonly repository_root="$(Pipeline.Workspace)/s/dacs"
+                readonly artifacts_root="$(Pipeline.Workspace)/artifacts"
+                readonly release_metadata="$artifacts_root/release-metadata/release.env"
+                test -f "$release_metadata"
+                # shellcheck disable=SC1090
+                source "$release_metadata"
+                : "${CONTAINER_VERSION:?release metadata is missing CONTAINER_VERSION}"
+                : "${IMAGE_REGISTRY:?release metadata is missing IMAGE_REGISTRY}"
+
+                for architecture in amd64 arm64; do
+                  image_dir="$artifacts_root/container-images-linux-$architecture"
+                  (
+                    cd "$image_dir"
+                    sha256sum -c SHA256SUMS
+                  )
+
+                  while IFS= read -r -d '' archive; do
+                    gzip -dc "$archive" | docker load
+                  done < <(find "$image_dir" -maxdepth 1 -name '*.tar.gz' -print0)
+                done
+
+                az acr login --name "${{ parameters.acrName }}"
+
+                for architecture in amd64 arm64; do
+                  for image in \
+                    cache-server \
+                    cache-test-client \
+                    cacheserver-scheduler \
+                    cache-controller; do
+                    docker push \
+                      "${IMAGE_REGISTRY}/${image}:${CONTAINER_VERSION}-linux-${architecture}"
+                  done
+                done
+
+                DOCKER_REGISTRY="$IMAGE_REGISTRY" \
+                BUILD_NUMBER="$CONTAINER_VERSION" \
+                BUILD_ARCHS="amd64 arm64" \
+                  "$repository_root/.pipelines/scripts/publish/publish-multiplatform-manifests.sh"
