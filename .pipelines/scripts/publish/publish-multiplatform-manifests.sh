@@ -13,14 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Create immutable manifests for every build and mutable aliases for official
-# main builds.
+# Create immutable multi-platform manifests for a versioned build.
 set -euo pipefail
 
 REGISTRY="${DOCKER_REGISTRY:?DOCKER_REGISTRY is required}"
 BUILD_NUMBER="${BUILD_NUMBER:?BUILD_NUMBER is required}"
 BUILD_ARCHS="${BUILD_ARCHS:-amd64 arm64}"
-PUBLISH_LATEST="${PUBLISH_LATEST:-false}"
 
 IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler" "cache-controller")
 BASE_IMAGES=("cache-server-base" "cache-client-base")
@@ -65,15 +63,5 @@ for image in "${BASE_IMAGES[@]}"; do
 done
 create_manifest_if_available \
     "native-build" "$BUILD_NUMBER" "${BUILD_NUMBER}-linux-{arch}"
-
-if [[ "$PUBLISH_LATEST" == "true" ]]; then
-    for image in "${IMAGES[@]}"; do
-        create_manifest "$image" "latest" "${BUILD_NUMBER}-linux-{arch}"
-    done
-    for image in "${BASE_IMAGES[@]}"; do
-        create_manifest "$image" "latest" "latest-linux-{arch}"
-    done
-    create_manifest "native-build" "latest" "linux-{arch}"
-fi
 
 echo "Published multi-platform manifests for ${BUILD_NUMBER}"
