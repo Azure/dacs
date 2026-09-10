@@ -52,9 +52,9 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
             - matchExpressions:
-              - key: {{ .NodeSelectorLabelKey }}
+              - key: {{ toJSON .NodeSelectorLabelKey }}
                 operator: In
-                values: {{ .NodeSelectorValue }}
+                values: {{ toJSON .NodeSelectorValue }}
 {{- if ne .UseEphemeralStorage true }}
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -80,17 +80,17 @@ spec:
         - name: CACHESERVER_EVICTION_ENABLED
           value: "{{ .EnableAccessTimeEviction }}"
         - name: CACHESERVER_EVICTION_LAST_ACCESS_THRESHOLD
-          value: "{{ .EvictionLastAccessThreshold }}"
+          value: {{ toJSON .EvictionLastAccessThreshold }}
         - name: CACHESERVER_EVICTION_SIZE_THRESHOLD
-          value: "{{ .EvictionSizeThreshold }}"
+          value: {{ toJSON .EvictionSizeThreshold }}
         - name: CACHESERVER_EVICTION_PASS_FREQUENCY
-          value: "{{ .EvictionPassFrequency }}"
+          value: {{ toJSON .EvictionPassFrequency }}
         - name: CACHESERVER_EVICTION_MAINTAIN_FREE_SPACE
           value: "{{ .EvictionMaintainFreeSpace }}"
         - name: CACHESERVER_EVICTION_SIZE_TARGET
-          value: "{{ .EvictionSizeTarget }}"
+          value: {{ toJSON .EvictionSizeTarget }}
         - name: CACHESERVER_EVICTION_BUCKET_INTERVAL
-          value: "{{ .EvictionBucketInterval }}"
+          value: {{ toJSON .EvictionBucketInterval }}
         - name: CACHESERVER_USE_ZEROCOPY
           value: "{{- if .UseZeroCopy }}1{{- else }}0{{- end }}"
         resources:
@@ -98,7 +98,7 @@ spec:
             memory: "{{- if .DisableMemoryRequest }}0{{- else }}100Mi{{- end }}"
             cpu: "{{- if .DisableCpuRequest }}0{{- else }}0.25{{- end }}"
             {{- if and .InfinibandResourceLimitName (gt .InfinibandResourceLimitCount 0) }}
-            {{ .InfinibandResourceLimitName }}: {{ .InfinibandResourceLimitCount }}
+            {{ toJSON .InfinibandResourceLimitName }}: {{ .InfinibandResourceLimitCount }}
             {{- end }}
           limits:
             {{- if .MemoryLimitMB }}
@@ -108,7 +108,7 @@ spec:
             cpu: "{{ .CpuLimit }}"
             {{- end }}
             {{- if and .InfinibandResourceLimitName (gt .InfinibandResourceLimitCount 0) }}
-            {{ .InfinibandResourceLimitName }}: {{ .InfinibandResourceLimitCount }}
+            {{ toJSON .InfinibandResourceLimitName }}: {{ .InfinibandResourceLimitCount }}
             {{- end }}
         ports:
         - containerPort: {{ .Port }}
@@ -126,7 +126,7 @@ spec:
           set -ex
           export CACHESERVER_HOSTNAME=$HOSTNAME
           export CACHESERVER_PORT={{ .Port }}
-          export CACHESERVER_CACHE_PATH={{ .MountSsdPath }}/{{ .Name }}/cache
+          export CACHESERVER_CACHE_PATH="{{ .MountSsdPath }}/{{ .Name }}/cache"
           export CACHESERVER_CACHE_SIZE_BYTES={{ mulAll .ServerSizeInGB 1024 1024 1024 }}
           export CACHESERVER_SNAPSHOT_INTERVAL={{ .SnapshotIntervalSeconds }}
           mkdir -p $CACHESERVER_CACHE_PATH
@@ -160,7 +160,7 @@ spec:
           /root/check_space_overuse.sh $CACHESERVER_CACHE_PATH $CACHESERVER_CACHE_SIZE_BYTES
           /root/CacheServer --port $CACHESERVER_PORT --cacheRoot $CACHESERVER_CACHE_PATH --sizeLimitBytes $CACHESERVER_CACHE_SIZE_BYTES
         volumeMounts:
-        - mountPath: {{ .MountSsdPath }}
+        - mountPath: {{ toJSON .MountSsdPath }}
           name: cache-data-volume
           subPath: ssd0
         - name: cache-discovery-config
@@ -182,7 +182,7 @@ spec:
             sizeLimit: "{{add .ServerSizeInGB 5}}Gi"
 {{- else if .UseHostPath }}
           hostPath:
-            path: {{ .NodeCacheFolderPath }}
+            path: {{ toJSON .NodeCacheFolderPath }}
             type: Directory
 {{- else }}
           hostPath: null

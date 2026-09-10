@@ -17,7 +17,6 @@ package v1
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -30,8 +29,6 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
-
-var durationRegex = regexp.MustCompile(`^(\d+d)?(\d+h)?(\d+m)?(\d+s)?$`)
 
 func (r *Cache) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr, &Cache{}).
@@ -271,6 +268,30 @@ func (r *Cache) validateCache() (admission.Warnings, error) { //nolint:gocyclo
 		}
 	}
 
+	// Reject values that could inject structure when rendered into the workload
+	// template (YAML node affinity, resource map keys, hostPath, and shell
+	// command text).
+	if r.Spec.NodeSelectorKey != nil {
+		if err := ValidateNodeSelectorKey(*r.Spec.NodeSelectorKey); err != nil {
+			allErrs = append(allErrs, field.Invalid(specPath.Child("nodeSelectorKey"), *r.Spec.NodeSelectorKey, err.Error()))
+		}
+	}
+	if r.Spec.NodeSelectorValue != nil {
+		if err := ValidateNodeSelectorValue(*r.Spec.NodeSelectorValue); err != nil {
+			allErrs = append(allErrs, field.Invalid(specPath.Child("nodeSelectorValue"), *r.Spec.NodeSelectorValue, err.Error()))
+		}
+	}
+	if r.Spec.InfinibandResourceLimitName != nil && *r.Spec.InfinibandResourceLimitName != "" {
+		if err := ValidateInfinibandResourceName(*r.Spec.InfinibandResourceLimitName); err != nil {
+			allErrs = append(allErrs, field.Invalid(specPath.Child("infinibandResourceLimitName"), *r.Spec.InfinibandResourceLimitName, err.Error()))
+		}
+	}
+	if r.Spec.Storage != nil && r.Spec.Storage.HostPath != nil && r.Spec.Storage.HostPath.NodeCacheFolderPath != "" {
+		if err := ValidateNodeCacheFolderPath(r.Spec.Storage.HostPath.NodeCacheFolderPath); err != nil {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec", "storage", "hostPath", "nodeCacheFolderPath"), r.Spec.Storage.HostPath.NodeCacheFolderPath, err.Error()))
+		}
+	}
+
 	// Validate port numbers
 	if r.Spec.Port != nil && (*r.Spec.Port < 1 || *r.Spec.Port > 65535) {
 		allErrs = append(allErrs, field.Invalid(specPath.Child("port"), *r.Spec.Port, "must be between 1 and 65535"))
@@ -342,6 +363,11 @@ func (r *Cache) validateCache() (admission.Warnings, error) { //nolint:gocyclo
 				allErrs = append(allErrs, field.Invalid(evictionPath.Child("passFrequency"), *r.Spec.Eviction.PassFrequency, fmt.Sprintf("invalid duration format: %v (expected format like '1h', '30m', '1h30m')", err)))
 			}
 		}
+		if r.Spec.Eviction.BucketInterval != nil {
+			if err := ValidateBucketInterval(*r.Spec.Eviction.BucketInterval); err != nil {
+				allErrs = append(allErrs, field.Invalid(evictionPath.Child("bucketInterval"), *r.Spec.Eviction.BucketInterval, fmt.Sprintf("invalid bucket interval: %v (expected a duration like '15m', '1h', at most 1 week)", err)))
+			}
+		}
 		if r.Spec.Eviction.SizeThreshold != nil {
 			if err := validatePercentage(*r.Spec.Eviction.SizeThreshold, "sizeThreshold"); err != nil {
 				allErrs = append(allErrs, field.Invalid(evictionPath.Child("sizeThreshold"), *r.Spec.Eviction.SizeThreshold, err.Error()))
@@ -374,24 +400,9 @@ func (r *Cache) validateCache() (admission.Warnings, error) { //nolint:gocyclo
 }
 
 func validateDuration(s string) error {
-	if !durationRegex.MatchString(s) || s == "" {
-		return fmt.Errorf("must match pattern like '30d', '1h30m', '30d12h41m29s'")
-	}
-	return nil
+	return ValidateDuration(s)
 }
 
 func validatePercentage(s string, fieldName string) error {
-
-	trimmed := strings.TrimSpace(s)
-	if trimmed != s {
-		return fmt.Errorf("%s must not contain leading or trailing whitespace", fieldName)
-	}
-	value, err := strconv.Atoi(s)
-	if err != nil {
-		return fmt.Errorf("%s must be a numeric string representing a percentage (0-100)", fieldName)
-	}
-	if value < 0 || value > 100 {
-		return fmt.Errorf("%s must be between 0 and 100, got %d", fieldName, value)
-	}
-	return nil
+	return ValidatePercentage(s, fieldName)
 }
