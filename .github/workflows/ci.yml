@@ -67,7 +67,7 @@ jobs:
             runner: ubuntu-24.04-arm
     permissions:
       contents: read
-    uses: ./.github/workflows/build.yml
+    uses: $/.github/workflows/build.yml
     with:
       build_type: Release
       build_arch: ${{ matrix.arch }}
@@ -179,7 +179,7 @@ jobs:
       # unpacks the build tree. ctest runs inside that container via bldenv.sh
       # (USE_CONTAINER=1), matching how the binaries were compiled.
       - name: Restore build tree
-        uses: ./.github/actions/restore-build
+        uses: $/.github/actions/restore-build
         with:
           artifact: dacs-build-tree-${{ matrix.arch }}
           native-build-image-artifact: dacs-native-build-image-${{ matrix.arch }}

@@ -30,7 +30,7 @@ name: Build
 # compiled build tree that compile publishes as dacs-build-tree-<arch> (so the
 # caller's test jobs can also run the prebuilt binaries without recompiling).
 # Callers (ci.yml today; a release/nightly pipeline later) invoke this via
-# `uses: ./.github/workflows/build.yml`.
+# `uses: $/.github/workflows/build.yml`.
 on:
   workflow_call:
     inputs:
@@ -221,7 +221,7 @@ jobs:
           cache-to: type=gha,scope=${{ matrix.image.name }},mode=max
 
       - name: Save and upload ${{ matrix.image.name }} image
-        uses: ./.github/actions/upload-image
+        uses: $/.github/actions/upload-image
         with:
           name: ${{ matrix.image.name }}
           arch: ${{ inputs.build_arch }}
@@ -276,7 +276,7 @@ jobs:
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Restore build tree
-        uses: ./.github/actions/restore-build
+        uses: $/.github/actions/restore-build
         with:
           artifact: dacs-build-tree-${{ inputs.build_arch }}
           restore-native-build-image: 'false'
@@ -316,7 +316,7 @@ jobs:
             .
 
       - name: Save and upload ${{ matrix.image.name }} image
-        uses: ./.github/actions/upload-image
+        uses: $/.github/actions/upload-image
         with:
           name: ${{ matrix.image.name }}
           arch: ${{ inputs.build_arch }}
@@ -350,7 +350,7 @@ jobs:
           fetch-tags: true
 
       - name: Restore build tree
-        uses: ./.github/actions/restore-build
+        uses: $/.github/actions/restore-build
         with:
           artifact: dacs-build-tree-${{ inputs.build_arch }}
           native-build-image-artifact: dacs-native-build-image-${{ inputs.build_arch }}
@@ -393,7 +393,7 @@ jobs:
           fetch-tags: true
 
       - name: Restore build tree
-        uses: ./.github/actions/restore-build
+        uses: $/.github/actions/restore-build
         with:
           artifact: dacs-build-tree-${{ inputs.build_arch }}
           native-build-image-artifact: dacs-native-build-image-${{ inputs.build_arch }}
