@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Use Microsoft Container Registry (MCR) approved Ubuntu image
-FROM mcr.microsoft.com/mirror/docker/library/ubuntu:22.04
+FROM mcr.microsoft.com/mirror/docker/library/ubuntu:24.04
 
 # Docker BuildKit argument for multi-platform builds
 ARG TARGETARCH
