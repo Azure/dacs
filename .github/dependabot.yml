@@ -1,0 +1,103 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: "daily"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: docker
+    directories:
+      - /src/images/native-build
+      - /src/subsystems/cache-controller
+      - /src/subsystems/storage/stress_tests/container
+    schedule:
+      interval: "daily"
+    groups:
+      docker:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: gomod
+    directories:
+      - /src/subsystems/cache-controller
+      - /src/subsystems/storage/cache_server_scheduler
+      - /test
+    schedule:
+      interval: "daily"
+    groups:
+      k8s:
+        patterns:
+          - "k8s.io/*"
+          - "sigs.k8s.io/*"
+        update-types:
+          - "minor"
+          - "patch"
+      gomod-minor-patch:
+        exclude-patterns:
+          - "k8s.io/*"
+          - "sigs.k8s.io/*"
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: pip
+    directory: /src/subsystems/storage/dacs_client
+    schedule:
+      interval: "daily"
+    groups:
+      pip:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: pre-commit
+    directory: /
+    schedule:
+      interval: "daily"
+    groups:
+      pre-commit:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    cooldown:
+      default-days: 7
