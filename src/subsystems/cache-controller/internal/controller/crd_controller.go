@@ -308,17 +308,27 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 
 	// Storage configuration
 	useEphemeral := false
-	if cache.Spec.Storage.Ephemeral != nil {
+	if cache.Spec.Storage != nil && cache.Spec.Storage.Ephemeral != nil {
 		useEphemeral = *cache.Spec.Storage.Ephemeral
 	}
 	useHostPath := !useEphemeral
 	// MountSsdPath needs to be set to a valid path even if using ephemeral storage
 	nodeCachePath := storagev1.DefaultNodeCacheFolderPath
-	if cache.Spec.Storage.HostPath != nil && cache.Spec.Storage.HostPath.NodeCacheFolderPath != "" {
+	if cache.Spec.Storage != nil &&
+		cache.Spec.Storage.HostPath != nil &&
+		cache.Spec.Storage.HostPath.NodeCacheFolderPath != "" {
 		nodeCachePath = cache.Spec.Storage.HostPath.NodeCacheFolderPath
 	}
 
 	cfg := config.GetConfig()
+
+	// Fail closed: never render untrusted values into the workload template,
+	// even if the admission webhook is disabled or was bypassed (e.g. objects
+	// created before the webhook was installed). Reject invalid input instead
+	// of interpolating it.
+	if err := validateRenderInputs(cache, nodeCachePath); err != nil {
+		return fmt.Errorf("cache %q has invalid fields for rendering: %w", cache.Name, err)
+	}
 
 	log.V(1).Info("Applying StatefulSet configuration",
 		"replicas", numServers,
@@ -538,6 +548,99 @@ func isImmutableFieldErr(err error) bool {
 	})
 }
 
+// validateRenderInputs re-validates the Cache fields that are interpolated into
+// the workload template, so the controller fails closed if admission validation
+// was disabled or bypassed. It mirrors the checks in the admission webhook.
+func validateRenderInputs(cache *storagev1.Cache, nodeCachePath string) error {
+	if cache.Spec.NodeSelectorKey == nil {
+		return fmt.Errorf("spec.nodeSelectorKey must be set")
+	}
+	if err := storagev1.ValidateNodeSelectorKey(*cache.Spec.NodeSelectorKey); err != nil {
+		return fmt.Errorf("spec.nodeSelectorKey: %w", err)
+	}
+	if cache.Spec.NodeSelectorValue == nil {
+		return fmt.Errorf("spec.nodeSelectorValue must be set")
+	}
+	if err := storagev1.ValidateNodeSelectorValue(*cache.Spec.NodeSelectorValue); err != nil {
+		return fmt.Errorf("spec.nodeSelectorValue: %w", err)
+	}
+	// These fields are dereferenced unconditionally during rendering; require them so we
+	// fail closed with a clear error instead of panicking when defaulting was bypassed.
+	if cache.Spec.InfinibandResourceLimitName == nil {
+		return fmt.Errorf("spec.infinibandResourceLimitName must be set")
+	}
+	if cache.Spec.InfinibandResourceLimitCount == nil {
+		return fmt.Errorf("spec.infinibandResourceLimitCount must be set")
+	}
+	if *cache.Spec.InfinibandResourceLimitName != "" {
+		if err := storagev1.ValidateInfinibandResourceName(*cache.Spec.InfinibandResourceLimitName); err != nil {
+			return fmt.Errorf("spec.infinibandResourceLimitName: %w", err)
+		}
+	}
+	if err := storagev1.ValidateNodeCacheFolderPath(nodeCachePath); err != nil {
+		return fmt.Errorf("spec.storage.hostPath.nodeCacheFolderPath: %w", err)
+	}
+	if err := validateEvictionRenderInputs(cache); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateEvictionRenderInputs re-validates the eviction fields. Every string
+// among them is interpolated into the workload template and each pointer is
+// dereferenced unconditionally during rendering, so both the presence and the
+// contents must be checked to fail closed when defaulting or admission
+// validation was bypassed.
+func validateEvictionRenderInputs(cache *storagev1.Cache) error {
+	if cache.Spec.Eviction == nil {
+		return fmt.Errorf("spec.eviction must be set")
+	}
+	eviction := cache.Spec.Eviction
+	if eviction.EnableAccessTimeEviction == nil {
+		return fmt.Errorf("spec.eviction.enableAccessTimeEviction must be set")
+	}
+	if eviction.EvictionMaintainFreeSpace == nil {
+		return fmt.Errorf("spec.eviction.evictionMaintainFreeSpace must be set")
+	}
+	durations := []struct {
+		name  string
+		value *string
+	}{
+		{"lastAccessThreshold", eviction.LastAccessThreshold},
+		{"passFrequency", eviction.PassFrequency},
+	}
+	for _, d := range durations {
+		if d.value == nil {
+			return fmt.Errorf("spec.eviction.%s must be set", d.name)
+		}
+		if err := storagev1.ValidateDuration(*d.value); err != nil {
+			return fmt.Errorf("spec.eviction.%s: %w", d.name, err)
+		}
+	}
+	percentages := []struct {
+		name  string
+		value *string
+	}{
+		{"sizeThreshold", eviction.SizeThreshold},
+		{"sizeTarget", eviction.SizeTarget},
+	}
+	for _, p := range percentages {
+		if p.value == nil {
+			return fmt.Errorf("spec.eviction.%s must be set", p.name)
+		}
+		if err := storagev1.ValidatePercentage(*p.value, p.name); err != nil {
+			return fmt.Errorf("spec.eviction.%s: %w", p.name, err)
+		}
+	}
+	if eviction.BucketInterval == nil {
+		return fmt.Errorf("spec.eviction.bucketInterval must be set")
+	}
+	if err := storagev1.ValidateBucketInterval(*eviction.BucketInterval); err != nil {
+		return fmt.Errorf("spec.eviction.bucketInterval: %w", err)
+	}
+	return nil
+}
+
 func renderTemplateInto(path string, values interface{}, out interface{}) error {
 	tmplBytes, err := templateFS.ReadFile(path)
 	if err != nil {
@@ -553,6 +656,17 @@ func renderTemplateInto(path string, values interface{}, out interface{}) error 
 			}
 			return res
 		},
+		// toJSON renders a value as a JSON literal. Because JSON is a subset of
+		// YAML, an encoded string or slice is always parsed as a single scalar
+		// or sequence and can never become surrounding YAML structure. Use it
+		// for every dynamic string rendered into YAML.
+		"toJSON": func(v interface{}) (string, error) {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return "", err
+			}
+			return string(b), nil
+		},
 	}
 	t, err := template.New("tpl").Funcs(funcMap).Parse(string(tmplBytes))
 	if err != nil {
@@ -562,7 +676,9 @@ func renderTemplateInto(path string, values interface{}, out interface{}) error 
 	if err := t.Execute(&buf, values); err != nil {
 		return err
 	}
-	jsonBytes, err := yaml.YAMLToJSON(buf.Bytes())
+	// Strict conversion so a duplicated or malformed generated field is rejected
+	// rather than silently accepted.
+	jsonBytes, err := yaml.YAMLToJSONStrict(buf.Bytes())
 	if err != nil {
 		return err
 	}
