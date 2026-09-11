@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"text/template"
 
 	"github.com/go-logr/logr"
@@ -386,11 +387,10 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		// StatefulSet.spec.selector and a few other fields are immutable.
 		// If an existing STS owned by this Cache has an incompatible spec
 		// (e.g. older selector that lacks the cache-name label), patching
-		// returns Invalid with a FieldValueForbidden cause. Delete it so
-		// controller-runtime's Owns() watch requeues us and the next
-		// reconcile creates a fresh STS. We narrow the check to
-		// FieldValueForbidden causes to avoid recreating on unrelated
-		// validation failures (e.g. malformed spec, missing required fields).
+		// returns an immutable-field Invalid error. Delete it so
+		// controller-runtime's Owns() watch requeues us and the next reconcile
+		// creates a fresh STS. We narrow the check to known immutable-field
+		// causes to avoid recreating on unrelated validation failures.
 		if isImmutableFieldErr(err) {
 			log.Info("StatefulSet has incompatible immutable fields; deleting to recreate", "statefulSetName", sts.Name)
 			if err := r.Delete(ctx, sts); client.IgnoreNotFound(err) != nil {
@@ -516,16 +516,13 @@ func (r *CacheReconciler) reconcileConfigMap(ctx context.Context, cache *storage
 }
 
 // isImmutableFieldErr reports whether err is an apiserver Invalid error whose
-// Status carries at least one FieldValueForbidden cause. This is the
-// canonical signal that an Update/Patch tried to change an immutable field
-// (e.g. StatefulSet.spec.selector, .podManagementPolicy, .serviceName),
-// distinct from other Invalid errors like missing required fields or
-// malformed values.
+// Status carries an immutable-field cause. Kubernetes versions before 1.37
+// used FieldValueForbidden; Kubernetes 1.37 uses FieldValueInvalid with a
+// "field is immutable" message.
 //
 // For StatefulSet specifically, only replicas, ordinals, template,
 // updateStrategy, revisionHistoryLimit, persistentVolumeClaimRetentionPolicy,
-// and minReadySeconds are mutable on update; any other spec change produces
-// a Forbidden cause. See ValidateStatefulSetUpdate in upstream Kubernetes:
+// and minReadySeconds are mutable on update. See ValidateStatefulSetUpdate:
 // https://github.com/kubernetes/kubernetes/blob/master/pkg/apis/apps/validation/validation.go
 func isImmutableFieldErr(err error) bool {
 	if !apierrors.IsInvalid(err) {
@@ -536,7 +533,8 @@ func isImmutableFieldErr(err error) bool {
 		return false
 	}
 	return slices.ContainsFunc(statusErr.ErrStatus.Details.Causes, func(c metav1.StatusCause) bool {
-		return c.Type == metav1.CauseTypeForbidden
+		return c.Type == metav1.CauseTypeForbidden ||
+			c.Type == metav1.CauseTypeFieldValueInvalid && strings.Contains(c.Message, "field is immutable")
 	})
 }
 
