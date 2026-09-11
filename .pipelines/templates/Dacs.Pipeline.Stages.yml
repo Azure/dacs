@@ -250,14 +250,14 @@ stages:
             workingDirectory: $(Pipeline.Workspace)/s/dacs
 
   - stage: PublishImages
-    displayName: Publish immutable DACS images
+    displayName: Publish immutable DACS artifacts
     dependsOn:
       - Package
       - AzureTests_amd64
       - AzureTests_arm64
     jobs:
       - job: PublishImages
-        displayName: Publish immutable images
+        displayName: Publish immutable images and Helm charts
         timeoutInMinutes: 120
         steps:
           - checkout: self
@@ -284,6 +284,18 @@ stages:
               buildType: current
               artifact: release-metadata
               targetPath: $(Pipeline.Workspace)/artifacts/release-metadata
+
+          - task: HelmInstaller@1
+            displayName: Install Helm
+            inputs:
+              helmVersionToInstall: 3.21.3
+
+          - task: DownloadPipelineArtifact@2
+            displayName: Download Helm charts
+            inputs:
+              buildType: current
+              artifact: helm-charts
+              targetPath: $(Pipeline.Workspace)/artifacts/helm-charts
 
           - task: AzureCLI@2
             displayName: Publish immutable images
@@ -332,3 +344,42 @@ stages:
                 BUILD_NUMBER="$CONTAINER_VERSION" \
                 BUILD_ARCHS="amd64 arm64" \
                   "$repository_root/.pipelines/scripts/publish/publish-multiplatform-manifests.sh"
+
+          - task: AzureCLI@2
+            displayName: Publish immutable Helm charts
+            inputs:
+              azureSubscription: ${{ parameters.azureServiceConnection }}
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+
+                readonly chart_artifacts="$(Pipeline.Workspace)/artifacts/helm-charts"
+                readonly chart_metadata="$chart_artifacts/helm-chart.txt"
+                test -f "$chart_metadata"
+
+                (
+                  cd "$chart_artifacts"
+                  sha256sum -c SHA256SUMS
+                )
+
+                # shellcheck disable=SC1090
+                source "$chart_metadata"
+                : "${CHART_REPO:?chart metadata is missing CHART_REPO}"
+                : "${CACHE_SERVER_CHART_VERSION:?chart metadata is missing CACHE_SERVER_CHART_VERSION}"
+                : "${CACHE_SERVER_PREREQ_CHART_VERSION:?chart metadata is missing CACHE_SERVER_PREREQ_CHART_VERSION}"
+                : "${CACHE_CONTROLLER_CHART_VERSION:?chart metadata is missing CACHE_CONTROLLER_CHART_VERSION}"
+
+                readonly charts=(
+                  "$chart_artifacts/cache-server-$CACHE_SERVER_CHART_VERSION.tgz"
+                  "$chart_artifacts/dacs-prereq-$CACHE_SERVER_PREREQ_CHART_VERSION.tgz"
+                  "$chart_artifacts/dacs-$CACHE_CONTROLLER_CHART_VERSION.tgz"
+                )
+                for chart in "${charts[@]}"; do
+                  test -f "$chart"
+                done
+
+                az acr login --name "${{ parameters.acrName }}"
+                for chart in "${charts[@]}"; do
+                  helm push "$chart" "$CHART_REPO"
+                done
