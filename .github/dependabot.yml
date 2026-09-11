@@ -19,6 +19,7 @@ updates:
 
   - package-ecosystem: docker
     directories:
+      - /Docker
       - /src/images/native-build
       - /src/subsystems/cache-controller
       - /src/subsystems/storage/stress_tests/container
