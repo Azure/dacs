@@ -40,7 +40,7 @@ set(CMAKE_DEP_CMAKE_DIR ${CMAKE_DEP_INSTALL_DIR}/cmake)
 set(CMAKE_EXTERNAL_PROJECT ${CMAKE_DEP_CMAKE_DIR}/external)
 set(CMAKE_MODULE_PATH ${CMAKE_DEP_CMAKE_DIR}/external)
 
-add_definitions(-DBUILD_GIT_COMMIT_HASH="${GIT_COMMIT_HASH}" -D_GLIBCXX_USE_NANOSLEEP)
+add_definitions(-D_GLIBCXX_USE_NANOSLEEP)
 
 # Treat warnings as errors
 add_compile_options(-Werror)

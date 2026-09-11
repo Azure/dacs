@@ -41,7 +41,10 @@ export BUILD_ARCH="$BUILD_ARCH"
 
 # Enable ccache for faster rebuilds
 export CCACHE_DIR="$REPOSITORY_ROOT/.ccache"
+export CCACHE_BASEDIR="$REPOSITORY_ROOT"
+export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-2G}"
 mkdir -p "$CCACHE_DIR"
+ccache --zero-stats
 
 # Configure with CMake
 cd "$BUILD_DIR"
@@ -56,6 +59,7 @@ cmake \
 
 # Build with Ninja - use all available cores
 ninja -j"$(nproc)"
+ccache --show-stats
 
 # Build Rust client
 echo "Building Rust client..."

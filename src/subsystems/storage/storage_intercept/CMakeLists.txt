@@ -42,6 +42,9 @@ file(GLOB STORAGE_INTERCEPT_SOURCES_COMMON ./remote_client/*cpp ./remote_client/
         ./remote_client/blob/*cpp ./remote_client/mock/*cpp ./common/*.cpp ./handlers/*cpp ./interceptors/StorageInterceptorImpl.cpp
         ./remote_client/cache/*)
 
+set_source_files_properties(remote_client/StreamingClient.cpp PROPERTIES
+    COMPILE_DEFINITIONS "BUILD_GIT_COMMIT_HASH=\"${GIT_COMMIT_HASH}\"")
+
 file(GLOB STORAGE_INTERCEPT_SOURCES_INTERCEPTOR ${STORAGE_INTERCEPT_SOURCES_COMMON} ./interceptors/StorageInterceptor.cpp)
 file(GLOB STORAGE_INTERCEPT_SOURCES_CACHE_CLIENT ${STORAGE_INTERCEPT_SOURCES_COMMON} ./interceptors/CacheClientInterface.cpp)
 add_library(CacheClient SHARED ${STORAGE_INTERCEPT_SOURCES_CACHE_CLIENT})
@@ -165,4 +168,3 @@ add_test(NAME StorageInterceptUnitTests
 
 # Storage Intercept integration test
 add_subdirectory(./integration_tests/)
-
