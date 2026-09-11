@@ -128,6 +128,8 @@ function append_interception_config_blob_prefix() {
     echo "${MOUNT_PREFIX}remoteBlobUseSdkClient true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
     echo "${MOUNT_PREFIX}remoteBlobChecksumEnabled true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
 
+    echo "${MOUNT_PREFIX}remoteBlobUploadChecksumEnabled true" >> ${STORAGE_INTERCEPT_CONFIG_FILE_PATH}
+
     # Authentication priority: SAS Token -> Access Token
     # Note: IMDS is unavailable in CI pools. We rely on WIF Access Token (SI_azBlobAccessToken).
     # See "AUTHENTICATION CONTEXT" in file header for details.

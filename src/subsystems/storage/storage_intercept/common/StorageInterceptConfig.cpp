@@ -985,6 +985,15 @@ bool StorageInterceptConfig::GetRemoteBlobChecksumEnabled(const std::string& mou
         true);
 }
 //---------------------------------------------------------------------------------------------------------------------
+bool StorageInterceptConfig::GetRemoteBlobUploadChecksumEnabled(const std::string& mountName)
+{
+    return StorageInterceptConfig::GetOptionalConfigBoolean(
+        m_ConfigProps,
+        mountName,
+        StorageInterceptConstants::ConfigNameRemoteBlobUploadChecksumEnabled,
+    true);
+}
+//---------------------------------------------------------------------------------------------------------------------
 uint32_t StorageInterceptConfig::GetRemoteBlobChecksumRetryMaxAttempts()
 {
     return StorageInterceptConfig::GetOptionalConfigUint32(

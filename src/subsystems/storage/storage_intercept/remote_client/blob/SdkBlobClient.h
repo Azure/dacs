@@ -100,6 +100,7 @@ class SdkBlobClient : public IRemoteClient
         std::string GetContainerName(const std::string& remotePath) const;
         std::string GetBlobName(const std::string& remotePath) const;
         static std::string GetUrlSafeBase64(const std::string& uuid, off64_t blockId);
+        Azure::Storage::Blobs::StageBlockOptions MakeStageBlockOptions() const;
 
         // True only for a CRC64 "checksum mismatch" error (not auth/404/throttle/network).
         static bool IsChecksumMismatch(const std::string& message);
@@ -121,6 +122,7 @@ class SdkBlobClient : public IRemoteClient
         const bool        m_bIsDynamicAccount;
         const bool        m_bIsDynamicContainer;
         const bool        m_bChecksumEnabled;
+        const bool        m_bUploadChecksumEnabled;
         const uint32_t    m_nChecksumRetryMaxAttempts;
         const std::chrono::seconds m_blobRetryBaseDelay;
         const std::chrono::seconds m_blobRetryMaxDelay;
