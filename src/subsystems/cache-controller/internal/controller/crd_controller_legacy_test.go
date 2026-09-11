@@ -140,11 +140,10 @@ var _ = Describe("Cache controller legacy backwards compatibility", Ordered, fun
 	// Proof for isImmutableFieldErr: this spec talks directly to the
 	// envtest apiserver (no controller) to demonstrate that updating an
 	// immutable StatefulSet field (PodManagementPolicy) yields an
-	// apierrors.IsInvalid error whose Status.Details.Causes contains a
-	// CauseTypeForbidden entry. That is exactly the shape isImmutableFieldErr
-	// matches on, so the controller's recreate path is keyed off real
-	// apiserver behavior rather than an assumption.
-	It("apiserver returns Invalid+FieldValueForbidden when patching an immutable STS field", func(ctx SpecContext) {
+	// apierrors.IsInvalid error whose Status.Details.Causes identifies the
+	// immutable field. This proves that the controller's recreate path is
+	// keyed off real apiserver behavior rather than an assumption.
+	It("recognizes the apiserver error for an immutable StatefulSet field", func(ctx SpecContext) {
 		stsName := "immutable-proof"
 
 		By("creating a baseline STS with OrderedReady PMP")
@@ -159,14 +158,16 @@ var _ = Describe("Cache controller legacy backwards compatibility", Ordered, fun
 		err := k8sClient.Update(ctx, sts)
 		Expect(err).To(HaveOccurred(), "updating immutable PodManagementPolicy must fail")
 
-		By("asserting the error is Invalid with a FieldValueForbidden cause")
+		By("asserting the error is Invalid with an immutable-field cause")
 		Expect(apierrors.IsInvalid(err)).To(BeTrue(), "expected apierrors.IsInvalid; got %v", err)
 
 		var statusErr *apierrors.StatusError
 		Expect(errors.As(err, &statusErr)).To(BeTrue(), "expected *apierrors.StatusError; got %T", err)
 		Expect(statusErr.ErrStatus.Details).NotTo(BeNil(), "expected Status.Details on Invalid error: %+v", statusErr.ErrStatus)
-		Expect(statusErr.ErrStatus.Details.Causes).To(ContainElement(HaveField("Type", metav1.CauseTypeForbidden)),
-			"expected at least one CauseTypeForbidden cause; got %+v", statusErr.ErrStatus.Details.Causes)
+		Expect(statusErr.ErrStatus.Details.Causes).To(ContainElement(SatisfyAll(
+			HaveField("Type", metav1.CauseTypeFieldValueInvalid),
+			HaveField("Message", ContainSubstring("field is immutable")),
+		)), "expected an immutable-field cause; got %+v", statusErr.ErrStatus.Details.Causes)
 
 		By("verifying isImmutableFieldErr matches this exact error")
 		Expect(isImmutableFieldErr(err)).To(BeTrue(), "isImmutableFieldErr should match a real apiserver immutable-field error")

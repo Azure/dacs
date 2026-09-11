@@ -39,9 +39,7 @@ updates:
       default-days: 7
 
   - package-ecosystem: gomod
-    directories:
-      - /
-      - /src/subsystems/storage/cache_server_scheduler
+    directory: /
     schedule:
       interval: "daily"
     groups:

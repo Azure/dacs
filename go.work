@@ -1,10 +1,9 @@
-go 1.25.5
+go 1.26.0
 
-// Workspace decouples test/go.sum from cache-controller's transitive deps so
-// Dependabot bumps in cache-controller don't break test/ builds.
-// cache_server_scheduler is intentionally excluded: it pins older k8s.io/* and
-// isn't imported by the other two modules.
+// Workspace keeps all DACS Go modules on a consistent toolchain and lets
+// Dependabot update them together from the repository root.
 use (
 	./src/subsystems/cache-controller
+	./src/subsystems/storage/cache_server_scheduler
 	./test
 )
