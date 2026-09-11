@@ -34,3 +34,18 @@ extern "C" int SI_fstat(/*[in]*/ int fd, /*[in]*/ struct stat *statbuf, /*[out]*
     return StorageInterceptorImpl::SI_fstat(fd, statbuf, errorString);
 }
 //---------------------------------------------------------------------------------------------------------------------
+extern "C" void* SI_opendir(/*[in]*/ const char *pathname, /*[out]*/ char** errorString)
+{
+    return StorageInterceptorImpl::SI_opendir(pathname, errorString);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" struct dirent* SI_readdir(/*[in]*/ void* dirp, /*[out]*/ char** errorString)
+{
+    return static_cast<struct dirent*>(StorageInterceptorImpl::SI_readdir(dirp, errorString));
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" int SI_closedir(/*[in]*/ void* dirp, /*[out]*/ char** errorString)
+{
+    return StorageInterceptorImpl::SI_closedir(dirp, errorString);
+}
+//---------------------------------------------------------------------------------------------------------------------

@@ -19,6 +19,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <dirent.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,6 +30,11 @@ int SI_open(/*[in]*/ const char *pathname, /*[in]*/ int flags, /*[in]*/ mode_t m
 ssize_t SI_pread(/*[in]*/ int fd, /*[in]*/ void* buf, /*[in]*/ size_t nByte, /*[in]*/ off64_t offset, /*[out]*/ char** errorString);
 int SI_close(/*[in]*/ int fd, /*[out]*/ char** errorString);
 int SI_fstat(/*[in]*/ int fd, /*[in]*/ struct stat *statbuf, /*[out]*/ char** errorString);
+// Directory enumeration. SI_readdir returns the next entry, NULL at end-of-dir
+// (with *errorString == NULL) or NULL on error (with *errorString set).
+void* SI_opendir(/*[in]*/ const char *pathname, /*[out]*/ char** errorString);
+struct dirent* SI_readdir(/*[in]*/ void* dirp, /*[out]*/ char** errorString);
+int SI_closedir(/*[in]*/ void* dirp, /*[out]*/ char** errorString);
 // End of libc APIs
 
 #ifdef __cplusplus

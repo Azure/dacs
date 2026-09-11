@@ -17,6 +17,115 @@
 #include "ContentHandler.h"
 #include "RemoteClientException.h"
 #include <cstdlib>
+#include <cstring>
+#include <cxxabi.h>
+#include <string>
+#include <typeinfo>
+//---------------------------------------------------------------------------------------------------------------------
+// Build a heap-allocated (malloc'd, freed by the caller) description of the
+// C++ exception currently in flight. Used by the extern "C" SI_* catch(...)
+// handlers so an otherwise-opaque foreign exception surfaces its real
+// (demangled) type at the FFI boundary instead of a generic "unknown C++
+// exception" string. Must never itself throw.
+static char* DescribeCurrentFfiException(const char* fnName) noexcept
+{
+    const char* safeFnName = (fnName != nullptr && fnName[0] != '\0') ? fnName : "SI_*";
+
+    char msg[512];
+    msg[0] = '\0';
+
+    auto Append = [&](const char* s) noexcept
+    {
+        if(s == nullptr)
+        {
+            return;
+        }
+        const size_t cur = std::strlen(msg);
+        if(cur >= sizeof(msg) - 1)
+        {
+            return;
+        }
+        size_t rem = sizeof(msg) - cur - 1;
+        size_t len = std::strlen(s);
+        if(len > rem)
+        {
+            len = rem;
+        }
+        std::memcpy(msg + cur, s, len);
+        msg[cur + len] = '\0';
+    };
+
+    Append(safeFnName);
+    Append(": unhandled C++ exception at FFI boundary");
+    if(const std::type_info* t = abi::__cxa_current_exception_type())
+    {
+        int status = 0;
+        char* demangled = abi::__cxa_demangle(t->name(), nullptr, nullptr, &status);
+        Append(" (type ");
+        Append((status == 0 && demangled != nullptr) ? demangled : t->name());
+        Append(")");
+        ::free(demangled);
+    }
+
+    // Never throw: on allocation failure fall back to a static message, then to
+    // an allocated empty string the Rust caller can still free.
+    if(char* out = ::strdup(msg))
+    {
+        return out;
+    }
+    static const char kFallback[] =
+        "unhandled C++ exception at FFI boundary (failed to allocate error string)";
+    if(char* out = ::strdup(kFallback))
+    {
+        return out;
+    }
+    char* out = static_cast<char*>(::malloc(1));
+    if(out != nullptr)
+    {
+        out[0] = '\0';
+    }
+    return out;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Shared FFI-boundary catch chain for every SI_* entry point below. These
+// functions are invoked from generic Rust callers; a C++ exception must NEVER
+// unwind across the extern "C" boundary, because Rust's catch_unwind treats a
+// foreign (C++) exception as unrecoverable and calls abort() ("Rust cannot
+// catch foreign exceptions, aborting"). Pair with a `try { ... }` that sets
+// *errorString on its own (expected) failure path; this macro only covers the
+// (exceptional) case of the try block throwing -- including bare
+// std::string/const char* that some call paths historically threw.
+#define SI_CATCH_FFI_BOUNDARY(errorString, fnName, errorValue) \
+    catch(const RemoteClientException& e) \
+    { \
+        *(errorString) = ::strdup(e.what()); \
+        errno = EIO; \
+        return (errorValue); \
+    } \
+    catch(const std::exception& e) \
+    { \
+        *(errorString) = ::strdup(e.what()); \
+        errno = EIO; \
+        return (errorValue); \
+    } \
+    catch(const std::string& e) \
+    { \
+        *(errorString) = ::strdup(e.c_str()); \
+        errno = EIO; \
+        return (errorValue); \
+    } \
+    catch(const char* e) \
+    { \
+        *(errorString) = ::strdup(e); \
+        errno = EIO; \
+        return (errorValue); \
+    } \
+    catch(...) \
+    { \
+        *(errorString) = DescribeCurrentFfiException(fnName); \
+        errno = EIO; \
+        return (errorValue); \
+    }
 //---------------------------------------------------------------------------------------------------------------------
 int StorageInterceptorImpl::open(const char* pathname, int flags, mode_t mode)
 {
@@ -365,14 +474,7 @@ int StorageInterceptorImpl::SI_open(const char* pathname, int flags, int mode, c
 
         return fd;
     }
-    catch(const RemoteClientException& e)
-    {
-        *errorString = ::strdup(e.what());
-        errno = EIO;
-        return -1;
-    }
-
-    return -1;   
+    SI_CATCH_FFI_BOUNDARY(errorString, "SI_open", -1)
 }
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t StorageInterceptorImpl::SI_pread(int fd, void* buf, size_t count, off64_t offset, char** errorString)
@@ -385,6 +487,8 @@ ssize_t StorageInterceptorImpl::SI_pread(int fd, void* buf, size_t count, off64_
 
     try
     {
+        // ssize_t, not int: HandlePRead returns ssize_t,
+        // and narrowing to int truncated/mishandled reads over INT_MAX bytes.
         ssize_t ret = ContentHandler::GetInstance().HandlePRead(fd, buf, count, offset);
         if(ret < 0)
         {
@@ -397,14 +501,7 @@ ssize_t StorageInterceptorImpl::SI_pread(int fd, void* buf, size_t count, off64_
 
         return ret;
     }
-    catch(const RemoteClientException& e)
-    {
-        *errorString = ::strdup(e.what());
-        errno = EIO;
-        return -1;
-    }
-
-    return -1;   
+    SI_CATCH_FFI_BOUNDARY(errorString, "SI_pread", -1)
 }
 //---------------------------------------------------------------------------------------------------------------------
 int StorageInterceptorImpl::SI_close(int fd, char** errorString)
@@ -429,14 +526,7 @@ int StorageInterceptorImpl::SI_close(int fd, char** errorString)
 
         return ret;
     }
-    catch(const RemoteClientException& e)
-    {
-        *errorString = ::strdup(e.what());
-        errno = EIO;
-        return -1;
-    }
-
-    return -1;   
+    SI_CATCH_FFI_BOUNDARY(errorString, "SI_close", -1)
 }
 //---------------------------------------------------------------------------------------------------------------------
 int StorageInterceptorImpl::SI_fstat(int fd, struct stat* statbuf, char** errorString)
@@ -461,13 +551,60 @@ int StorageInterceptorImpl::SI_fstat(int fd, struct stat* statbuf, char** errorS
 
         return ret;
     }
-    catch(const RemoteClientException& e)
+    SI_CATCH_FFI_BOUNDARY(errorString, "SI_fstat", -1)
+}
+//---------------------------------------------------------------------------------------------------------------------
+void* StorageInterceptorImpl::SI_opendir(const char* pathname, char** errorString)
+{
+    if(errorString == nullptr)
     {
-        *errorString = ::strdup(e.what());
+        errno = EIO;
+        return nullptr;
+    }
+
+    try
+    {
+        void* dirp = opendir(pathname);
+        *errorString = (dirp == nullptr) ? ::strdup(::strerror(errno)) : nullptr;
+        return dirp;
+    }
+    SI_CATCH_FFI_BOUNDARY(errorString, "SI_opendir", nullptr)
+}
+//---------------------------------------------------------------------------------------------------------------------
+void* StorageInterceptorImpl::SI_readdir(void* dirp, char** errorString)
+{
+    if(errorString == nullptr)
+    {
+        errno = EIO;
+        return nullptr;
+    }
+
+    try
+    {
+        // readdir() returns NULL both at end-of-directory and on error; the two
+        // are distinguished by errno (unchanged at end-of-dir, set on error).
+        errno = 0;
+        void* entry = readdir(dirp);
+        *errorString = (entry == nullptr && errno != 0) ? ::strdup(::strerror(errno)) : nullptr;
+        return entry;
+    }
+    SI_CATCH_FFI_BOUNDARY(errorString, "SI_readdir", nullptr)
+}
+//---------------------------------------------------------------------------------------------------------------------
+int StorageInterceptorImpl::SI_closedir(void* dirp, char** errorString)
+{
+    if(errorString == nullptr)
+    {
         errno = EIO;
         return -1;
     }
 
-    return -1;   
+    try
+    {
+        int ret = closedir(dirp);
+        *errorString = (ret < 0) ? ::strdup(::strerror(errno)) : nullptr;
+        return ret;
+    }
+    SI_CATCH_FFI_BOUNDARY(errorString, "SI_closedir", -1)
 }
 //---------------------------------------------------------------------------------------------------------------------
