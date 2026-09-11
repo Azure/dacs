@@ -46,6 +46,36 @@ The test framework will:
 
 ## Workflows
 
+### DACS integration pipeline
+
+Register `.pipelines/dacs-integration.yml` as `dacs-integration`. It runs at
+06:00 and 18:00 UTC each day and can also be started from a GitHub pull request
+with:
+
+```text
+/azp run dacs-integration
+```
+
+By default, the pipeline downloads `release.env` from the newest successful
+`dacs-official` run and uses its immutable image version. Set the
+`dacsBuildNumber` queue-time parameter to test another published image version.
+The Helm charts used for deployment come from the branch or pull request that
+started the integration pipeline.
+
+The pipeline uses `.pipelines/templates/Dacs.AksTest.Stages.yml` to give each
+test category its own temporary AKS cluster:
+
+- Performance and scenario tests.
+- AKS Kubernetes upgrade resilience.
+- AKS node-pool scale resilience.
+- Helm upgrade and rollback resilience.
+
+The Helm upgrade stage installs the immutable baseline chart selected by the
+`helmUpgradeBaselineChart` and `helmUpgradeBaselineVersion` parameters, then
+upgrades to the chart artifact from the selected official build. Each stage
+publishes separate JUnit results, diagnostic links, and support bundles, and
+deletes its resource group even when deployment or testing fails.
+
 ### Minikube Workflow (Local Development)
 
 ```sh

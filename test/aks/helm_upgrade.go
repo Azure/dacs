@@ -32,18 +32,6 @@ const (
 	helmUpgradeRelease   = "dacs"
 	helmUpgradeNamespace = "cache-server"
 
-	// helmUpgradeChartRepoPath mirrors DACS_CACHE_CHART_REPO in deploy.mk
-	// and is the path under HELM_UPGRADE_TARGET_REGISTRY where the chart is
-	// pushed.
-	helmUpgradeChartRepoPath = "charts/dacs"
-
-	// cacheServerImageRepoName is the repository segment of the cacheserver
-	// image as published into the target ACR. It must match the
-	// `manager.cacheServerImage.repository` rewrite in
-	// .pipelines/scripts/publish/publish-helm-chart.sh, which sets it to
-	// "<registry>/cache-server".
-	cacheServerImageRepoName = "cache-server"
-
 	// opHelmUpgrade and opHelmRollback are the operation names used when
 	// emitting per-operation perf metrics for this spec.
 	opHelmUpgrade  = "helm-upgrade"
@@ -52,28 +40,27 @@ const (
 
 func testClusterHelmUpgrade(tc *testContext) {
 	It("should survive a helm upgrade and rollback", Label("helm-upgrade"), func(ctx SpecContext) {
-		registry := os.Getenv("HELM_UPGRADE_TARGET_REGISTRY")
+		chartRef := os.Getenv("HELM_UPGRADE_TARGET_CHART")
 		version := os.Getenv("HELM_UPGRADE_TARGET_VERSION")
-		Expect(registry).NotTo(BeEmpty(), "HELM_UPGRADE_TARGET_REGISTRY must be set")
+		preUpgradeImage := os.Getenv("HELM_UPGRADE_BASELINE_IMAGE")
+		postUpgradeImage := os.Getenv("HELM_UPGRADE_TARGET_IMAGE")
+		Expect(chartRef).NotTo(BeEmpty(), "HELM_UPGRADE_TARGET_CHART must be set")
 		Expect(version).NotTo(BeEmpty(), "HELM_UPGRADE_TARGET_VERSION must be set")
-		chartRef := fmt.Sprintf("oci://%s/%s", registry, helmUpgradeChartRepoPath)
+		Expect(preUpgradeImage).NotTo(BeEmpty(), "HELM_UPGRADE_BASELINE_IMAGE must be set")
+		Expect(postUpgradeImage).NotTo(BeEmpty(), "HELM_UPGRADE_TARGET_IMAGE must be set")
 
 		preUpgradeReleaseInfo := helmhelpers.GetReleaseInfo(ctx, helmUpgradeNamespace, helmUpgradeRelease)
 		Expect(preUpgradeReleaseInfo.AppVersion).NotTo(Or(BeEmpty(), Equal("<unknown>")), "helm release %s/%s has no usable AppVersion: %q", helmUpgradeNamespace, helmUpgradeRelease, preUpgradeReleaseInfo.AppVersion)
-
-		preUpgradeImage := expectedCacheServerImage(registry, preUpgradeReleaseInfo.AppVersion)
-		log.Info("resolved helm upgrade target", "chartRef", chartRef, "version", version, "registry", registry, "preUpgradeImage", preUpgradeImage)
+		log.Info("resolved helm upgrade target", "chartRef", chartRef, "version", version, "preUpgradeImage", preUpgradeImage, "postUpgradeImage", postUpgradeImage)
 
 		By(fmt.Sprintf("performing helm upgrade to %s version=%q", chartRef, version))
 		upgradeDuration, err := helmhelpers.Upgrade(ctx, helmUpgradeRelease, helmUpgradeNamespace, chartRef, version, log)
 		Expect(err).NotTo(HaveOccurred(), "failed to upgrade helm release %s/%s to %s %s", helmUpgradeNamespace, helmUpgradeRelease, chartRef, version)
 		log.Info("helm upgrade completed", "release", helmUpgradeRelease, "namespace", helmUpgradeNamespace, "helmUpgradeDuration", upgradeDuration.Seconds())
 		emitOperationMetric(ctx, kusto.ResilienceOperationResult{Operation: opHelmUpgrade, Details: kusto.UpgradeOperationDetails{TargetVersion: version}}, upgradeDuration)
-
 		postUpgradeReleaseInfo := helmhelpers.GetReleaseInfo(ctx, helmUpgradeNamespace, helmUpgradeRelease)
 		Expect(postUpgradeReleaseInfo.AppVersion).NotTo(Or(BeEmpty(), Equal("<unknown>")), "post-upgrade helm release %s/%s has no usable AppVersion: %q", helmUpgradeNamespace, helmUpgradeRelease, postUpgradeReleaseInfo.AppVersion)
-		postUpgradeImage := expectedCacheServerImage(registry, postUpgradeReleaseInfo.AppVersion)
-		log.Info("computed expected post-upgrade cacheserver image", "image", postUpgradeImage)
+		log.Info("resolved post-upgrade release", "chartVersion", postUpgradeReleaseInfo.ChartVersion, "appVersion", postUpgradeReleaseInfo.AppVersion, "expectedImage", postUpgradeImage)
 
 		By("waiting for application health and cacheserver image rollout after upgrade")
 		Eventually(func(g Gomega, ctx context.Context) {
@@ -101,11 +88,4 @@ func testClusterHelmUpgrade(tc *testContext) {
 		// Cache serving + infra/app health after rollback are also covered
 		// by the shared afterEach in aks.go
 	})
-}
-
-// expectedCacheServerImage returns the <registry>/cache-server:<tag> the
-// cacheserver StatefulSet should be running given the registry the chart
-// was published to and the chart's helm AppVersion.
-func expectedCacheServerImage(registry, appVersion string) string {
-	return fmt.Sprintf("%s/%s:%s", registry, cacheServerImageRepoName, appVersion)
 }

@@ -180,6 +180,7 @@ DACS_CACHE_CHART_REPO ?= charts/dacs
 DACS_CACHE_CHART_BASE_VERSION ?= $(shell grep '^version:' $(DACS_CACHE_CHART_PATH)/Chart.yaml | awk '{print $$2}')
 DACS_CACHE_CHART_VERSION ?= $(DACS_CACHE_CHART_BASE_VERSION)-$(BUILD_NUMBER)
 DACS_CACHE_NAMESPACE ?= cache-server
+DACS_IMAGE_REGISTRY ?= $(DOCKER_REGISTRY)/dacs
 
 define helm_install
 $(HELM_BIN) upgrade --install cache-server ./helm/cache-server \
@@ -261,8 +262,8 @@ $(HELM_BIN) upgrade --install dacs ./$(DACS_CACHE_CHART_PATH) \
 	--set-string global.registry= \
 	--set manager.image.repository=$(1) \
 	--set manager.image.tag=$(2) \
-	--set manager.cacheServerImage.repository=$(LOCAL_CACHE_SERVER_IMG) \
-	--set manager.cacheServerImage.tag=$(LOCAL_CACHE_SERVER_TAG) \
+	--set manager.cacheServerImage.repository=$(3) \
+	--set manager.cacheServerImage.tag=$(4) \
 	--set cache.enabled=true \
 	--wait --timeout 5m --atomic $(HELM_ARGS)
 endef
@@ -281,12 +282,16 @@ endef
 .PHONY: helm-dacs-install
 helm-dacs-install: helm ## Deploy dacs chart (new controller).
 ifeq ($(CLUSTER_TYPE),minikube)
-	$(call helm_install_dacs_cache,$(LOCAL_CACHE_CONTROLLER_IMG),$(LOCAL_CACHE_CONTROLLER_TAG))
+	$(call helm_install_dacs_cache,$(LOCAL_CACHE_CONTROLLER_IMG),$(LOCAL_CACHE_CONTROLLER_TAG),$(LOCAL_CACHE_SERVER_IMG),$(LOCAL_CACHE_SERVER_TAG))
 else
 	$(call acr_login)
 	@echo "Installing dacs from $(DOCKER_REGISTRY)/$(DACS_CACHE_CHART_REPO):$(DACS_CACHE_CHART_VERSION)"
 	$(call helm_install_dacs_cache_remote)
 endif
+
+.PHONY: helm-dacs-install-local-chart
+helm-dacs-install-local-chart: helm ## Deploy the local dacs chart with explicitly selected images.
+	$(call helm_install_dacs_cache,$(DACS_IMAGE_REGISTRY)/cache-controller,$(IMAGE_TAG),$(DACS_IMAGE_REGISTRY)/cache-server,$(IMAGE_TAG))
 
 .PHONY: helm-dacs-uninstall
 helm-dacs-uninstall: helm ## Uninstall dacs chart.

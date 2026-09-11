@@ -40,6 +40,7 @@ help:
 	@echo "Helm Deployment:"
 	@echo "  make deploy                        	- Deploy cache-server helm chart (default: CONTROLLER=old)"
 	@echo "  make deploy CONTROLLER=new         	- Deploy dacs helm chart (new controller)"
+	@echo "  make helm-dacs-install-local-chart 	- Deploy the local dacs chart with selected images"
 	@echo "  make undeploy                      	- Uninstall deployed helm charts"
 	@echo ""
 	@echo "E2E Testing:"

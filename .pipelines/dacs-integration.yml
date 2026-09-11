@@ -12,10 +12,136 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Register this YAML as the dacs-integration pipeline, then run it from a
-# GitHub pull request with "/azp run dacs-integration".
+# Register this YAML as dacs-integration. Run it from a GitHub pull request
+# with "/azp run dacs-integration".
 trigger: none
 pr: none
+
+schedules:
+  - cron: "0 6 * * *"
+    displayName: Daily morning run
+    branches:
+      include:
+        - main
+    always: true
+  - cron: "0 18 * * *"
+    displayName: Daily evening run
+    branches:
+      include:
+        - main
+    always: true
+
+parameters:
+  - name: dacsBuildNumber
+    displayName: DACS image version (latest selects newest official build)
+    type: string
+    default: latest
+
+  - name: location
+    displayName: Azure region
+    type: string
+    default: westus2
+    values:
+      - australiaeast
+      - centralus
+      - eastus
+      - eastus2
+      - westus2
+
+  - name: perfAksTemplate
+    displayName: Perf AKS template
+    type: string
+    default: nvme-l16
+    values:
+      - nvme-l8
+      - nvme-l16
+      - nvme-l32
+
+  - name: scalingMode
+    displayName: Cache scaling mode for resilience tests
+    type: string
+    default: dynamic
+    values:
+      - dynamic
+      - static
+
+  - name: cacheServerCount
+    displayName: Perf cache server count
+    type: number
+    default: 5
+
+  - name: checksumAlgorithm
+    displayName: Perf checksum algorithm
+    type: string
+    default: xxhash32
+    values:
+      - xxhash32
+      - crc32
+
+  - name: dataSizeGiB
+    displayName: Perf data size in GiB
+    type: string
+    default: "100"
+
+  - name: numThreads
+    displayName: Perf number of threads
+    type: number
+    default: 32
+
+  - name: numProcesses
+    displayName: Adapter perf number of processes
+    type: number
+    default: 4
+
+  - name: numBlobs
+    displayName: Adapter perf number of blobs
+    type: number
+    default: 1
+
+  - name: blobSizeGB
+    displayName: Adapter perf blob size in GB
+    type: number
+    default: 1
+
+  - name: scenarioScale
+    displayName: Scenario model scale
+    type: string
+    default: 7B
+    values:
+      - 1B
+      - 7B
+      - 13B
+      - 70B
+
+  - name: scenarioMethods
+    displayName: Scenario access methods
+    type: string
+    default: blobfile,boostedblob,python,interceptor,huggingface
+
+  - name: scenarioCacheModes
+    displayName: Scenario cache modes
+    type: string
+    default: no_cache,cold_cache,warm_cache
+
+  - name: helmUpgradeBaselineChart
+    displayName: Helm upgrade baseline chart
+    type: string
+    default: oci://dacstest.azurecr.io/charts/dacs
+
+  - name: helmUpgradeBaselineVersion
+    displayName: Helm upgrade baseline chart version
+    type: string
+    default: 0.1.0-git-94af00d9e3f4d86bc05671bd85b6435d16f3ccb1-178501606
+
+  - name: helmUpgradeBaselineImage
+    displayName: Helm upgrade baseline cache server image
+    type: string
+    default: dacstest.azurecr.io/cache-server:git-94af00d9e3f4d86bc05671bd85b6435d16f3ccb1-178501606
+
+  - name: azureServiceConnection
+    displayName: Azure Resource Manager service connection
+    type: string
+    default: dacs ARM Connection
 
 resources:
   repositories:
@@ -23,6 +149,10 @@ resources:
       type: git
       name: 1ESPipelineTemplates/1ESPipelineTemplates
       ref: refs/tags/release
+  pipelines:
+    - pipeline: dacsOfficial
+      source: dacs-official
+      branch: main
 
 extends:
   template: v1/1ES.Unofficial.PipelineTemplate.yml@1ESPipelineTemplates
@@ -32,12 +162,81 @@ extends:
       image: 1es-pt-linux-amd64
       os: linux
       hostArchitecture: amd64
+    sdl:
+      sourceAnalysisPool:
+        name: 1es-dacs-pool
+        image: 1es-windows-2022
+        os: windows
+      policheck:
+        enabled: true
+      credscan:
+        enabled: true
     stages:
-      - stage: Validate
-        displayName: Validate integration pipeline
-        jobs:
-          - job: Placeholder
-            displayName: Run placeholder validation
-            steps:
-              - script: echo "Integration pipeline is configured."
-                displayName: Validate pipeline configuration
+      - template: /.pipelines/templates/Dacs.AksTest.Stages.yml@self
+        parameters:
+          testFilter: perf || scenario
+          stageName: PerfTest
+          stageDisplayName: Performance and scenario tests
+          testOutputFile: test-perf.xml
+          location: ${{ parameters.location }}
+          aksTemplate: ${{ parameters.perfAksTemplate }}
+          dacsBuildNumber: ${{ parameters.dacsBuildNumber }}
+          resourceGroupPrefix: dacs-perf-test
+          azureServiceConnection: ${{ parameters.azureServiceConnection }}
+          helmArgs: --values src/subsystems/cache-controller/charts/dacs/perf-values.yaml --set cache.scaling.static.numServers=${{ parameters.cacheServerCount }}
+          extraTestArgs: --data-size-gib=${{ parameters.dataSizeGiB }} --cache-server-count=${{ parameters.cacheServerCount }} --checksum-algorithm=${{ parameters.checksumAlgorithm }} --num-threads=${{ parameters.numThreads }} --storage-account=$(storageAccountName) --num-processes=${{ parameters.numProcesses }} --blob-count=${{ parameters.numBlobs }} --blob-size=$(( ${{ parameters.blobSizeGB }} * 1073741824 )) --scenario-scale=${{ parameters.scenarioScale }} --scenario-methods=${{ parameters.scenarioMethods }} --scenario-cache-modes=${{ parameters.scenarioCacheModes }}
+
+      - template: /.pipelines/templates/Dacs.AksTest.Stages.yml@self
+        parameters:
+          testFilter: aks && aks-upgrade
+          stageName: AksUpgrade
+          stageDisplayName: AKS Kubernetes upgrade
+          testOutputFile: test-aks-upgrade.xml
+          location: ${{ parameters.location }}
+          aksTemplate: nvme-l8
+          dacsBuildNumber: ${{ parameters.dacsBuildNumber }}
+          resourceGroupPrefix: dacs-aks-upgrade
+          azureServiceConnection: ${{ parameters.azureServiceConnection }}
+          helmArgs: --values src/subsystems/cache-controller/charts/dacs/aks-int-${{ parameters.scalingMode }}-values.yaml
+          dependsOn:
+            - PerfTest
+          condition: not(canceled())
+
+      - template: /.pipelines/templates/Dacs.AksTest.Stages.yml@self
+        parameters:
+          testFilter: aks && aks-scale
+          stageName: AksScale
+          stageDisplayName: AKS node pool scale
+          testOutputFile: test-aks-scale.xml
+          location: ${{ parameters.location }}
+          aksTemplate: nvme-l8
+          dacsBuildNumber: ${{ parameters.dacsBuildNumber }}
+          resourceGroupPrefix: dacs-aks-scale
+          azureServiceConnection: ${{ parameters.azureServiceConnection }}
+          helmArgs: --values src/subsystems/cache-controller/charts/dacs/aks-int-dynamic-values.yaml
+          dependsOn:
+            - AksUpgrade
+          condition: not(canceled())
+
+      - template: /.pipelines/templates/Dacs.AksTest.Stages.yml@self
+        parameters:
+          testFilter: aks && helm-upgrade
+          stageName: AksHelmUpgrade
+          stageDisplayName: AKS Helm upgrade
+          testOutputFile: test-aks-helm-upgrade.xml
+          location: ${{ parameters.location }}
+          aksTemplate: nvme-l8
+          dacsBuildNumber: ${{ parameters.dacsBuildNumber }}
+          resourceGroupPrefix: dacs-aks-helm-upgrade
+          azureServiceConnection: ${{ parameters.azureServiceConnection }}
+          helmArgs: --values src/subsystems/cache-controller/charts/dacs/aks-int-${{ parameters.scalingMode }}-values.yaml
+          baselineChart: ${{ parameters.helmUpgradeBaselineChart }}
+          baselineChartVersion: ${{ parameters.helmUpgradeBaselineVersion }}
+          extraTestEnv: |
+            export HELM_UPGRADE_TARGET_CHART="$(dacsTargetChart)"
+            export HELM_UPGRADE_TARGET_VERSION="$(dacsChartVersion)"
+            export HELM_UPGRADE_BASELINE_IMAGE="${{ parameters.helmUpgradeBaselineImage }}"
+            export HELM_UPGRADE_TARGET_IMAGE="$(dacsImageRegistry)/cache-server:$(officialContainerVersion)"
+          dependsOn:
+            - AksScale
+          condition: not(canceled())
