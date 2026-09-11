@@ -28,6 +28,7 @@
 #include <sstream>
 #include <mstream.h>
 #include <atomic>
+#include <utility>
 
 // Global counter for tracking retries
 static std::atomic<uint64_t> g_totalRetryCount{0};
@@ -121,7 +122,7 @@ BlobClient::BlobClient(const std::string& mountName)
         m_nMaxConnections,
         m_bIsDynamicAccount,
         m_bIsDynamicContainer,
-        m_storageAuthContext.authType,
+        std::to_underlying(m_storageAuthContext.authType),
         m_isTokenFetchEnabled);
 }
 //---------------------------------------------------------------------------------------------------------------------

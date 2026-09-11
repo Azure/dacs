@@ -149,7 +149,7 @@ private:
     {
         // the operation id is always causing log corruption. There is a work item to fix it.
         // meanwhile removing operation id so that we can debug other issues.
-        return fmt::format(message, 
+        return fmt::format(fmt::runtime(message),
             GET_TIME,
             LoggingApi::Getpid(),
             LoggingApi::Gettid(),
