@@ -15,6 +15,7 @@
 #include <chrono>
 #include <thread>
 #include "IRemoteClientException.h"
+#include "RemoteClientException.h"
 #include "RemoteClientApiBase.h"
 #include "StorageInterceptLogger.h"
 //---------------------------------------------------------------------------------------------------------------------
@@ -65,12 +66,27 @@ void RemoteClientApiBase::Execute()
         LOG_ERROR("Remote Operation failed with non-retriable error. operation={} retryCount={}",
           m_strOperationName,
           retryCount);
-        throw remoteException.GetErrorMessage();
+        // Re-throw as a *typed* RemoteClientException (a std::exception)
+        // instead of a bare `std::string`. The C API boundary that generic
+        // Rust callers use -- StorageInterceptorImpl::SI_open/SI_pread/SI_close
+        // -- historically caught only `RemoteClientException`. A bare
+        // `throw std::string` (or the `const char*` below) therefore slipped
+        // past that catch, unwound out of the extern "C" SI_* frames, and
+        // crossed into Rust, whose catch_unwind cannot handle a foreign C++
+        // exception and calls abort() ("Rust cannot catch foreign exceptions,
+        // aborting"). Throwing a typed exception lets the boundary convert the
+        // failure into a clean, retriable error string instead of crashing the
+        // whole process (e.g. a GB200 training job).
+        throw RemoteClientException(remoteException.GetErrorMessage());
       }
     }
   }
 
   LOG_ERROR("Remote Operation retry limit exhausted. operation={}", m_strOperationName);
-  throw "Remote Operation retry limit exhausted";
+  // Never throw a bare `const char*` across the C FFI boundary -- wrap it in
+  // a typed RemoteClientException (see note above). This is the
+  // retry-exhaustion path that a heavily-loaded, highly concurrent reader
+  // (e.g. 16 GPUs sharing one cache server) is most likely to hit.
+  throw RemoteClientException("Remote Operation retry limit exhausted");
 }
 //---------------------------------------------------------------------------------------------------------------------

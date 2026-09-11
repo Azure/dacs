@@ -101,5 +101,8 @@ class StorageInterceptorImpl
         static ssize_t SI_pread(int fd, void* buf, size_t count, off64_t offset, char** errorString);
         static int SI_close(int fd, char** errorString);
         static int SI_fstat(int fd, struct stat* statbuf, char** errorString);
+        static void* SI_opendir(const char* pathname, char** errorString);
+        static void* SI_readdir(void* dirp, char** errorString);
+        static int SI_closedir(void* dirp, char** errorString);
 };
 //---------------------------------------------------------------------------------------------------------------------
