@@ -1,0 +1,10 @@
+**
+
+!*.go
+!*config.yaml
+!go.mod
+!go.sum
+!LICENSE
+!NOTICE.txt
+
+*_test.go

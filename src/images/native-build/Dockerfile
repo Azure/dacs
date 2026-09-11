@@ -27,8 +27,6 @@ USER root
 ENV DEBIAN_FRONTEND=noninteractive \
   CMAKE_DEP_INSTALL_DIR=/dependency
 
-COPY cmake $CMAKE_DEP_INSTALL_DIR/cmake/
-
 # Add Microsoft package repository for msft-golang
 ADD https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb /tmp/packages-microsoft-prod.deb
 
@@ -150,6 +148,8 @@ RUN git config --global --add safe.directory '*'
 # Following is used to prebuild all DACS dependencies
 # Architecture-specific CMake flags for cross-compilation
 # Build with space optimizations to prevent "No space left on device" errors
+COPY cmake $CMAKE_DEP_INSTALL_DIR/cmake/
+
 RUN set -ex && cd $CMAKE_DEP_INSTALL_DIR && \
     # Clean up any existing build artifacts first
     rm -rf CMakeCache.txt CMakeFiles/ _deps/ && \

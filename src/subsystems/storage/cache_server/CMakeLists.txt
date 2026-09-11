@@ -48,6 +48,9 @@ add_dependencies(CacheServerUtils
 file(GLOB CACHE_SERVER_SOURCES *cpp ./operations/*cpp ./utils/*cpp ./state/*cpp ./infiniband/*cpp
     ./snapshot/*cpp ./snapshot/proto/*cc ${CMAKE_SOURCE_DIR}/src/subsystems/storage/common/*cpp)
 
+set_source_files_properties(Server.cpp PROPERTIES
+    COMPILE_DEFINITIONS "BUILD_GIT_COMMIT_HASH=\"${GIT_COMMIT_HASH}\"")
+
 # Statically link Boost::program_options so the CacheServer runtime image (built from a slim
 # base image without Boost installed) does not need libboost_program_options.so at startup.
 set(Boost_USE_STATIC_LIBS ON)

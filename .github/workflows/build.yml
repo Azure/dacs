@@ -84,9 +84,13 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ccache
-          key: ccache-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          key: >-
+            ccache-v2-${{ runner.os }}-${{ runner.arch }}-${{ inputs.build_type }}-
+            ${{ hashFiles('src/images/native-build/Dockerfile', 'toolchain.cmake') }}-
+            ${{ github.sha }}
           restore-keys: |
-            ccache-${{ runner.os }}-${{ runner.arch }}-
+            ccache-v2-${{ runner.os }}-${{ runner.arch }}-${{ inputs.build_type }}-${{ hashFiles('src/images/native-build/Dockerfile', 'toolchain.cmake') }}-
+            ccache-v2-${{ runner.os }}-${{ runner.arch }}-${{ inputs.build_type }}-
 
       - name: Cache Cargo dependencies and build outputs
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -119,8 +123,8 @@ jobs:
           tags: ${{ steps.image.outputs.tag }}
           load: true
           push: false  # build locally only; never pushed to a registry
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=native-build-${{ inputs.build_arch }}
+          cache-to: type=gha,scope=native-build-${{ inputs.build_arch }},mode=max
 
       # Publish the toolchain image so the in-container test/pytest/wheel jobs can
       # load the identical image (docker save -> artifact -> docker load) rather
@@ -168,9 +172,10 @@ jobs:
   # from source inside their own Dockerfiles and do NOT need the C++ build tree,
   # so this job has no `needs` and runs concurrently with compile. Each image
   # builds on its own runner (matrix) via docker/build-push-action with the
-  # GitHub Actions layer cache (scoped per image), so the Go module download and
-  # build layers persist across runs. The image is loaded into the Docker store
-  # and uploaded as a tarball.
+  # GitHub Actions layer cache (scoped per image and architecture), so the Go
+  # module download and build layers persist across runs without amd64 and arm64
+  # overwriting each other. The image is loaded into the Docker store and
+  # uploaded as a tarball.
   images-go:
     name: Go image (${{ matrix.image.name }})
     runs-on: ${{ inputs.runner }}
@@ -217,8 +222,8 @@ jobs:
           file: ${{ matrix.image.file }}
           tags: ${{ matrix.image.name }}:local
           load: true
-          cache-from: type=gha,scope=${{ matrix.image.name }}
-          cache-to: type=gha,scope=${{ matrix.image.name }},mode=max
+          cache-from: type=gha,scope=${{ matrix.image.name }}-${{ inputs.build_arch }}
+          cache-to: type=gha,scope=${{ matrix.image.name }}-${{ inputs.build_arch }},mode=max
 
       - name: Save and upload ${{ matrix.image.name }} image
         uses: $/.github/actions/upload-image
