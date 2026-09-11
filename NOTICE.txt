@@ -22872,7 +22872,7 @@ MIT OR Apache-2.0 OR LGPL-2.1-or-later
 
 ---------------------------------------------------------
 
-fmtlib/fmt 4fe0b11195b7cd71f39253c44db2c9dddf6b82d4 - MIT WITH fmt-exception
+fmtlib/fmt b6f4ceaed0a0a24ccf575fab6c56dd50ccf6f1a9 - MIT WITH fmt-exception
 
 
 Copyright Paul Dreik 2019

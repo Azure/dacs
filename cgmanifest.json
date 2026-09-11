@@ -92,8 +92,8 @@
         "type": "git",
         "git": {
           "repositoryUrl": "https://github.com/fmtlib/fmt.git",
-          "commitHash": "4fe0b11195b7cd71f39253c44db2c9dddf6b82d4",
-          "tag": "7.1.0"
+          "commitHash": "b6f4ceaed0a0a24ccf575fab6c56dd50ccf6f1a9",
+          "tag": "8.1.1"
         }
       },
       "developmentDependency": false

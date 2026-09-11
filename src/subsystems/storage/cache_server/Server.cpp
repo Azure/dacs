@@ -41,6 +41,7 @@
 #include <cstdlib>
 #include <limits>
 #include <string>
+#include <utility>
 #include "Metrics.h"
 #include "NetworkCounters.h"
 #include "ServerArgs.h"
@@ -102,7 +103,7 @@ void HandleSocket(int epollFd)
         ResponseCode eResponseCode = ResponseCode::SUCCESS;
         std::size_t nFileSize = 0;
         bool bReuse = HandleRequest(socketConnection, eRequestType, eResponseCode, nFileSize);
-        LOG_DEBUG("Request type: {}, response code: {}", eRequestType, eResponseCode);
+        LOG_DEBUG("Request type: {}, response code: {}", eRequestType, std::to_underlying(eResponseCode));
         if (bReuse)
         {
             // To re-use the client connection, put it back into the epoll list
@@ -118,7 +119,7 @@ void HandleSocket(int epollFd)
         else
         {
             LOG_INFO("Close fd={} after request processing, request type: {}, response code: {}",
-                clientFd, eRequestType, eResponseCode);
+                clientFd, eRequestType, std::to_underlying(eResponseCode));
             if (close(clientFd) < 0)
             {
                 LOG_WARN("Failed to close client fd={}, errno: {}:{}", clientFd, errno, strerror(errno));
