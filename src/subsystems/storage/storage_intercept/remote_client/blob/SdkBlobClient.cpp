@@ -109,6 +109,7 @@ SdkBlobClient::SdkBlobClient(const std::string& mountName)
     , m_bIsDynamicAccount(StorageInterceptConfig::GetInstance().IsDynamicAccountMount(mountName))
     , m_bIsDynamicContainer(StorageInterceptConfig::GetInstance().IsDynamicContainerMount(mountName))
     , m_bChecksumEnabled(StorageInterceptConfig::GetInstance().GetRemoteBlobChecksumEnabled(mountName))
+    , m_bUploadChecksumEnabled(StorageInterceptConfig::GetInstance().GetRemoteBlobUploadChecksumEnabled(mountName))
     , m_nChecksumRetryMaxAttempts(StorageInterceptConfig::GetInstance().GetRemoteBlobChecksumRetryMaxAttempts())
     , m_blobRetryBaseDelay(std::chrono::seconds(StorageInterceptConfig::GetInstance().GetBlobRetryBaseDelaySeconds()))
     , m_blobRetryMaxDelay(std::chrono::seconds(StorageInterceptConfig::GetInstance().GetBlobRetryMaxDelaySeconds()))
@@ -124,8 +125,9 @@ SdkBlobClient::SdkBlobClient(const std::string& mountName)
 
     LOG_INFO(
         "Initialized SdkBlobClient mountName={} isDynamicAccount={} isDynamicContainer={} "
-        "checksumEnabled={} tokenFetchEnabled={}",
-        mountName, m_bIsDynamicAccount, m_bIsDynamicContainer, m_bChecksumEnabled, m_isTokenFetchEnabled);
+        "downloadChecksumEnabled={} uploadChecksumEnabled={} tokenFetchEnabled={}",
+        mountName, m_bIsDynamicAccount, m_bIsDynamicContainer, m_bChecksumEnabled,
+        m_bUploadChecksumEnabled, m_isTokenFetchEnabled);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool SdkBlobClient::DetectTokenFetchEnabled() const
@@ -319,6 +321,18 @@ std::string SdkBlobClient::GetUrlSafeBase64(const std::string& uuid, off64_t blo
     idStr = uuid + std::string(48 - uuid.length() - idStr.length(), '-') + idStr;
     const std::vector<uint8_t> bytes(idStr.begin(), idStr.end());
     return Azure::Core::Convert::Base64Encode(bytes);
+}
+//---------------------------------------------------------------------------------------------------------------------
+Blobs::StageBlockOptions SdkBlobClient::MakeStageBlockOptions() const
+{
+    Blobs::StageBlockOptions options;
+    if (m_bUploadChecksumEnabled)
+    {
+        Blobs::TransferValidationOptions validation;
+        validation.Algorithm = Azure::Storage::StorageChecksumAlgorithm::Crc64;
+        options.ValidationOptions = validation;
+    }
+    return options;
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool SdkBlobClient::IsChecksumMismatch(const std::string& message)
@@ -765,25 +779,51 @@ int SdkBlobClient::StageBlocksForUpload(
         blockIdBase64 = it->second[static_cast<size_t>(blockId)];
     }
 
-    try
+    const uint32_t maxAttempts = m_bUploadChecksumEnabled ? std::max(1u, m_nChecksumRetryMaxAttempts) : 1;
+    for (uint32_t attempt = 1; ; ++attempt)
     {
-        auto blockBlobClient = GetContainerClient(remotePath).GetBlockBlobClient(GetBlobName(remotePath));
-        Azure::Core::IO::MemoryBodyStream content(reinterpret_cast<const uint8_t*>(buf), length);
-        auto stageResult = blockBlobClient.StageBlock(blockIdBase64, content);
-        LOG_DEBUG("SdkBlobClient staged block path={} blockId={} statusCode={}",
-            remotePath, blockId, static_cast<int>(stageResult.RawResponse->GetStatusCode()));
-        return 0;
-    }
-    catch (const Azure::Storage::StorageException& e)
-    {
-        LOG_ERROR("SdkBlobClient stage block failed path={} blockId={} code={} msg={}",
-            remotePath, blockId, e.ErrorCode, e.Message);
-        throw RemoteClientException("BlobClientError: " + e.ErrorCode + ", " + e.Message);
-    }
-    catch (const std::exception& e)
-    {
-        LOG_ERROR("SdkBlobClient unexpected error staging block path={} blockId={} what={}", remotePath, blockId, e.what());
-        throw RemoteClientException(std::string("BlobClientError: ") + e.what());
+        try
+        {
+            auto blockBlobClient = GetContainerClient(remotePath).GetBlockBlobClient(GetBlobName(remotePath));
+            Azure::Core::IO::MemoryBodyStream content(reinterpret_cast<const uint8_t*>(buf), length);
+            const Blobs::StageBlockOptions options = MakeStageBlockOptions();
+            auto stageResult = blockBlobClient.StageBlock(blockIdBase64, content, options);
+            LOG_DEBUG("SdkBlobClient staged block path={} blockId={} length={} uploadChecksumEnabled={} attempt={} statusCode={}",
+                remotePath, blockId, length, m_bUploadChecksumEnabled, attempt,
+                static_cast<int>(stageResult.RawResponse->GetStatusCode()));
+            return 0;
+        }
+        catch (const Azure::Storage::StorageException& e)
+        {
+            if (m_bUploadChecksumEnabled && e.StatusCode == Azure::Core::Http::HttpStatusCode::BadRequest
+                && e.ErrorCode == "Crc64Mismatch")
+            {
+                if (attempt < maxAttempts)
+                {
+                    const auto backoff = storageretry::GetRetryIntervalExpJitter(
+                        attempt, m_blobRetryBaseDelay, m_blobRetryMaxDelay);
+                    LOG_WARN("SdkBlobClient upload CRC64 mismatch, re-staging block. "
+                        "path={} blockId={} length={} attempt={}/{} backoff={}s code={} statusCode={} requestId={}",
+                        remotePath, blockId, length, attempt, maxAttempts, backoff.count(),
+                        e.ErrorCode, static_cast<int>(e.StatusCode), e.RequestId);
+                    std::this_thread::sleep_for(backoff);
+                    continue;
+                }
+                LOG_ERROR("SdkBlobClient DATA INTEGRITY: upload CRC64 validation failed after {} attempts. "
+                    "path={} container={} blob={} blockId={} length={} code={} statusCode={} requestId={}",
+                    maxAttempts, remotePath, GetContainerName(remotePath), GetBlobName(remotePath),
+                    blockId, length, e.ErrorCode, static_cast<int>(e.StatusCode), e.RequestId);
+                throw RemoteClientException("BlobClientError: upload CRC64 mismatch: " + e.ErrorCode);
+            }
+            LOG_ERROR("SdkBlobClient stage block failed path={} blockId={} code={} msg={}",
+                remotePath, blockId, e.ErrorCode, e.Message);
+            throw RemoteClientException("BlobClientError: " + e.ErrorCode + ", " + e.Message);
+        }
+        catch (const std::exception& e)
+        {
+            LOG_ERROR("SdkBlobClient unexpected error staging block path={} blockId={} what={}", remotePath, blockId, e.what());
+            throw RemoteClientException(std::string("BlobClientError: ") + e.what());
+        }
     }
 }
 //---------------------------------------------------------------------------------------------------------------------

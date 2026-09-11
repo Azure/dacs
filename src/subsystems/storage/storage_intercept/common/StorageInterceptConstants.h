@@ -111,6 +111,7 @@ namespace StorageInterceptConstants
 
     const char* const ConfigNameRemoteBlobUseSdkClient = "remoteBlobUseSdkClient";
     const char* const ConfigNameRemoteBlobChecksumEnabled = "remoteBlobChecksumEnabled";
+    const char* const ConfigNameRemoteBlobUploadChecksumEnabled = "remoteBlobUploadChecksumEnabled";
     const char* const ConfigNameRemoteBlobChecksumRetryMaxAttempts = "remoteBlobChecksumRetryMaxAttempts";
     constexpr std::uint32_t ConfigDefaultRemoteBlobChecksumRetryMaxAttempts = 3;
 

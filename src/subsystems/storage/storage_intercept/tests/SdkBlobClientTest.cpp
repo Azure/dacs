@@ -47,6 +47,10 @@ class SdkBlobClientTest : public TestBase
         {
             return client.GetBlobName(path);
         }
+        static Azure::Storage::Blobs::StageBlockOptions CallMakeStageBlockOptions(const SdkBlobClient& client)
+        {
+            return client.MakeStageBlockOptions();
+        }
 
         // Static-account mount with a fake token; SdkBlobClient construction is network-free.
         void ConfigureStaticAccount()
@@ -98,6 +102,26 @@ TEST_F(SdkBlobClientTest, IsChecksumMismatch_OnlyTrueForChecksumMessages)
     EXPECT_FALSE(CallIsChecksumMismatch("AuthenticationFailed"));
     EXPECT_FALSE(CallIsChecksumMismatch("The server is busy."));
     EXPECT_FALSE(CallIsChecksumMismatch(""));
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(SdkBlobClientTest, UploadChecksum_DefaultsToCrc64)
+{
+    ConfigureStaticAccount();
+    SdkBlobClient client("");
+
+    const Azure::Storage::Blobs::StageBlockOptions options = CallMakeStageBlockOptions(client);
+    ASSERT_TRUE(options.ValidationOptions.HasValue());
+    EXPECT_EQ(options.ValidationOptions.Value().Algorithm,
+        Azure::Storage::StorageChecksumAlgorithm::Crc64);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(SdkBlobClientTest, UploadChecksum_CanBeDisabled)
+{
+    ConfigureStaticAccount();
+    OverrideConfig(StorageInterceptConstants::ConfigNameRemoteBlobUploadChecksumEnabled, "false");
+    SdkBlobClient client("");
+
+    EXPECT_FALSE(CallMakeStageBlockOptions(client).ValidationOptions.HasValue());
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(SdkBlobClientTest, PathParsing_StaticAccount)
