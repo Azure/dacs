@@ -14,6 +14,7 @@
 
 #include "BlobAuthTokenProvider.h"
 #include "StorageInterceptConfig.h"
+#include "StorageInterceptUtils.h"
 #include "StorageInterceptLogger.h"
 #include "RemoteClientException.h"
 #include <optional>
@@ -192,6 +193,15 @@ TokenInfo BlobAuthTokenProvider::FetchNewAccessToken(const std::string& mountPat
 // Read the projected service account token from the file injected by the AKS workload identity webhook
 std::string BlobAuthTokenProvider::ReadFederatedTokenFile(const std::string& filePath)
 {
+    // The path comes from configuration. Constrain it to an absolute path with no parent-directory
+    // traversal so it cannot be pointed at arbitrary files outside the projected token mount.
+    if (filePath.empty() || filePath.front() != '/' ||
+        filePath.find("/../") != std::string::npos ||
+        (filePath.size() >= 3 && filePath.compare(filePath.size() - 3, 3, "/..") == 0))
+    {
+        throw RemoteClientException("WorkloadIdentityError: Invalid federated token file path: " + filePath);
+    }
+
     std::ifstream tokenFile(filePath);
     if (!tokenFile.is_open())
     {
@@ -210,6 +220,13 @@ std::string BlobAuthTokenProvider::ReadFederatedTokenFile(const std::string& fil
     if (token.empty())
     {
         throw RemoteClientException("WorkloadIdentityError: Federated token file is empty: " + filePath);
+    }
+
+    // Ensure we forward a bearer assertion, not the contents of an unrelated file.
+    if (!StorageInterceptUtils::LooksLikeJwt(token))
+    {
+        throw RemoteClientException(
+            "WorkloadIdentityError: Federated token file does not contain a valid token: " + filePath);
     }
 
     return token;
@@ -309,8 +326,32 @@ TokenInfo BlobAuthTokenProvider::FetchTokenViaWorkloadIdentity(const std::string
             "azBlobTenantId, and azBlobIdentityClientId for mount path " + mountPath);
     }
 
-    // Build the AAD token endpoint URL
-    std::string tokenUrl = authorityHost + "/" + tenantId + "/oauth2/v2.0/token";
+    // Build the AAD token endpoint URL. IsAllowedAuthorityUrl only validates the scheme and host,
+    // so normalize a trailing slash and reject any remaining path/query/fragment here; otherwise
+    // an authorityHost like "https://login.microsoftonline.com/" would produce a malformed token
+    // URL with a double slash (or, for a path, a URL pointing outside the validated host).
+    std::string normalizedAuthorityHost = authorityHost;
+    if (!normalizedAuthorityHost.empty() && normalizedAuthorityHost.back() == '/')
+    {
+        normalizedAuthorityHost.pop_back();
+    }
+    const size_t schemePos = normalizedAuthorityHost.find("://");
+    if (schemePos == std::string::npos ||
+        normalizedAuthorityHost.find('/', schemePos + 3) != std::string::npos ||
+        normalizedAuthorityHost.find_first_of("?#") != std::string::npos)
+    {
+        LOG_ERROR("Rejecting workload identity request for authority host with path/query/fragment: {}",
+                   authorityHost);
+        throw RemoteClientException(
+            "SecurityError: Configured authority host must not include a path/query/fragment: " + authorityHost);
+    }
+    if (!StorageInterceptUtils::IsAllowedAuthorityUrl(normalizedAuthorityHost))
+    {
+        LOG_ERROR("Rejecting workload identity request for disallowed authority host: {}", authorityHost);
+        throw RemoteClientException(
+            "SecurityError: Configured authority host is not a permitted Azure AD endpoint: " + authorityHost);
+    }
+    std::string tokenUrl = normalizedAuthorityHost + "/" + tenantId + "/oauth2/v2.0/token";
 
     auto httpRequestFn = [&](int attempt) -> HttpResponse
     {

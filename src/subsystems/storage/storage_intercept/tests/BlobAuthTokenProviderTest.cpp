@@ -308,6 +308,23 @@ TEST_F(BlobAuthTokenProviderTest, TestDetectTokenFetchModeWorkloadIdentity)
     ASSERT_EQ(mockProvider.DetectTokenFetchMode(mountPath), TokenFetchMode::WorkloadIdentity);
 }
 //---------------------------------------------------------------------------------------------------------------------
+// Workload identity: a configured authority host with a path/trailing-slash must be rejected
+// before a token URL is built, rather than silently producing a malformed or out-of-allowlist URL.
+TEST_F(BlobAuthTokenProviderTest, TestWorkloadIdentityRejectsAuthorityHostWithPath)
+{
+    MockBlobAuthTokenProvider mockProvider;
+    std::string mountPath = "wli-authority-path";
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobFederatedTokenFile).c_str(), "/var/run/secrets/token");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobTenantId).c_str(), "tenant-id");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobIdentityClientId).c_str(), "mock-client-id");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSIEndpoint).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSISecret).c_str(), "");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobAuthorityHost).c_str(),
+        "https://login.microsoftonline.com/evil-path");
+
+    EXPECT_THROW(mockProvider.GetAccessToken(mountPath), RemoteClientException);
+}
+//---------------------------------------------------------------------------------------------------------------------
 // DetectTokenFetchMode: MSI params present (no workload identity) → MSI
 TEST_F(BlobAuthTokenProviderTest, TestDetectTokenFetchModeMSI)
 {

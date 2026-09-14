@@ -19,6 +19,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include <string>
 #include <map>
+#include <vector>
 //---------------------------------------------------------------------------------------------------------------------
 class StorageInterceptUtils
 {
@@ -57,6 +58,40 @@ class StorageInterceptUtils
          * Generate a random UUID string for versioning.
          */
         static std::string GenerateUUID();
+
+        /**
+         * Return true if host is a syntactically safe hostname whose value ends with one of
+         * allowedSuffixes (case-insensitive). Only unreserved hostname characters are accepted,
+         * so a path, userinfo, port, or whitespace embedded in host causes rejection. Used to
+         * stop credentials being attached to an attacker-chosen host (SSRF).
+         */
+        static bool IsAllowedEndpointHost(
+            /*[in]*/ const std::string& host,
+            /*[in]*/ const std::vector<std::string>& allowedSuffixes);
+
+        /**
+         * Return true if url uses the https scheme and its host is permitted by IsAllowedEndpointHost.
+         */
+        static bool IsHttpsUrlWithAllowedHost(
+            /*[in]*/ const std::string& url,
+            /*[in]*/ const std::vector<std::string>& allowedHostSuffixes);
+
+        /**
+         * Return true if token has the shape of a JWT (three non-empty base64url segments separated
+         * by dots). Guards against forwarding an unrelated file as a bearer assertion.
+         */
+        static bool LooksLikeJwt(/*[in]*/ const std::string& token);
+
+        /**
+         * Return true if host is a permitted Azure Blob endpoint. Accepts the built-in Azure cloud
+         * suffixes plus the operator-configured AZURE_BLOB_ENDPOINT_SUFFIX, if set.
+         */
+        static bool IsAllowedBlobHost(/*[in]*/ const std::string& host);
+
+        /**
+         * Return true if url is an https Azure AD authority endpoint (public or sovereign cloud).
+         */
+        static bool IsAllowedAuthorityUrl(/*[in]*/ const std::string& url);
 
     private:
         static const char SEPARATOR_CHAR = '/';
