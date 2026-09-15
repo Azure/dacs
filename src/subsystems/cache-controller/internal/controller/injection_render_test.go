@@ -5,6 +5,7 @@ Copyright (c) Microsoft Corporation. All rights reserved.
 package controller
 
 import (
+	"strings"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -187,6 +188,45 @@ func TestRenderTemplate_ValidInputStillWorks(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("cache-data-volume hostPath not found")
+	}
+}
+
+func TestRenderTemplate_CachePathIsEnvironmentData(t *testing.T) {
+	v := baseRenderValues()
+	v.MountSsdPath = `/var/lib/$(touch /tmp/inj); "quoted"`
+
+	var sts appsv1.StatefulSet
+	if err := renderTemplateInto("templates/cacheserver-app.yaml", v, &sts); err != nil {
+		t.Fatalf("render failed: %v", err)
+	}
+
+	container := sts.Spec.Template.Spec.Containers[0]
+	expectedPath := v.MountSsdPath + "/" + v.Name + "/cache"
+	foundPath := false
+	for _, env := range container.Env {
+		if env.Name == "CACHESERVER_CACHE_PATH" {
+			foundPath = true
+			if env.Value != expectedPath {
+				t.Errorf("expected cache path %q, got %q", expectedPath, env.Value)
+			}
+		}
+	}
+	if !foundPath {
+		t.Fatal("CACHESERVER_CACHE_PATH environment variable not found")
+	}
+
+	script := strings.Join(container.Args, "\n")
+	if strings.Contains(script, v.MountSsdPath) {
+		t.Errorf("cache path was rendered into shell source: %q", script)
+	}
+	for _, command := range []string{
+		`mkdir -p "$CACHESERVER_CACHE_PATH"`,
+		`/root/check_space_overuse.sh "$CACHESERVER_CACHE_PATH" "$CACHESERVER_CACHE_SIZE_BYTES"`,
+		`/root/CacheServer --port "$CACHESERVER_PORT" --cacheRoot "$CACHESERVER_CACHE_PATH" --sizeLimitBytes "$CACHESERVER_CACHE_SIZE_BYTES"`,
+	} {
+		if !strings.Contains(script, command) {
+			t.Errorf("rendered command does not preserve argument boundaries: %q", command)
+		}
 	}
 }
 

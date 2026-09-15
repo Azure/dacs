@@ -93,6 +93,20 @@ spec:
           value: {{ toJSON .EvictionBucketInterval }}
         - name: CACHESERVER_USE_ZEROCOPY
           value: "{{- if .UseZeroCopy }}1{{- else }}0{{- end }}"
+        - name: CACHESERVER_PORT
+          value: "{{ .Port }}"
+        - name: CACHESERVER_CACHE_PATH
+          value: {{ printf "%s/%s/cache" .MountSsdPath .Name | toJSON }}
+        - name: CACHESERVER_CACHE_SIZE_BYTES
+          value: "{{ mulAll .ServerSizeInGB 1024 1024 1024 }}"
+        - name: CACHESERVER_SNAPSHOT_INTERVAL
+          value: "{{ .SnapshotIntervalSeconds }}"
+        {{- if and .EgressBandwidthInGb }}
+        - name: CACHESERVER_EGRESS_BANDWIDTH
+          value: "{{ .EgressBandwidthInGb }}gbit"
+        - name: CACHESERVER_EGRESS_BURST
+          value: "{{ mulAll .EgressBandwidthInGb 25 }}mb"
+        {{- end }}
         resources:
           requests:
             memory: "{{- if .DisableMemoryRequest }}0{{- else }}100Mi{{- end }}"
@@ -124,30 +138,26 @@ spec:
         args:
         - |
           set -ex
-          export CACHESERVER_HOSTNAME=$HOSTNAME
-          export CACHESERVER_PORT={{ .Port }}
-          export CACHESERVER_CACHE_PATH="{{ .MountSsdPath }}/{{ .Name }}/cache"
-          export CACHESERVER_CACHE_SIZE_BYTES={{ mulAll .ServerSizeInGB 1024 1024 1024 }}
-          export CACHESERVER_SNAPSHOT_INTERVAL={{ .SnapshotIntervalSeconds }}
-          mkdir -p $CACHESERVER_CACHE_PATH
+          export CACHESERVER_HOSTNAME="$HOSTNAME"
+          mkdir -p "$CACHESERVER_CACHE_PATH"
 
           {{- if and .EgressBandwidthInGb }}
           echo "Traffic control is enabled"
-          BANDWIDTH="{{ .EgressBandwidthInGb }}gbit"
-          BURST="{{mulAll .EgressBandwidthInGb 25 }}mb"
+          BANDWIDTH="$CACHESERVER_EGRESS_BANDWIDTH"
+          BURST="$CACHESERVER_EGRESS_BURST"
           for iface in $(ls -1 /sys/class/net); do
             # Ensure it's a directory and has a valid type file
             if [ -d "/sys/class/net/$iface" ] && [ -f "/sys/class/net/$iface/type" ]; then
               # Only proceed if it's a physical ethernet interface
-              if [ "$(cat /sys/class/net/$iface/type)" = "1" ]; then
+              if [ "$(cat "/sys/class/net/$iface/type")" = "1" ]; then
                 echo "Applying rate limiting to interface: $iface"
                 echo "Setting bandwidth: $BANDWIDTH, burst: ${BURST}"
-                if ! tc qdisc replace dev $iface root tbf rate $BANDWIDTH burst ${BURST} latency 1000ms; then
+                if ! tc qdisc replace dev "$iface" root tbf rate "$BANDWIDTH" burst "$BURST" latency 1000ms; then
                   echo "Warning: Failed to apply rate limiting to $iface, continuing..."
                 fi
 
                 echo "Rate limiting configuration for $iface:"
-                if ! tc qdisc show dev $iface; then
+                if ! tc qdisc show dev "$iface"; then
                   echo "Warning: Failed to show qdisc config for $iface, continuing..."
                 fi
               fi
@@ -157,8 +167,8 @@ spec:
           echo "Traffic control is disabled"
           {{- end }}
 
-          /root/check_space_overuse.sh $CACHESERVER_CACHE_PATH $CACHESERVER_CACHE_SIZE_BYTES
-          /root/CacheServer --port $CACHESERVER_PORT --cacheRoot $CACHESERVER_CACHE_PATH --sizeLimitBytes $CACHESERVER_CACHE_SIZE_BYTES
+          /root/check_space_overuse.sh "$CACHESERVER_CACHE_PATH" "$CACHESERVER_CACHE_SIZE_BYTES"
+          /root/CacheServer --port "$CACHESERVER_PORT" --cacheRoot "$CACHESERVER_CACHE_PATH" --sizeLimitBytes "$CACHESERVER_CACHE_SIZE_BYTES"
         volumeMounts:
         - mountPath: {{ toJSON .MountSsdPath }}
           name: cache-data-volume
