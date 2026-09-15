@@ -33,8 +33,6 @@ const (
 	OldControllerReleaseName = "cache-server"
 	// NewControllerReleaseName is the helm release name for the new dacs chart.
 	NewControllerReleaseName = "dacs"
-	// NewControllerNamespace is the namespace where the new controller is deployed.
-	NewControllerNamespace = "cache-server"
 )
 
 // Info contains helm chart version information.
@@ -85,8 +83,8 @@ func GetReleaseInfo(ctx context.Context, namespace, releaseName string) Info {
 // GetCacheReleaseInfo returns helm info for the deployed cache system.
 // It checks for the new dacs release first, then falls back to the old cache-server release.
 func GetCacheReleaseInfo(ctx context.Context, cacheNamespace string) Info {
-	// Try new controller first (dacs in cache-server namespace)
-	info := GetReleaseInfo(ctx, NewControllerNamespace, NewControllerReleaseName)
+	// Try the new controller first in the configured cache namespace.
+	info := GetReleaseInfo(ctx, cacheNamespace, NewControllerReleaseName)
 	if info.ChartVersion != "<unknown>" {
 		return info
 	}
