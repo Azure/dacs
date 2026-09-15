@@ -71,3 +71,4 @@ extends:
           acrName: ${{ parameters.acrName }}
           azureServiceConnection: ${{ parameters.azureServiceConnection }}
           azureStorageBlobPath: ${{ parameters.azureStorageBlobPath }}
+          pushNativeBuildImages: true

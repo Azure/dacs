@@ -25,6 +25,10 @@ parameters:
     displayName: Azure Blob fixture path
     type: string
     default: az://dacstest.blob.core.windows.net/dataset/client-integration
+  - name: pushNativeBuildImages
+    displayName: Push rolling native-build tags
+    type: boolean
+    default: false
 
 stages:
   - stage: Build_amd64
@@ -56,6 +60,7 @@ stages:
               architecture: amd64
               acrName: ${{ parameters.acrName }}
               azureServiceConnection: ${{ parameters.azureServiceConnection }}
+              pushNativeBuildImage: ${{ parameters.pushNativeBuildImages }}
 
   - stage: Build_arm64
     displayName: Compile linux/arm64
@@ -91,6 +96,7 @@ stages:
               architecture: arm64
               acrName: ${{ parameters.acrName }}
               azureServiceConnection: ${{ parameters.azureServiceConnection }}
+              pushNativeBuildImage: ${{ parameters.pushNativeBuildImages }}
 
   - stage: Images_amd64
     displayName: Build linux/amd64 images

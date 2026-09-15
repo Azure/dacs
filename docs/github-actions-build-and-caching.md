@@ -1,0 +1,290 @@
+# GitHub Actions build and caching
+
+This document explains how the DACS GitHub Actions CI build compiles, packages,
+tests, and caches outputs for Linux `amd64` and `arm64`.
+
+GitHub Actions and Azure Pipelines build the same source, but they use different
+cache and artifact backends:
+
+- GitHub Actions uses the GitHub Actions cache and workflow artifacts.
+- Azure Pipelines uses Azure Pipeline caches, pipeline artifacts, and ACR-backed
+  BuildKit caches.
+
+For the Azure implementation, see
+[Azure Pipelines build and caching](azure-pipeline-build-and-caching.md).
+
+## End-to-end workflow
+
+`.github/workflows/ci.yml` is the CI entry point. It calls the reusable
+`.github/workflows/build.yml` workflow once for each architecture.
+
+```text
+                              ci.yml
+                                |
+                    +-----------+-----------+
+                    |                       |
+             build(amd64)               build(arm64)
+                    |                       |
+          reusable build.yml         reusable build.yml
+                    |                       |
+          +---------+---------+   +---------+---------+
+          |         |         |   |         |         |
+       compile   images-go  packages     same jobs for arm64
+          |
+   Build/load native-build
+   Compile C++ and Go
+   Save native image artifact
+   Save build-tree artifact
+          |
+   +------+--------------------------+
+   |                  |              |
+images-cpp      python-package   rust-package
+   |
+Build cached C++ base images
+Build final C++ images
+   |
+   +----------------------+-----------------------+
+                          |
+                 Per-image tar artifacts
+                          |
+          +---------------+----------------+
+          |               |                |
+      unit-test       image-scan      integration-test
+```
+
+The GitHub workflow builds locally in each runner. It does not publish
+container images or packages to ACR or a package registry.
+
+## Native-build image
+
+The `compile` job builds the native toolchain image directly from:
+
+```text
+src/images/native-build/Dockerfile
+```
+
+`docker/build-push-action` uses:
+
+```text
+load: true
+push: false
+cache-from: type=gha,scope=native-build-<architecture>
+cache-to: type=gha,scope=native-build-<architecture>,mode=max
+```
+
+The image is tagged with the ACR-shaped name expected by `bldenv.sh`, but it
+remains local to the runner:
+
+```text
+dacstest.azurecr.io/dacs/native-build:linux-amd64
+dacstest.azurecr.io/dacs/native-build:linux-arm64
+```
+
+The `compile` job saves the loaded image to a tarball and uploads it as:
+
+```text
+dacs-native-build-image-amd64
+dacs-native-build-image-arm64
+```
+
+Downstream jobs download and load the exact image. They do not rebuild it and
+do not depend on private ACR access.
+
+## GitHub Actions BuildKit caches
+
+BuildKit caches are separated by image and architecture:
+
+```text
+native-build-amd64
+native-build-arm64
+
+cache-server-base-amd64
+cache-server-base-arm64
+cache-client-base-amd64
+cache-client-base-arm64
+
+cacheserver-scheduler-amd64
+cacheserver-scheduler-arm64
+cache-controller-amd64
+cache-controller-arm64
+```
+
+The cache scopes prevent one architecture or image from overwriting another
+image's cache history.
+
+`mode=max` stores intermediate layers as well as final layers. This is
+important for multi-stage Dockerfiles because dependency-download and compiler
+layers can be reused even when the final image layer changes.
+
+## Compiler and package caches
+
+The reusable build workflow also uses `actions/cache`.
+
+### ccache
+
+The ccache key includes:
+
+- Runner operating system.
+- Runner architecture.
+- CMake build type.
+- Hashes of the native-build Dockerfile and toolchain file.
+- Current source commit.
+
+Restore prefixes first prefer the same toolchain inputs, then any cache for the
+same operating system, architecture, and build type. ccache still validates
+individual compiler invocations before reusing an object.
+
+### Cargo
+
+The Cargo cache stores:
+
+```text
+~/.cache/dacs-cargo
+src/subsystems/storage/rust/dacs_client/target
+```
+
+Its key includes the runner operating system, architecture, and
+`Cargo.lock` hash. Unit-test and Rust-package jobs use the same cache boundary.
+
+## Build-tree and package artifacts
+
+The compile job packages:
+
+```text
+bin/
+build/**/CTestTestfile.cmake
+```
+
+into:
+
+```text
+dacs-build-tree-<architecture>
+```
+
+Object files and static-library intermediates are intentionally excluded. Test
+jobs need the binaries and CTest metadata, not the complete CMake build tree.
+
+The reusable workflow also uploads:
+
+| Artifact pattern | Contents |
+| --- | --- |
+| `dacs-native-build-image-<arch>` | Saved native toolchain image |
+| `dacs-build-tree-<arch>` | Native binaries and CTest metadata |
+| `dacs-image-<name>-<arch>` | Saved component container image |
+| `dacs-wheel-<arch>` | Python wheel |
+| `dacs-rust-crate-<arch>` | Rust crate |
+
+Artifacts are scoped to the workflow run and have short retention periods.
+They are transport objects between jobs, not releases.
+
+## C++ application images
+
+The `images-cpp` job restores the compiled build tree and stages the native
+binaries in the Docker context.
+
+For each C++ image it first evaluates and loads the corresponding base image:
+
+```text
+cache-server-base
+cache-client-base
+```
+
+The base images use GitHub Actions BuildKit caches. The final component
+Dockerfiles then use normal `docker build` so their `FROM` instruction resolves
+the private-looking base tag from the local Docker daemon instead of trying to
+pull it.
+
+The resulting images are saved as workflow artifacts for tests and scanning.
+
+## Go application images
+
+The scheduler and controller images compile Go inside their own Dockerfiles.
+They do not depend on the native build tree, so their matrix jobs can run in
+parallel with native compilation.
+
+Each Go image has its own architecture-specific BuildKit cache scope and its
+own saved image artifact.
+
+## Tests and scans reuse build outputs
+
+Downstream jobs consume artifacts from the build matrix:
+
+- Unit tests restore the build tree and native-build image.
+- Python and Rust package jobs restore the same architecture's build outputs.
+- Image scans load one component image artifact per matrix job.
+- Minikube integration tests load the component image artifacts they deploy.
+
+No downstream job should recompile native source merely to run a test.
+
+## Pull request and main behavior
+
+The same workflow runs for pull requests and pushes to `main`.
+
+GitHub Actions concurrency cancels an older in-progress run for the same pull
+request. Pushes to `main` use the run ID in the concurrency group, so separate
+main pushes are not grouped by branch in this workflow.
+
+Both pull request and `main` runs can populate GitHub Actions caches. Neither
+path publishes the native-build image, application images, Python wheel, or
+Rust crate to an external registry.
+
+Fork pull requests receive a read-only token and no repository secrets. The
+workflow therefore relies on public inputs, GitHub-managed caches, and
+same-run artifacts rather than private ACR credentials.
+
+## Relationship to Azure Pipelines
+
+The systems use parallel concepts:
+
+| Build concern | GitHub Actions | Azure Pipelines |
+| --- | --- | --- |
+| Native Docker cache | `type=gha`, scoped by architecture | `type=registry`, stored in ACR |
+| Base-image Docker cache | `type=gha`, by image/arch | `type=registry`, in ACR |
+| Native image between jobs | Saved workflow artifact | Rebuilt/loaded per architecture job |
+| Build tree between jobs | Workflow artifact | Pipeline artifact |
+| ccache | `actions/cache` | `Cache@2` |
+| Cargo cache | `actions/cache` | `Cache@2` |
+| Registry publication | None in CI | Immutable images and official native promotion |
+
+The common correctness rule is the same: always evaluate current Docker build
+inputs, then let BuildKit decide which layers remain valid.
+
+## Troubleshooting
+
+### A downstream job rebuilds the native image
+
+Check that the compile job uploaded
+`dacs-native-build-image-<architecture>` and that the downstream restore action
+downloaded and loaded it.
+
+The loaded tag must match the architecture-specific tag expected by
+`bldenv.sh`.
+
+### A BuildKit cache has a low hit rate
+
+Confirm that the cache scope includes the correct image and architecture.
+Inspect the first Dockerfile instruction reported as not cached. A changed
+instruction invalidates every dependent layer.
+
+### ccache restores but compilation is still slow
+
+A restored ccache directory does not guarantee that every compiler invocation
+matches. Check whether compiler flags, generated headers, source files, the
+toolchain image, or build type changed.
+
+### An image scan cannot find its image
+
+Confirm that the expected `dacs-image-<name>-<architecture>` artifact exists
+and that `docker load` completed before the scan.
+
+### Documentation-only changes do not run CI
+
+`ci.yml` ignores `**/*.md` changes for push and pull request triggers. Markdown
+validation is handled by the repository's separate documentation and security
+workflows.
+
+## Related documentation
+
+- [Azure Pipelines build and caching](azure-pipeline-build-and-caching.md)
+- [Build from source](build-from-source.md)
+- [Testing](../test/README.md)

@@ -49,7 +49,7 @@ runs:
     # Load the exact toolchain image the compile job built (docker save ->
     # artifact -> docker load), rather than reconstructing it from the layer
     # cache. docker load restores the image with its original
-    # dacstest.azurecr.io/native-build:linux-<arch> tag, which is what bldenv.sh
+    # dacstest.azurecr.io/dacs/native-build:linux-<arch> tag, which is what bldenv.sh
     # looks up, so the in-container make targets reuse it directly. Tests run
     # inside this container via bldenv.sh (USE_CONTAINER=1), matching how the
     # binaries were compiled.

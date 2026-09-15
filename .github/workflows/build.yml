@@ -113,7 +113,7 @@ jobs:
         id: image
         run: |
           arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
-          echo "tag=dacstest.azurecr.io/native-build:linux-${arch}" >> "$GITHUB_OUTPUT"
+          echo "tag=dacstest.azurecr.io/dacs/native-build:linux-${arch}" >> "$GITHUB_OUTPUT"
 
       - name: Build native-build container image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0

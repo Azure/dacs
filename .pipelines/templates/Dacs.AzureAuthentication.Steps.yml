@@ -17,6 +17,11 @@ parameters:
     type: string
 
 steps:
+  - task: PipAuthenticate@1
+    displayName: Authenticate to Python package feed
+    inputs:
+      artifactFeeds: One/One_PublicPackages
+
   - ${{ if eq(parameters.architecture, 'arm64') }}:
       - bash: |
           set -euo pipefail
