@@ -97,6 +97,39 @@ azBlobDynamicContainer true
 This would cause container name to be picked from the intercepted path. The container name would be the first path segment.
 Note: The container name config setting if specified would be ignored.
 
+### Configure client metrics
+Cache client metrics are initialized automatically when the cache client. Configure the metric backends with environment variables before starting the process:
+
+| Environment variable | Default | Description |
+|---|---|---|
+| `STORAGE_METRIC_LOGGING_ENABLED` | `true` | Periodically write aggregated metrics to the application log. |
+| `STORAGE_METRIC_LOGGING_INTERVAL_MINS` | `15` | Logging aggregation interval in minutes. |
+| `STORAGE_METRIC_OTEL_ENABLED` | `false` | Export metrics using OpenTelemetry OTLP over HTTP. |
+| `STORAGE_METRIC_OTEL_ENDPOINT` | `http://localhost:4318/v1/metrics` | OTLP HTTP metrics endpoint. |
+| `STORAGE_METRIC_OTEL_SERVICENAME` | `dacs` | OpenTelemetry service name. |
+| `STORAGE_METRIC_OTEL_EXPORT_INTERVAL_MINS` | `5` | OpenTelemetry export interval in minutes. |
+
+For example, enable periodic logging and OTLP export with:
+
+```bash
+export STORAGE_METRIC_LOGGING_ENABLED=true
+export STORAGE_METRIC_LOGGING_INTERVAL_MINS=10
+export STORAGE_METRIC_OTEL_ENABLED=true
+export STORAGE_METRIC_OTEL_ENDPOINT=http://otel-collector:4318/v1/metrics
+export STORAGE_METRIC_OTEL_SERVICENAME=dacs-client
+export STORAGE_METRIC_OTEL_EXPORT_INTERVAL_MINS=5
+```
+
+Set both `STORAGE_METRIC_LOGGING_ENABLED=false` and `STORAGE_METRIC_OTEL_ENABLED=false` to disable client metrics. Invalid or non-positive interval values use their defaults.
+
+Some of the metrics emitted by cache client lib are:
+- upload and download operation counts
+- cache hit and miss counters
+- DNS error counts by hostname
+- successful upload/download latency histograms grouped by I/O size.
+
+Every metric includes the process ID; when the standard distributed-training `RANK` environment variable contains a non-negative integer, it is also included as a label.
+
 ### Other config settings
 Other config settings you can experiment with in `/tmp/storageIntercept.config`.
 

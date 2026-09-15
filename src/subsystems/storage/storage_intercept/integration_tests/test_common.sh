@@ -465,7 +465,119 @@ function reset_local_ssd_cache() {
   echo "Cleared local ssd cache"
 }
 
-# 4.4 Non-Intercepted File Access Validation
+# 4.4 OpenTelemetry metrics validation
+# Set VALIDATE_OTEL_METRICS=true to start a local collector and validate metrics emitted by a test process.
+OTEL_COLLECTOR_PID=-1
+OTEL_COLLECTOR_CONTAINER=""
+OTEL_COLLECTOR_LOG_FILE=""
+
+function start_otel_metrics_collector() {
+  if [[ "${VALIDATE_OTEL_METRICS:-false}" != "true" ]]; then
+    return
+  fi
+
+  local collector_config="${SCRIPT_DIR}/otel-collector-metrics-test.yaml"
+  OTEL_COLLECTOR_LOG_FILE="${TMPDIR:-/tmp}/otel_collector_metrics_$$.log"
+  rm -f "${OTEL_COLLECTOR_LOG_FILE}"
+
+  if [[ -n "${OTEL_COLLECTOR_BIN:-}" ]]; then
+    "${OTEL_COLLECTOR_BIN}" --config="${collector_config}" >"${OTEL_COLLECTOR_LOG_FILE}" 2>&1 &
+    OTEL_COLLECTOR_PID=$!
+  elif command -v otelcol-contrib >/dev/null 2>&1; then
+    otelcol-contrib --config="${collector_config}" >"${OTEL_COLLECTOR_LOG_FILE}" 2>&1 &
+    OTEL_COLLECTOR_PID=$!
+  elif command -v otelcol >/dev/null 2>&1; then
+    otelcol --config="${collector_config}" >"${OTEL_COLLECTOR_LOG_FILE}" 2>&1 &
+    OTEL_COLLECTOR_PID=$!
+  elif command -v docker >/dev/null 2>&1; then
+    OTEL_COLLECTOR_CONTAINER="dacs-otel-metrics-$$"
+    docker create \
+      --name "${OTEL_COLLECTOR_CONTAINER}" \
+      --publish 4318:4318 \
+      --publish 13133:13133 \
+      "${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector:0.132.0}" \
+      --config=/etc/otelcol/config.yaml >/dev/null
+    docker cp "${collector_config}" "${OTEL_COLLECTOR_CONTAINER}:/etc/otelcol/config.yaml"
+    docker start "${OTEL_COLLECTOR_CONTAINER}" >/dev/null
+  else
+    echo "ERROR: OTel validation requires OTEL_COLLECTOR_BIN, otelcol, otelcol-contrib, or docker"
+    return 1
+  fi
+
+  local attempts=30
+  until curl --fail --silent "http://127.0.0.1:13133/" >/dev/null; do
+    attempts=$((attempts - 1))
+    if [[ ${attempts} -eq 0 ]]; then
+      echo "ERROR: OpenTelemetry Collector did not become ready"
+      print_otel_metrics_collector_logs
+      return 1
+    fi
+    sleep 1
+  done
+
+  export STORAGE_METRIC_OTEL_ENABLED=true
+  export STORAGE_METRIC_OTEL_ENDPOINT="http://127.0.0.1:4318/v1/metrics"
+  export STORAGE_METRIC_OTEL_SERVICENAME="dacs-integration-test"
+  export STORAGE_METRIC_OTEL_EXPORT_INTERVAL_MINS=1
+  echo "OpenTelemetry metrics validation enabled; collector is ready"
+}
+
+function print_otel_metrics_collector_logs() {
+  if [[ -n "${OTEL_COLLECTOR_CONTAINER}" ]]; then
+    docker logs "${OTEL_COLLECTOR_CONTAINER}" 2>&1 || true
+  elif [[ -f "${OTEL_COLLECTOR_LOG_FILE}" ]]; then
+    cat "${OTEL_COLLECTOR_LOG_FILE}"
+  fi
+}
+
+# Parameters: one or more metric names expected in the collector debug output.
+function validate_otel_metrics() {
+  if [[ "${VALIDATE_OTEL_METRICS:-false}" != "true" ]]; then
+    return
+  fi
+
+  echo "Validating OpenTelemetry metrics: $*"
+  local output
+  if [[ -n "${OTEL_COLLECTOR_CONTAINER}" ]]; then
+    output="$(docker logs "${OTEL_COLLECTOR_CONTAINER}" 2>&1)"
+  else
+    output="$(cat "${OTEL_COLLECTOR_LOG_FILE}")"
+  fi
+
+  local metric_name
+  for metric_name in "$@"; do
+    if ! grep -Fq "${metric_name}" <<<"${output}"; then
+      echo "ERROR: Metric '${metric_name}' was not received by the OpenTelemetry Collector"
+      echo "${output}"
+      return 1
+    else
+      echo "Metric '${metric_name}' was successfully received by the OpenTelemetry Collector"
+    fi
+  done
+}
+
+function stop_otel_metrics_collector() {
+  if [[ -n "${OTEL_COLLECTOR_CONTAINER}" ]]; then
+    docker logs "${OTEL_COLLECTOR_CONTAINER}" >"${OTEL_COLLECTOR_LOG_FILE}" 2>&1 || true
+    docker rm --force "${OTEL_COLLECTOR_CONTAINER}" >/dev/null 2>&1 || true
+    OTEL_COLLECTOR_CONTAINER=""
+  elif [[ ${OTEL_COLLECTOR_PID} -ne -1 ]]; then
+    kill "${OTEL_COLLECTOR_PID}" >/dev/null 2>&1 || true
+    wait "${OTEL_COLLECTOR_PID}" 2>/dev/null || true
+    OTEL_COLLECTOR_PID=-1
+  fi
+}
+
+function cleanup_otel_metrics_validation() {
+  stop_otel_metrics_collector
+  unset VALIDATE_OTEL_METRICS
+  unset STORAGE_METRIC_OTEL_ENABLED
+  unset STORAGE_METRIC_OTEL_ENDPOINT
+  unset STORAGE_METRIC_OTEL_SERVICENAME
+  unset STORAGE_METRIC_OTEL_EXPORT_INTERVAL_MINS
+}
+
+# 4.5 Non-Intercepted File Access Validation
 # Verifies that the storage interceptor doesn't emit logs for files outside intercepted paths
 # Ensures clean separation between intercepted and non-intercepted file operations
 function __verify_nologs_unintercepted_() {

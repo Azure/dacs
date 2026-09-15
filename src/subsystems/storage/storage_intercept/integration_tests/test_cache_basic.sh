@@ -48,6 +48,9 @@ echo "================================================"
 start_cache_server /dev/null
 sleep 10
 
+export VALIDATE_OTEL_METRICS=true
+start_otel_metrics_collector
+
 # Ensure perf client is wired up correctly
 PERF_CLIENT_EXE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/cache-test/PerfClient "
 random_prefix=$(date +%s)
@@ -57,6 +60,7 @@ then
     echo "Perf client upload test failed"
     exit 1
 fi
+validate_otel_metrics cache_client_upload_requests
 
 eval "${PERF_CLIENT_EXE} --server-hostname 127.0.0.1 --server-port ${CACHE_SERVER_PORT} --num-threads 16 --data-size-GiB 1 --prefix ${random_prefix} --mode download"
 if [ $? -ne 0 ]
@@ -64,6 +68,9 @@ then
     echo "Perf client download test failed"
     exit 1
 fi
+validate_otel_metrics cache_client_download_requests
+
+cleanup_otel_metrics_validation
 
 # Ensure eviction client is wired up correctly
 EVICTION_CLIENT_EXE="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/cache-test/PerfClient "

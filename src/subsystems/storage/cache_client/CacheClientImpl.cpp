@@ -20,6 +20,7 @@
 #include "CacheUtils.h"
 #include "EncryptionUtil.h"
 #include "LogUtils.h"
+#include "StorageMetrics.h"
 #include "cache.pb.h"
 
 #include <boost/crc.hpp>
@@ -159,7 +160,10 @@ CacheClientStatus CacheClientImpl::Initialize(
                                                                 nSocketRcvbufSize);
     
     m_bInitialized = true;
-    LOG_INFO("CacheClientImpl initialized. Enable Calculate checksum = {}, Enable Validate checksum = {}, Checksum algorithm = {}, Retry max attempts = {}, Retry base delay ms = {}, Retry max delay ms = {}",
+    STORAGE_METRIC_INITIALIZE();
+    LOG_INFO("CacheClientImpl initialized. "
+             "Enable Calculate checksum = {}, Enable Validate checksum = {}, Checksum algorithm = {}, "
+             "Retry max attempts = {}, Retry base delay ms = {}, Retry max delay ms = {}",
              m_bEnableCalculateChecksum,
              m_bEnableValidateChecksum,
              ChecksumFactory::GetAlgorithmName(m_checksumAlgorithm),
@@ -232,6 +236,9 @@ CacheClientStatus CacheClientImpl::Upload(
                             MAX_METADATA_KEY_VALUE_PAIRS);
         return CacheClientStatus::INVALID_ARGUMENT;
     }
+
+    STORAGE_METRIC_TIMER_START(cache_client_upload_latency_ms);
+    STORAGE_METRIC_COUNTER_INCREMENT("cache_client_upload_requests");
 
     Request request;
     UploadRequest* uploadRequest = request.mutable_uploadrequest();
@@ -409,7 +416,7 @@ CacheClientStatus CacheClientImpl::Upload(
         return status;
     };
 
-    return cacheclientretry::AttemptWithRetry(
+    const CacheClientStatus status = cacheclientretry::AttemptWithRetry(
         uploadAttempt,
         [&](const cacheclientretry::CacheClientRetryLogContext& ctx)
         {
@@ -426,6 +433,12 @@ CacheClientStatus CacheClientImpl::Upload(
                 (long)ctx.delay.count());
         },
         m_retryConfig);
+    if(status == CacheClientStatus::SUCCESS)
+    {
+        STORAGE_METRIC_COUNTER_INCREMENT("cache_client_uploaded_bytes", nBufferLength);
+        STORAGE_METRIC_TIMER_END(cache_client_upload_latency_ms, nBufferLength);
+    }
+    return status;
 }
 //---------------------------------------------------------------------------------------------------------------------
 CacheClientStatus CacheClientImpl::Download(
@@ -481,6 +494,10 @@ CacheClientStatus CacheClientImpl::Download(
         LOG_ERROR_REQID_STR("Partial download not supported with encryption, key: {}", strCorrelationId, strCacheKey);
         return CacheClientStatus::INTERNAL_ERROR;
     }
+
+    STORAGE_METRIC_TIMER_START(cache_client_download_latency_ms);
+    STORAGE_METRIC_COUNTER_INCREMENT("cache_client_download_requests");
+    STORAGE_METRIC_COUNTER_INCREMENT("cache_client_download_requested_bytes", *nLength);
 
     CacheClientStatus cacheClientStatus = CacheClientStatus::INTERNAL_ERROR;
     Request request;
@@ -711,15 +728,20 @@ CacheClientStatus CacheClientImpl::Download(
 
         *nLength = actualReadLen;
         cacheClientStatus = CacheClientStatus::SUCCESS;
+        STORAGE_METRIC_COUNTER_INCREMENT("cache_client_download_cache_hits");
+        STORAGE_METRIC_COUNTER_INCREMENT("cache_client_downloaded_bytes", actualReadLen);
+        STORAGE_METRIC_TIMER_END(cache_client_download_latency_ms, actualReadLen);
     }
     else if(response.result() == DownloadResponse::NOT_FOUND_GOT_LOCK)
     {
         cacheClientStatus = CacheClientStatus::NOTFOUND_LOCKED;
+        STORAGE_METRIC_COUNTER_INCREMENT("cache_client_download_cache_misses");
     }
     else if(response.result() == DownloadResponse::NOT_FOUND_ALREADY_LOCKED ||
             response.result() == DownloadResponse::NOT_FOUND)
     {
         cacheClientStatus = CacheClientStatus::NOTFOUND;
+        STORAGE_METRIC_COUNTER_INCREMENT("cache_client_download_cache_misses");
     }
     else
     {
@@ -760,6 +782,8 @@ CacheClientStatus CacheClientImpl::DeleteGroup(/*[in]*/ const char* groupID,
         LOG_ERROR_REQID_STR("GroupID {} is longer than max length {}", strCorrelationId, groupID, MAX_GROUPID_LEN);
         return CacheClientStatus::INVALID_ARGUMENT;
     }
+
+    STORAGE_METRIC_COUNTER_INCREMENT("cache_client_delete_group_requests");
 
     // Loop through each server and issue the delete request.
     // Always continue to all servers even if some fail
@@ -905,6 +929,8 @@ CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
         return CacheClientStatus::INVALID_ARGUMENT;
     }
 
+    STORAGE_METRIC_COUNTER_INCREMENT("cache_client_get_last_access_time_distribution_requests");
+
     std::map<int64_t, uint64_t> lastAccessTimeDistribution;
 
     const std::vector<std::string> cacheServerHostnames = m_spConnectionManager->GetAllCacheServerHostnames();
@@ -1045,6 +1071,8 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
         LOG_ERROR_REQID_STR("Invalid last access time format {}", strCorrelationId, lastAccessTime);
         return CacheClientStatus::INVALID_ARGUMENT;
     }
+
+    STORAGE_METRIC_COUNTER_INCREMENT("cache_client_delete_by_last_access_time_requests");
 
     // Loop through each server, setup a connection and issue the delete request
     const std::vector<std::string> cacheServerHostnames = m_spConnectionManager->GetAllCacheServerHostnames();

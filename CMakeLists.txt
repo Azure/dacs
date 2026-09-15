@@ -74,6 +74,9 @@ include(${CMAKE_EXTERNAL_PROJECT}/json_include.cmake)
 #Fast Hashing with xxHash - required for criu deduping
 include(${CMAKE_EXTERNAL_PROJECT}/xxHash_include.cmake)
 
+# OpenTelemetry metrics SDK and OTLP gRPC exporter
+include(${CMAKE_EXTERNAL_PROJECT}/opentelemetry_cpp_include.cmake)
+
 #prometheus support through https://github.com/jupp0r/prometheus-cpp/releases 
 include(${CMAKE_EXTERNAL_PROJECT}/prometheus_cpp_include.cmake)
 
