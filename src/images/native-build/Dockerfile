@@ -161,6 +161,16 @@ RUN TARGETARCH=${TARGETARCH:-amd64} && \
     mv /usr/local/bin/.kubebuilder.new /usr/local/bin/kubebuilder && \
     rm "$KUBEBUILDER_DOWNLOAD"
 
+# Install the OpenTelemetry Collector used by storage metrics integration tests.
+ARG OTEL_COLLECTOR_VERSION=0.132.0
+RUN TARGETARCH=${TARGETARCH:-amd64} && \
+        curl -fsSL \
+            "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v${OTEL_COLLECTOR_VERSION}/otelcol_${OTEL_COLLECTOR_VERSION}_linux_${TARGETARCH}.tar.gz" \
+            -o /tmp/otelcol.tar.gz && \
+        tar -xzf /tmp/otelcol.tar.gz -C /usr/local/bin otelcol && \
+        chmod +x /usr/local/bin/otelcol && \
+        rm /tmp/otelcol.tar.gz
+
 # Configure Git to trust mounted repository directories
 RUN git config --global --add safe.directory '*'
 

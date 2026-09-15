@@ -17,6 +17,7 @@
 #include "StorageLibcApiWrapper.h"
 #include "SocketConnection.h"
 #include "IBConnection.h"
+#include "StorageMetrics.h"
 #include "cache.pb.h"
 #include "CacheUtils.h"
 #include <errno.h>
@@ -587,6 +588,7 @@ std::unique_ptr<IConnection> ConnectionManager::CreateSocketAndConnect(const std
     if (ret != 0)
     {
         LOG_WARN("Failed to resolve server address={} error={}", hostname, gai_strerror(ret));
+        STORAGE_METRIC_COUNTER_INCREMENT("cache_client_dns_errors", 1, {{"hostname", hostname}});
         return nullptr;
     }
 

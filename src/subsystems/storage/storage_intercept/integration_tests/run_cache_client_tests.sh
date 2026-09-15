@@ -21,6 +21,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" >/dev/null 2>&1; pwd -P)"
 export BUILD_CONFIGURATION="${1:-Debug}"
+export VALIDATE_OTEL_METRICS=true
 source "${SCRIPT_DIR}/test_common.sh"
 
 export CACHE_SERVER_PATH="${TMPDIR:-/tmp}/cache_server_$$"
@@ -32,6 +33,7 @@ cleanup() {
     set +e
 
     stop_cache_server "" >/dev/null 2>&1
+    stop_otel_metrics_collector
 
     if [[ ${rc} -ne 0 && -f "${CACHE_SERVER_LOG_FILE}" ]]; then
         echo "CacheServer logs:"
@@ -42,6 +44,8 @@ cleanup() {
     exit "${rc}"
 }
 trap cleanup EXIT INT TERM
+
+start_otel_metrics_collector
 
 echo "Starting CacheServer for CacheClientTests (${BUILD_CONFIGURATION})"
 start_cache_server "${CACHE_SERVER_LOG_FILE}"
@@ -58,5 +62,9 @@ fi
 CACHE_SERVER_PORT="${CACHE_SERVER_PORT}" \
 CACHE_SERVER_PATH="${CACHE_SERVER_PATH}" \
     "${CACHE_CLIENT_TEST_EXE}" --gtest_filter='*CacheClientTests*'
+
+validate_otel_metrics \
+    cache_client_upload_requests \
+    cache_client_download_requests
 
 echo "CacheClientTests completed successfully"

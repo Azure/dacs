@@ -38,12 +38,13 @@ add_library(CacheClientLib STATIC
     utils/CacheClientRetry.cpp
 )
 
-set(CommonDeps StorageCommon StorageLibcDlsymWrapper IbverbsDlsym ClientConnections CacheProto EncryptionUtils)
+set(CommonDeps StorageCommon StorageMetrics StorageLibcDlsymWrapper IbverbsDlsym ClientConnections CacheProto EncryptionUtils)
 set(CommonLinks StorageLibcDlsymWrapper
     IbverbsDlsym
     ClientConnections
     CacheProto
     EncryptionUtils
+    StorageMetrics
     diagnostics
     pthread
     xxhash)
@@ -113,6 +114,7 @@ add_library(CacheClientStaticLibWithoutProtobuf STATIC
     $<TARGET_OBJECTS:ClientConnections>
     $<TARGET_OBJECTS:CacheProto>
     $<TARGET_OBJECTS:EncryptionUtils>
+    $<TARGET_OBJECTS:StorageMetrics>
     $<TARGET_OBJECTS:diagnostics>
 )
 

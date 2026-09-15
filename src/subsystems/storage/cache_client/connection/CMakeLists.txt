@@ -23,6 +23,6 @@ add_library(ClientConnections ${CLIENT_UTILS_SOURCES})
 
 target_include_directories(ClientConnections PUBLIC ${CMAKE_CURRENT_LIST_DIR})
 
-add_dependencies(ClientConnections StorageCommon StorageLibcDlsymWrapper IbverbsDlsym CacheProto diagnostics)
+add_dependencies(ClientConnections StorageCommon StorageMetrics StorageLibcDlsymWrapper IbverbsDlsym CacheProto diagnostics)
 
-target_link_libraries(ClientConnections StorageCommon StorageLibcDlsymWrapper IbverbsDlsym CacheProto diagnostics curl jsoncpp dl uuid crypto)
+target_link_libraries(ClientConnections StorageCommon StorageMetrics StorageLibcDlsymWrapper IbverbsDlsym CacheProto diagnostics curl jsoncpp dl uuid crypto)

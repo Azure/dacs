@@ -68,3 +68,7 @@ include_directories(SYSTEM ${PROJECT_BINARY_DIR}/include)
 # prometheus cpp
 include(external/External_prometheus_cpp.cmake)
 include_directories(SYSTEM ${PROJECT_BINARY_DIR}/include)
+
+# OpenTelemetry C++ SDK and OTLP HTTP exporter
+include(external/External_opentelemetry_cpp.cmake)
+include_directories(SYSTEM ${PROJECT_BINARY_DIR}/include)
