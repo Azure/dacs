@@ -402,10 +402,11 @@ var _ = Describe("Cache Controller", Label("e2e", "controller"), Ordered, func()
 				// Verify CACHESERVER_CACHE_SIZE_BYTES env var reflects 200GB (200 * 1024^3 bytes)
 				expectedCacheSizeBytes := fmt.Sprintf("%d", int64(200)*1024*1024*1024)
 				containers := sts.Spec.Template.Spec.Containers
-				g.Expect(containers).NotTo(BeEmpty())
-				args := containers[0].Args
-				g.Expect(args).NotTo(BeEmpty())
-				g.Expect(args[0]).To(ContainSubstring(fmt.Sprintf("%s=%s", CacheServerCacheSizeBytesEnvVar, expectedCacheSizeBytes)))
+				g.Expect(containers).NotTo(BeEmpty(), "StatefulSet should contain a CacheServer container")
+				g.Expect(containers[0].Env).To(ContainElement(corev1.EnvVar{
+					Name:  CacheServerCacheSizeBytesEnvVar,
+					Value: expectedCacheSizeBytes,
+				}), "CacheServer size environment variable should reflect the updated Cache spec")
 			}).WithContext(ctx).Should(Succeed())
 
 			By("restoring original serverSizeInGB")
