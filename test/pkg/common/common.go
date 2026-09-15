@@ -46,7 +46,6 @@ const (
 	// trueString is the string representation of a boolean true value.
 	trueString = "true"
 
-	controllerNamespace      = "cache-server"
 	controllerDeploymentName = "dacs-manager"
 	cacheControllerCRDName   = "caches.storage.azure.com"
 
@@ -188,7 +187,7 @@ func controllerDeploymentExists(ctx context.Context, k8sClient client.Client) bo
 	deploy := &appsv1.Deployment{}
 	err := k8sClient.Get(ctx, client.ObjectKey{
 		Name:      controllerDeploymentName,
-		Namespace: controllerNamespace,
+		Namespace: GetNamespace(),
 	}, deploy)
 
 	if err == nil {
@@ -406,7 +405,7 @@ func ensureControllerInstall(ctx context.Context, k8sClient client.Client) {
 		deploy := &appsv1.Deployment{}
 		err := k8sClient.Get(ctx, client.ObjectKey{
 			Name:      controllerDeploymentName,
-			Namespace: controllerNamespace,
+			Namespace: GetNamespace(),
 		}, deploy)
 		g.Expect(err).NotTo(HaveOccurred(), "Failed to get controller deployment")
 		g.Expect(deploy.Spec.Replicas).NotTo(BeNil(), "Controller deployment has no replica spec")

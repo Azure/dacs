@@ -23,14 +23,14 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/Azure/dacs/test/pkg/common"
 	helmhelpers "github.com/Azure/dacs/test/pkg/helm"
 	"github.com/Azure/dacs/test/pkg/kusto"
 	"github.com/Azure/dacs/test/pkg/verification"
 )
 
 const (
-	helmUpgradeRelease   = "dacs"
-	helmUpgradeNamespace = "cache-server"
+	helmUpgradeRelease = "dacs"
 
 	// helmUpgradeChartRepoPath mirrors DACS_CACHE_CHART_REPO in deploy.mk
 	// and is the path under HELM_UPGRADE_TARGET_REGISTRY where the chart is
@@ -57,6 +57,7 @@ func testClusterHelmUpgrade(tc *testContext) {
 		Expect(registry).NotTo(BeEmpty(), "HELM_UPGRADE_TARGET_REGISTRY must be set")
 		Expect(version).NotTo(BeEmpty(), "HELM_UPGRADE_TARGET_VERSION must be set")
 		chartRef := fmt.Sprintf("oci://%s/%s", registry, helmUpgradeChartRepoPath)
+		helmUpgradeNamespace := common.GetNamespace()
 
 		preUpgradeReleaseInfo := helmhelpers.GetReleaseInfo(ctx, helmUpgradeNamespace, helmUpgradeRelease)
 		Expect(preUpgradeReleaseInfo.AppVersion).NotTo(Or(BeEmpty(), Equal("<unknown>")), "helm release %s/%s has no usable AppVersion: %q", helmUpgradeNamespace, helmUpgradeRelease, preUpgradeReleaseInfo.AppVersion)
