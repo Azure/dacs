@@ -31,10 +31,6 @@ jobs:
           acrName: ${{ parameters.acrName }}
           azureServiceConnection: ${{ parameters.azureServiceConnection }}
           azureStorageBlobPath: ${{ parameters.azureStorageBlobPath }}
-      - task: PipAuthenticate@1
-        displayName: Authenticate to Python package feed
-        inputs:
-          artifactFeeds: One/One_PublicPackages
       - bash: |
           set -euo pipefail
           BUILD_ARCH="${{ parameters.architecture }}" \

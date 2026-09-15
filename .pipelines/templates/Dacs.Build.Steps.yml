@@ -19,6 +19,9 @@ parameters:
     type: string
   - name: azureServiceConnection
     type: string
+  - name: pushNativeBuildImage
+    type: boolean
+    default: false
 
 steps:
   - template: Dacs.Version.Steps.yml
@@ -108,9 +111,7 @@ steps:
       export CARGO_CACHE_DIR="$(Pipeline.Workspace)/.cache/dacs-cargo"
 
       DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
-      BUILD_NUMBER="$(finalTag)" \
       BUILD_ARCH="$architecture" \
-      PUSH_IMAGES=false \
         ./.pipelines/scripts/build/rebuild-native-build-image.sh
 
       DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
@@ -147,3 +148,11 @@ steps:
       cp "$crate_source"/*.crate "$crate_artifact_dir/"
     displayName: Package linux/${{ parameters.architecture }} build artifacts
     workingDirectory: $(Pipeline.Workspace)/s/dacs
+
+  - ${{ if eq(parameters.pushNativeBuildImage, true) }}:
+      - bash: |
+          set -euo pipefail
+
+          docker push \
+            "${{ parameters.acrName }}.azurecr.io/dacs/native-build:linux-${{ parameters.architecture }}"
+        displayName: Push linux/${{ parameters.architecture }} native-build image

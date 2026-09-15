@@ -191,5 +191,7 @@ Docker data directory and clone have sufficient free space.
 ## Related documentation
 
 - [Project overview](../README.md)
+- [Azure Pipelines build and caching](azure-pipeline-build-and-caching.md)
+- [GitHub Actions build and caching](github-actions-build-and-caching.md)
 - [Deployment user guide](../user-guide.md)
 - [Testing](../test/README.md)

@@ -22,6 +22,9 @@ DOCKER_DIR="$REPOSITORY_ROOT/Docker"
 CACHE_CONTROLLER_DIR="$REPOSITORY_ROOT/src/subsystems/cache-controller"
 SCHEDULER_DIR="$REPOSITORY_ROOT/src/subsystems/storage/cache_server_scheduler"
 BASE_IMAGE_DIR="$REPOSITORY_ROOT/Docker/base"
+BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
+ENABLE_REGISTRY_BUILD_CACHE="${ENABLE_REGISTRY_BUILD_CACHE:-false}"
+BUILDKIT_IMAGE="${BUILDKIT_IMAGE:-mcr.microsoft.com/oss/v2/moby/buildkit:v0.31.0@sha256:fe54b035f7e18247c19d74adfaae42f62f44dca1fd00ae35b795a662a6126d67}"
 UBUNTU_ARCHIVE_MIRROR="${UBUNTU_ARCHIVE_MIRROR:-}"
 if [[ "${USE_AZURE_CFS:-false}" == "true" && -z "$UBUNTU_ARCHIVE_MIRROR" ]]; then
     UBUNTU_ARCHIVE_MIRROR="http://azure.archive.ubuntu.com/ubuntu"
@@ -60,7 +63,6 @@ if [[ -z "$REGISTRY" ]]; then
     REGISTRY="dacstest.azurecr.io"
     echo "DOCKER_REGISTRY not set; defaulting to: $REGISTRY"
 fi
-PUBLISH_LATEST="${PUBLISH_LATEST:-false}"
 echo "image registry: $REGISTRY"
 
 # Reclaim disk before we start building images. Warm CI agents accumulate
@@ -74,22 +76,51 @@ docker builder prune -af >/dev/null 2>&1 || true
 docker image prune -f >/dev/null 2>&1 || true
 df -h / | tail -1 || true
 
-# Check if base Dockerfiles changed
-base_dockerfile_changed() {
-    if [[ "$PUBLISH_LATEST" == "true" ]]; then
-        echo "[DEBUG] Official main build: forcing base image refresh" >&2
-        return 0
+BUILDER_NAME=""
+cleanup() {
+    if [[ -n "$BUILDER_NAME" ]]; then
+        docker buildx rm "$BUILDER_NAME" >/dev/null 2>&1 || true
+    fi
+}
+trap cleanup EXIT
+
+if [[ "$ENABLE_REGISTRY_BUILD_CACHE" == "true" ]]; then
+    BUILDER_NAME="dacs-images-${BUILD_ARCH}-$$"
+    docker buildx create \
+        --name "$BUILDER_NAME" \
+        --driver docker-container \
+        --driver-opt "image=${BUILDKIT_IMAGE}" \
+        --use >/dev/null
+    docker buildx inspect --bootstrap >/dev/null
+fi
+
+build_base_image() {
+    local name="$1"
+    local dockerfile="$2"
+    local image="$3"
+    local current_sha="$4"
+    shift 4
+    local build_args=("$@")
+    local build_command=(docker build)
+    local build_options=(--pull)
+
+    if [[ "$ENABLE_REGISTRY_BUILD_CACHE" == "true" ]]; then
+        local cache_image="${REGISTRY}/${name}:buildcache-linux-${BUILD_ARCH}"
+        build_command=(docker buildx build)
+        build_options+=(
+            --platform "linux/${BUILD_ARCH}"
+            --cache-from "type=registry,ref=${cache_image}"
+            --cache-to "type=registry,ref=${cache_image},mode=max"
+            --load
+        )
     fi
 
-    git fetch origin main --depth=1 2>/dev/null || true
-    if git diff --name-only origin/main..HEAD 2>/dev/null |
-        grep -q '^Docker/base/'; then
-        echo "[DEBUG] Docker/base/ changed relative to origin/main" >&2
-        return 0
-    fi
-
-    echo "[DEBUG] Base image inputs are unchanged" >&2
-    return 1
+    "${build_command[@]}" "${build_options[@]}" \
+        "${build_args[@]}" \
+        --label "git-sha=$current_sha" \
+        -f "$REPOSITORY_ROOT/$dockerfile" \
+        -t "$image" \
+        "$REPOSITORY_ROOT/Docker/base/"
 }
 
 prepare_base_image() {
@@ -106,33 +137,9 @@ prepare_base_image() {
         build_args+=(--secret "id=pip_index_url,env=PIP_INDEX_URL")
     fi
 
-    local build_options=(--pull)
-    if [[ "$PUBLISH_LATEST" == "true" ]]; then
-        build_options+=(--no-cache)
-    fi
-
-    if base_dockerfile_changed; then
-        echo "Building $name..."
-        docker build "${build_options[@]}" \
-            "${build_args[@]}" \
-            --label "git-sha=$current_sha" \
-            -f "$REPOSITORY_ROOT/$dockerfile" \
-            -t "$image" \
-            "$REPOSITORY_ROOT/Docker/base/"
-    else
-        echo "Pulling official base image: $image"
-        if docker pull "$image"; then
-            echo "Pulled $name from ACR"
-        else
-            echo "Pull failed for $image, building locally..."
-            docker build "${build_options[@]}" \
-                "${build_args[@]}" \
-                --label "git-sha=$current_sha" \
-                -f "$REPOSITORY_ROOT/$dockerfile" \
-                -t "$image" \
-                "$REPOSITORY_ROOT/Docker/base/"
-        fi
-    fi
+    echo "Building $name..."
+    build_base_image "$name" "$dockerfile" "$image" "$current_sha" \
+        "${build_args[@]}"
 }
 
 prepare_base_image "cache-server-base" "Docker/base/CacheServer.base.Dockerfile"

@@ -46,6 +46,7 @@ steps:
       fi
 
       docker version
+      docker buildx version
       make --version
       az version
       git --version
@@ -68,6 +69,7 @@ steps:
       set -euo pipefail
 
       USE_AZURE_CFS=true \
+      ENABLE_REGISTRY_BUILD_CACHE=true \
       DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
       BUILD_TYPE=Release \
       BUILD_ARCH="${{ parameters.architecture }}" \
