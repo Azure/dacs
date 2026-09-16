@@ -1,0 +1,8 @@
+azure-identity>=1.12
+azure-storage-blob
+blobfile
+pip
+pytest
+pytest-asyncio
+pytest-timeout
+wheel

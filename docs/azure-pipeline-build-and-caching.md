@@ -165,31 +165,35 @@ The caches have different invalidation boundaries on purpose. A source commit
 changes the exact ccache and Cargo build keys, while restore prefixes still
 allow the tools to reuse entries that remain valid.
 
-## Application base-image lifecycle
+## C++ application image caching
 
-The image stages build two C++ application base images:
-
-```text
-cache-server-base
-cache-client-base
-```
-
-The base images are always evaluated from the current `Docker/base/` context.
-They use separate architecture-specific BuildKit cache references:
+The CacheServer and cache test client images are built directly from:
 
 ```text
-dacstest.azurecr.io/cache-server-base:buildcache-linux-amd64
-dacstest.azurecr.io/cache-server-base:buildcache-linux-arm64
-dacstest.azurecr.io/cache-client-base:buildcache-linux-amd64
-dacstest.azurecr.io/cache-client-base:buildcache-linux-arm64
+Docker/CacheServer.Dockerfile
+Docker/CacheClient.Dockerfile
 ```
 
-The evaluated base images are loaded into the image-build job under local
-`latest` tags. The final CacheServer and cache test client Dockerfiles then use
-those local images. The base-image cache references are not deployment tags.
+Their operating-system packages and other runtime dependencies are part of
+these Dockerfiles rather than separate DACS base images. Azure Pipelines uses
+architecture-specific BuildKit cache references for the complete images:
 
-The Go scheduler and controller images compile Go in their own Dockerfiles and
-do not use these C++ base images.
+```text
+dacstest.azurecr.io/cache-server:buildcache-linux-amd64
+dacstest.azurecr.io/cache-server:buildcache-linux-arm64
+dacstest.azurecr.io/cache-test-client:buildcache-linux-amd64
+dacstest.azurecr.io/cache-test-client:buildcache-linux-arm64
+```
+
+These references contain reusable build layers only. They are not deployment
+tags and are not published as application images.
+
+Public base images use readable tags pinned to SHA-256 manifest digests. The
+digest guarantees that a build uses the reviewed image contents even if the
+upstream tag is moved. Dependabot proposes reviewed updates when a newer digest
+is available for the configured tag.
+
+The Go scheduler and controller images compile Go in their own Dockerfiles.
 
 ## Pipeline artifacts and registry objects
 
@@ -212,7 +216,7 @@ Registry objects serve different purposes:
 
 | Object | Mutable | Intended use |
 | --- | --- | --- |
-| `buildcache-linux-<arch>` | Yes | BuildKit layer cache only |
+| `buildcache-linux-<arch>` | Yes | Native and C++ application BuildKit layer caches |
 | `dacs/native-build:linux-<arch>` | Yes | Rolling toolchain image used by local builds |
 | Application image version tags | No | Release and deployment inputs |
 
@@ -242,9 +246,9 @@ dacstest.azurecr.io/dacs/native-build:linux-<host architecture>
 If the image is not already local, `bldenv.sh` tries to pull it. If the pull is
 unavailable, it builds `src/images/native-build/Dockerfile` locally.
 
-`make images` builds the application base images locally with normal Docker
-layer caching. The Azure Pipeline explicitly enables the registry-backed cache
-with:
+`make images` builds the application images locally with normal Docker layer
+caching. The Azure Pipeline explicitly enables registry-backed caching for the
+C++ application images with:
 
 ```text
 ENABLE_REGISTRY_BUILD_CACHE=true

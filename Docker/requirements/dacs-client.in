@@ -1,0 +1,8 @@
+azure-identity
+azure-storage-blob
+blobfile
+boostedblob
+packaging
+pytest
+setuptools
+wheel

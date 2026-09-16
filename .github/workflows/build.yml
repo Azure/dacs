@@ -231,12 +231,9 @@ jobs:
           name: ${{ matrix.image.name }}
           arch: ${{ inputs.build_arch }}
 
-  # Build the two C++ component images (cache-server, cache-test-client). These
-  # only COPY the prebuilt binaries onto a base image, so they need the compiled
-  # build tree (hence `needs: compile`) but not the native-build toolchain image.
-  # Each image builds on its own runner (matrix). Buildx/GHA caches the expensive
-  # base per image and architecture; the COPY-only component stays on plain
-  # Docker so its private FROM resolves from the local Docker store.
+  # Build the two C++ component images (cache-server, cache-test-client). They
+  # need the compiled build tree but not the native-build toolchain image.
+  # Buildx caches their dependency layers independently per image and architecture.
   images-cpp:
     name: C++ image (${{ matrix.image.name }})
     needs: compile
@@ -252,12 +249,8 @@ jobs:
       matrix:
         image:
           - name: cache-server
-            base: cache-server-base
-            base_file: Docker/base/CacheServer.base.Dockerfile
             file: CacheServer.Dockerfile
           - name: cache-test-client
-            base: cache-client-base
-            base_file: Docker/base/CacheClient.base.Dockerfile
             file: CacheClient.Dockerfile
     steps:
       - name: Harden Runner
@@ -271,11 +264,6 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
           fetch-tags: true
-
-      - name: Stage base image compliance files
-        run: |
-          cp LICENSE Docker/base/LICENSE
-          cp NOTICE.txt Docker/base/NOTICE.txt
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
@@ -294,31 +282,16 @@ jobs:
           BUILD_CONFIGURATION: ${{ inputs.build_type }}
           BUILD_ARCH: ${{ inputs.build_arch }}
 
-      # Build the base image locally, tagged with the registry prefix the
-      # component Dockerfile's FROM defaults to, so the component build below
-      # resolves it from the local Docker store instead of pulling from ACR.
-      - name: Build ${{ matrix.image.base }} base image
+      - name: Build ${{ matrix.image.name }} image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          context: Docker/base
-          file: ${{ matrix.image.base_file }}
-          tags: dacstest.azurecr.io/${{ matrix.image.base }}:latest
+          context: Docker
+          file: Docker/${{ matrix.image.file }}
+          tags: ${{ matrix.image.name }}:local
           load: true
           push: false
-          cache-from: type=gha,scope=${{ matrix.image.base }}-${{ inputs.build_arch }}
-          cache-to: type=gha,scope=${{ matrix.image.base }}-${{ inputs.build_arch }},mode=max
-
-      - name: Build ${{ matrix.image.name }} image
-        working-directory: Docker
-        env:
-          IMAGE_NAME: ${{ matrix.image.name }}
-          IMAGE_FILE: ${{ matrix.image.file }}
-        run: |
-          docker build \
-            --build-arg DOCKER_REGISTRY=dacstest.azurecr.io \
-            -t "${IMAGE_NAME}:local" \
-            -f "$IMAGE_FILE" \
-            .
+          cache-from: type=gha,scope=${{ matrix.image.name }}-${{ inputs.build_arch }}
+          cache-to: type=gha,scope=${{ matrix.image.name }}-${{ inputs.build_arch }},mode=max
 
       - name: Save and upload ${{ matrix.image.name }} image
         uses: $/.github/actions/upload-image

@@ -132,6 +132,7 @@ cd $SCRIPT_DIR/..
 #   package. This is what the CI pipeline uses.
 DACS_TEST_MODE="${DACS_TEST_MODE:-source}"
 echo "DACS test mode: $DACS_TEST_MODE"
+TEST_REQUIREMENTS="${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client/requirements-test.txt"
 
 if [ "$DACS_TEST_MODE" = "wheel" ]; then
     DACS_DIST_DIR="${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client/dist"
@@ -158,19 +159,24 @@ if [ "$DACS_TEST_MODE" = "wheel" ]; then
     python3 -m venv "$DACS_WHEEL_VENV"
     # shellcheck disable=SC1091
     source "$DACS_WHEEL_VENV/bin/activate"
-    pip install --upgrade pip wheel >/dev/null
+    python -m pip install \
+        --disable-pip-version-check \
+        --require-hashes \
+        -r "$TEST_REQUIREMENTS"
 
     echo "Installing dacs-client wheel: $WHEEL_PATH"
-    # Install with the [test] extra so pytest + azure-storage-blob + blobfile
-    # (declared in pyproject.toml) come along automatically. The hard
-    # azure-identity runtime dep is pulled in by the wheel itself.
-    pip install --force-reinstall "${WHEEL_PATH}[test]"
+    python -m pip install --force-reinstall --no-deps "$WHEEL_PATH"
     echo "Installed package location:"
     python3 -c "import py_dacs_client, os; print('  py_dacs_client ->', os.path.dirname(py_dacs_client.__file__))"
 else
     if [ "$DACS_TEST_MODE" != "source" ]; then
         echo "WARNING: unknown DACS_TEST_MODE=$DACS_TEST_MODE, falling back to 'source'"
     fi
+    python -m pip install \
+        --disable-pip-version-check \
+        --require-hashes \
+        -r "$TEST_REQUIREMENTS"
+
     # copy the intercept library to package directory
     arch_dir_name=$([[ "${BUILD_ARCH}" == *"x64"* ]] || [[ "${BUILD_ARCH}" == "amd64" ]] && echo "amd64" || echo "arm64")
     cp -v $REPOSITORY_ROOT/bin/$BUILD_CONFIGURATION/${arch_dir_name}/native-storage/storage/libStorageDirect.so ./libStorageDirect.so

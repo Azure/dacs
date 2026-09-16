@@ -174,10 +174,10 @@ func (r *ModelLoadingRunner) buildJob(ctx context.Context, jobName string) (*bat
 	// before any intercepted filesystem call.
 	preCommand := ""
 	if r.Method == RunAIStreamer {
-		// Install RunAI streamer packages at runtime so we can use the standard pipeline image.
-		// torch CPU is needed because FileStreamer uses torch.from_numpy() internally.
-		preCommand = `pip3 install --no-cache-dir runai-model-streamer runai-model-streamer-azure && \
-pip3 install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+		// The standard pipeline image carries the generated lock but installs
+		// these large, scenario-specific packages only when they are needed.
+		preCommand = `python3 -m pip install --no-cache-dir --require-hashes \
+    -r /app/runai-model-streamer-requirements.txt
 `
 	}
 	if r.Method == Interceptor {

@@ -21,7 +21,6 @@ BUILD_NUMBER="${BUILD_NUMBER:?BUILD_NUMBER is required}"
 BUILD_ARCHS="${BUILD_ARCHS:-amd64 arm64}"
 
 IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler" "cache-controller")
-BASE_IMAGES=("cache-server-base" "cache-client-base")
 
 create_manifest() {
     local image="$1"
@@ -58,9 +57,6 @@ for image in "${IMAGES[@]}"; do
     create_manifest "$image" "$BUILD_NUMBER" "${BUILD_NUMBER}-linux-{arch}"
 done
 
-for image in "${BASE_IMAGES[@]}"; do
-    create_manifest_if_available "$image" "$BUILD_NUMBER" "${BUILD_NUMBER}-{arch}"
-done
 create_manifest_if_available \
     "native-build" "$BUILD_NUMBER" "${BUILD_NUMBER}-linux-{arch}"
 

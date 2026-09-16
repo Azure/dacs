@@ -21,7 +21,6 @@ REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 DOCKER_DIR="$REPOSITORY_ROOT/Docker"
 CACHE_CONTROLLER_DIR="$REPOSITORY_ROOT/src/subsystems/cache-controller"
 SCHEDULER_DIR="$REPOSITORY_ROOT/src/subsystems/storage/cache_server_scheduler"
-BASE_IMAGE_DIR="$REPOSITORY_ROOT/Docker/base"
 BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
 ENABLE_REGISTRY_BUILD_CACHE="${ENABLE_REGISTRY_BUILD_CACHE:-false}"
 BUILDKIT_IMAGE="${BUILDKIT_IMAGE:-mcr.microsoft.com/oss/v2/moby/buildkit:v0.31.0@sha256:fe54b035f7e18247c19d74adfaae42f62f44dca1fd00ae35b795a662a6126d67}"
@@ -30,7 +29,7 @@ if [[ "${USE_AZURE_CFS:-false}" == "true" && -z "$UBUNTU_ARCHIVE_MIRROR" ]]; the
     UBUNTU_ARCHIVE_MIRROR="http://azure.archive.ubuntu.com/ubuntu"
 fi
 
-for context_dir in "$BASE_IMAGE_DIR" "$SCHEDULER_DIR" "$CACHE_CONTROLLER_DIR"; do
+for context_dir in "$SCHEDULER_DIR" "$CACHE_CONTROLLER_DIR"; do
     cp "$REPOSITORY_ROOT/LICENSE" "$context_dir/LICENSE"
     cp "$REPOSITORY_ROOT/NOTICE.txt" "$context_dir/NOTICE.txt"
 done
@@ -56,8 +55,7 @@ echo "Cache Client Image: $CACHECLIENT_IMAGE"
 echo "Cache Server Scheduler Image: $CACHESERVER_SCHEDULER_IMAGE"
 echo "Cache Controller Image: $CACHECONTROLLER_IMAGE"
 
-# Registry for base images
-# Note: DOCKER_REGISTRY already includes .azurecr.io suffix from pipeline
+# Registry used for BuildKit cache references.
 REGISTRY="${DOCKER_REGISTRY:-}"
 if [[ -z "$REGISTRY" ]]; then
     REGISTRY="dacstest.azurecr.io"
@@ -68,9 +66,9 @@ echo "image registry: $REGISTRY"
 # Reclaim disk before we start building images. Warm CI agents accumulate
 # gigabytes of stale BuildKit layer cache from prior runs. That cache is a
 # pure performance optimization; the (re)builds below will repopulate what
-# they need. Without this, the cache-client-base rebuild -- which now
-# contains a Go-based blobfuse2 builder stage -- can hit ENOSPC on agents
-# that were already near their disk quota (~95%) before this job started.
+# they need. Without this, the cache client build -- which contains a Go-based
+# blobfuse2 builder stage -- can hit ENOSPC on agents that were already near
+# their disk quota (~95%) before this job started.
 echo "Pruning stale Docker BuildKit cache to reclaim disk..."
 docker builder prune -af >/dev/null 2>&1 || true
 docker image prune -f >/dev/null 2>&1 || true
@@ -94,12 +92,11 @@ if [[ "$ENABLE_REGISTRY_BUILD_CACHE" == "true" ]]; then
     docker buildx inspect --bootstrap >/dev/null
 fi
 
-build_base_image() {
+build_cpp_image() {
     local name="$1"
     local dockerfile="$2"
     local image="$3"
-    local current_sha="$4"
-    shift 4
+    shift 3
     local build_args=("$@")
     local build_command=(docker build)
     local build_options=(--pull)
@@ -117,41 +114,40 @@ build_base_image() {
 
     "${build_command[@]}" "${build_options[@]}" \
         "${build_args[@]}" \
-        --label "git-sha=$current_sha" \
-        -f "$REPOSITORY_ROOT/$dockerfile" \
+        -f "$dockerfile" \
         -t "$image" \
-        "$REPOSITORY_ROOT/Docker/base/"
+        "$DOCKER_DIR"
 }
-
-prepare_base_image() {
-    local name="$1"
-    local dockerfile="$2"
-    local image="${REGISTRY}/${name}:latest"
-    local current_sha
-    current_sha=$(git rev-parse HEAD)
-    local build_args=()
-    if [[ -n "$UBUNTU_ARCHIVE_MIRROR" ]]; then
-        build_args+=(--build-arg "UBUNTU_ARCHIVE_MIRROR=$UBUNTU_ARCHIVE_MIRROR")
-    fi
-    if [[ "${USE_AZURE_CFS:-false}" == "true" && "$name" == "cache-client-base" && -n "${PIP_INDEX_URL:-}" ]]; then
-        build_args+=(--secret "id=pip_index_url,env=PIP_INDEX_URL")
-    fi
-
-    echo "Building $name..."
-    build_base_image "$name" "$dockerfile" "$image" "$current_sha" \
-        "${build_args[@]}"
-}
-
-prepare_base_image "cache-server-base" "Docker/base/CacheServer.base.Dockerfile"
-prepare_base_image "cache-client-base" "Docker/base/CacheClient.base.Dockerfile"
 
 # Build Docker images from Dockerfiles
 cd "$DOCKER_DIR"
 
+server_build_args=()
+if [[ -n "$UBUNTU_ARCHIVE_MIRROR" ]]; then
+    server_build_args+=(--build-arg "UBUNTU_ARCHIVE_MIRROR=$UBUNTU_ARCHIVE_MIRROR")
+fi
+
+# Only the client image installs pip packages, so the internal feed URL is
+# forwarded to that build alone.
+client_build_args=("${server_build_args[@]}")
+if [[ "${USE_AZURE_CFS:-false}" == "true" && -n "${PIP_INDEX_URL:-}" ]]; then
+    client_build_args+=(--secret "id=pip_index_url,env=PIP_INDEX_URL")
+fi
+
 # Build C++ images in parallel
-docker build --build-arg DOCKER_REGISTRY="$REGISTRY" -f CacheServer.Dockerfile -t "$CACHESERVER_IMAGE" . &
+build_cpp_image \
+    "cache-server" \
+    "$DOCKER_DIR/CacheServer.Dockerfile" \
+    "$CACHESERVER_IMAGE" \
+    "${server_build_args[@]}" \
+    &
 PID_SERVER=$!
-docker build --build-arg DOCKER_REGISTRY="$REGISTRY" -f CacheClient.Dockerfile -t "$CACHECLIENT_IMAGE" . &
+build_cpp_image \
+    "cache-test-client" \
+    "$DOCKER_DIR/CacheClient.Dockerfile" \
+    "$CACHECLIENT_IMAGE" \
+    "${client_build_args[@]}" \
+    &
 PID_CLIENT=$!
 
 # Build Go images in parallel

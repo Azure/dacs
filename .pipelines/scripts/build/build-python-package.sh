@@ -119,11 +119,14 @@ if ! $PYTHON_CMD -m pip --version &> /dev/null; then
   $PYTHON_CMD -m ensurepip --default-pip 2>/dev/null || { sudo apt-get update && sudo apt-get install -y python3-pip; }
 fi
 
-# Install build dependencies. patchelf is pulled in as a pip wheel (it ships a
-# prebuilt binary) so auditwheel can repair the wheel without a system package
-# manager or sudo - the native-build container runs as a non-root user.
+# Install the hash-verified build environment. patchelf is provided as a wheel,
+# so auditwheel does not require a system package manager or sudo.
 echo "Installing build dependencies..."
-$PYTHON_CMD -m pip install --upgrade build pip setuptools wheel packaging "auditwheel==6.7.0" patchelf -q
+$PYTHON_CMD -m pip install \
+  --disable-pip-version-check \
+  --require-hashes \
+  -r "$REPOSITORY_ROOT/.pipelines/requirements/python-build.txt" \
+  -q
 
 # pip may install the patchelf/auditwheel entry points under the user site
 # (~/.local/bin) when running as a non-root container user; make sure auditwheel

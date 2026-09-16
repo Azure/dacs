@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM mcr.microsoft.com/mirror/docker/library/ubuntu:22.04
+FROM mcr.microsoft.com/mirror/docker/library/ubuntu:22.04@sha256:104ae83764a5119017b8e8d6218fa0832b09df65aae7d5a6de29a85d813da2fb
+
+ARG MICROSOFT_REPO_FINGERPRINT=BC528686B50D79E339D3721CEB3E94ADBE1229CF
 
 USER root
 
@@ -38,29 +40,41 @@ RUN \
     pciutils \
     ethtool \
     vim \
+    gnupg \
     libboost-program-options-dev \
     libboost-system1.74-dev \
-    libxxhash0
+    libxxhash0 && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies for py_dacs_client and tests
-RUN pip3 install --no-cache-dir \
-    pytest \
-    blobfile \
-    boostedblob \
-    azure-storage-blob \
-    azure-identity
+# Install the complete, hash-verified runtime, test, and wheel-build environment.
+COPY Docker/requirements/dacs-client.txt /tmp/dacs-client-requirements.txt
+RUN python3 -m pip install --no-cache-dir --require-hashes \
+        -r /tmp/dacs-client-requirements.txt && \
+    rm /tmp/dacs-client-requirements.txt
 
-RUN wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb \
-    && dpkg -i packages-microsoft-prod.deb \
-    && apt-get update \
-    && apt-get install azcopy -y
+RUN curl --fail --silent --show-error --location \
+        https://packages.microsoft.com/keys/microsoft.asc \
+        --output /tmp/microsoft.asc && \
+    export GNUPGHOME="$(mktemp -d)" && \
+    actual_fingerprint="$(gpg --batch --show-keys --with-colons /tmp/microsoft.asc | \
+        awk -F: '$1 == "fpr" { print $10; exit }')" && \
+    if [ "$actual_fingerprint" != "$MICROSOFT_REPO_FINGERPRINT" ]; then \
+        echo "Unexpected Microsoft repository signing key: $actual_fingerprint" >&2; \
+        exit 1; \
+    fi && \
+    gpg --batch --yes --dearmor \
+        --output /usr/share/keyrings/microsoft-prod.gpg \
+        /tmp/microsoft.asc && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" \
+        > /etc/apt/sources.list.d/microsoft-prod.list && \
+    rm -rf "$GNUPGHOME" /tmp/microsoft.asc && \
+    apt-get update && \
+    apt-get install --no-install-recommends -yq azcopy && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /app
 
 COPY LICENSE NOTICE.txt /
-
-# Install build dependencies for wheel creation
-RUN pip3 install --no-cache-dir setuptools wheel packaging
 
 # Copy source files needed to build the wheel
 COPY src/subsystems/storage/dacs_client/ /tmp/dacs_client/
@@ -77,5 +91,5 @@ RUN cd /tmp/dacs_client && \
     export BUILD_ARCHITECTURE=amd64 && \
     export BUILD_CHANNEL=dev && \
     python3 setup.py bdist_wheel && \
-    pip3 install dist/*.whl && \
+    python3 -m pip install --no-deps dist/*.whl && \
     rm -rf /tmp/dacs_client /bin/Debug
