@@ -140,3 +140,22 @@ func Upgrade(ctx context.Context, release, namespace, chartRef, version string, 
 	log.Info("helm upgrade completed", "release", release, "namespace", namespace, "duration", duration.Seconds())
 	return duration, nil
 }
+
+// GetValues returns a release's effective values (chart defaults merged with
+// user-supplied overrides), via `helm get values --all`. Use this instead of
+// re-deriving expected config from the chart version alone: flags like
+// --reset-then-reuse-values on Upgrade preserve prior user-supplied values
+// (e.g. a pinned image tag) across an upgrade, so only the merged values
+// reflect what the release will actually run.
+func GetValues(ctx context.Context, release, namespace string) (map[string]any, error) {
+	cmd := exec.CommandContext(ctx, "helm", "get", "values", release, "--namespace", namespace, "--all", "-o", "json")
+	output, err := utils.RunOutput(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get helm values for release %s in namespace %s: %s: %w", release, namespace, strings.TrimSpace(output), err)
+	}
+	var values map[string]any
+	if err := json.Unmarshal([]byte(output), &values); err != nil {
+		return nil, fmt.Errorf("failed to parse helm values for release %s in namespace %s: %w", release, namespace, err)
+	}
+	return values, nil
+}
