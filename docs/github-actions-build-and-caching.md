@@ -198,6 +198,18 @@ digest guarantees that a build uses the reviewed image contents even if the
 upstream tag is moved. Dependabot proposes reviewed updates when a newer digest
 is available for the configured tag.
 
+The dedicated Notation workflow discovers every MCR base image referenced by a
+Dockerfile and verifies its ESRP signature before allowing the workflow to pass.
+Verification uses the Microsoft Supply Chain RSA Root CA 2022, the Microsoft
+ESRP timestamp root, a strict trust policy, and the expected Microsoft SCD
+Products signing identity. An unpinned image, invalid signature, untrusted
+signer, or repository missing from the trust policy fails the job. The workflow
+downloads the public Microsoft trust roots over HTTPS and verifies their pinned
+SHA-256 fingerprints before adding them to Notation's temporary trust store.
+Notation itself is installed from the official 1.3.2 release archive using a
+pinned SHA-256 checksum because the pinned setup action's built-in release table
+does not include that version.
+
 The resulting images are saved as workflow artifacts for tests and scanning.
 
 ## Go application images

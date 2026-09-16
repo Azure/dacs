@@ -1,0 +1,71 @@
+# Copyright (c) Microsoft Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Verify MCR base image signatures
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, release-**]
+
+permissions: {}
+
+jobs:
+  verify:
+    name: Verify MCR base image signatures
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Collect pinned MCR base images
+        id: base-images
+        run: |
+          references="$(./.github/scripts/list-pinned-mcr-images.sh)"
+          {
+            echo 'references<<EOF'
+            printf '%s\n' "$references"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Notation
+        uses: notaryproject/notation-action/setup@b6fee73110795d6793253c673bd723f12bcf9bbb # v1.2.2
+        with:
+          url: https://github.com/notaryproject/notation/releases/download/v1.3.2/notation_1.3.2_linux_amd64.tar.gz
+          checksum: e1a0f060308086bf8020b2d31defb7c5348f133ca0dba6a1a7820ef3cbb6dfe5
+
+      - name: Download verified Microsoft trust roots
+        run: ./.github/scripts/setup-notation-trust-store.sh "$RUNNER_TEMP/notation-truststore"
+
+      - name: Verify Microsoft supply-chain signatures
+        uses: notaryproject/notation-action/verify@b6fee73110795d6793253c673bd723f12bcf9bbb # v1.2.2
+        with:
+          target_artifact_reference: ${{ steps.base-images.outputs.references }}
+          trust_policy: .github/notation/trustpolicy.json
+          trust_store: ${{ runner.temp }}/notation-truststore

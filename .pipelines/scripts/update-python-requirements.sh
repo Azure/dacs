@@ -19,8 +19,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 readonly PIP_TOOLS_VERSION=7.6.1
+readonly MINIMUM_PIP_MAJOR_VERSION=26
 readonly PYTHON_VERSION=3.10
 readonly PYPI_INDEX_URL=https://pypi.org/simple
+readonly PYPI_UPLOAD_DELAY=P7D
 readonly PYTORCH_CPU_INDEX_URL=https://download.pytorch.org/whl/cpu
 readonly RUNAI_REQUIREMENTS="Docker/requirements/runai-model-streamer.in"
 readonly REQUIREMENT_INPUTS=(
@@ -42,6 +44,14 @@ if [[ "$installed_python_version" != "$PYTHON_VERSION" ]]; then
     exit 1
 fi
 
+installed_pip_version="$(python3 -m pip --version | awk '{print $2}')"
+installed_pip_major_version="${installed_pip_version%%.*}"
+if [[ ! "$installed_pip_major_version" =~ ^[0-9]+$ ]] ||
+   (( installed_pip_major_version < MINIMUM_PIP_MAJOR_VERSION )); then
+    echo "pip $MINIMUM_PIP_MAJOR_VERSION or newer is required; found $installed_pip_version." >&2
+    exit 1
+fi
+
 if ! command -v pip-compile >/dev/null 2>&1; then
     echo "pip-compile is required. Install pip-tools==$PIP_TOOLS_VERSION." >&2
     exit 1
@@ -57,11 +67,15 @@ cd "$REPOSITORY_ROOT"
 for input in "${REQUIREMENT_INPUTS[@]}"; do
     output="${input%.in}.txt"
     index_args=(--no-emit-index-url)
+    upload_args=(--uploaded-prior-to "$PYPI_UPLOAD_DELAY")
     if [[ "$input" == "$RUNAI_REQUIREMENTS" ]]; then
         index_args=(
             --emit-index-url
             --extra-index-url "$PYTORCH_CPU_INDEX_URL"
         )
+        # The PyTorch index does not publish the upload-time metadata required
+        # by pip's uploaded-prior-to filter.
+        upload_args=()
     fi
 
     echo "Compiling $input"
@@ -72,9 +86,10 @@ for input in "${REQUIREMENT_INPUTS[@]}"; do
         --allow-unsafe \
         --generate-hashes \
         --no-header \
+        --no-strip-extras \
         --quiet \
         --output-file "$output" \
-        --strip-extras \
+        "${upload_args[@]}" \
         "${index_args[@]}" \
         "$input"
 done
