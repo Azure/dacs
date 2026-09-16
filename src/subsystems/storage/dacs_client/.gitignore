@@ -9,6 +9,7 @@ __pycache__/
 *.pyd
 *.log
 *.txt
+!requirements-test.txt
 .env
 .vscode/
 .idea/

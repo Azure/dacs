@@ -31,9 +31,48 @@ parameters:
     default: false
 
 stages:
+  - stage: VerifyBaseImages
+    displayName: Verify MCR base image signatures
+    dependsOn: []
+    jobs:
+      - job: VerifyBaseImages
+        displayName: Verify MCR base image signatures
+        timeoutInMinutes: 10
+        steps:
+          - checkout: self
+            path: s/dacs
+            fetchDepth: 1
+            persistCredentials: false
+          - task: Notation@0
+            displayName: Install Notation
+            inputs:
+              command: install
+              version: 1.3.2
+          - bash: |
+              set -euo pipefail
+
+              readonly trust_store="$(Agent.TempDirectory)/notation-truststore"
+              references="$(./.github/scripts/list-pinned-mcr-images.sh | paste -sd, -)"
+              if [[ -z "$references" ]]; then
+                echo "No pinned MCR base images were found." >&2
+                exit 1
+              fi
+
+              ./.github/scripts/setup-notation-trust-store.sh "$trust_store"
+              echo "##vso[task.setvariable variable=mcrBaseImages]$references"
+            displayName: Prepare Microsoft trust policy
+            workingDirectory: $(Pipeline.Workspace)/s/dacs
+          - task: Notation@0
+            displayName: Verify Microsoft supply-chain signatures
+            inputs:
+              command: verify
+              artifactRefs: $(mcrBaseImages)
+              trustPolicy: $(Pipeline.Workspace)/s/dacs/.github/notation/trustpolicy.json
+              trustStore: $(Agent.TempDirectory)/notation-truststore
+
   - stage: Build_amd64
     displayName: Compile linux/amd64
-    dependsOn: []
+    dependsOn: VerifyBaseImages
     jobs:
       - job: Build_amd64
         displayName: Compile linux/amd64
@@ -64,7 +103,7 @@ stages:
 
   - stage: Build_arm64
     displayName: Compile linux/arm64
-    dependsOn: []
+    dependsOn: VerifyBaseImages
     pool:
       name: 1es-dacs-pool-arm64
       image: 1es-pt-linux-arm64

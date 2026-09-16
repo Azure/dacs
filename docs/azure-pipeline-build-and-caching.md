@@ -193,6 +193,14 @@ digest guarantees that a build uses the reviewed image contents even if the
 upstream tag is moved. Dependabot proposes reviewed updates when a newer digest
 is available for the configured tag.
 
+Before either architecture build starts, the `VerifyBaseImages` stage discovers
+every MCR base image referenced by a Dockerfile and validates its ESRP signature
+with the built-in Azure Pipelines `Notation@0` task. The stage downloads the
+public Microsoft supply-chain and timestamp roots over HTTPS, verifies their
+pinned SHA-256 fingerprints, and applies the same strict trust policy used by
+GitHub Actions. An unpinned image, invalid signature, untrusted signer, or
+repository missing from the trust policy fails the pipeline.
+
 The Go scheduler and controller images compile Go in their own Dockerfiles.
 
 ## Pipeline artifacts and registry objects
