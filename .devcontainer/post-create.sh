@@ -60,13 +60,6 @@ if command -v sudo >/dev/null 2>&1; then
   sudo chown -R vscode:vscode /workspaces/dacs/build 2>/dev/null || true
 fi
 
-# Install pytest in the virtual environment
-echo "Installing pytest in virtual environment..."
-if [ -d "/venv" ]; then
-  /venv/bin/pip install --quiet pytest pytest-timeout
-  echo "✅ pytest installed in /venv"
-fi
-
 echo ""
 echo "========================================"
 echo "Setup complete! Ready to build."

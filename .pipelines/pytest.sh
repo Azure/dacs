@@ -81,6 +81,7 @@ DACS_TEST_MODE="${DACS_TEST_MODE:-source}"
 echo "DACS test mode: $DACS_TEST_MODE"
 
 PY_CLIENT_SRC_DIR="${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client/py_dacs_client"
+TEST_REQUIREMENTS="${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client/requirements-test.txt"
 
 if [ "$DACS_TEST_MODE" = "wheel" ]; then
     # ---- wheel mode -----------------------------------------------------
@@ -115,13 +116,13 @@ if [ "$DACS_TEST_MODE" = "wheel" ]; then
     python3 -m venv "$DACS_WHEEL_VENV"
     # shellcheck disable=SC1091
     source "$DACS_WHEEL_VENV/bin/activate"
-    pip install --upgrade pip wheel >/dev/null
+    python -m pip install \
+        --disable-pip-version-check \
+        --require-hashes \
+        -r "$TEST_REQUIREMENTS"
 
     echo "Installing dacs-client wheel: $WHEEL_PATH"
-    # Install the wheel and let pip resolve its declared runtime deps
-    # (see pyproject.toml [project.dependencies]). The [test] extra adds
-    # pytest + azure-* which are only needed to run the test suite.
-    pip install --force-reinstall "${WHEEL_PATH}[test]"
+    python -m pip install --force-reinstall --no-deps "$WHEEL_PATH"
 
     echo "Installed package location:"
     python3 -c "import py_dacs_client, os; print('  py_dacs_client ->', os.path.dirname(py_dacs_client.__file__))"
@@ -131,15 +132,10 @@ else
         echo "WARNING: unknown DACS_TEST_MODE=$DACS_TEST_MODE, falling back to 'source'"
     fi
 
-    # Source-mode: we don't install the wheel, so we still need to install the
-    # runtime + test deps directly. Keep this list in sync with pyproject.toml
-    # ([project.dependencies] + [project.optional-dependencies].test).
-    pip show blobfile        &> /dev/null 2>&1 || pip install blobfile
-    pip show pytest          &> /dev/null 2>&1 || pip install pytest
-    pip show pytest-timeout  &> /dev/null 2>&1 || pip install pytest-timeout
-    pip show pytest-asyncio  &> /dev/null 2>&1 || pip install pytest-asyncio
-    pip show azure-identity  &> /dev/null 2>&1 || pip install "azure-identity>=1.12.0"
-    pip show azure-storage-blob &> /dev/null 2>&1 || pip install azure-storage-blob
+    python -m pip install \
+        --disable-pip-version-check \
+        --require-hashes \
+        -r "$TEST_REQUIREMENTS"
 
     # PYTHONPATH so Python finds py_dacs_client from the source tree.
     export PYTHONPATH="${REPOSITORY_ROOT}/src/subsystems/storage/dacs_client:${PY_CLIENT_SRC_DIR}:${PYTHONPATH}"

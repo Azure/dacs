@@ -142,6 +142,16 @@ jobs:
           # tracked independently instead of overwriting one another.
           category: 'trivy-image-${{ matrix.image }}-${{ matrix.arch }}'
 
+      - name: Block fixable critical vulnerabilities in ${{ matrix.image }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
+        with:
+          image-ref: '${{ matrix.image }}:local'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL'
+
   # CPU unit tests: native C++ (ctest), Go, and Rust. Reuses the compiled build
   # tree and restores the native-build toolchain image from the gha cache
   # populated by the build job, so no source is recompiled (ctest just runs the

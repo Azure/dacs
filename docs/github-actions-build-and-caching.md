@@ -40,8 +40,7 @@ For the Azure implementation, see
    |                  |              |
 images-cpp      python-package   rust-package
    |
-Build cached C++ base images
-Build final C++ images
+Build cached C++ images
    |
    +----------------------+-----------------------+
                           |
@@ -98,10 +97,10 @@ BuildKit caches are separated by image and architecture:
 native-build-amd64
 native-build-arm64
 
-cache-server-base-amd64
-cache-server-base-arm64
-cache-client-base-amd64
-cache-client-base-arm64
+cache-server-amd64
+cache-server-arm64
+cache-test-client-amd64
+cache-test-client-arm64
 
 cacheserver-scheduler-amd64
 cacheserver-scheduler-arm64
@@ -182,17 +181,22 @@ They are transport objects between jobs, not releases.
 The `images-cpp` job restores the compiled build tree and stages the native
 binaries in the Docker context.
 
-For each C++ image it first evaluates and loads the corresponding base image:
+Each complete C++ application image is built directly with
+`docker/build-push-action`:
 
 ```text
-cache-server-base
-cache-client-base
+Docker/CacheServer.Dockerfile
+Docker/CacheClient.Dockerfile
 ```
 
-The base images use GitHub Actions BuildKit caches. The final component
-Dockerfiles then use normal `docker build` so their `FROM` instruction resolves
-the private-looking base tag from the local Docker daemon instead of trying to
-pull it.
+The operating-system packages and runtime dependencies are part of those
+Dockerfiles instead of separate DACS base images. Each image uses its own
+architecture-specific GitHub Actions BuildKit cache scope.
+
+Public base images use readable tags pinned to SHA-256 manifest digests. The
+digest guarantees that a build uses the reviewed image contents even if the
+upstream tag is moved. Dependabot proposes reviewed updates when a newer digest
+is available for the configured tag.
 
 The resulting images are saved as workflow artifacts for tests and scanning.
 
@@ -239,7 +243,7 @@ The systems use parallel concepts:
 | Build concern | GitHub Actions | Azure Pipelines |
 | --- | --- | --- |
 | Native Docker cache | `type=gha`, scoped by architecture | `type=registry`, stored in ACR |
-| Base-image Docker cache | `type=gha`, by image/arch | `type=registry`, in ACR |
+| C++ image Docker cache | `type=gha`, by image/arch | `type=registry`, in ACR |
 | Native image between jobs | Saved workflow artifact | Rebuilt/loaded per architecture job |
 | Build tree between jobs | Workflow artifact | Pipeline artifact |
 | ccache | `actions/cache` | `Cache@2` |

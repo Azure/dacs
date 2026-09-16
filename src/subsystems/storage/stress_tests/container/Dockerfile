@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ARG ARG_DACS_BASE_CONTAINER=mcr.microsoft.com/mirror/docker/library/ubuntu:22.04
-
-FROM $ARG_DACS_BASE_CONTAINER
+FROM mcr.microsoft.com/mirror/docker/library/ubuntu:22.04@sha256:104ae83764a5119017b8e8d6218fa0832b09df65aae7d5a6de29a85d813da2fb
 
 USER root
 
@@ -38,9 +36,10 @@ RUN \
     iproute2 \
     vim
 
-RUN \
-    python3 -m pip install --upgrade pip && \
-    python3 -m pip install requests
+COPY src/subsystems/storage/stress_tests/container/requirements.txt /tmp/requirements.txt
+RUN python3 -m pip install --no-cache-dir --require-hashes \
+        -r /tmp/requirements.txt && \
+    rm /tmp/requirements.txt
 
 # Where the storage containers will be mounted to
 RUN mkdir -p /app/mounts

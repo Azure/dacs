@@ -56,11 +56,23 @@ updates:
       default-days: 7
 
   - package-ecosystem: pip
-    directory: /src/subsystems/storage/dacs_client
+    directories:
+      - /.github/workflows
+      - /.pipelines/requirements
+      - /Docker/requirements
+      - /src/images/native-build
+      - /src/subsystems/storage/dacs_client
+      - /src/subsystems/storage/storage_intercept/integration_tests
+      - /src/subsystems/storage/stress_tests/container
     schedule:
       interval: "daily"
     groups:
-      pip:
+      pip-version-updates:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      pip-security-updates:
+        applies-to: security-updates
         patterns:
           - "*"
     open-pull-requests-limit: 2

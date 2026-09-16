@@ -1,0 +1,7 @@
+auditwheel==6.7.0
+build
+packaging
+patchelf
+pip
+setuptools
+wheel

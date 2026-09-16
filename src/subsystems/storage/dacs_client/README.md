@@ -882,13 +882,24 @@ The wheel is built by the helper script
    ```bash
    python3 -m venv .venv
    source .venv/bin/activate
-   python3 -m pip install --upgrade pip setuptools wheel packaging "auditwheel==6.7.0"
-   sudo apt-get install -y patchelf   # required by auditwheel
+   python3 -m pip install --require-hashes \
+     -r .pipelines/requirements/python-build.txt
    ```
 
    `auditwheel` is pinned to 6.7.0 because
    [6.8.0 can produce invalid `DT_NEEDED` and `RPATH` entries](https://github.com/pypa/auditwheel/issues/722),
    causing repaired wheels to fail when imported.
+
+Regenerate all Python lock files with Python 3.10 and the locked compiler
+environment:
+
+```bash
+python3.10 -m venv .venv-requirements
+source .venv-requirements/bin/activate
+python -m pip install --require-hashes \
+  -r .pipelines/requirements/compile.txt
+./.pipelines/scripts/update-python-requirements.sh
+```
 
 ### Build via the helper script (recommended)
 

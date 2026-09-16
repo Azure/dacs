@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Use Microsoft Container Registry (MCR) approved Ubuntu image
-FROM mcr.microsoft.com/mirror/docker/library/ubuntu:22.04
+FROM mcr.microsoft.com/mirror/docker/library/ubuntu:22.04@sha256:104ae83764a5119017b8e8d6218fa0832b09df65aae7d5a6de29a85d813da2fb
 
 # Docker BuildKit argument for multi-platform builds
 ARG TARGETARCH
@@ -21,22 +21,38 @@ ARG RUST_VERSION=1.98.1
 ARG RUSTUP_VERSION=1.29.0
 ARG KUBEBUILDER_VERSION=4.10.1
 ARG UBUNTU_ARCHIVE_MIRROR=""
+ARG MICROSOFT_REPO_FINGERPRINT=BC528686B50D79E339D3721CEB3E94ADBE1229CF
 
 USER root
 
 ENV DEBIAN_FRONTEND=noninteractive \
   CMAKE_DEP_INSTALL_DIR=/dependency
 
-# Add Microsoft package repository for msft-golang
-ADD https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb /tmp/packages-microsoft-prod.deb
-
 RUN if [ -n "${UBUNTU_ARCHIVE_MIRROR}" ]; then \
         sed -i "s|http://archive.ubuntu.com/ubuntu|${UBUNTU_ARCHIVE_MIRROR}|g" /etc/apt/sources.list; \
     fi && \
     apt-get update && \
-    apt-get install -yq --no-install-recommends apt-transport-https ca-certificates && \
-    dpkg -i /tmp/packages-microsoft-prod.deb && \
-    rm /tmp/packages-microsoft-prod.deb && \
+    apt-get install -yq --no-install-recommends \
+        apt-transport-https \
+        ca-certificates \
+        curl \
+        gnupg && \
+    curl --fail --silent --show-error --location \
+        https://packages.microsoft.com/keys/microsoft.asc \
+        --output /tmp/microsoft.asc && \
+    export GNUPGHOME="$(mktemp -d)" && \
+    actual_fingerprint="$(gpg --batch --show-keys --with-colons /tmp/microsoft.asc | \
+        awk -F: '$1 == "fpr" { print $10; exit }')" && \
+    if [ "$actual_fingerprint" != "$MICROSOFT_REPO_FINGERPRINT" ]; then \
+        echo "Unexpected Microsoft repository signing key: $actual_fingerprint" >&2; \
+        exit 1; \
+    fi && \
+    gpg --batch --yes --dearmor \
+        --output /usr/share/keyrings/microsoft-prod.gpg \
+        /tmp/microsoft.asc && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" \
+        > /etc/apt/sources.list.d/microsoft-prod.list && \
+    rm -rf "$GNUPGHOME" /tmp/microsoft.asc && \
     apt-get update && \
     apt-get install -yq --no-install-recommends \
     # Core C++ development tools
@@ -87,12 +103,15 @@ RUN TARGETARCH=${TARGETARCH:-amd64} && \
         ln -s /usr/lib/aarch64-linux-gnu/libprofiler.so /usr/lib/libprofiler.so; \
     fi
 
+COPY requirements.txt /tmp/native-build-requirements.txt
 RUN --mount=type=secret,id=pip_index_url,required=false \
     if [ -f /run/secrets/pip_index_url ]; then \
         export PIP_INDEX_URL="$(cat /run/secrets/pip_index_url)"; \
     fi && \
     python3 -m venv /venv && . /venv/bin/activate && \
-    python -m pip install --no-cache-dir --upgrade pip setuptools opencensus-ext-azure 'h5py==3.15.1' pytest pytest-timeout
+    python -m pip install --no-cache-dir --require-hashes \
+        -r /tmp/native-build-requirements.txt && \
+    rm /tmp/native-build-requirements.txt
 
 # Set Rust installation paths for all users
 ENV CARGO_HOME=/opt/cargo

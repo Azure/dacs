@@ -1,0 +1,3 @@
+runai-model-streamer==0.16.1
+runai-model-streamer-azure==0.16.1
+torch==2.14.0+cpu
