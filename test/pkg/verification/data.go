@@ -47,7 +47,7 @@ func UploadTestData(ctx context.Context, k8sClient client.Client, namespace stri
 	config := perfclient.NewConfig().
 		WithMode(perfclient.ModeUpload).
 		WithNamespace(namespace).
-		WithCacheName(common.GetCacheName(ctx, k8sClient)).
+		WithCacheName(common.GetCacheName(ctx, k8sClient, namespace)).
 		WithCalculateChecksum(true).
 		WithPrefix(prefix).
 		WithConnectionPoolSize(defaultConnectionPoolSize).
@@ -66,7 +66,7 @@ func DownloadAndVerify(ctx context.Context, k8sClient client.Client, namespace s
 	config := perfclient.NewConfig().
 		WithMode(perfclient.ModeDownload).
 		WithNamespace(namespace).
-		WithCacheName(common.GetCacheName(ctx, k8sClient)).
+		WithCacheName(common.GetCacheName(ctx, k8sClient, namespace)).
 		WithValidateChecksum(true).
 		WithPrefix(string(prefix)).
 		WithConnectionPoolSize(defaultConnectionPoolSize).

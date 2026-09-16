@@ -25,10 +25,13 @@ import (
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
+	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
 	"github.com/Azure/dacs/test/pkg/cluster"
 	"github.com/Azure/dacs/test/pkg/common"
 	"github.com/Azure/dacs/test/pkg/flux/perf"
@@ -87,7 +90,13 @@ func TestMain(m *testing.M) {
 		log.Error(err, "Failed to get kubeconfig")
 		os.Exit(1)
 	}
-	k8sClient, err = client.New(cfg, client.Options{})
+
+	// Create scheme and register Cache CRD
+	clientScheme := runtime.NewScheme()
+	_ = scheme.AddToScheme(clientScheme)
+	_ = storagev1.AddToScheme(clientScheme)
+
+	k8sClient, err = client.New(cfg, client.Options{Scheme: clientScheme})
 	if err != nil {
 		log.Error(err, "Failed to create controller-runtime client")
 		os.Exit(1)
@@ -104,7 +113,7 @@ func TestPerf(t *testing.T) {
 }
 
 var _ = BeforeSuite(func(ctx context.Context) {
-	cacheName = common.GetCacheName(ctx, k8sClient)
+	cacheName = common.GetCacheName(ctx, k8sClient, namespace)
 	log.Info("Detected cache name", "cacheName", cacheName)
 	common.Setup(ctx, k8sClient, namespace)
 })

@@ -34,6 +34,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
 	"github.com/Azure/dacs/test/pkg/cluster"
 	"github.com/Azure/dacs/test/pkg/common/fixtures"
 	"github.com/Azure/dacs/test/pkg/kube/secret"
@@ -53,12 +54,6 @@ const (
 	// old helm/cache-server chart (no controller). The StatefulSet was always
 	// named "cacheserver" regardless of the release name.
 	LegacyStatefulSetName = "cacheserver"
-
-	// ControllerCacheName is the default Cache CR name created by the
-	// dacs controller chart (values.cache.name). The controller
-	// names the StatefulSet after the Cache CR, so this is also the
-	// StatefulSet name when the controller is managing the deployment.
-	ControllerCacheName = "cache-sample"
 )
 
 // log is the default logger for the test package. It uses klog's textlogger
@@ -129,16 +124,13 @@ func Setup(ctx context.Context, k8sClient client.Client, namespace string) {
 
 	if !doInstall {
 		log.Info("Skipping installation (set INSTALL=true to install)")
-		controllerPresent := controllerDeploymentExists(ctx, k8sClient)
+		controllerPresent := controllerDeploymentExists(ctx, k8sClient, namespace)
 		if controllerPresent {
-			ensureControllerInstall(ctx, k8sClient)
+			ensureControllerInstall(ctx, k8sClient, namespace)
 		}
 		// The new controller names the StatefulSet after the Cache CR;
 		// the legacy helm chart always used "cacheserver".
-		stsName := LegacyStatefulSetName
-		if controllerPresent {
-			stsName = ControllerCacheName
-		}
+		stsName := GetCacheName(ctx, k8sClient, namespace)
 		Eventually(func() bool {
 			return statefulSetExists(ctx, k8sClient, namespace, stsName)
 		}).WithTimeout(5*time.Minute).WithPolling(5*time.Second).Should(BeTrue(),
@@ -183,11 +175,11 @@ func Setup(ctx context.Context, k8sClient client.Client, namespace string) {
 	ensureCacheReady(ctx, k8sClient, namespace, LegacyStatefulSetName, false)
 }
 
-func controllerDeploymentExists(ctx context.Context, k8sClient client.Client) bool {
+func controllerDeploymentExists(ctx context.Context, k8sClient client.Client, namespace string) bool {
 	deploy := &appsv1.Deployment{}
 	err := k8sClient.Get(ctx, client.ObjectKey{
 		Name:      controllerDeploymentName,
-		Namespace: GetNamespace(),
+		Namespace: namespace,
 	}, deploy)
 
 	if err == nil {
@@ -399,13 +391,13 @@ func ensureCacheReady(ctx context.Context, k8sClient client.Client, namespace, s
 	VerifyPodUp(ctx, k8sClient, namespace, "app=cacheserver-scheduler")
 }
 
-func ensureControllerInstall(ctx context.Context, k8sClient client.Client) {
+func ensureControllerInstall(ctx context.Context, k8sClient client.Client, namespace string) {
 	By("validating dacs controller deployment is ready")
 	Eventually(func(g Gomega) {
 		deploy := &appsv1.Deployment{}
 		err := k8sClient.Get(ctx, client.ObjectKey{
 			Name:      controllerDeploymentName,
-			Namespace: GetNamespace(),
+			Namespace: namespace,
 		}, deploy)
 		g.Expect(err).NotTo(HaveOccurred(), "Failed to get controller deployment")
 		g.Expect(deploy.Spec.Replicas).NotTo(BeNil(), "Controller deployment has no replica spec")
@@ -473,14 +465,21 @@ func VerifyPodUp(ctx context.Context, k8sClient client.Client, namespace, podLab
 	Eventually(verifyPodUp).WithContext(ctx).Should(Succeed())
 }
 
-// GetCacheName returns the cache name for the current deployment.
-// When the new controller is present, the cache name is ControllerCacheName;
-// otherwise it falls back to LegacyStatefulSetName.
-func GetCacheName(ctx context.Context, k8sClient client.Client) string {
-	if controllerDeploymentExists(ctx, k8sClient) {
-		return ControllerCacheName
+// GetCacheName returns the name of the cache-controller's Cache custom
+// resource in namespace. Falls back to LegacyStatefulSetName when no
+// cache-controller is installed: the old, CRD-less helm/cache-server chart
+// has no Cache CR at all, and always names its StatefulSet "cacheserver".
+func GetCacheName(ctx context.Context, k8sClient client.Client, namespace string) string {
+	if !controllerDeploymentExists(ctx, k8sClient, namespace) {
+		return LegacyStatefulSetName
 	}
-	return LegacyStatefulSetName
+
+	var cacheList storagev1.CacheList
+	Expect(k8sClient.List(ctx, &cacheList, client.InNamespace(namespace))).To(Succeed(),
+		"failed to list Cache CRs in namespace %s", namespace)
+	Expect(cacheList.Items).To(HaveLen(1),
+		"expected exactly one Cache CR in namespace %s, found %d", namespace, len(cacheList.Items))
+	return cacheList.Items[0].Name
 }
 
 // GetDiscoveryURL returns the FQDN of the cache server discovery service

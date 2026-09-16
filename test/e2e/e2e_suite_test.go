@@ -102,7 +102,7 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = BeforeSuite(func(ctx context.Context) {
-	cacheName = common.GetCacheName(ctx, k8sClient)
+	cacheName = common.GetCacheName(ctx, k8sClient, namespace)
 	log.Info("Detected cache name", "cacheName", cacheName)
 	common.Setup(ctx, k8sClient, namespace)
 })

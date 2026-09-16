@@ -37,13 +37,6 @@ const (
 	// pushed.
 	helmUpgradeChartRepoPath = "charts/dacs"
 
-	// cacheServerImageRepoName is the repository segment of the cacheserver
-	// image as published into the target ACR. It must match the
-	// `manager.cacheServerImage.repository` rewrite in
-	// .pipelines/scripts/publish/publish-helm-chart.sh, which sets it to
-	// "<registry>/cache-server".
-	cacheServerImageRepoName = "cache-server"
-
 	// opHelmUpgrade and opHelmRollback are the operation names used when
 	// emitting per-operation perf metrics for this spec.
 	opHelmUpgrade  = "helm-upgrade"
@@ -62,7 +55,8 @@ func testClusterHelmUpgrade(tc *testContext) {
 		preUpgradeReleaseInfo := helmhelpers.GetReleaseInfo(ctx, helmUpgradeNamespace, helmUpgradeRelease)
 		Expect(preUpgradeReleaseInfo.AppVersion).NotTo(Or(BeEmpty(), Equal("<unknown>")), "helm release %s/%s has no usable AppVersion: %q", helmUpgradeNamespace, helmUpgradeRelease, preUpgradeReleaseInfo.AppVersion)
 
-		preUpgradeImage := expectedCacheServerImage(registry, preUpgradeReleaseInfo.AppVersion)
+		preUpgradeImage, err := resolveCacheServerImage(ctx, helmUpgradeNamespace, helmUpgradeRelease, preUpgradeReleaseInfo.AppVersion)
+		Expect(err).NotTo(HaveOccurred(), "failed to resolve pre-upgrade cacheserver image")
 		log.Info("resolved helm upgrade target", "chartRef", chartRef, "version", version, "registry", registry, "preUpgradeImage", preUpgradeImage)
 
 		By(fmt.Sprintf("performing helm upgrade to %s version=%q", chartRef, version))
@@ -73,8 +67,9 @@ func testClusterHelmUpgrade(tc *testContext) {
 
 		postUpgradeReleaseInfo := helmhelpers.GetReleaseInfo(ctx, helmUpgradeNamespace, helmUpgradeRelease)
 		Expect(postUpgradeReleaseInfo.AppVersion).NotTo(Or(BeEmpty(), Equal("<unknown>")), "post-upgrade helm release %s/%s has no usable AppVersion: %q", helmUpgradeNamespace, helmUpgradeRelease, postUpgradeReleaseInfo.AppVersion)
-		postUpgradeImage := expectedCacheServerImage(registry, postUpgradeReleaseInfo.AppVersion)
-		log.Info("computed expected post-upgrade cacheserver image", "image", postUpgradeImage)
+		postUpgradeImage, err := resolveCacheServerImage(ctx, helmUpgradeNamespace, helmUpgradeRelease, postUpgradeReleaseInfo.AppVersion)
+		Expect(err).NotTo(HaveOccurred(), "failed to resolve post-upgrade cacheserver image")
+		log.Info("resolved expected post-upgrade cacheserver image", "image", postUpgradeImage)
 
 		By("waiting for application health and cacheserver image rollout after upgrade")
 		Eventually(func(g Gomega, ctx context.Context) {
@@ -104,9 +99,26 @@ func testClusterHelmUpgrade(tc *testContext) {
 	})
 }
 
-// expectedCacheServerImage returns the <registry>/cache-server:<tag> the
-// cacheserver StatefulSet should be running given the registry the chart
-// was published to and the chart's helm AppVersion.
-func expectedCacheServerImage(registry, appVersion string) string {
-	return fmt.Sprintf("%s/%s:%s", registry, cacheServerImageRepoName, appVersion)
+// resolveCacheServerImage returns the cacheserver image the release will
+// actually run, derived from the release's effective (merged) Helm values
+// rather than assumed from the chart version. --reset-then-reuse-values
+// preserves a previously pinned manager.cacheServerImage.tag across an
+// upgrade, so the chart version alone cannot predict the running image.
+func resolveCacheServerImage(ctx context.Context, namespace, release, appVersion string) (string, error) {
+	values, err := helmhelpers.GetValues(ctx, release, namespace)
+	if err != nil {
+		return "", err
+	}
+	manager, _ := values["manager"].(map[string]any)
+	image, _ := manager["cacheServerImage"].(map[string]any)
+	repository, _ := image["repository"].(string)
+	if repository == "" {
+		return "", fmt.Errorf("manager.cacheServerImage.repository not found in helm values for release %s/%s", namespace, release)
+	}
+	tag, _ := image["tag"].(string)
+	if tag == "" {
+		// Chart defaults an empty tag to .Chart.AppVersion at render time.
+		tag = appVersion
+	}
+	return fmt.Sprintf("%s:%s", repository, tag), nil
 }
