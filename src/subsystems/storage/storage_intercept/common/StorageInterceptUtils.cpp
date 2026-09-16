@@ -52,8 +52,8 @@ bool StorageInterceptUtils::GetRelativePath(
 {
     outRelativePath = "";
 
-    int basePathIdx = 0;
-    int pathIdx = 0;
+    size_t basePathIdx = 0;
+    size_t pathIdx = 0;
     while (basePathIdx < basePath.size()) {
         if (path[pathIdx] == '\0') return false;
 

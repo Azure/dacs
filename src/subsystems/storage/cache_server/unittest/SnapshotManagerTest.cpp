@@ -41,22 +41,22 @@ std::shared_ptr<snapshot::Snapshot> SnapshotManagerTest::CreateMockSnapshot(std:
     std::shared_ptr<snapshot::Snapshot> pSnapshot = std::make_shared<snapshot::Snapshot>();
     pSnapshot->set_version(SNAPSHOT_VERSION);
     pSnapshot->set_hostname("unittesthost");
-    pSnapshot->set_savetimestamp(time(NULL) - 600);
+    pSnapshot->set_savetimestamp(static_cast<uint64_t>(time(NULL) - 600));
     for (int bucketIdx = 0; bucketIdx < NUM_MAPS; bucketIdx++)
     {
         snapshot::SnapshotBucket* pBucket = pSnapshot->add_buckets();
-        for (int entryIdx = 0; entryIdx < numEntriesPerBucket; entryIdx++)
+        for (size_t entryIdx = 0; entryIdx < numEntriesPerBucket; entryIdx++)
         {
             snapshot::SnapshotEntry* pEntry = pBucket->add_entries();
             pEntry->set_filename("file" + std::to_string(entryIdx));
-            pEntry->set_filesize(1024 * entryIdx);
+            pEntry->set_filesize(1024U * entryIdx);
 
             auto& entryMetadata = *(pEntry->mutable_metadata());
             entryMetadata["filename"] = "file" + std::to_string(entryIdx);
 
             if (entryIdx % 2 == 0)
             {
-                pEntry->set_expirytimestamp(1000 * entryIdx);
+                pEntry->set_expirytimestamp(1000U * entryIdx);
             }
             else
             {
@@ -116,7 +116,7 @@ TEST_F(SnapshotManagerTest, LoadExpiredSnapshot)
     // Create mock snapshot
     std::string fileName = "/tmp/expiredSnapshot";
     std::shared_ptr<snapshot::Snapshot> pSnapshot = CreateMockSnapshot();
-    pSnapshot->set_savetimestamp(time(NULL) - 10 * 24 * 60 * 60);
+    pSnapshot->set_savetimestamp(static_cast<uint64_t>(time(NULL) - 10 * 24 * 60 * 60));
 
     SnapshotManager::SaveSnapshotToFile(fileName, *pSnapshot);
     std::shared_ptr<snapshot::Snapshot> pLoadedSnapshot = SnapshotManager::LoadSnapshotFromFile(fileName);
@@ -137,7 +137,7 @@ TEST_F(SnapshotManagerTest, DISABLED_CrashWhileTakingSnapshot)
     auto saveDuration = std::chrono::duration_cast<std::chrono::milliseconds>(endTS - startTs);
 
     LOG_INFO("Starting loop to catch race-conditions.");
-    for(int sleepMs = saveDuration.count() / 2; sleepMs < saveDuration.count() * 2; sleepMs += 5)
+    for(auto sleepMs = saveDuration.count() / 2; sleepMs < saveDuration.count() * 2; sleepMs += 5)
     {
         pid_t pid = fork();
         if(pid == 0)

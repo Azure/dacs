@@ -26,7 +26,7 @@ void AdlsApiBase::PerformOperation()
   RefreshAuthTokenIfNeeded();
 
   /* Get a fresh ADLS connection to use for sending remote request */
-  m_spConnection = std::move(GetAdlsConnection());
+  m_spConnection = GetAdlsConnection();
 
   /* Perform this API operation, needs to be overridden by the respective api sub-classes */
   PerformAdlsOperation();

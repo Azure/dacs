@@ -30,6 +30,7 @@
 #include <iomanip>
 #include <errno.h>
 #include <atomic>
+#include <limits>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
@@ -176,7 +177,7 @@ string GetCacheServerMetricPort()
 string FileNameEncode(const string& fileName)
 {
     std::stringstream ss;
-    for(auto i = 0; i < fileName.size(); i++)
+    for(size_t i = 0; i < fileName.size(); i++)
     {
         ss << std::setfill('0') << std::setw(2) << std::hex << static_cast<int>(fileName[i]);
     }
@@ -221,7 +222,7 @@ string GetCacheTempPath(const string& fileName)
 //---------------------------------------------------------------------------------------------------------------------
 string GetCachePath(const string& fileName)
 {
-    int folderHash = GetHashBucket(fileName);
+    const auto folderHash = GetHashBucket(fileName);
     return GetCacheFolderPath() + "/" + to_string(folderHash) + "/" + FileNameEncode(fileName);
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -265,7 +266,12 @@ bool GetCacheServersHelper(::google::protobuf::RepeatedPtrField<::std::string>& 
     uint32_t cacheServerCount;
     try  
     {
-        cacheServerCount = stoi(cacheServerCountStr);
+        const unsigned long parsedCount = stoul(cacheServerCountStr);
+        if (parsedCount > std::numeric_limits<uint32_t>::max())
+        {
+            throw out_of_range("cache server count exceeds uint32_t");
+        }
+        cacheServerCount = static_cast<uint32_t>(parsedCount);
     }
     catch (const invalid_argument& e)
     {

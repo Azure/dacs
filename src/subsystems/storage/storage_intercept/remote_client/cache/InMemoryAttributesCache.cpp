@@ -67,18 +67,18 @@ void InMemoryAttributesCache::PutAll(
     const std::vector<DirectoryEntry>& dirEntries,
     const size_t startIndex)
 {
-    int numEntries = dirEntries.size() - startIndex;
-    if (numEntries <= 0)
+    if (startIndex >= dirEntries.size())
     {
         return;
     }
+    size_t numEntries = dirEntries.size() - startIndex;
 
     // Update the new entries to latest value
     std::lock_guard<std::mutex> lock(m_mutexAttributes);
     if ((numEntries + m_mapAttributes.size()) > m_maxCacheEntries)
     {
         LOG_RARELY(30, WARN, "Reached max attributes cache value, ignoring extra entries");
-        numEntries = m_maxCacheEntries - m_mapAttributes.size();
+        numEntries = static_cast<size_t>(m_maxCacheEntries) - m_mapAttributes.size();
     }
 
     LOG_DEBUG("Adding {} entries to attribute cache", numEntries);

@@ -60,7 +60,7 @@ void MockReadDirectoryApi::PerformOperation()
 
         m_vecDirEntries.push_back(DirectoryEntry());
         m_vecDirEntries.back().d_ino = D_INO_VAL;
-        m_vecDirEntries.back().d_off = m_vecDirEntries.size() - 1;
+        m_vecDirEntries.back().d_off = static_cast<off64_t>(m_vecDirEntries.size() - 1);
         m_vecDirEntries.back().d_reclen = sizeof(DirectoryEntry);
         m_vecDirEntries.back().d_type = dir->d_type;
         strncpy(m_vecDirEntries.back().d_name, dir->d_name, D_NAME_LEN);

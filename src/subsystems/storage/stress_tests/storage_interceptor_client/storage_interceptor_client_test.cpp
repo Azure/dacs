@@ -59,10 +59,11 @@ bool ReadFileWithRetries(
     for(std::size_t attempt = 0; attempt < RETRY_COUNT_PER_CHUNK; attempt++)
     {
         void* buffer = GetEmptyBuffer(nChunkSizeBytes);
-        std::size_t nLength = nChunkSizeBytes;
+        ssize_t readLength = 0;
         try
         {
-            nLength = pStreamingClient->ReadFile(strFileName.c_str(), buffer, nLength, 0, uint64_t(20) * 1024 * 1024 * 1024, "" /* version */); // 20GB
+            readLength = pStreamingClient->ReadFile(
+                strFileName.c_str(), buffer, nChunkSizeBytes, 0, uint64_t(20) * 1024 * 1024 * 1024, "" /* version */); // 20GB
         }
         catch (const std::exception& e)
         {
@@ -75,9 +76,9 @@ bool ReadFileWithRetries(
             return false;
         }
 
-        if(nLength != nChunkSizeBytes)
+        if(readLength < 0 || static_cast<std::size_t>(readLength) != nChunkSizeBytes)
         {
-            LOG_WARN("Expected file {} read length to be {} but got {}", strFileName, nChunkSizeBytes, nLength);
+            LOG_WARN("Expected file {} read length to be {} but got {}", strFileName, nChunkSizeBytes, readLength);
             return false;
         }
         return true;
@@ -97,7 +98,6 @@ void Worker(/*[in]*/ std::size_t nStartIndex,
             /*[out]*/ std::atomic_uint_fast64_t& nChunksSuccessfullyTransferred)
 {
     LOG_INFO("Worker thread started. StartIndex: {}, EndIndexExclusive: {}", nStartIndex, nEndIndexExclusive);
-    std::size_t totalChunksSucceeded = 0;
     for(std::size_t idx = nStartIndex; idx < nEndIndexExclusive; idx++)
     {
         std::string strFileName;
@@ -127,7 +127,7 @@ void Worker(/*[in]*/ std::size_t nStartIndex,
 }
 //---------------------------------------------------------------------------------------------------------------------
 // Returns true if all chunks were transferred successfully else false
-bool RunStorageInterceptPerfTest(/*[in]*/ int nParallelism,
+bool RunStorageInterceptPerfTest(/*[in]*/ std::size_t nParallelism,
                                  /*[in]*/ uint64_t nDataSizeBytes,
                                  /*[in]*/ std::shared_ptr<StreamingClient>& pStreamingClient,
                                  /*[in]*/ uint64_t nChunkSizeBytes,
@@ -168,7 +168,8 @@ bool RunStorageInterceptPerfTest(/*[in]*/ int nParallelism,
     }
 
     auto endTime = std::chrono::high_resolution_clock::now();
-    std::size_t durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
+    std::size_t durationMs = static_cast<std::size_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count());
     durationMs = std::max(durationMs, (std::size_t)1);
     std::size_t nBytesTransferred = nChunksSuccessfullyTransferred * nChunkSizeBytes;
     std::size_t nThroughputMbps = (nBytesTransferred * 8) / (durationMs * 1000);
@@ -216,12 +217,12 @@ po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
         description.add_options()("help", "produce help message")(
             "intercept-path", po::value<std::string>(), "Local Node path for interception")(
             "server-hostname", po::value<std::string>(), "Hostname(s) of cache server, '#' separated")(
-            "server-port", po::value<int>(), "Port to connect to the cache servers")(
-            "num-threads", po::value<int>(), "Number of threads to use for the perf test")(
-            "data-size-GiB", po::value<int>(), "Total size of data to upload/download in GiB")(
-            "num-iterations", po::value<int>()->default_value(1), "Number of times to run the perf test")(
+            "server-port", po::value<uint16_t>(), "Port to connect to the cache servers")(
+            "num-threads", po::value<std::size_t>(), "Number of threads to use for the perf test")(
+            "data-size-GiB", po::value<std::size_t>(), "Total size of data to upload/download in GiB")(
+            "num-iterations", po::value<std::size_t>()->default_value(1), "Number of times to run the perf test")(
             "ib-enabled", po::value<bool>()->default_value(false), "Enable Infiniband")(
-            "chunk-size-MiB", po::value<int>()->default_value(DEFAULT_CHUNK_SIZE_IN_MiB), "Chunk size in MiB")(
+            "chunk-size-MiB", po::value<std::size_t>()->default_value(DEFAULT_CHUNK_SIZE_IN_MiB), "Chunk size in MiB")(
             "single-blob", po::value<bool>()->default_value(false), "Read single blob")(
             "remote-blob-path", po::value<std::string>()->required(),
                 "Remote blob path to use for the test");
@@ -261,7 +262,7 @@ void GenerateStorageInterceptorConfigFile(
     /*[in]*/ const std::string& strCacheServerList,
     /*[in]*/ uint16_t CacheServerPort,
     /*[in]*/ bool bIsIBEnabled,
-    /*[in]*/ uint64_t nChunkSize)
+    /*[in]*/ uint64_t)
 {
     std::string config_path = "/tmp/storageIntercept.config";
     std::ofstream config_file(config_path);
@@ -304,13 +305,13 @@ int StorageInterceptorClient(int argc, char *argv[])
     auto args = parse_perf_args(argc, argv);
     auto strInterceptionPath = args["intercept-path"].as<std::string>();
     auto strHostnames = args["server-hostname"].as<std::string>();
-    uint16_t nPort = args["server-port"].as<int>();
-    std::size_t nNumThreads = args["num-threads"].as<int>();
-    std::size_t nDataSizeGiB = args["data-size-GiB"].as<int>();
-    std::size_t nNumIterations = args["num-iterations"].as<int>();
+    uint16_t nPort = args["server-port"].as<uint16_t>();
+    std::size_t nNumThreads = args["num-threads"].as<std::size_t>();
+    std::size_t nDataSizeGiB = args["data-size-GiB"].as<std::size_t>();
+    std::size_t nNumIterations = args["num-iterations"].as<std::size_t>();
     bool bIsIBEnabled = args["ib-enabled"].as<bool>();
     bool bIsSingleBlob = args["single-blob"].as<bool>();
-    std::size_t nChunkSizeMiB = args["chunk-size-MiB"].as<int>();
+    std::size_t nChunkSizeMiB = args["chunk-size-MiB"].as<std::size_t>();
     auto strRemoteBlobPath = args["remote-blob-path"].as<std::string>();
     LOG_INFO("Storage Interceptor Client started with the following parameters:");
     LOG_INFO("Interception Path: {}", strInterceptionPath);

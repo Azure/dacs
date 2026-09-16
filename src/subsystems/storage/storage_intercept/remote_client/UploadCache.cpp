@@ -18,7 +18,7 @@
 #include <mutex>
 //---------------------------------------------------------------------------------------------------------------------
 UploadCache::UploadCache()
-    : m_nChunkSize(StorageInterceptConfig::GetInstance().GetStreamingChunkSize())
+    : m_nChunkSize(static_cast<off64_t>(StorageInterceptConfig::GetInstance().GetStreamingChunkSize()))
 {
     LOG_INFO("Upload Cache initialized");
 }
@@ -29,10 +29,11 @@ UploadCache& UploadCache::GetInstance()
     return s_instance;
 }
 //---------------------------------------------------------------------------------------------------------------------
-void UploadCache::Put(const std::string& path, std::shared_ptr<FileData> uploadData, size_t newFileSize)
+void UploadCache::Put(const std::string& path, std::shared_ptr<FileData> uploadData, off64_t newFileSize)
 {
     STORAGE_ASSERT(uploadData != nullptr, "UploadCache::Put called with null uploadData");
-    STORAGE_ASSERT(uploadData->BufferSize == m_nChunkSize, "UploadCache::Put called with incorrect chunk size");
+    STORAGE_ASSERT(uploadData->BufferSize == static_cast<size_t>(m_nChunkSize),
+        "UploadCache::Put called with incorrect chunk size");
     STORAGE_ASSERT(uploadData->Offset <= newFileSize, "UploadCache::Put called with inconsistent file size");
 
     std::unique_lock<std::shared_mutex> buffersLock(m_mutexBlockBuffers);
@@ -59,11 +60,11 @@ void UploadCache::Put(const std::string& path, std::shared_ptr<FileData> uploadD
             std::shared_ptr<FileData> zeroedData =
                 std::make_shared<FileData>(
                     currentChunkOffset,
-                    uploadData->BufferSize,
+                        static_cast<size_t>(m_nChunkSize),
                     nullptr /* userBuf */,
                     true /* setToZeros */);
             m_mapUploadBlocks[GetCacheKey(path, currentChunkOffset)] = zeroedData;
-            currentChunkOffset += uploadData->BufferSize;
+                    currentChunkOffset += m_nChunkSize;
         }
     }
     else
@@ -75,7 +76,7 @@ void UploadCache::Put(const std::string& path, std::shared_ptr<FileData> uploadD
     m_mapFileSizes[path] = newFileSize;
 }
 //---------------------------------------------------------------------------------------------------------------------
-size_t UploadCache::GetFileSize(const std::string& path) const
+off64_t UploadCache::GetFileSize(const std::string& path) const
 {
     std::shared_lock<std::shared_mutex> buffersLock(m_mutexBlockBuffers);    
     auto sizeIt = m_mapFileSizes.find(path);
@@ -83,7 +84,7 @@ size_t UploadCache::GetFileSize(const std::string& path) const
     return sizeIt->second;
 }
 //---------------------------------------------------------------------------------------------------------------------
-void UploadCache::UpdateFileSize(const std::string& path, size_t newFileSize)
+void UploadCache::UpdateFileSize(const std::string& path, off64_t newFileSize)
 {
     std::unique_lock<std::shared_mutex> buffersLock(m_mutexBlockBuffers);
     auto sizeIt = m_mapFileSizes.find(path);

@@ -103,8 +103,8 @@ private:
     std::mutex m_tokenUpdateLock;
     std::mt19937 m_rng; 
 
-    const int m_tokenRefreshBufferSeconds;
-    const int m_tokenExpiryBufferSeconds;
+    const uint32_t m_tokenRefreshBufferSeconds;
+    const uint32_t m_tokenExpiryBufferSeconds;
     const bool m_enableSSLVerification;
 
     static constexpr uint32_t MAX_DELAY_SEC = 64;

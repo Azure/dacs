@@ -18,6 +18,7 @@
 #include <openssl/evp.h>
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
+#include <limits>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cache;
 using namespace std;
@@ -201,9 +202,16 @@ bool EncryptionUtil::DoEncrypt(UploadRequest* uploadRequest,
     std::string iv = GenerateIV();
     std::string tag(16, '\0');
 
+    if (inBufferLen > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+    {
+        LOG_WARN_REQID("Encryption input exceeds the supported size", *uploadRequest);
+        return false;
+    }
+    const int inputLength = static_cast<int>(inBufferLen);
+
     std::unique_ptr<char[]> buffer(new char[inBufferLen]);
-    encLen = GcmEncrypt((unsigned char*)inBuffer, inBufferLen, iv, (unsigned char*)buffer.get(), tag);
-    if(encLen != inBufferLen)
+    encLen = GcmEncrypt((unsigned char*)inBuffer, inputLength, iv, (unsigned char*)buffer.get(), tag);
+    if(encLen != inputLength)
     {
         // We use GCM mode which doesn't require any padding, so length of message should not be affected 
         LOG_WARN_REQID("Encryption failed", *uploadRequest);
@@ -246,8 +254,14 @@ bool EncryptionUtil::DoDecrypt(const DownloadResponse& response, IConnection* se
         return false;
     }
 
-    size_t origLen = std::strtoull(strLen->second.c_str(), nullptr, 0);
-    if (readLength < origLen)
+    const uint64_t parsedOrigLen = std::strtoull(strLen->second.c_str(), nullptr, 0);
+    if (parsedOrigLen > static_cast<uint64_t>(std::numeric_limits<int>::max()))
+    {
+        LOG_WARN("Encrypted message exceeds the supported size: {}", parsedOrigLen);
+        return false;
+    }
+    const int origLen = static_cast<int>(parsedOrigLen);
+    if (readLength < static_cast<uint64_t>(origLen))
     {
         LOG_WARN("cannot read encrypted chunk partially. requested: {}, actual: {}", readLength, origLen);
         return false;
@@ -267,8 +281,8 @@ bool EncryptionUtil::DoDecrypt(const DownloadResponse& response, IConnection* se
         return false;
     }
 
-    std::unique_ptr<char[]> encBuffer(new char[origLen]);
-    bool bRet = cacheutils::ReadAll(serverConnection, encBuffer.get(), origLen);
+    std::unique_ptr<char[]> encBuffer(new char[static_cast<size_t>(origLen)]);
+    bool bRet = cacheutils::ReadAll(serverConnection, encBuffer.get(), static_cast<uint64_t>(origLen));
     if (!bRet)
     {
         LOG_WARN("Failed to read complete message from server, id: {}", serverConnection->GetId());
@@ -290,7 +304,7 @@ bool EncryptionUtil::DoDecrypt(const DownloadResponse& response, IConnection* se
     }
 
     LOG_DEBUG("Decrypted buffer - original len: {}, enc len: {}", origLen, readLength);
-    readLength = plainLen;
+    readLength = static_cast<uint64_t>(plainLen);
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------

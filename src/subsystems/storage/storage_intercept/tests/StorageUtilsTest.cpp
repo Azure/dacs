@@ -56,7 +56,7 @@ TEST(StorageUtilsTest, TestLogRarelyParallel)
     vector<unique_ptr<thread>> testThreads;
     for (int i = 0; i < 20; ++i)
     {
-        auto t = make_unique<thread>([&reportTime, &numReports, &startTime, this]() {
+        auto t = make_unique<thread>([&reportTime, &numReports, &startTime]() {
             while (difftime(time(NULL), startTime) < 9)
             {
                 if (storageutils::LogRarelyTime(reportTime, 5))
@@ -77,6 +77,6 @@ TEST(StorageUtilsTest, TestLogRarelyParallel)
     testThreads.clear();
 
     // Only 2 reports should have been generated
-    ASSERT_EQ(numReports, 2);
+    ASSERT_EQ(numReports.load(), uint_fast32_t{2});
 }
 //---------------------------------------------------------------------------------------------------------------------

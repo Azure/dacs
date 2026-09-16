@@ -14,6 +14,7 @@
 
 #include "AdlsAuthTokenProvider.h"
 #include <chrono>
+#include <limits>
 #include <mutex>
 #include "AdlsHttpClient.h"
 //---------------------------------------------------------------------------------------------------------------------
@@ -34,7 +35,16 @@ void AdlsAuthTokenProvider::RefreshAuthTokenIfNeeded(const AdlsHostContext& host
   const auto now     = std::chrono::system_clock::now();
   const auto epoch   = now.time_since_epoch();
   const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(epoch);
-  size_t minExpiryTime = seconds.count() + m_nSafeExpiryWindowSec;
+  const auto secondsSinceEpoch = seconds.count();
+  if (secondsSinceEpoch < 0 ||
+      static_cast<uintmax_t>(secondsSinceEpoch) >
+        std::numeric_limits<size_t>::max() - m_nSafeExpiryWindowSec)
+  {
+    LOG_ERROR("Unable to calculate ADLS token expiry time");
+    return;
+  }
+  const size_t minExpiryTime =
+    static_cast<size_t>(secondsSinceEpoch) + m_nSafeExpiryWindowSec;
 
   if (!m_AuthToken.isTokenValid(minExpiryTime))
   {

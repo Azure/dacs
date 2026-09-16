@@ -200,8 +200,8 @@ TEST_F(CacheClientRetryUtilTests, ExponentialBackoffIncreases)
         // For attempt i+1, exponential is baseDelayMs * 2^(i+1), capped at maxDelayMs
         uint64_t exponentialBackoff = kBaseDelayMs << (i + 1);
         uint64_t cappedBackoff = std::min(exponentialBackoff, kMaxDelayMs);
-        uint64_t minExpected = 1;
-        uint64_t maxExpected = cappedBackoff;
+        int64_t minExpected = 1;
+        int64_t maxExpected = static_cast<int64_t>(cappedBackoff);
 
         EXPECT_GE(delayMs, minExpected) << "Delay too small for attempt " << i;
         EXPECT_LE(delayMs, maxExpected) << "Delay too large for attempt " << i;

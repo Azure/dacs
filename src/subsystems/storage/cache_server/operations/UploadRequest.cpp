@@ -221,11 +221,13 @@ static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
 
     while (totalRead < uploadRequest.filesize())
     {
-        int bufferPos = 0;
+        size_t bufferPos = 0;
         while (true)
         {
+            const uint64_t remaining = min(writeBufferSize, uploadRequest.filesize() - totalRead)
+                - static_cast<uint64_t>(bufferPos);
             int temp = clientConnection.Read(buffer.data() + bufferPos,
-                                             min(writeBufferSize, uploadRequest.filesize() - totalRead) - bufferPos);
+                                             static_cast<int>(remaining));
             if (temp <= 0)
             {
                 LOG_WARN_REQID("read failed for file: {}. errno: {}:{}, Bytes expected: {}, read: {}",
@@ -248,15 +250,16 @@ static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
                 return false;
             }
 
-            bufferPos += temp;
+            bufferPos += static_cast<size_t>(temp);
 
-            if (bufferPos >= writeBufferSize || totalRead + bufferPos >= uploadRequest.filesize())
+            if (bufferPos >= writeBufferSize ||
+                totalRead + static_cast<uint64_t>(bufferPos) >= uploadRequest.filesize())
             {
                 break;
             }
         }
 
-        totalRead += bufferPos;
+        totalRead += static_cast<uint64_t>(bufferPos);
 
         // Write to disk using POSIX write(), handling short writes.
         // Data persistence is ensured by fsync() after the write loop completes.
@@ -266,7 +269,7 @@ static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
         // response (not a broken pipe).
         if (bNoDiscard && !bWriteError)
         {
-            ssize_t bytesWritten = 0;
+            size_t bytesWritten = 0;
             while (bytesWritten < bufferPos)
             {
                 ssize_t w = ::write(fileFd, buffer.data() + bytesWritten, bufferPos - bytesWritten);
@@ -281,12 +284,12 @@ static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
                                    uploadRequest.filename(),
                                    errno,
                                    strerror(errno),
-                                   totalRead - bufferPos + bytesWritten,
+                                   totalRead - static_cast<uint64_t>(bufferPos) + bytesWritten,
                                    uploadRequest.filesize());
                     bWriteError = true;
                     break;
                 }
-                bytesWritten += w;
+                bytesWritten += static_cast<size_t>(w);
             }
         }
     }

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <chrono>
+#include <limits>
 #include <thread>
 #include "IRemoteClientException.h"
 #include "RemoteClientException.h"
@@ -52,7 +53,13 @@ void RemoteClientApiBase::Execute()
       if (remoteException.IsRetriableError())
       {
         retryCount++;
-        const uint16_t retrySleepInMs = (m_nInitialRetrySleepInMs << (retryCount - 1));
+        const unsigned shift = static_cast<unsigned>(retryCount - 1);
+        const uint64_t retrySleepCandidate = shift < 64
+          ? static_cast<uint64_t>(m_nInitialRetrySleepInMs) << shift
+          : std::numeric_limits<uint64_t>::max();
+        const uint16_t retrySleepInMs = static_cast<uint16_t>(std::min(
+          retrySleepCandidate,
+          static_cast<uint64_t>(std::numeric_limits<uint16_t>::max())));
 
         LOG_WARN("Remote Operation failed with retriable error. operation={} retryCount={} retrySleepInMs={}",
           m_strOperationName,

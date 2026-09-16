@@ -207,7 +207,7 @@ TEST_F(BlobAuthTokenProviderTest, TestThreadSafety)
     }
 
     // Check that all tokens fetched are the same
-    ASSERT_EQ(tokens.size(), 1) << "Multiple different tokens fetched from MSI endpoint";
+    ASSERT_EQ(tokens.size(), 1U) << "Multiple different tokens fetched from MSI endpoint";
 }
 //---------------------------------------------------------------------------------------------------------------------
 //Test case to check multiThreaded token nearing expiry
@@ -250,7 +250,7 @@ TEST_F(BlobAuthTokenProviderTest, TestMultiThreadedTokenNearingExpiry)
     ASSERT_FALSE(token2.empty()) << "Failed to fetch access token from MSI endpoint after expiry";
     tokens.insert(token2);
     //one token from cache and only one new fetched token from  all threads
-    ASSERT_EQ(tokens.size(), 2) << "Multiple different tokens fetched from MSI endpoint";
+    ASSERT_EQ(tokens.size(), 2U) << "Multiple different tokens fetched from MSI endpoint";
 }
 //---------------------------------------------------------------------------------------------------------------------
 //Test multithreaded token update after expiry
@@ -290,7 +290,7 @@ TEST_F(BlobAuthTokenProviderTest, TestMultiThreadedTokenUpdateAfterExpiry)
     }
 
     // Check that all tokens fetched are the same
-    ASSERT_EQ(tokens.size(), 1) << "Multiple different tokens fetched from MSI endpoint";
+    ASSERT_EQ(tokens.size(), 1U) << "Multiple different tokens fetched from MSI endpoint";
 
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -410,7 +410,7 @@ TEST_F(BlobAuthTokenProviderTest, TestAzureDateTimeToSystemClockConversion)
     // New conversion method (using static_cast)
     auto newConversion = static_cast<std::chrono::system_clock::time_point>(azureDateTime);
     auto timeToExpiryNew = std::chrono::duration_cast<std::chrono::seconds>(newConversion - now);
-    ASSERT_NEAR(timeToExpiryNew.count(), 3600, 5) <<
+    ASSERT_NEAR(static_cast<double>(timeToExpiryNew.count()), 3600.0, 5.0) <<
         "New conversion method should yield a time approximately 1 hour in the future";
     
 }

@@ -22,7 +22,7 @@
 #include "CacheUtils.h"
 #include "LoggingApi.h"
 //---------------------------------------------------------------------------------------------------------------------
-int main(int argc, char** argv)
+int main()
 {
     LoggingApi::Init();
     LoggingApi::FlushCachedLog();
@@ -40,7 +40,7 @@ int main(int argc, char** argv)
         char* envPort = std::getenv("TEST_CACHESERVER_ADDR_PORT");
         if(envPort != nullptr)
         {
-            nCacheServerPort = std::atoi(envPort);
+            nCacheServerPort = static_cast<uint32_t>(std::stoul(envPort));
         }
     }
 

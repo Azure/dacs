@@ -25,9 +25,9 @@ class PrefetchCacheTest : public TestBase
         std::shared_ptr<FileData> GetRandDataBuffer(off64_t offset, uint64_t size);
 
         template <typename T>
-        void AssertEqArray(T* left, T* right, int arraySize)
+        void AssertEqArray(T* left, T* right, uint64_t arraySize)
         {
-            for (int i = 0; i < arraySize; i++)
+            for (uint64_t i = 0; i < arraySize; i++)
             {
                 ASSERT_EQ(left[i], right[i]);
             }

@@ -27,7 +27,7 @@ RemoteClientTest::RemoteClientTest()
 //---------------------------------------------------------------------------------------------------------------------
 void RemoteClientTest::SetUp()
 {
-    m_RemoteClient = std::move(RemoteClientProvider::GetRemoteClient(""));
+    m_RemoteClient = RemoteClientProvider::GetRemoteClient("");
 }
 //---------------------------------------------------------------------------------------------------------------------
 template<typename Base, typename T>
@@ -78,7 +78,7 @@ TEST_F(RemoteClientTest, ReadDirectoryTest)
 
     std::string newContToken = m_RemoteClient->ReadDirectory(m_strRemoteDirPath, "", vecDirEntries);
     ASSERT_EQ(newContToken, "");
-    ASSERT_EQ(vecDirEntries.size(), m_bUsingMock ? 2 : 3);
+    ASSERT_EQ(vecDirEntries.size(), m_bUsingMock ? 2U : 3U);
     for (const auto& entry : vecDirEntries)
     {
         if (entry.d_type == DT_DIR)

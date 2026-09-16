@@ -56,7 +56,7 @@ bool InitializeConnection(
     std::cout << "New connection to server: " << hostName << " Port: " << port << std::endl;
     sockaddr_in sockAddr;
     sockAddr.sin_family = AF_INET;
-    sockAddr.sin_port = htons(port);
+    sockAddr.sin_port = htons(static_cast<uint16_t>(port));
     if( (inet_pton(AF_INET, hostName.c_str(), &(sockAddr.sin_addr))) < 0)
     {
         std::cout << "error: inet_pton error: " << errno << " message: " << ::strerror(errno) << std::endl;

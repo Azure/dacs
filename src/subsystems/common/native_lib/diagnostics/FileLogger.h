@@ -21,13 +21,13 @@ class FileLogger: public ILogger
 public:
     FileLogger(std::string outputFileName, std::string errorFileName, /*[in]*/ bool bIgnoreRankInFileName = false);
 
-    ~FileLogger();
+    ~FileLogger() override;
 
-    void Shutdown();
-    void Flush();
-    void LogOutput(std::string logContent);
-    void LogError(std::string logContent);
-    void FlushCachedLogInfo();
+    void Shutdown() override;
+    void Flush() override;
+    void LogOutput(std::string logContent) override;
+    void LogError(std::string logContent) override;
+    void FlushCachedLogInfo() override;
 private:
     void FormatFileName(/*[inout]*/ std::string& strFileName, /*[in]*/ bool bIgnoreRankInFileName = false);
 

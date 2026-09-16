@@ -49,35 +49,35 @@ TEST_F(PrefetchCacheTest, PrefetchCachePutGetPurgeTest)
     auto cachedChunk = testCache.Get(testPath, 0);
     auto cachedChunkList = testCache.GetCachedOffsets(testPath);
     ASSERT_EQ(cachedChunk, nullptr);
-    ASSERT_EQ(cachedChunkList.size(), 0);
-    ASSERT_EQ(testCache.m_mapBuffers.size(), 0);
+    ASSERT_EQ(cachedChunkList.size(), 0U);
+    ASSERT_EQ(testCache.m_mapBuffers.size(), 0U);
 
     // Put 1 chunk
     testCache.Put(testPath, testChunk0);
     cachedChunk = testCache.Get(testPath, 0);
     cachedChunkList = testCache.GetCachedOffsets(testPath);
-    ASSERT_EQ(cachedChunkList.size(), 1);
+    ASSERT_EQ(cachedChunkList.size(), 1U);
     AssertEqArray(testChunk0->Buffer.get(), cachedChunk->Buffer.get(), chunkSize);
-    ASSERT_EQ(testCache.m_mapBuffers.size(), 1);
+    ASSERT_EQ(testCache.m_mapBuffers.size(), 1U);
 
     // Put 2 more chunks. Per file chunk limit of 2 must be adhered to.
     testCache.Put(testPath, testChunk1);
     testCache.Put(testPath, testChunk2);
     cachedChunkList = testCache.GetCachedOffsets(testPath);
-    ASSERT_EQ(cachedChunkList.size(), 2);
-    ASSERT_EQ(testCache.m_mapBuffers.size(), 2);
+    ASSERT_EQ(cachedChunkList.size(), 2U);
+    ASSERT_EQ(testCache.m_mapBuffers.size(), 2U);
 
     // Purge one chunk
     testCache.PurgeOffsets(testPath, vector<off64_t>{ *cachedChunkList.rbegin() });
     cachedChunkList = testCache.GetCachedOffsets(testPath);
-    ASSERT_EQ(cachedChunkList.size(), 1);
-    ASSERT_EQ(testCache.m_mapBuffers.size(), 1);
+    ASSERT_EQ(cachedChunkList.size(), 1U);
+    ASSERT_EQ(testCache.m_mapBuffers.size(), 1U);
 
     // Purge all chunks
     testCache.PurgeAll(testPath);
     cachedChunkList = testCache.GetCachedOffsets(testPath);
-    ASSERT_EQ(cachedChunkList.size(), 0);
-    ASSERT_EQ(testCache.m_mapBuffers.size(), 0);
+    ASSERT_EQ(cachedChunkList.size(), 0U);
+    ASSERT_EQ(testCache.m_mapBuffers.size(), 0U);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(PrefetchCacheTest, PrefetchCacheVersionAwareTest)
@@ -102,35 +102,35 @@ TEST_F(PrefetchCacheTest, PrefetchCacheVersionAwareTest)
     testCache.Put(testPath, chunkV2, version2);
     ASSERT_NE(testCache.Get(testPath, 0, version1), nullptr);
     ASSERT_NE(testCache.Get(testPath, 0, version2), nullptr);
-    ASSERT_EQ(testCache.m_mapBuffers.size(), 2);
+    ASSERT_EQ(testCache.m_mapBuffers.size(), 2U);
 
     // GetCachedOffsets is version-scoped
-    ASSERT_EQ(testCache.GetCachedOffsets(testPath, version1).size(), 1);
-    ASSERT_EQ(testCache.GetCachedOffsets(testPath, version2).size(), 1);
+    ASSERT_EQ(testCache.GetCachedOffsets(testPath, version1).size(), 1U);
+    ASSERT_EQ(testCache.GetCachedOffsets(testPath, version2).size(), 1U);
 
     // Put a second chunk for version1 to test PurgeOffsets
     auto chunkV1Offset1 = GetRandDataBuffer(chunkSize, chunkSize);
     testCache.Put(testPath, chunkV1Offset1, version1);
-    ASSERT_EQ(testCache.GetCachedOffsets(testPath, version1).size(), 2);
-    ASSERT_EQ(testCache.m_mapBuffers.size(), 3);
+    ASSERT_EQ(testCache.GetCachedOffsets(testPath, version1).size(), 2U);
+    ASSERT_EQ(testCache.m_mapBuffers.size(), 3U);
 
     // PurgeOffsets with version1 only purges from v1, leaves v2 untouched
     testCache.PurgeOffsets(testPath, vector<off64_t>{(off64_t)chunkSize}, version1);
-    ASSERT_EQ(testCache.GetCachedOffsets(testPath, version1).size(), 1);
+    ASSERT_EQ(testCache.GetCachedOffsets(testPath, version1).size(), 1U);
     ASSERT_NE(testCache.Get(testPath, 0, version1), nullptr);
     ASSERT_EQ(testCache.Get(testPath, chunkSize, version1), nullptr);
     ASSERT_NE(testCache.Get(testPath, 0, version2), nullptr);
-    ASSERT_EQ(testCache.m_mapBuffers.size(), 2);
+    ASSERT_EQ(testCache.m_mapBuffers.size(), 2U);
 
     // PurgeAll with version1 only purges v1
     testCache.PurgeAll(testPath, version1);
     ASSERT_EQ(testCache.Get(testPath, 0, version1), nullptr);
     ASSERT_NE(testCache.Get(testPath, 0, version2), nullptr);
-    ASSERT_EQ(testCache.m_mapBuffers.size(), 1);
+    ASSERT_EQ(testCache.m_mapBuffers.size(), 1U);
 
     // PurgeAll with version2 purges the rest
     testCache.PurgeAll(testPath, version2);
     ASSERT_EQ(testCache.Get(testPath, 0, version2), nullptr);
-    ASSERT_EQ(testCache.m_mapBuffers.size(), 0);
+    ASSERT_EQ(testCache.m_mapBuffers.size(), 0U);
 }
 //---------------------------------------------------------------------------------------------------------------------

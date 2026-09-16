@@ -462,7 +462,7 @@ int StorageInterceptorImpl::SI_open(const char* pathname, int flags, int mode, c
 
     try
     {
-        int fd = ContentHandler::GetInstance().HandleOpen(pathname, flags, mode);
+        int fd = ContentHandler::GetInstance().HandleOpen(pathname, flags, static_cast<mode_t>(mode));
         if(fd < 0)
         {
             *errorString = ::strdup(::strerror(errno));

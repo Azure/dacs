@@ -15,6 +15,7 @@
 #include <fstream>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <limits>
 #include "Constants.h"
 #include "Logger.h"
 #include "Utils.h"
@@ -55,7 +56,12 @@ SnapshotManager::SnapshotManager()
     char* snapshotInterval = std::getenv("CACHESERVER_SNAPSHOT_INTERVAL");
     if (snapshotInterval != nullptr)
     {
-        m_snapshotIntervalInSeconds = std::stoi(snapshotInterval);
+        const unsigned long interval = std::stoul(snapshotInterval);
+        if (interval > std::numeric_limits<uint32_t>::max())
+        {
+            throw std::out_of_range("snapshot interval exceeds uint32_t");
+        }
+        m_snapshotIntervalInSeconds = static_cast<uint32_t>(interval);
     }
 
     LOG_INFO("Initialized snapshot manager. SnapshotEnabled: {}, ServerHostname: {}, SnapshotIntervalInSeconds: {}",
@@ -131,7 +137,7 @@ uint32_t SnapshotManager::GetSnapshotIntervalInSeconds() const
     }
 
     time_t now = time(NULL);
-    if (snapshot->savetimestamp() < now - SNAPSHOT_MAX_AGE_IN_SECONDS)
+    if (snapshot->savetimestamp() < static_cast<uint64_t>(now - SNAPSHOT_MAX_AGE_IN_SECONDS))
     {
         LOG_WARN("Snapshot too old. snapshot: {} now: {}", snapshot->savetimestamp(), now);
         return nullptr;

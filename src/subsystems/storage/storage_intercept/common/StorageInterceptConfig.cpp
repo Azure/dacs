@@ -21,6 +21,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <sstream>
+#include <limits>
 #include <boost/algorithm/string.hpp>
 //---------------------------------------------------------------------------------------------------------------------
 StorageInterceptConfig::StorageInterceptConfig()
@@ -68,10 +69,20 @@ void StorageInterceptConfig::LoadConfig()
         throw "Error opening config file";
     }
 
-    size_t nConfigFileSize = stBuf.st_size;
+    if (stBuf.st_size < 0 ||
+        static_cast<uintmax_t>(stBuf.st_size) > std::numeric_limits<size_t>::max())
+    {
+        throw "Invalid config file size";
+    }
+    size_t nConfigFileSize = static_cast<size_t>(stBuf.st_size);
     std::string strConfig;
     strConfig.resize(nConfigFileSize);
-    ssize_t nConfigBytesRead = StorageLibcApiWrapper::read(nConfigFileHandle, &strConfig[0], nConfigFileSize);
+    ssize_t firstRead = StorageLibcApiWrapper::read(nConfigFileHandle, &strConfig[0], nConfigFileSize);
+    if (firstRead < 0)
+    {
+        throw "Error occurred while reading config file";
+    }
+    size_t nConfigBytesRead = static_cast<size_t>(firstRead);
 
     /* Read the config file */
     while (nConfigBytesRead < nConfigFileSize)
@@ -90,7 +101,7 @@ void StorageInterceptConfig::LoadConfig()
             /* Reached EOF */
             break;
         }
-        nConfigBytesRead += nConfigBytesReadNow;
+        nConfigBytesRead += static_cast<size_t>(nConfigBytesReadNow);
     }
 
     if(StorageLibcApiWrapper::close(nConfigFileHandle) != 0)
@@ -99,7 +110,11 @@ void StorageInterceptConfig::LoadConfig()
     }
 
     std::stringstream ssConfigStream;
-    ssConfigStream.write(strConfig.c_str(), strConfig.size());
+    if (strConfig.size() > static_cast<size_t>(std::numeric_limits<std::streamsize>::max()))
+    {
+        throw "Config file is too large to parse";
+    }
+    ssConfigStream.write(strConfig.c_str(), static_cast<std::streamsize>(strConfig.size()));
     ssConfigStream.seekg(0, std::ios_base::beg);
     std::string line;
     uint32_t lineNumber = 0;
@@ -326,7 +341,12 @@ uint32_t StorageInterceptConfig::GetConfigUint32(
     const char* configName)
 {
     auto strConfig = GetConfigStr(config, configName);
-    return stoul(strConfig);
+    const unsigned long value = stoul(strConfig);
+    if (value > std::numeric_limits<uint32_t>::max())
+    {
+        throw std::out_of_range("Config value exceeds uint32_t");
+    }
+    return static_cast<uint32_t>(value);
 }
 //---------------------------------------------------------------------------------------------------------------------
 uint32_t StorageInterceptConfig::GetOptionalConfigUint32(
@@ -339,7 +359,12 @@ uint32_t StorageInterceptConfig::GetOptionalConfigUint32(
     {
         return defaultValue;
     }
-    return stoul(strConfig);
+    const unsigned long value = stoul(strConfig);
+    if (value > std::numeric_limits<uint32_t>::max())
+    {
+        throw std::out_of_range("Config value exceeds uint32_t");
+    }
+    return static_cast<uint32_t>(value);
 }
 //---------------------------------------------------------------------------------------------------------------------
 uint32_t StorageInterceptConfig::GetOptionalConfigUint32(
@@ -1129,7 +1154,7 @@ bool StorageInterceptConfig::GetEnableZeroCopy(const std::string& mountName)
 //---------------------------------------------------------------------------------------------------------------------
 uint32_t StorageInterceptConfig::GetTokenRefreshBufferInSeconds()
 {
-    return StorageInterceptConfig::GetOptionalConfigUint64(
+    return StorageInterceptConfig::GetOptionalConfigUint32(
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameTokenRefreshBufferInSeconds,
         DEFAULT_TOKEN_REFRESH_BUFFER_IN_SECONDS);
@@ -1137,7 +1162,7 @@ uint32_t StorageInterceptConfig::GetTokenRefreshBufferInSeconds()
 //---------------------------------------------------------------------------------------------------------------------
 uint32_t StorageInterceptConfig::GetTokenExpiryBufferInSeconds()
 {
-    return StorageInterceptConfig::GetOptionalConfigUint64(
+    return StorageInterceptConfig::GetOptionalConfigUint32(
         m_ConfigProps,
         StorageInterceptConstants::ConfigNameTokenExpiryBufferInSeconds,
         DEFAULT_TOKEN_EXPIRY_BUFFER_IN_SECONDS);

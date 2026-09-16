@@ -253,12 +253,12 @@ TokenInfo BlobAuthTokenProvider::ExecuteWithRetry(
     std::function<HttpResponse(int attempt)> httpRequestFn,
     std::function<TokenInfo(const std::string& responseData)> responseHandlerFn)
 {
-    int attempt = 1;
+    uint32_t attempt = 1;
 
     while (attempt <= MAX_RETRIES)
     {
         LOG_INFO("{}: attempt {}/{}", context, attempt, MAX_RETRIES);
-        HttpResponse response = httpRequestFn(attempt);
+        HttpResponse response = httpRequestFn(static_cast<int>(attempt));
 
         if (response.curlCode == CURLE_OK && response.statusCode == 200)
         {
@@ -293,8 +293,8 @@ TokenInfo BlobAuthTokenProvider::ExecuteWithRetry(
 
         // Exponential backoff with jitter
         LOG_WARN("{}: attempt {} failed, retrying...", context, attempt - 1);
-        auto interval_without_jitter = BASE_DELAY_SEC << attempt;
-        std::uniform_int_distribution<int> dist(1, std::min(MAX_DELAY_SEC, interval_without_jitter));
+        const uint32_t interval_without_jitter = BASE_DELAY_SEC << attempt;
+        std::uniform_int_distribution<uint32_t> dist(1, std::min(MAX_DELAY_SEC, interval_without_jitter));
         auto interval_with_jitter = std::chrono::seconds(dist(m_rng));
         LOG_INFO("{}: will retry in {} seconds", context, interval_with_jitter.count());
         std::this_thread::sleep_for(interval_with_jitter);
@@ -353,7 +353,7 @@ TokenInfo BlobAuthTokenProvider::FetchTokenViaWorkloadIdentity(const std::string
     }
     std::string tokenUrl = normalizedAuthorityHost + "/" + tenantId + "/oauth2/v2.0/token";
 
-    auto httpRequestFn = [&](int attempt) -> HttpResponse
+    auto httpRequestFn = [&](int) -> HttpResponse
     {
         // Re-read the federated token on each attempt (it can be rotated by kubelet)
         std::string federatedToken = ReadFederatedTokenFile(federatedTokenFile);

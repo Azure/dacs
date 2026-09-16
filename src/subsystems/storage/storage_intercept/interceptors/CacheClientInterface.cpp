@@ -13,10 +13,17 @@
 // limitations under the License.
 
 #include "StorageInterceptorImpl.h"
+#include <cerrno>
+#include <limits>
 //---------------------------------------------------------------------------------------------------------------------
 extern "C" int SI_open(/*[in]*/ const char *pathname, /*[in]*/ int flags, /*[in]*/ mode_t mode, /*[out]*/ char** errorString)
 {
-    return StorageInterceptorImpl::SI_open(pathname, flags, mode, errorString);
+    if (mode > static_cast<mode_t>(std::numeric_limits<int>::max()))
+    {
+        errno = EOVERFLOW;
+        return -1;
+    }
+    return StorageInterceptorImpl::SI_open(pathname, flags, static_cast<int>(mode), errorString);
 }
 //---------------------------------------------------------------------------------------------------------------------
 extern "C" ssize_t SI_pread(/*[in]*/ int fd, /*[in]*/ void* buf, /*[in]*/ size_t nByte, /*[in]*/ off64_t offset, /*[out]*/ char** errorString)

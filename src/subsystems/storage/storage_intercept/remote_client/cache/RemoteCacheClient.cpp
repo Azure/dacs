@@ -16,6 +16,7 @@
 
 #include <boost/algorithm/string.hpp>
 #include <dirent.h>
+#include <limits>
 #include <map>
 
 #include "CacheUtils.h"
@@ -36,10 +37,14 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
     : m_bAttributesCachePutAllOnReaddir(StorageInterceptConfig::GetInstance().GetAttributesCachePutAllOnReaddir())
     , m_bEnableVersionedCacheKeys(StorageInterceptConfig::GetInstance().IsVersionedCacheKeysEnabled())
 {
-    int serverPort = StorageInterceptConfig::GetInstance().GetCacheServerPort();
+    const uint64_t configuredServerPort = StorageInterceptConfig::GetInstance().GetCacheServerPort();
+    STORAGE_ASSERT(configuredServerPort <= std::numeric_limits<uint16_t>::max(), "Cache server port exceeds uint16_t");
+    uint16_t serverPort = static_cast<uint16_t>(configuredServerPort);
     bool enableRemoteCache = StorageInterceptConfig::GetInstance().GetCacheEnableRemote();
-    int numUploadThreads = StorageInterceptConfig::GetInstance().GetCacheNumUploadThreadsPerProcess();
-    int nMaxConnectionsReuseSize = StorageInterceptConfig::GetInstance().GetCacheMaxConnectionsReuseSize();
+    uint64_t configuredUploadThreads = StorageInterceptConfig::GetInstance().GetCacheNumUploadThreadsPerProcess();
+    STORAGE_ASSERT(configuredUploadThreads <= static_cast<uint64_t>(std::numeric_limits<int>::max()), "Upload thread count exceeds int");
+    int numUploadThreads = static_cast<int>(configuredUploadThreads);
+    uint32_t nMaxConnectionsReuseSize = StorageInterceptConfig::GetInstance().GetCacheMaxConnectionsReuseSize();
     bool bReuseServerConnections = StorageInterceptConfig::GetInstance().GetCacheReuseServerConnections();
     bool bUseInfiniband = StorageInterceptConfig::GetInstance().GetCacheIBEnabled();
     bool bEnableCalculateChecksum = StorageInterceptConfig::GetInstance().IsCacheCalculateChecksumEnabled();
@@ -74,14 +79,17 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
         boost::split(vsServerNodes, cacheServerList, boost::is_any_of("#"));
         if(!cacheServerList.empty() && vsServerNodes.size() > 0)
         {
-            m_numServerNodes = vsServerNodes.size();
+            STORAGE_ASSERT(vsServerNodes.size() <= static_cast<size_t>(std::numeric_limits<uint32_t>::max()), "Server count exceeds uint32_t");
+            m_numServerNodes = static_cast<uint32_t>(vsServerNodes.size());
         }
         else
         {
             // if server list is not configured, we derive it using node-* convention used for instances within a job
-            m_numServerNodes = StorageInterceptConfig::GetInstance().GetCacheNumServers();
+            const uint64_t configuredServerCount = StorageInterceptConfig::GetInstance().GetCacheNumServers();
+            STORAGE_ASSERT(configuredServerCount <= std::numeric_limits<uint32_t>::max(), "Server count exceeds uint32_t");
+            m_numServerNodes = static_cast<uint32_t>(configuredServerCount);
             vsServerNodes.clear();
-            for(int index = 0; index < m_numServerNodes; index++)
+            for(uint32_t index = 0; index < m_numServerNodes; index++)
             {
                 vsServerNodes.push_back(string("node-") + to_string(index));
             }
@@ -111,7 +119,7 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
     }
 
     auto cacheStatus = m_spCacheClientImpl->Initialize(arrServers,
-                                                       vsServerNodes.size(),
+                                                       static_cast<uint32_t>(vsServerNodes.size()),
                                                        serverPort,
                                                        bUseInfiniband,
                                                        bEnableCalculateChecksum,
@@ -191,7 +199,7 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(const std::string& mount
     if(fileAttributes && cacheClientStatus == CacheClientStatus::SUCCESS)
     {
         map<string, string> fileMetadata;
-        for(int index = 0; index < entryMetadata.nKeyValuePairs; index++)
+        for(uint32_t index = 0; index < entryMetadata.nKeyValuePairs; index++)
         {
             fileMetadata.emplace(entryMetadata.arrKeyValuePairs[index].strKey,
                                  entryMetadata.arrKeyValuePairs[index].strValue);
@@ -220,7 +228,9 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(const std::string& mount
             return cacheStatus;
         }
 
-        fileAttributes->size = std::strtoull(strSize->second.c_str(), nullptr, 0);
+        const unsigned long long parsedSize = std::strtoull(strSize->second.c_str(), nullptr, 0);
+        STORAGE_ASSERT(parsedSize <= static_cast<unsigned long long>(std::numeric_limits<off64_t>::max()), "File size exceeds off64_t");
+        fileAttributes->size = static_cast<off64_t>(parsedSize);
 
         auto strATime = fileMetadata.find(CACHE_META_FILE_ATIME);
         if(strATime == fileMetadata.end())
@@ -229,7 +239,9 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(const std::string& mount
             return cacheStatus;
         }
 
-        fileAttributes->aTime.tv_sec = std::strtoull(strATime->second.c_str(), nullptr, 0);
+        const unsigned long long parsedATime = std::strtoull(strATime->second.c_str(), nullptr, 0);
+        STORAGE_ASSERT(parsedATime <= static_cast<unsigned long long>(std::numeric_limits<time_t>::max()), "Access time exceeds time_t");
+        fileAttributes->aTime.tv_sec = static_cast<time_t>(parsedATime);
 
         auto strMTime = fileMetadata.find(CACHE_META_FILE_MTIME);
         if(strMTime == fileMetadata.end())
@@ -238,8 +250,9 @@ CacheStatus RemoteCacheClient::DownloadWithMetadataSync(const std::string& mount
             return cacheStatus;
         }
 
-        fileAttributes->cTime.tv_sec = fileAttributes->mTime.tv_sec =
-            std::strtoull(strMTime->second.c_str(), nullptr, 0);
+        const unsigned long long parsedMTime = std::strtoull(strMTime->second.c_str(), nullptr, 0);
+        STORAGE_ASSERT(parsedMTime <= static_cast<unsigned long long>(std::numeric_limits<time_t>::max()), "Modification time exceeds time_t");
+        fileAttributes->cTime.tv_sec = fileAttributes->mTime.tv_sec = static_cast<time_t>(parsedMTime);
 
         auto strVersion = fileMetadata.find(CACHE_META_FILE_VERSION);
         if (strVersion != fileMetadata.end())
@@ -339,11 +352,11 @@ void RemoteCacheClient::PutAll(const std::string& pathPrefix,
                                const std::vector<DirectoryEntry>& dirEntries,
                                const size_t startIndex)
 {
-    int numEntries = dirEntries.size() - startIndex;
-    if(numEntries <= 0)
+    if(startIndex >= dirEntries.size())
     {
         return;
     }
+    size_t numEntries = dirEntries.size() - startIndex;
 
     m_inMemAttributeCache.PutAll(pathPrefix, dirEntries, startIndex);
 

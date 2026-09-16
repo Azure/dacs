@@ -84,24 +84,24 @@ int AdlsClient::GetProperties(const std::string& remotePath, FileAttributes& att
 }
 //---------------------------------------------------------------------------------------------------------------------
 void AdlsClient::PrepareBlocksForUpload(
-  const std::string& remotePath,
-  size_t numBlocks)
+  const std::string&,
+  size_t)
 {
   throw RemoteClientException("Adls backend does not currently have support for write operations");
 }
 //---------------------------------------------------------------------------------------------------------------------
 int AdlsClient::StageBlocksForUpload(
-  /*[in]*/ const std::string& remotePath,
-  /*[in]*/ const void* buf,
-  /*[in]*/ size_t length,
-  /*[in]*/ off64_t blockId)
+  /*[in]*/ const std::string&,
+  /*[in]*/ const void*,
+  /*[in]*/ size_t,
+  /*[in]*/ off64_t)
 {
   throw RemoteClientException("Adls backend does not currently have support for write operations");
 }
 //---------------------------------------------------------------------------------------------------------------------
 int AdlsClient::CommitBlocksForUpload(
-  /*[in]*/ const std::string& remotePath,
-  /*[in]*/ const std::string& version)
+  /*[in]*/ const std::string&,
+  /*[in]*/ const std::string&)
 {
   throw RemoteClientException("Adls backend does not currently have support for write operations");
 }

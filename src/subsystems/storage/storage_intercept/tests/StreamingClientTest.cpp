@@ -250,7 +250,7 @@ TEST_F(StreamingClientTest, WriteRejectsOffsetRangeOverflow)
 void StreamingClientTest::PerformReadTest(size_t bufferSize,
                                           size_t offset,
                                           ssize_t expectedBytesRead,
-                                          int expectedZeroCopyReads)
+                                          uint64_t expectedZeroCopyReads)
 {
     std::vector<char> readBuf(bufferSize);
 
@@ -258,12 +258,13 @@ void StreamingClientTest::PerformReadTest(size_t bufferSize,
         m_strRemoteFilePath,
         readBuf.data(),
         readBuf.size(),
-        offset, /* offset */
+        static_cast<off64_t>(offset), /* offset */
         REMOTE_FILE_SIZE,
         m_strFileVersion);
     ASSERT_EQ(nBytesRead, expectedBytesRead);
     // Data integrity check
-    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, offset, 0, nBytesRead)));
+    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(
+        m_vecBuffer, readBuf, offset, 0, static_cast<size_t>(nBytesRead))));
 
     ASSERT_EQ(m_spStreamingClient->GetReadChunksZeroCopy(), expectedZeroCopyReads);
     // Close the file, forcing to purge the cache
@@ -501,7 +502,8 @@ TEST_F(StreamingClientTest, ReadFileTinyReadsSubChunkTest)
     ssize_t nBytesRead = m_spStreamingClient->ReadFile(
         m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 50);
-    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 0, 0, nBytesRead)));
+    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(
+        m_vecBuffer, readBuf, 0, 0, static_cast<size_t>(nBytesRead))));
 
     // No Close() — keep PrefetchCache populated so the next read can hit sub-chunk.
     uint64_t subChunkAfterWarmup = m_spStreamingClient->GetReadChunksSubChunk();
@@ -510,7 +512,8 @@ TEST_F(StreamingClientTest, ReadFileTinyReadsSubChunkTest)
     nBytesRead = m_spStreamingClient->ReadFile(
         m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 50);
-    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 0, 0, nBytesRead)));
+    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(
+        m_vecBuffer, readBuf, 0, 0, static_cast<size_t>(nBytesRead))));
     ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkAfterWarmup, 1u);
     ASSERT_GE(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 1u);
     m_spStreamingClient->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
@@ -534,7 +537,8 @@ TEST_F(StreamingClientTest, ReadFileSubChunkAtOffsetTest)
     nBytesRead = m_spStreamingClient->ReadFile(
         m_strRemoteFilePath, readBuf.data(), readBuf.size(), 100, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 512);
-    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 100, 0, nBytesRead)));
+    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(
+        m_vecBuffer, readBuf, 100, 0, static_cast<size_t>(nBytesRead))));
     ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkAfterWarmup, 1u);
     ASSERT_GE(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 1u);
     m_spStreamingClient->Close(m_strRemoteFilePath, m_strFileVersion, false /* isWriteMode */);
@@ -662,13 +666,14 @@ TEST_F(StreamingClientTest, ReadFileMultipleSubChunkHitsTest)
     uint64_t subChunkAfterWarmup = m_spStreamingClient->GetReadChunksSubChunk();
 
     // Multiple small reads at different offsets within the same cached chunk
-    for (int i = 0; i < 5; i++)
+    for (size_t i = 0; i < 5; i++)
     {
-        size_t offset = i * 256;
+        const size_t offset = i * 256U;
         nBytesRead = m_spStreamingClient->ReadFile(
-        m_strRemoteFilePath, readBuf.data(), readBuf.size(), offset, REMOTE_FILE_SIZE, m_strFileVersion);
+        m_strRemoteFilePath, readBuf.data(), readBuf.size(), static_cast<off64_t>(offset), REMOTE_FILE_SIZE, m_strFileVersion);
         ASSERT_EQ(nBytesRead, 256);
-        ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, offset, 0, nBytesRead)));
+        ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(
+            m_vecBuffer, readBuf, offset, 0, static_cast<size_t>(nBytesRead))));
     }
 
     // All 5 reads should have been sub-chunk PrefetchCache hits
@@ -682,7 +687,6 @@ TEST_F(StreamingClientTest, ReadFileSubChunkPrefetchCacheHitTest)
     EnsureSubChunkConfig();
     // Verify the sub-chunk path serves from PrefetchCache when the file is still open.
     // Without Close() between reads, PrefetchCache retains the chunk from the first read.
-    uint64_t subChunkBefore = m_spStreamingClient->GetReadChunksSubChunk();
     uint64_t prefetchBefore = m_spStreamingClient->GetReadChunksPrefetchCache();
 
     // First read — use full chunk size to force the full-chunk path (bypasses sub-chunk
@@ -701,7 +705,8 @@ TEST_F(StreamingClientTest, ReadFileSubChunkPrefetchCacheHitTest)
     nBytesRead = m_spStreamingClient->ReadFile(
         m_strRemoteFilePath, readBuf.data(), readBuf.size(), 0, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 128);
-    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, 0, 0, nBytesRead)));
+    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(
+        m_vecBuffer, readBuf, 0, 0, static_cast<size_t>(nBytesRead))));
 
     // Sub-chunk counter should have incremented by 1 from the second read
     ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkAfterFirst, 1u);
@@ -856,7 +861,8 @@ TEST_F(StreamingClientTest, ReadFileSubChunkNearEOFTest)
     nBytesRead = m_spStreamingClient->ReadFile(
         m_strRemoteFilePath, readBuf.data(), readBuf.size(), nearEOFOffset, REMOTE_FILE_SIZE, m_strFileVersion);
     ASSERT_EQ(nBytesRead, 100);
-    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(m_vecBuffer, readBuf, nearEOFOffset, 0, nBytesRead)));
+    ASSERT_IF(m_bUsingMock, ASSERT_TRUE(BufferEqualsInRange(
+        m_vecBuffer, readBuf, nearEOFOffset, 0, static_cast<size_t>(nBytesRead))));
 
     // The read should have taken the sub-chunk PrefetchCache path
     ASSERT_EQ(m_spStreamingClient->GetReadChunksSubChunk() - subChunkBefore, 1u);
@@ -1001,7 +1007,7 @@ TEST_F(StreamingClientTest, WriteWholeFileTest)
         writeData->Buffer.get(),
         writeData->BufferSize,
         0 /* offset */);
-    ASSERT_EQ(nBytesWritten, writeData->BufferSize);
+    ASSERT_EQ(nBytesWritten, static_cast<ssize_t>(writeData->BufferSize));
 
     // Close the file to flush the writes
     m_spStreamingClient->Close(writeFileName, "" /* version */, true /* isWriteMode */);
@@ -1019,7 +1025,7 @@ TEST_F(StreamingClientTest, WriteWholeFileTest)
         false /* setToZeros */);
     ssize_t nBytesRead = m_spStreamingClient->ReadFile(
         writeFileName, readData->Buffer.get(), readData->BufferSize, 0 /* offset */, REMOTE_FILE_SIZE, writeAttrs.version);
-    ASSERT_EQ(nBytesRead, writeData->BufferSize);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(writeData->BufferSize));
     ASSERT_TRUE(FileDataEquals(writeData, readData));
 
     // Close the file
@@ -1039,11 +1045,11 @@ void StreamingClientTest::WriteAppendsTest(
             remotePath,
             writeData->Buffer.get() + offset,
             writeSize,
-            offset /* offset */);
-        ASSERT_EQ(nBytesWritten, writeSize);
+            static_cast<off64_t>(offset) /* offset */);
+        ASSERT_EQ(nBytesWritten, static_cast<ssize_t>(writeSize));
         totalBytesWritten += nBytesWritten;
     }
-    ASSERT_EQ(totalBytesWritten, writeData->BufferSize);
+    ASSERT_EQ(totalBytesWritten, static_cast<ssize_t>(writeData->BufferSize));
 
     // Close the file to flush the writes
     m_spStreamingClient->Close(remotePath, "" /* version */, true /* isWriteMode */);
@@ -1054,7 +1060,7 @@ void StreamingClientTest::WriteAppendsTest(
         remotePath,
         attributes /* [out] attributes */);
     ASSERT_EQ(nResult, 0);
-    ASSERT_EQ(attributes.size, writeData->BufferSize);
+    ASSERT_EQ(attributes.size, static_cast<off64_t>(writeData->BufferSize));
     ASSERT_FALSE(attributes.version.empty());
 
     // Read back the file to verify data integrity — use the generated version
@@ -1068,9 +1074,9 @@ void StreamingClientTest::WriteAppendsTest(
         readData->Buffer.get(),
         readData->BufferSize,
         0 /* offset */,
-        writeData->BufferSize,
+        static_cast<off64_t>(writeData->BufferSize),
         attributes.version);
-    ASSERT_EQ(nBytesRead, writeData->BufferSize);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(writeData->BufferSize));
     ASSERT_TRUE(FileDataEquals(writeData, readData));
     m_spStreamingClient->Close(remotePath, "" /* version */, false /* isWriteMode */);
 }
@@ -1125,7 +1131,7 @@ TEST_F(StreamingClientTest, WriteSparseFileTest)
         writeData->Buffer.get(),
         writeData->BufferSize,
         0 /* offset */);
-    ASSERT_EQ(nBytesWritten, writeData->BufferSize);
+    ASSERT_EQ(nBytesWritten, static_cast<ssize_t>(writeData->BufferSize));
 
     // Write second half of the file, leaving a hole in between
     const size_t holeSize = REMOTE_FILE_SIZE / 4;
@@ -1133,8 +1139,8 @@ TEST_F(StreamingClientTest, WriteSparseFileTest)
         writeFileName,
         writeData->Buffer.get() + writeData->BufferSize / 2,
         writeData->BufferSize / 2,
-        writeData->BufferSize + holeSize /* offset */);
-    ASSERT_EQ(nBytesWrittenSecondHalf, writeData->BufferSize / 2);
+        static_cast<off64_t>(writeData->BufferSize + holeSize) /* offset */);
+    ASSERT_EQ(nBytesWrittenSecondHalf, static_cast<ssize_t>(writeData->BufferSize / 2));
 
     // Close the file to flush the writes
     m_spStreamingClient->Close(writeFileName, "" /* version */, true /* isWriteMode */);
@@ -1231,7 +1237,7 @@ TEST_F(StreamingClientTest, WriteReadEndToEndVersionedKeyTest)
     // Write the file
     ssize_t nBytesWritten = client->WriteFile(
         writeFileName, writeData->Buffer.get(), writeData->BufferSize, 0);
-    ASSERT_EQ(nBytesWritten, writeData->BufferSize);
+    ASSERT_EQ(nBytesWritten, static_cast<ssize_t>(writeData->BufferSize));
 
     // Close → generates version UUID, uploads chunks to cache with versioned keys
     client->Close(writeFileName, "" /* version */, true /* isWriteMode */);
@@ -1241,7 +1247,7 @@ TEST_F(StreamingClientTest, WriteReadEndToEndVersionedKeyTest)
     int nResult = client->GetProperties(writeFileName, attrs);
     ASSERT_EQ(nResult, 0);
     ASSERT_FALSE(attrs.version.empty());
-    ASSERT_EQ(attrs.size, writeData->BufferSize);
+    ASSERT_EQ(attrs.size, static_cast<off64_t>(writeData->BufferSize));
     const std::string generatedVersion = attrs.version;
 
     // Verify all cache Upload calls during Close used the generated version
@@ -1257,8 +1263,8 @@ TEST_F(StreamingClientTest, WriteReadEndToEndVersionedKeyTest)
         0, writeData->BufferSize, nullptr, false);
     ssize_t nBytesRead = client->ReadFile(
         writeFileName, readData->Buffer.get(), readData->BufferSize,
-        0, writeData->BufferSize, generatedVersion);
-    ASSERT_EQ(nBytesRead, writeData->BufferSize);
+        0, static_cast<off64_t>(writeData->BufferSize), generatedVersion);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(writeData->BufferSize));
 
     // Verify data integrity
     ASSERT_TRUE(FileDataEquals(writeData, readData));
@@ -1296,7 +1302,7 @@ TEST_F(StreamingClientTest, WriteReadWithVersionedKeysDisabledTest)
 
     ssize_t nBytesWritten = client->WriteFile(
         writeFileName, writeData->Buffer.get(), writeData->BufferSize, 0);
-    ASSERT_EQ(nBytesWritten, writeData->BufferSize);
+    ASSERT_EQ(nBytesWritten, static_cast<ssize_t>(writeData->BufferSize));
 
     client->Close(writeFileName, "" /* version */, true /* isWriteMode */);
 
@@ -1408,7 +1414,7 @@ TEST_F(StreamingClientTest, EvictCacheForFileVersionOnWriteCloseTest)
     // Write the file
     ssize_t nBytesWritten = client->WriteFile(
         writeFileName, writeData->Buffer.get(), writeData->BufferSize, 0);
-    ASSERT_EQ(nBytesWritten, writeData->BufferSize);
+    ASSERT_EQ(nBytesWritten, static_cast<ssize_t>(writeData->BufferSize));
 
     // Close with a fake old version — simulates overwrite where Open() found an existing file
     const std::string oldVersion = "old-version-etag-12345";
@@ -1435,7 +1441,7 @@ TEST_F(StreamingClientTest, EvictCacheForFileVersionSkippedOnEmptyVersionTest)
 
     ssize_t nBytesWritten = client->WriteFile(
         writeFileName, writeData->Buffer.get(), writeData->BufferSize, 0);
-    ASSERT_EQ(nBytesWritten, writeData->BufferSize);
+    ASSERT_EQ(nBytesWritten, static_cast<ssize_t>(writeData->BufferSize));
 
     // Close with empty version — new file, no old version to evict
     client->Close(writeFileName, "" /* empty version */, true /* isWriteMode */);
@@ -1459,7 +1465,7 @@ TEST_F(StreamingClientTest, OverwriteFileTest)
     auto v1Data = GetRandDataBuffer(REMOTE_FILE_SIZE);
     ssize_t nBytesWritten = m_spStreamingClient->WriteFile(
         writeFileName, v1Data->Buffer.get(), v1Data->BufferSize, 0);
-    ASSERT_EQ(nBytesWritten, v1Data->BufferSize);
+    ASSERT_EQ(nBytesWritten, static_cast<ssize_t>(v1Data->BufferSize));
     m_spStreamingClient->Close(writeFileName, "" /* version */, true /* isWriteMode */);
 
     // Get V1's version
@@ -1472,7 +1478,7 @@ TEST_F(StreamingClientTest, OverwriteFileTest)
     auto v2Data = GetRandDataBuffer(REMOTE_FILE_SIZE);
     nBytesWritten = m_spStreamingClient->WriteFile(
         writeFileName, v2Data->Buffer.get(), v2Data->BufferSize, 0);
-    ASSERT_EQ(nBytesWritten, v2Data->BufferSize);
+    ASSERT_EQ(nBytesWritten, static_cast<ssize_t>(v2Data->BufferSize));
     m_spStreamingClient->Close(writeFileName, v1Version, true /* isWriteMode */);
 
     // Get V2's version — should be different from V1
@@ -1486,8 +1492,8 @@ TEST_F(StreamingClientTest, OverwriteFileTest)
         0, v2Data->BufferSize, nullptr, false);
     ssize_t nBytesRead = m_spStreamingClient->ReadFile(
         writeFileName, readData->Buffer.get(), readData->BufferSize,
-        0, v2Data->BufferSize, v2Attrs.version);
-    ASSERT_EQ(nBytesRead, v2Data->BufferSize);
+        0, static_cast<off64_t>(v2Data->BufferSize), v2Attrs.version);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(v2Data->BufferSize));
     ASSERT_TRUE(FileDataEquals(v2Data, readData));
 
     m_spStreamingClient->Close(writeFileName, "" /* version */, false /* isWriteMode */);

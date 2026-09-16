@@ -33,7 +33,7 @@ void ErrorHandler::ResetState()
     m_mapTidToErrorString.clear();
 }
 //---------------------------------------------------------------------------------------------------------------------
-void ErrorHandler::SetError(/*[in]*/ const std::string& error, /*[in]*/ const int tid)
+void ErrorHandler::SetError(/*[in]*/ const std::string& error, /*[in]*/ const pid_t tid)
 {
     if(error.empty())
     {
@@ -55,7 +55,7 @@ void ErrorHandler::SetError(/*[in]*/ const std::string& error, /*[in]*/ const in
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-char* ErrorHandler::GetLastError(/*[in]*/ const int tid)
+char* ErrorHandler::GetLastError(/*[in]*/ const pid_t tid)
 {
     std::lock_guard<std::mutex> lock(m_lock);
     char* error = nullptr;
@@ -70,7 +70,7 @@ char* ErrorHandler::GetLastError(/*[in]*/ const int tid)
     return error;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool ErrorHandler::IsErrorSet(/*[in]*/ const int tid)
+bool ErrorHandler::IsErrorSet(/*[in]*/ const pid_t tid)
 {
     std::lock_guard<std::mutex> lock(m_lock);
 

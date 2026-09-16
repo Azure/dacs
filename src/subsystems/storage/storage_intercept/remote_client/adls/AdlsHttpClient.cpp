@@ -25,8 +25,8 @@ if (!condition) { LOG_ERROR(message); throw AdlsHttpClientException(message); }
 #define TRY_EXECUTE(stmt) { try { stmt; } catch(CurlClientException e) { throw AdlsHttpClientException( e.what() ); } }
 //---------------------------------------------------------------------------------------------------------------------
 AdlsHttpClient::AdlsHttpClient(const std::string& host)
-  : m_spUrlBuilder(std::make_unique<AdlsHttpUrlBuilder>(host))
-  , m_spHttpClient(nullptr)
+  : m_spHttpClient(nullptr)
+  , m_spUrlBuilder(std::make_unique<AdlsHttpUrlBuilder>(host))
 {
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -62,7 +62,6 @@ void AdlsHttpClient::GetAuthToken(
   req.multipartForm["client_secret"] = clientSecret;
 
   /* We don't want to reuse this connection, as auth request goes to a different host */
-  bool reuseConnection = false;
   InitHttpClient(false);
   LOG_DEBUG("Sending API request to get Adls auth token");
   TRY_EXECUTE(m_spHttpClient->Make(req));
@@ -138,7 +137,7 @@ std::string AdlsHttpClient::ListDirectory(
 
     dirEntries.push_back(DirectoryEntry());
     dirEntries.back().d_ino = D_INO_VAL;
-    dirEntries.back().d_off = dirEntries.size() - 1;
+    dirEntries.back().d_off = static_cast<off64_t>(dirEntries.size() - 1);
     dirEntries.back().d_reclen = sizeof(DirectoryEntry);
     dirEntries.back().d_type = statusValue["type"].asString().compare("DIRECTORY") == 0 ? DT_DIR : DT_REG;
     dirEntries.back().d_size = static_cast<off64_t>(statusValue["length"].asInt64());
@@ -181,11 +180,11 @@ int AdlsHttpClient::GetFileOrDirectoryStatus(
   stats.isDir = statusValue["type"].asString().compare("DIRECTORY") == 0;
   if (stats.isDir)
   {
-    stats.size = static_cast<size_t>(DIR_SIZE);
+    stats.size = static_cast<off64_t>(DIR_SIZE);
   }
   else
   {
-    stats.size = static_cast<size_t>(statusValue["length"].asUInt64());
+    stats.size = static_cast<off64_t>(statusValue["length"].asInt64());
   }
   stats.mTime.tv_sec = static_cast<time_t>(statusValue["modificationTime"].asInt64() / 1000);
   stats.aTime.tv_sec = static_cast<time_t>(statusValue["accessTime"].asInt64() / 1000);

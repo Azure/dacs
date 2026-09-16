@@ -34,11 +34,11 @@ void signalHandler(int signum) {
     std::cout << "Interrupt signal (" << signum << ") received." << std::endl;
     // Print backtrace
     void* array[10];
-    size_t size = backtrace(array, 10);
+    int size = backtrace(array, 10);
     char** messages = backtrace_symbols(array, size);
 
     std::cerr << "Stack trace:" << std::endl;
-    for (size_t i = 0; i < size; i++) {
+    for (int i = 0; i < size; i++) {
         std::cerr << messages[i] << std::endl;
     }
 
@@ -52,7 +52,7 @@ TestBase::TestBase()
     : m_bConfigUpdated(false)
 {
     static std::once_flag randomSeedFlag;
-    std::call_once(randomSeedFlag, [](){srand(time(NULL));});
+    std::call_once(randomSeedFlag, [](){srand(static_cast<unsigned int>(time(NULL)));});
 
     static std::once_flag sigHandlerFlag;
     std::call_once(sigHandlerFlag, []() {
@@ -99,7 +99,7 @@ void TestBase::OverrideConfig(const char* configName, const std::string& configV
     std::string randomString;
     randomString.reserve(length);
     for (uint16_t i = 0; i < length; ++i) {
-        randomString += charset[rand() % maxIndex];
+        randomString += charset[static_cast<size_t>(rand()) % maxIndex];
     }
     return randomString;
 }
@@ -111,8 +111,8 @@ void TestBase::GenerateRandomValueBuf()
     size_t nMutations = std::min(m_vecFileBuf.size(), static_cast<size_t>(1000000));
     for(size_t idx = 0; idx < nMutations; idx++)
     {
-        size_t randomIdx = rand() % m_vecFileBuf.size();
-        char randomValue = 'A' + rand() % 26;
+        size_t randomIdx = static_cast<size_t>(rand()) % m_vecFileBuf.size();
+        char randomValue = static_cast<char>('A' + rand() % 26);
         m_vecFileBuf[randomIdx] = randomValue;
     }
 }
@@ -172,8 +172,8 @@ void TestBase::SetupMockRemoteClient()
 
     // Generate test file contents with random values in buffer
     GenerateRandomValueBuf();
-    int nBytesWritten = ::write(nFd, m_vecFileBuf.data(), REMOTE_FILE_SIZE);
-    ASSERT_EQ(nBytesWritten, REMOTE_FILE_SIZE);
+    ssize_t nBytesWritten = ::write(nFd, m_vecFileBuf.data(), REMOTE_FILE_SIZE);
+    ASSERT_EQ(nBytesWritten, static_cast<ssize_t>(REMOTE_FILE_SIZE));
 
     ASSERT_EQ(::close(nFd), 0);
     std::cout << "MockRemoteClient Setup created test file " << mockClientTestFilePath << std::endl;

@@ -53,7 +53,7 @@ void CacheManagerTest::AddCacheEntry(
         fileName,
         fileSize,
         emptyMetadata,
-        expiryTime,
+        static_cast<uint32_t>(expiryTime),
         groupId);
     ASSERT_TRUE(ret);
 }
@@ -140,7 +140,7 @@ TEST_F(CacheManagerTest, TakeAndLoadSnapshot)
     // Add cache entry
     AddCacheEntry(fileName, fileSize, expiryTime, groupId);
     ValidateCacheEntry(fileName, fileSize, expiryTime, groupId);
-    ASSERT_GT(CacheManager::GetInstance().m_totalCachedSize, 0);
+    ASSERT_GT(CacheManager::GetInstance().m_totalCachedSize.load(), 0ULL);
 
     // Take snapshot
     std::shared_ptr<snapshot::Snapshot> snapshot = CacheManager::GetInstance().TakeSnapshot();
@@ -153,14 +153,14 @@ TEST_F(CacheManagerTest, TakeAndLoadSnapshot)
         RESET_CACHE_MANAGER();
     }
     ValidateCacheEntryNotExists(fileName);
-    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize, 0);
+    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize.load(), 0ULL);
 
     // Load snapshot
     CacheManager::GetInstance().InitializeFromSnapshot(*snapshot);
 
     // Validate cache entry added after load from snapshot
     ValidateCacheEntry(fileName, fileSize, expiryTime, groupId);
-    ASSERT_GT(CacheManager::GetInstance().m_totalCachedSize, 0);
+    ASSERT_GT(CacheManager::GetInstance().m_totalCachedSize.load(), 0ULL);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(CacheManagerTest, RembemberPendingGroupIdDeletionAfterSnapshotLoad)
@@ -172,7 +172,7 @@ TEST_F(CacheManagerTest, RembemberPendingGroupIdDeletionAfterSnapshotLoad)
     }
     CacheManager::GetInstance().m_groupIdQueue.push("testGroup1");
     CacheManager::GetInstance().m_groupIdQueue.push("testGroup2");
-    ASSERT_EQ(CacheManager::GetInstance().m_groupIdQueue.size(), 2);
+    ASSERT_EQ(CacheManager::GetInstance().m_groupIdQueue.size(), 2U);
 
     // Take snapshot
     std::shared_ptr<snapshot::Snapshot> snapshot = CacheManager::GetInstance().TakeSnapshot();
@@ -187,7 +187,7 @@ TEST_F(CacheManagerTest, RembemberPendingGroupIdDeletionAfterSnapshotLoad)
     CacheManager::GetInstance().InitializeFromSnapshot(*snapshot);
 
     // Validate pending group id deletion
-    ASSERT_EQ(CacheManager::GetInstance().m_groupIdQueue.size(), 2);
+    ASSERT_EQ(CacheManager::GetInstance().m_groupIdQueue.size(), 2U);
     ASSERT_EQ(CacheManager::GetInstance().m_groupIdQueue.front(), "testGroup1");
     CacheManager::GetInstance().m_groupIdQueue.pop();
     ASSERT_EQ(CacheManager::GetInstance().m_groupIdQueue.front(), "testGroup2");
@@ -196,25 +196,25 @@ TEST_F(CacheManagerTest, RembemberPendingGroupIdDeletionAfterSnapshotLoad)
 TEST_F(CacheManagerTest, TestParseTimeIntervalString)
 {
     uint64_t nValue = CacheManager::GetInstance().ParseTimeIntervalString("1s");
-    ASSERT_EQ(1, nValue);
+    ASSERT_EQ(1ULL, nValue);
     nValue = CacheManager::GetInstance().ParseTimeIntervalString("3m15s");
-    ASSERT_EQ(195, nValue);
+    ASSERT_EQ(195ULL, nValue);
     nValue = CacheManager::GetInstance().ParseTimeIntervalString("15s3m");
-    ASSERT_EQ(195, nValue);
+    ASSERT_EQ(195ULL, nValue);
     nValue = CacheManager::GetInstance().ParseTimeIntervalString("20d15h2m19s");
-    ASSERT_EQ(1782139, nValue);
+    ASSERT_EQ(1782139ULL, nValue);
 
     // Test invalid strings
     nValue = CacheManager::GetInstance().ParseTimeIntervalString("hdsm");
-    ASSERT_EQ(0, nValue);
+    ASSERT_EQ(0ULL, nValue);
     nValue = CacheManager::GetInstance().ParseTimeIntervalString("20dh2m12s");
-    ASSERT_EQ(0, nValue);
+    ASSERT_EQ(0ULL, nValue);
     nValue = CacheManager::GetInstance().ParseTimeIntervalString("2ms");
-    ASSERT_EQ(0, nValue);
+    ASSERT_EQ(0ULL, nValue);
     nValue = CacheManager::GetInstance().ParseTimeIntervalString("hd15m2s");
-    ASSERT_EQ(0, nValue);
+    ASSERT_EQ(0ULL, nValue);
     nValue = CacheManager::GetInstance().ParseTimeIntervalString("2m?&16s");
-    ASSERT_EQ(0, nValue);
+    ASSERT_EQ(0ULL, nValue);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(CacheManagerTest, TestAccessTimeUpdates)
@@ -251,15 +251,15 @@ TEST_F(CacheManagerTest, TestEviction)
     {
         AddCacheEntry(fileNamePrefix + std::to_string(i), fileSize, expiryTime, groupId);
         ValidateCacheEntry(fileNamePrefix + std::to_string(i), fileSize, expiryTime, groupId);
-        ASSERT_GT(CacheManager::GetInstance().m_totalCachedSize, 0);
+        ASSERT_GT(CacheManager::GetInstance().m_totalCachedSize.load(), 0ULL);
     }
 
-    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize, 5 * fileSize);
+    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize.load(), 5 * fileSize);
 
     // We have set eviction window=5s and interval=1s via env variables
     // Sleep for an interval < eviction window, and touch all files
     std::this_thread::sleep_for(std::chrono::seconds(3));
-    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize, 5 * fileSize);
+    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize.load(), 5 * fileSize);
     for (int i = 0; i < 5; i++)
     {
         ValidateCacheEntry(fileNamePrefix + std::to_string(i), fileSize, expiryTime, groupId);
@@ -274,7 +274,7 @@ TEST_F(CacheManagerTest, TestEviction)
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
     //No Eviction should happen as cache size is below threshold
-    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize, 5 * fileSize);
+    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize.load(), 5 * fileSize);
 
     // Add two more files to the cache, so that the total size exceeds the threshold
     for (int i = 5; i < 7; i++)
@@ -282,7 +282,7 @@ TEST_F(CacheManagerTest, TestEviction)
         AddCacheEntry(fileNamePrefix + std::to_string(i), fileSize, expiryTime, groupId);
     }
 
-    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize, 7 * fileSize);
+    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize.load(), 7 * fileSize);
 
     //Now sleep for another eviction pass to happen
     std::this_thread::sleep_for(std::chrono::seconds(2));
@@ -296,7 +296,7 @@ TEST_F(CacheManagerTest, TestEviction)
     ValidateCacheEntry(fileNamePrefix + "5", fileSize, expiryTime, groupId);
     ValidateCacheEntry(fileNamePrefix + "6", fileSize, expiryTime, groupId);
 
-    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize, 4 * fileSize);
+    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize.load(), 4 * fileSize);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(CacheManagerTest, TestDynamicEviction)
@@ -373,6 +373,6 @@ TEST_F(CacheManagerTest, TestDynamicEviction)
     ValidateCacheEntryNotExists(fileNames[1]);
     ValidateCacheEntry(fileNames[2], fileSize, 0, "testGroup");
     ValidateCacheEntry(fileNames[3], fileSize, 0, "testGroup");
-    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize, 2 * fileSize);
+    ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize.load(), 2 * fileSize);
 }
 //---------------------------------------------------------------------------------------------------------------------

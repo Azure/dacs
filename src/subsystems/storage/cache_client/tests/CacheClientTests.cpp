@@ -45,9 +45,10 @@ namespace
 std::string EncodeCacheFilename(const std::string& filename)
 {
     std::ostringstream encoded;
-    for(const unsigned char character : filename)
+    for(const char character : filename)
     {
-        encoded << std::setfill('0') << std::setw(2) << std::hex << static_cast<int>(character);
+        encoded << std::setfill('0') << std::setw(2) << std::hex
+                << static_cast<int>(static_cast<unsigned char>(character));
     }
     return encoded.str();
 }
@@ -145,7 +146,7 @@ void CacheClientTests::InitializeClient(
     const char* strChecksumAlgorithm,
     bool bEnableConsistentHashing)
 {
-    static uint32_t nPort = atoi(getenv("CACHE_SERVER_PORT"));
+    static uint32_t nPort = static_cast<uint32_t>(std::stoul(getenv("CACHE_SERVER_PORT")));
 
     const char* arrServers[] = {"127.0.0.1"};
     uint32_t nServers = 1;
@@ -222,7 +223,7 @@ const char* CacheClientTests::GetRandomBuffer(const uint64_t nLength) const
     char* pBuffer = (char*)malloc(nLength);
     for(uint64_t i = 0; i < min((uint64_t)50, nLength); i++)
     {
-        pBuffer[i] = rand() % 256;
+        pBuffer[i] = static_cast<char>(rand() % 256);
     }
     return (const char*)pBuffer;
 }
@@ -586,9 +587,9 @@ TEST_P(CacheClientTests, DownloadFilesWithKeyValuePairs)
     char dynStr[5] = {'a', 'b', 'c', 'd', '\0'};
     for(uint32_t i = 0; i < metadata.nKeyValuePairs; i++)
     {
-        dynStr[0] = 'a' + i;
+        dynStr[0] = static_cast<char>(static_cast<uint32_t>('a') + i);
         keys[i] = dynStr;
-        dynStr[0] = 'A' + i;
+        dynStr[0] = static_cast<char>(static_cast<uint32_t>('A') + i);
         values[i] = dynStr;
         kvPairs[i].strKey = keys[i].data();
         kvPairs[i].strValue = values[i].data();
@@ -972,7 +973,7 @@ TEST_P(CacheClientTests, FileExpiry)
     string filename = GetCorrelationId();
     uint64_t nLength = 1024;
     const void* pBuffer = GetRandomBuffer(nLength);
-    uint64_t nExpirySeconds = 5;
+    uint32_t nExpirySeconds = 5;
 
     auto status =
         m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, nExpirySeconds, nullptr, nullptr, nullptr);
@@ -1236,7 +1237,7 @@ TEST_P(CacheClientTests, DiscoveryEndpointConfigurationValidation) {
     // Test invalid configurations
     {
         CacheClientImpl client;
-        uint32_t nPort = atoi(getenv("CACHE_SERVER_PORT"));
+        uint32_t nPort = static_cast<uint32_t>(std::stoul(getenv("CACHE_SERVER_PORT")));
         
         ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT,
             client.Initialize(nullptr, 0, nPort, false, false, false, nullptr, 0,
@@ -1258,7 +1259,7 @@ TEST_P(CacheClientTests, ResilientInitializationWithNetworkFailures) {
     }
     
     CacheClientImpl client;
-    uint32_t nPort = atoi(getenv("CACHE_SERVER_PORT"));
+    uint32_t nPort = static_cast<uint32_t>(std::stoul(getenv("CACHE_SERVER_PORT")));
     
     // Should succeed with unreachable endpoint (graceful degradation)
     ASSERT_EQ(CacheClientStatus::SUCCESS,
@@ -1268,7 +1269,7 @@ TEST_P(CacheClientTests, ResilientInitializationWithNetworkFailures) {
     
     // Verify graceful degradation
     auto servers = client.m_spConnectionManager->GetAllCacheServerHostnames();
-    ASSERT_EQ(servers.size(), 0);
+    ASSERT_EQ(servers.size(), 0U);
     
     // Operations should fail gracefully
     uint64_t nLength = 1024;
@@ -1290,7 +1291,7 @@ TEST_P(CacheClientTests, DiscoveryResilience) {
     SetCacheServerCount(0);
     std::this_thread::sleep_for(std::chrono::seconds(DEFAULT_DISCOVERY_TIMEOUT));
     auto servers = m_cacheClientImpl.m_spConnectionManager->GetAllCacheServerHostnames();
-    ASSERT_EQ(servers.size(), 1);  // Should remain unchanged
+    ASSERT_EQ(servers.size(), 1U);  // Should remain unchanged
     
     // Test recovery
     SetCacheServerCount(2);

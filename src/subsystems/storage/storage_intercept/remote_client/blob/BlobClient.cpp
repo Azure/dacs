@@ -28,6 +28,7 @@
 #include <sstream>
 #include <mstream.h>
 #include <atomic>
+#include <limits>
 #include <utility>
 
 // Global counter for tracking retries
@@ -48,7 +49,8 @@ class exponential_backoff_retry_policy final : public azure::storage_lite::retry
 
     azure::storage_lite::retry_info evaluate(const azure::storage_lite::retry_context& context) const override
     {
-        if (context.numbers() <= m_maxRetryCount && can_retry(context.result()))
+        if (context.numbers() >= 0 &&
+            static_cast<uint32_t>(context.numbers()) <= m_maxRetryCount && can_retry(context.result()))
         {
             auto interval = storageretry::GetRetryIntervalExpJitter(
                 static_cast<uint32_t>(context.numbers()),
@@ -230,12 +232,16 @@ void BlobClient::GetConfigProperties()
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t BlobClient::ReadChunkSync(const std::string& remotePath, void* buf, size_t size, off_t offset)
 {
+    if (offset < 0)
+    {
+        throw RemoteClientException("BlobClientError: negative read offset");
+    }
     azure::storage_lite::omstream oStream((char *)buf, size);
     ssize_t nBytesRead = -1;
     auto blobOutcome = GetBlobClient(remotePath)->get_chunk_to_stream_sync(
         GetContainerName(remotePath),
         GetBlobName(remotePath),
-        offset,
+        static_cast<unsigned long long>(offset),
         size,
         oStream);
 
@@ -299,7 +305,7 @@ std::string BlobClient::ReadDirectory(
             dirEntries.push_back(DirectoryEntry());
 
             dirEntries.back().d_ino = D_INO_VAL;
-            dirEntries.back().d_off = dirEntries.size() - 1;
+            dirEntries.back().d_off = static_cast<off64_t>(dirEntries.size() - 1);
             dirEntries.back().d_reclen = sizeof(DirectoryEntry);
             dirEntries.back().d_type = DT_DIR;
             strncpy(dirEntries.back().d_name, container.name.c_str(), D_NAME_LEN);
@@ -363,13 +369,17 @@ std::string BlobClient::ReadDirectory(
 
         dirEntries.push_back(DirectoryEntry());
         dirEntries.back().d_ino = D_INO_VAL;
-        dirEntries.back().d_off = dirEntries.size() - 1;
+        dirEntries.back().d_off = static_cast<off64_t>(dirEntries.size() - 1);
         dirEntries.back().d_reclen = sizeof(DirectoryEntry);
         dirEntries.back().d_type = blob.is_directory ? DT_DIR : DT_REG;
 
         strncpy(dirEntries.back().d_name, lastComponentName.c_str(), D_NAME_LEN);
 
-        dirEntries.back().d_size = blob.content_length;
+        if (blob.content_length > static_cast<unsigned long long>(std::numeric_limits<off64_t>::max()))
+        {
+            throw RemoteClientException("BlobClientError: blob size exceeds off64_t");
+        }
+        dirEntries.back().d_size = static_cast<off64_t>(blob.content_length);
         struct tm mTime;
         strptime(blob.last_modified.c_str(), "%a, %d %b %Y %H:%M:%S", &mTime);
         // Response from blob only contains mTime
@@ -532,6 +542,10 @@ void BlobClient::PrepareBlocksForUpload(
     const std::string& remotePath,
     size_t numBlocks)
 {
+    if (numBlocks > static_cast<size_t>(std::numeric_limits<off64_t>::max()))
+    {
+        throw RemoteClientException("BlobClientError: block count exceeds off64_t");
+    }
     std::lock_guard<std::mutex> lock(m_lockBlockList);
     if(m_mapBlockList.find(remotePath) != m_mapBlockList.end())
     {
@@ -545,7 +559,7 @@ void BlobClient::PrepareBlocksForUpload(
     std::string uuid = azure::storage_lite::get_uuid();
     for(size_t blockId = 0; blockId < numBlocks; blockId++)
     {
-        std::string base64BlockId = GetUrlSafeBase64(uuid, blockId);
+        std::string base64BlockId = GetUrlSafeBase64(uuid, static_cast<off64_t>(blockId));
         blockListIter->second.emplace_back(azBlockItem_t{ std::move(base64BlockId), azBlockType_t::uncommitted });
     }
 
@@ -569,7 +583,11 @@ int BlobClient::StageBlocksForUpload(
         throw RemoteClientException("BlobClientError: Block list not found for path=" + remotePath);
     }
 
-    const std::string& blockIdBase64 = m_mapBlockList[remotePath][blockId].id;
+    if (blockId < 0 || static_cast<size_t>(blockId) >= m_mapBlockList[remotePath].size())
+    {
+        throw RemoteClientException("BlobClientError: invalid block index");
+    }
+    const std::string& blockIdBase64 = m_mapBlockList[remotePath][static_cast<size_t>(blockId)].id;
     const int nTotalBlocks = static_cast<int>(m_mapBlockList[remotePath].size());
     lock.unlock();
 
@@ -714,7 +732,11 @@ std::vector<BlobClient::azBlobItem_t> BlobClient::ListOneBlob(
 void BlobClient::MakeFileAttr(const azBlobItem_t& blobItem, FileAttributes& attr)
 {
     attr.isDir = false;
-    attr.size = blobItem.content_length;
+    if (blobItem.content_length > static_cast<unsigned long long>(std::numeric_limits<off64_t>::max()))
+    {
+        throw RemoteClientException("BlobClientError: blob size exceeds off64_t");
+    }
+    attr.size = static_cast<off64_t>(blobItem.content_length);
     struct tm mTime;
     strptime(blobItem.last_modified.c_str(), "%a, %d %b %Y %H:%M:%S", &mTime);
     attr.mTime.tv_sec = timegm(&mTime);

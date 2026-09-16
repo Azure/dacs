@@ -100,7 +100,7 @@ class CacheClientImpl
     uint32_t m_nConnectionPoolSize;
     CacheClientRetryConfig m_retryConfig;
     std::unique_ptr<ConnectionManager> m_spConnectionManager;
-    static std::size_t nDefaultConnectionPoolSize;
+    static uint32_t nDefaultConnectionPoolSize;
     size_t m_nMaxBufferSizeBytes;
 
     // Delete a group from a single cache server

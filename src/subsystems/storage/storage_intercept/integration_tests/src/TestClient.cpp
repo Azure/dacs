@@ -32,11 +32,11 @@
 //---------------------------------------------------------------------------------------------------------------------
 #define TIME_NOW std::chrono::high_resolution_clock::now();
 
-#define NANO_INTERVAL(tStart, tEnd) std::chrono::duration_cast<std::chrono::nanoseconds>(tEnd - tStart).count();
-#define MICRO_INTERVAL(tStart, tEnd) std::chrono::duration_cast<std::chrono::microseconds>(tEnd - tStart).count();
-#define MILLI_INTERVAL(tStart, tEnd) std::chrono::duration_cast<std::chrono::milliseconds>(tEnd - tStart).count();
+#define NANO_INTERVAL(tStart, tEnd) std::chrono::duration_cast<std::chrono::nanoseconds>(tEnd - tStart).count()
+#define MICRO_INTERVAL(tStart, tEnd) std::chrono::duration_cast<std::chrono::microseconds>(tEnd - tStart).count()
+#define MILLI_INTERVAL(tStart, tEnd) std::chrono::duration_cast<std::chrono::milliseconds>(tEnd - tStart).count()
 
-#define TIMED_EXEC(stmt, timer)       { auto tS = TIME_NOW;  stmt; auto tE = TIME_NOW; timer = NANO_INTERVAL(tS, tE); }
+#define TIMED_EXEC(stmt, timer)       { auto tS = TIME_NOW;  stmt; auto tE = TIME_NOW; timer = static_cast<uint64_t>(NANO_INTERVAL(tS, tE)); }
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
@@ -46,7 +46,7 @@ constexpr int PRIMARY_TEST_FILE_SIZE = 324089;
 void TestFileReadWithSeek(const std::string& mountPath)
 {
   std::string remoteFilePath = mountPath + PRIMARY_TEST_FILE;
-  int expectedFileSize = PRIMARY_TEST_FILE_SIZE;
+  const size_t expectedFileSize = 324089;
 
   int fd = ::open(remoteFilePath.c_str(), O_RDONLY, 0777);
   if (fd < 0)
@@ -59,7 +59,12 @@ void TestFileReadWithSeek(const std::string& mountPath)
   size_t readSize = 0;
   for(int j = 0; j < 4; j ++)
   {
-    readSize += ::read(fd, writeAddr.get() + readSize, 4096);
+    const ssize_t bytesRead = ::read(fd, writeAddr.get() + readSize, 4096);
+    if (bytesRead < 0)
+    {
+      throw "failed to read file";
+    }
+    readSize += static_cast<size_t>(bytesRead);
   }
   ::lseek64(fd, 0, SEEK_SET);
 
@@ -70,7 +75,7 @@ void TestFileReadWithSeek(const std::string& mountPath)
     ssize_t nBytesReadNow = ::read(fd, writeAddr.get(), toRead);
     if (nBytesReadNow > 0)
     {
-      readSize += nBytesReadNow;
+      readSize += static_cast<size_t>(nBytesReadNow);
     }
     else if (nBytesReadNow < 0)
     {
@@ -98,7 +103,7 @@ void TestSubChunkRead(const std::string& mountPath)
   // The sub-chunk optimization activates automatically for reads smaller than chunk size
   // when encryption and checksum validation are disabled.
   std::string remoteFilePath = mountPath + PRIMARY_TEST_FILE;
-  constexpr int expectedFileSize = PRIMARY_TEST_FILE_SIZE;
+  constexpr size_t expectedFileSize = 324089;
 
   int fd = ::open(remoteFilePath.c_str(), O_RDONLY, 0777);
   if (fd < 0)
@@ -114,7 +119,7 @@ void TestSubChunkRead(const std::string& mountPath)
   {
     ssize_t n = ::read(fd, fullData.get() + totalRead, expectedFileSize - totalRead);
     if (n > 0)
-      totalRead += n;
+      totalRead += static_cast<size_t>(n);
     else if (n < 0)
     {
       std::cout << "ERROR: SubChunkRead: warmup read failed err=" << strerror(errno) << std::endl;
@@ -189,6 +194,7 @@ void TestSubChunkRead(const std::string& mountPath)
 //---------------------------------------------------------------------------------------------------------------------
 void TestSubChunkBoundaryRead(const std::string& mountPath)
 {
+  (void) mountPath;
   // Test that a small 4KB read straddling a chunk boundary returns correct data.
   // Uses STORAGE_INTEG_TESTCASE_FILE to find a file larger than the chunk size.
   constexpr size_t defaultChunkSize = 4 * 1024 * 1024; // 4MB — matches code default
@@ -258,7 +264,7 @@ void TestSubChunkBoundaryRead(const std::string& mountPath)
   {
     ssize_t n = ::read(fd, fullData.get() + totalRead, minFileSize - totalRead);
     if (n > 0)
-      totalRead += n;
+      totalRead += static_cast<size_t>(n);
     else if (n < 0)
     {
       std::cout << "ERROR: SubChunkBoundaryRead: warmup read failed err=" << strerror(errno) << std::endl;
@@ -471,10 +477,10 @@ void TestInterceptionFallback()
     throw "fscanf failed";
   }
 
-  ret = ftell(tempFile);
-  if (ret < 0)
+  const long filePosition = ftell(tempFile);
+  if (filePosition < 0)
   {
-    cout << "ftell failed ret=" << ret << "err=" << strerror(errno) << endl;
+    cout << "ftell failed ret=" << filePosition << "err=" << strerror(errno) << endl;
     throw "ftell failed";
   }
 
@@ -661,7 +667,7 @@ void TestFileReadPerf(
     ssize_t nBytesReadNow = ::read(fd, writeAddr.get(), toRead);
     if (nBytesReadNow > 0)
     {
-      readSize += nBytesReadNow;
+      readSize += static_cast<size_t>(nBytesReadNow);
     }
     else if (nBytesReadNow < 0)
     {
@@ -789,16 +795,16 @@ void TestIfStreamInterception(const std::string& mountPath)
     throw "seekg failed";
   }
 
-  int size = in.tellg();
-  if (size != expectedFileSize)
+  const std::streamoff size = in.tellg();
+  if (size != static_cast<std::streamoff>(expectedFileSize))
   {
     std::cout << "remote file size mismatch. " << size << " != " << expectedFileSize << std::endl;
     throw "remote file size mismatch";
   }
 
   in.seekg(0, std::ios::beg);
-  char* buffer = new char[size];
-  in.read(buffer, size);
+  char* buffer = new char[static_cast<size_t>(size)];
+  in.read(buffer, static_cast<std::streamsize>(size));
   in.close();
 
   std::cout << "Readfile using std::ifstream succeeded." << std::endl;
@@ -841,16 +847,20 @@ int main(int argc, char** argv)
   std::ifstream ifil(getenv("STORAGE_INTEG_TESTCASE_FILE"), std::ios::in);
   std::string numFiles;
   std::getline(ifil, numFiles);
-  uint64_t numFilesInt = ::atoi(numFiles.c_str());
+  uint64_t numFilesInt = std::stoull(numFiles);
   std::vector<std::pair<std::string, size_t>> samples;
 
-  uint64_t numIterations = ::atoi(argv[2]);
+  uint64_t numIterations = std::stoull(argv[2]);
   for(uint64_t lineNo = 1; lineNo <= std::min(numIterations, numFilesInt); lineNo++)
   {
     std::string fileData;
     std::getline(ifil, fileData);
-    int commaIdx = fileData.rfind(',');
-    size_t fileSize = ::atoi(fileData.substr(commaIdx + 1).c_str());
+    const size_t commaIdx = fileData.rfind(',');
+    if (commaIdx == std::string::npos)
+    {
+      throw "invalid test case file entry";
+    }
+    size_t fileSize = std::stoull(fileData.substr(commaIdx + 1));
 
     samples.push_back(make_pair(fileData.substr(0, commaIdx), fileSize));
   }
@@ -881,7 +891,8 @@ int main(int argc, char** argv)
   }, fileOpsTimer);
 
   std::cout << "Tests for file open / read / close done." << std::endl;
-  const double avgThroughput = static_cast<double>((numBytesRead * 1000000000.000) / fileOpsTimer);
+  const double avgThroughput = static_cast<double>(numBytesRead.load()) * 1000000000.0
+      / static_cast<double>(fileOpsTimer);
 
   /* Printing the test results */
   std::cout << "========================================================" << std::endl;

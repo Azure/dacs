@@ -52,6 +52,7 @@ TEST(FileLoggerTest, FileNameWithRankAvailable)
 //--------------------------------------------------------------------------------------------------------------------------------------------
 TEST(FileLoggerTest, FileNameWithNoRankAvailable)
 {
+    unsetenv("RANK");
     FileLogger logger = FileLogger("./test{{RANK}}.out", "./test{{RANK}}.err");
     logger.Shutdown();
 

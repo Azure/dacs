@@ -43,8 +43,8 @@ class UploadCache
         void Put(
             /*[in] */ const std::string& path,
             /*[in] */ std::shared_ptr<FileData> uploadData,
-            /*[in] */ size_t newFileSize);
-        size_t GetFileSize(
+            /*[in] */ off64_t newFileSize);
+        off64_t GetFileSize(
             /*[in] */ const std::string& path) const;
         std::shared_ptr<FileData> Get(
             /*[in] */ const std::string& path,
@@ -53,7 +53,7 @@ class UploadCache
         // Called after writes to existing chunks that extend the file beyond the previously tracked size.
         void UpdateFileSize(
             /*[in] */ const std::string& path,
-            /*[in] */ size_t newFileSize);
+            /*[in] */ off64_t newFileSize);
         void Purge(/*[in] */ const std::string& path);
         void PurgeChunk(
             /*[in] */ const std::string& path,
@@ -66,10 +66,10 @@ class UploadCache
             /*[in]*/  off64_t offset);
     
     private:
-        const size_t                                                m_nChunkSize;
+        const off64_t                                               m_nChunkSize;
 
         std::map<std::string, std::shared_ptr<FileData>>            m_mapUploadBlocks;
-        std::map<std::string, size_t>                               m_mapFileSizes;
+        std::map<std::string, off64_t>                              m_mapFileSizes;
         mutable std::shared_mutex                                   m_mutexBlockBuffers;
 };
 //---------------------------------------------------------------------------------------------------------------------

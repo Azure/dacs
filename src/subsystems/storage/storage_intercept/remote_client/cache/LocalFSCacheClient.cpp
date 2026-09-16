@@ -31,10 +31,10 @@ LocalFSCacheClient::LocalFSCacheClient()
   m_useODirectFlag(StorageInterceptConfig::GetInstance().GetCacheLocalFSEnableIODirect()),
   m_numUploadThreads(StorageInterceptConfig::GetInstance().GetCacheNumUploadThreadsPerProcess()),
   m_uploadBufferMemory(0),
-  m_maxUploadBufferMemory(
-    StorageInterceptConfig::GetInstance().GetCacheMaxUploadBufferSizePerProcessGB() * 1024ULL * 1024 * 1024),
   m_uploadBufferMemoryWarnThreshold(
     StorageInterceptConfig::GetInstance().GetCacheLocalFSMemoryWarnThresholdGB() * 1024ULL * 1024 * 1024),
+    m_maxUploadBufferMemory(
+        StorageInterceptConfig::GetInstance().GetCacheMaxUploadBufferSizePerProcessGB() * 1024ULL * 1024 * 1024),
   m_stop(false)
 {
     // Create local cache path if not exists
@@ -51,7 +51,7 @@ LocalFSCacheClient::LocalFSCacheClient()
     }
 
     // start worker threads
-    for (int i = 0; i < m_numUploadThreads; ++i)
+    for (uint64_t i = 0; i < m_numUploadThreads; ++i)
     {
         auto uploadThread = make_unique<thread>([this]() {
             this->UploadWorker();
@@ -78,9 +78,9 @@ LocalFSCacheClient::~LocalFSCacheClient()
     LOG_INFO("Stopping localFS uploader threads");
     m_stop = true;
     m_cvQueue.notify_all();
-    for (int i = 0; i < m_numUploadThreads; ++i)
+    for (auto& uploadThread : m_vecUploadThread)
     {
-        m_vecUploadThread[i]->join();
+        uploadThread->join();
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -114,10 +114,10 @@ CacheStatus LocalFSCacheClient::DownloadSync(
         uint64_t totalRead = 0;
         while (totalRead < length)
         {
-            const int tempRead = StorageLibcApiWrapper::read(fileFD, buffer + totalRead, length - totalRead);
+            const ssize_t tempRead = StorageLibcApiWrapper::read(fileFD, buffer + totalRead, length - totalRead);
             if (tempRead > 0)
             {
-                totalRead += tempRead;
+                totalRead += static_cast<uint64_t>(tempRead);
             }
             else if (tempRead == 0)
             {
@@ -182,14 +182,14 @@ bool LocalFSCacheClient::UploadSync(std::unique_ptr<UploadContext> uploadContext
     uint64_t totalWritten = 0;
     while (totalWritten < uploadContext->m_fileData->BufferSize)
     {
-        const int bufferLen = uploadContext->m_fileData->BufferSize - totalWritten;
-        const int tempWrite = write(
+        const size_t bufferLen = uploadContext->m_fileData->BufferSize - totalWritten;
+        const ssize_t tempWrite = write(
             fileFD, 
             static_cast<const char*>(uploadContext->m_fileData->Buffer.get()) + totalWritten,
             bufferLen);
         if (tempWrite > 0)
         {
-            totalWritten += tempWrite;
+            totalWritten += static_cast<uint64_t>(tempWrite);
         }
         else 
         {
@@ -262,12 +262,12 @@ void LocalFSCacheClient::CheckBufferMemory()
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool LocalFSCacheClient::Upload(
-    const std::string& mountName,
+    const std::string&,
     const std::string& filePath,
     const std::string& version,
     off64_t fileOffset,
     std::shared_ptr<const FileData> fileData,
-    bool isWrite)
+    bool)
 {
     {
         CheckBufferMemory();

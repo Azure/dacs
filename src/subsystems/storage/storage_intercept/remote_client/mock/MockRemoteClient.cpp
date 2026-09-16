@@ -70,8 +70,8 @@ int MockRemoteClient::GetProperties(
 }
 //---------------------------------------------------------------------------------------------------------------------
 void MockRemoteClient::PrepareBlocksForUpload(
-  const std::string& remotePath,
-  size_t numBlocks)
+    const std::string&,
+    size_t)
 {
     // No-op
     return;
@@ -157,7 +157,12 @@ int MockRemoteClient::CommitBlocksForUpload(
             StorageLibcApiWrapper::close(fdBlock);
             return -1;
         }
-        const size_t fileSize = statBuf.st_size;
+        if (statBuf.st_size < 0)
+        {
+            StorageLibcApiWrapper::close(fdBlock);
+            return -1;
+        }
+        const size_t fileSize = static_cast<size_t>(statBuf.st_size);
 
         std::unique_ptr<char[]> buffer(new char[fileSize]);
         ssize_t nBytesRead = 0;
@@ -184,7 +189,7 @@ int MockRemoteClient::CommitBlocksForUpload(
         ssize_t nBytesWritten = StorageLibcApiWrapper::pwrite(
             fdFinal,
             buffer.get(),
-            nBytesRead,
+            static_cast<size_t>(nBytesRead),
             writeOffset);
         if (nBytesWritten != nBytesRead)
         {

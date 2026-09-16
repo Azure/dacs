@@ -79,14 +79,12 @@ class LocalFSCacheClient : public ICacheClient
         std::condition_variable                        m_cvQueue;
 
         // Manage upload workers
-        const int                                      m_numUploadThreads;
+        const uint64_t                                 m_numUploadThreads;
         std::vector<std::unique_ptr<std::thread>>      m_vecUploadThread;
-        std::atomic_bool                               m_stop;
-
-        // Track buffer memory usage
         std::atomic_uint64_t                           m_uploadBufferMemory;
         const uint64_t                                 m_uploadBufferMemoryWarnThreshold;
         uint64_t                                       m_maxUploadBufferMemory;
+        std::atomic_bool                               m_stop;
 
         // Upload thread polling for requests to write to SSD
         void UploadWorker();

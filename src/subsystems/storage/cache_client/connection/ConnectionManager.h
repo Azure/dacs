@@ -106,13 +106,13 @@ class ConnectionManager
         std::unique_ptr<std::vector<std::string>> FetchLatestCacheServers() const;
         void MonitorCacheServers();
     
-        const int                                                                   m_ServerPort;
-        const int                                                                   m_nMaxConnectionsReuseSize;
+        const uint16_t                                                              m_ServerPort;
+        const uint32_t                                                              m_nMaxConnectionsReuseSize;
         mutable std::mutex                                                          m_lockCacheServerConnections;
         mutable std::shared_mutex                                                   m_sharedLockCacheServerData;
         std::unordered_map<std::string, std::queue<std::unique_ptr<IConnection>>>   m_mapConnectionQueue;
         std::vector<std::string>                                                    m_vecCacheServers;
-        int                                                                         m_nMaxConnsPerServer;
+        uint32_t                                                                    m_nMaxConnsPerServer;
         const bool                                                                  m_bReuseServerConnections;
         const bool                                                                  m_bEnableCacheServerDiscovery;
         const uint32_t                                                              m_nCacheServerDiscoveryIntervalInSeconds;
@@ -135,7 +135,7 @@ class ConnectionManager
             enum ibv_mtu mtu;
             ibutils::unique_ibv_context context;
             ibutils::unique_ibv_pd pd;
-            int max_sge;  // max SGEs supported by device for send WRs
+            uint32_t max_sge;  // max SGEs supported by device for send WRs
         };
         IbDev m_ibDevice;
 

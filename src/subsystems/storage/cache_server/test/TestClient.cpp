@@ -43,6 +43,7 @@
 #include <list>
 #include <xxhash.h>
 #include <atomic>
+#include <array>
 #include <ctime>
 #include <iomanip>
 #include <sstream>
@@ -97,7 +98,7 @@ unique_ptr<IConnection> GetConnection()
 
     sockaddr_in sockAddr;
     sockAddr.sin_family = AF_INET;
-    sockAddr.sin_port = htons(ServerPort);
+    sockAddr.sin_port = htons(static_cast<uint16_t>(ServerPort));
     if( (inet_pton(AF_INET, CacherServer.c_str(), &(sockAddr.sin_addr))) < 0)
     {
         cout << "inet_pton error" << endl;
@@ -183,20 +184,21 @@ bool TestUploadAPI(
         XXH64_reset(hashState, 0);
         while (totalWritten < filesize)
         {
-            int BUF_SIZE = 1024*1024;
-            char data[BUF_SIZE];
-            int bufferLen = (int)std::min((uint64_t)BUF_SIZE, filesize - totalWritten);
+            static constexpr size_t BUF_SIZE = 1024*1024;
+            std::array<char, BUF_SIZE> data{};
+            const size_t bufferLen = static_cast<size_t>(
+                std::min(static_cast<uint64_t>(BUF_SIZE), filesize - totalWritten));
 
             // add rand chars to first few bytes
-            for (int i = 0; i < std::min(100, bufferLen); i++)
+            for (size_t i = 0; i < std::min<size_t>(100, bufferLen); i++)
             {
-                data[i] = (char)(rand() % 256);
+                data[i] = static_cast<char>(rand() % 256);
             }
 
             int tempWrite;
-            if ((tempWrite = (*serverConnection).Send(data, bufferLen)) > 0)
+            if ((tempWrite = (*serverConnection).Send(data.data(), bufferLen)) > 0)
             {
-                totalWritten += tempWrite;
+                totalWritten += static_cast<uint64_t>(tempWrite);
             }
             else 
             {
@@ -205,7 +207,7 @@ bool TestUploadAPI(
                 return false;
             }
 
-            if (XXH64_update(hashState, data, bufferLen) != 0)
+            if (XXH64_update(hashState, data.data(), bufferLen) != 0)
             {
                 cout << "xxh64_update failed" << endl;
                 return false;
@@ -320,18 +322,19 @@ bool TestDownloadAPI(
 
         while (totalRead < filesize)
         {
-            int BUFSIZE = 1024*1024;
-            char data[BUFSIZE];
-            if ((tempRead = (*serverConnection).Receive(data, (int)std::min((uint64_t)BUFSIZE, filesize - totalRead))) > 0)
+            static constexpr size_t BUFSIZE = 1024*1024;
+            std::array<char, BUFSIZE> data{};
+            if ((tempRead = (*serverConnection).Receive(
+                data.data(), std::min(static_cast<uint64_t>(BUFSIZE), filesize - totalRead))) > 0)
             {
-                totalRead += tempRead;
+                totalRead += static_cast<uint64_t>(tempRead);
             }
             else 
             {
                 cout << "couldn't read() message from server" << endl;
                 return false;
             }
-            if (XXH64_update(hashState, data, tempRead) != 0)
+            if (XXH64_update(hashState, data.data(), static_cast<size_t>(tempRead)) != 0)
             {
                 cout << "xxh64_update failed" << endl;
                 return false;
@@ -493,7 +496,7 @@ bool TestParallelUploadDownload(int parallelism,
     string filePrefix = GetUniqueFilename("paralelleltest-" + std::to_string(rand()) + "-");
     for (int threadId = 0; threadId < parallelism; threadId++)
     {
-        auto t = new std::thread([&filePrefix, &totalFailed, threadId, parallelism, &stop, downloadEnabled, groupId]()
+        auto t = new std::thread([&filePrefix, &totalFailed, threadId, &stop, downloadEnabled, groupId]()
         {
             int i = 0;
             while (!stop)
@@ -533,7 +536,7 @@ bool TestParallelUploadDownload(int parallelism,
     std::this_thread::sleep_for(std::chrono::seconds(durationInSeconds));
     stop = true;
 
-    for (int i = 0; i < threads.size(); ++i)
+    for (size_t i = 0; i < threads.size(); ++i)
     {
         auto t = threads[i];
         t->join();
@@ -554,7 +557,7 @@ void __UploadDownloadBytesCounter(bool /*[in]*/ downloadMode,
     {
         if(downloadMode)
         {
-            int suffix = (rand() % fileNamePrefixCounter);
+            const uint64_t suffix = static_cast<uint64_t>(rand()) % fileNamePrefixCounter.load();
             if(TestDownloadAPI(filePrefix + to_string(suffix), 0, fileSize, true, DownloadResponse::SUCCESS))
             {
                 totalBytesTransferred += fileSize;
@@ -607,7 +610,7 @@ void MeasurePerf(int parallelism, uint64_t GBUpload, uint64_t GBDownload)
         }
         stop = true;
 
-        for(int i = 0; i < threads.size(); ++i)
+        for(size_t i = 0; i < threads.size(); ++i)
         {
             auto t = threads[i];
             t->join();
@@ -640,7 +643,7 @@ void MeasurePerf(int parallelism, uint64_t GBUpload, uint64_t GBDownload)
         }
         stop = true;
 
-        for(int i = 0; i < threads.size(); ++i)
+        for(size_t i = 0; i < threads.size(); ++i)
         {
             auto t = threads[i];
             t->join();
@@ -654,8 +657,8 @@ void MeasurePerf(int parallelism, uint64_t GBUpload, uint64_t GBDownload)
     cout << "Download duration in ms: " << downloadDurationMs << " bytes: " << totalBytesDownloaded << endl;
     cout << "Parallelism: " << parallelism << endl;
 
-    cout << "--upload_throughput_mbps " << totalBytesUploaded / (uploadDurationMs * 1000) << " "
-         << "--download_throughput_mbps " << totalBytesDownloaded / (downloadDurationMs * 1000) << " "
+        cout << "--upload_throughput_mbps " << static_cast<double>(totalBytesUploaded.load()) / (static_cast<double>(uploadDurationMs) * 1000.0) << " "
+            << "--download_throughput_mbps " << static_cast<double>(totalBytesDownloaded.load()) / (static_cast<double>(downloadDurationMs) * 1000.0) << " "
          << "--upload_size_bytes " << totalBytesUploaded << " "
          << "--download_size_bytes " << totalBytesDownloaded << " "
          << "--upload_time_ms " << uploadDurationMs << " "
@@ -676,7 +679,6 @@ int TestLimits()
 {
     // Assuming cache server is started with cache limits set to
     // CacheSizeLimit = 100 * 1024 * 1024 bytes;
-    int CacheSizeLimit = 104857600;
 
     string extraFileName = GetUniqueFilename("extraFile");
 
@@ -1374,7 +1376,7 @@ bool IBInit()
             m_ibDevice.mtu = portAttr.active_mtu;
             m_ibDevice.lid = portAttr.lid;
             m_ibDevice.guid = devAttr.sys_image_guid;
-            m_ibDevice.port = port;
+            m_ibDevice.port = static_cast<uint8_t>(port);
             m_ibDevice.link = portAttr.link_layer;
             m_ibDevice.context = context;
             m_ibDevice.pd = ibv_alloc_pd(context);
@@ -1527,7 +1529,7 @@ bool TestIBAPI()
     for (int qpn = 0; qpn < numQPsPerConnection; qpn++)
     {
         // Transition to RTR
-        auto qp = vectorQps[qpn];
+        auto qp = vectorQps[static_cast<size_t>(qpn)];
         struct ibv_qp_attr qpAttr;
         memset(&qpAttr, 0, sizeof(struct ibv_qp_attr));
         qpAttr.qp_state = IBV_QPS_RTR;
@@ -1537,10 +1539,10 @@ bool TestIBAPI()
         qpAttr.max_dest_rd_atomic = 1;
         qpAttr.min_rnr_timer = IB_MIN_RNR_TIMER;
         qpAttr.ah_attr.is_global = 0;
-        qpAttr.ah_attr.dlid = response.serverlid();
+        qpAttr.ah_attr.dlid = static_cast<uint16_t>(response.serverlid());
         qpAttr.ah_attr.sl = 0;
         qpAttr.ah_attr.src_path_bits = 0;
-        qpAttr.ah_attr.port_num = response.serveribport();
+        qpAttr.ah_attr.port_num = static_cast<uint8_t>(response.serveribport());
         rc = ibv_modify_qp(qp, &qpAttr, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN
             | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
         if (rc != 0)
@@ -1571,14 +1573,13 @@ bool TestIBAPI()
 //---------------------------------------------------------------------------------------------------------------------
 bool TestIBAPIParallel()
 {
-    std::atomic_bool stop(false);
     std::vector<std::thread *> threads;
     std::atomic_uint_fast64_t totalSuccess(0);
     int parallelism = 10;
 
     for (int threadId = 0; threadId < parallelism; threadId++)
     {
-        auto t = new std::thread([&totalSuccess, &stop]()
+        auto t = new std::thread([&totalSuccess]()
         {
             bool bRet = TestIBAPI();
             if (bRet)
@@ -1593,14 +1594,14 @@ bool TestIBAPIParallel()
         threads.push_back(t);
     }
 
-    for (int i = 0; i < threads.size(); ++i)
+    for (size_t i = 0; i < threads.size(); ++i)
     {
         auto t = threads[i];
         t->join();
         delete t;
     }
 
-    if (parallelism != totalSuccess)
+    if (static_cast<uint64_t>(parallelism) != totalSuccess.load())
     {
         return false;
     }
@@ -1702,7 +1703,7 @@ bool cli(int argc, char* argv[], bool& /*[out]*/ isCli)
     {
         isCli = true;
         std::cout << "getaccesstimedistribution command" << endl;
-        uint64_t distibutionWindow = argc > 2 ? std::stoi(argv[2]) : 1;
+        uint64_t distibutionWindow = argc > 2 ? std::stoull(argv[2]) : 1ULL;
         return !TestLastAccessTimeDistribution(distibutionWindow);
     }
 

@@ -51,10 +51,15 @@ void WorkerFunction(
     std::size_t fileSize = 0;
     if(ifs.is_open())
     {
-        fileSize = ifs.tellg();
+        const std::streamoff streamSize = ifs.tellg();
+        if (streamSize < 0)
+        {
+            return;
+        }
+        fileSize = static_cast<std::size_t>(streamSize);
         std::unique_ptr<char[]> writeAddr = std::make_unique<char[]>(fileSize);
         ifs.seekg(0, ios::beg);
-        ifs.read(writeAddr.get(), fileSize);
+        ifs.read(writeAddr.get(), static_cast<std::streamsize>(fileSize));
 
         ifs.close();
     }
@@ -89,7 +94,7 @@ int main(int argc, char** argv)
     
     std::atomic_uint_fast64_t numBytesRead(0);
 
-    uint64_t fileOpsTimer;
+    int64_t fileOpsTimer;
     auto startTime = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     TIMED_EXEC(
     {
@@ -105,7 +110,7 @@ int main(int argc, char** argv)
     auto endTime = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
     double oneGB = 1024 * 1024 * 1024;
-    double GBRead = numBytesRead / oneGB;
+    double GBRead = static_cast<double>(numBytesRead.load()) / oneGB;
     double throughput = 0;
     if(fileOpsTimer == 0)
     {
@@ -113,7 +118,7 @@ int main(int argc, char** argv)
     }
     else
     {
-        throughput = GBRead / fileOpsTimer;
+        throughput = GBRead / static_cast<double>(fileOpsTimer);
     }
 
     std::cout << "##########################################################" << std::endl;

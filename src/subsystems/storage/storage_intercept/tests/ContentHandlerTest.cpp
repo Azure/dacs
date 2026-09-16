@@ -69,9 +69,9 @@ void ContentHandlerTest::ExecuteParallelWithArgs(
     while(totalExecuted < numTasks)
     {
         std::vector<std::thread> parallelThreads;
-        for(uint32_t idx = 0; idx < parallelism; idx++)
+        for(int idx = 0; idx < parallelism; idx++)
         {
-            size_t taskId = totalExecuted + idx;
+            size_t taskId = totalExecuted + static_cast<size_t>(idx);
             if (taskId == numTasks)
             {
                 break;
@@ -100,7 +100,7 @@ void ContentHandlerTest::OpenReadAndCloseCheck(OpenReadAndCloseTask task)
 
     // Reading the entire file using the file handle should work.
     ssize_t nBytesRead = ContentHandler::GetInstance().HandleRead(fd, readBuf.data(), task.readSize);
-    ASSERT_EQ(nBytesRead, task.readSize);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(task.readSize));
 
     // We should not be able to read more data now that we have reached end of file.
     nBytesRead = ContentHandler::GetInstance().HandleRead(fd, readBuf.data(), 1);
@@ -118,7 +118,7 @@ void ContentHandlerTest::ReaddirCheck(ReaddirTask task)
     ASSERT_NE(dirp, nullptr);
 
     // Read the dir contents. There should be 4 entries (".", "..", testFile and testDir)
-    uint32_t nFiles = 0, nDirs = 0;
+    size_t nFiles = 0, nDirs = 0;
     struct dirent *dirEntry;
     while ((dirEntry = (struct dirent* )ContentHandler::GetInstance().HandleReaddir(dirp, true)) != NULL) {
         if (dirEntry->d_type == DT_DIR)
@@ -144,14 +144,14 @@ void ContentHandlerTest::GetPropertiesCheck(GetPropertiesTask task)
     // XStat for dir should work
     int xstatRet = ContentHandler::GetInstance().HandleXstat64(1, task.dirPath.c_str(), &dirAttr);
     ASSERT_EQ(xstatRet, 0);
-    ASSERT_EQ(dirAttr.st_mode & S_IFMT, S_IFDIR);
+    ASSERT_EQ(dirAttr.st_mode & S_IFMT, static_cast<mode_t>(S_IFDIR));
 
     struct stat64 fileAttr;
     // XStat for file should work
     xstatRet = ContentHandler::GetInstance().HandleXstat64(1, task.filePath.c_str(), &fileAttr);
     ASSERT_EQ(xstatRet, 0);
-    ASSERT_EQ(fileAttr.st_mode & S_IFMT, S_IFREG);
-    ASSERT_EQ(fileAttr.st_size, task.fileSize);
+    ASSERT_EQ(fileAttr.st_mode & S_IFMT, static_cast<mode_t>(S_IFREG));
+    ASSERT_EQ(fileAttr.st_size, static_cast<off64_t>(task.fileSize));
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(ContentHandlerTest, OpenReadCloseOneThreadTest)
@@ -291,7 +291,7 @@ TEST_F(ContentHandlerTest, GetPropertiesNonExistentTest)
     };
     struct stat64 fileAttr;
 
-    for (const std::string nonExistentPath : nonExistentPaths)
+    for (const std::string& nonExistentPath : nonExistentPaths)
     {
         // XStat for non-existent file should return proper error
         errno = 0;
@@ -464,7 +464,7 @@ void ContentHandlerTest::FOpenReadAndCloseCheck(OpenReadAndCloseTask task)
     // Reading the entire file using the file handle should work.
     std::vector<char> readBuf(task.readSize);
     ssize_t nBytesRead = ContentHandler::GetInstance().HandleRead(fd, readBuf.data(), task.readSize);
-    ASSERT_EQ(nBytesRead, task.readSize);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(task.readSize));
 
     // We should not be able to read more data now that we have reached end of file.
     nBytesRead = ContentHandler::GetInstance().HandleRead(fd, readBuf.data(), 1);
@@ -574,7 +574,7 @@ void ContentHandlerTest::OpenAtReadAndCloseCheck(OpenReadAndCloseTask task)
     // Reading the entire file using the file handle should work.
     std::vector<char> readBuf(task.readSize);
     ssize_t nBytesRead = ContentHandler::GetInstance().HandleRead(fd, readBuf.data(), task.readSize);
-    ASSERT_EQ(nBytesRead, task.readSize);
+    ASSERT_EQ(nBytesRead, static_cast<ssize_t>(task.readSize));
 
     // We should not be able to read more data now that we have reached end of file.
     nBytesRead = ContentHandler::GetInstance().HandleRead(fd, readBuf.data(), 1);

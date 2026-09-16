@@ -21,11 +21,11 @@ class StandardLogger: public ILogger
 {
 public:
     StandardLogger();
-    void Shutdown();
-    void Flush();
-    void LogOutput(std::string logContent);
-    void LogError(std::string logContent);
-    void FlushCachedLogInfo();
+    void Shutdown() override;
+    void Flush() override;
+    void LogOutput(std::string logContent) override;
+    void LogError(std::string logContent) override;
+    void FlushCachedLogInfo() override;
 
 private:
     std::atomic<bool> m_bInterceptedApi;

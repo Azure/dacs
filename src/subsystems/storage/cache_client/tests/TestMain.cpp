@@ -22,7 +22,7 @@
 //--------------------------------------------------------------------------------------------------------------------------------------------
 int main(int argc, char** argv)
 {
-    srand(time(nullptr));
+    srand(static_cast<unsigned int>(time(nullptr)));
     LoggingApi::Init();
     LoggingApi::FlushCachedLog();
     ::testing::InitGoogleTest(&argc, argv);
