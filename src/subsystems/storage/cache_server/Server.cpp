@@ -133,7 +133,8 @@ void HandleSocket(int epollFd)
 
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        Metrics::RegisterRequest(eRequestType, eResponseCode, duration.count(), nFileSize);
+        Metrics::RegisterRequest(
+            eRequestType, eResponseCode, static_cast<double>(duration.count()), nFileSize);
         Metrics::DecrementActiveConnections();
     }
 }
@@ -196,7 +197,7 @@ void StartServer(int port)
 
     struct sockaddr_in server_adderss;
     server_adderss.sin_family = AF_INET;
-    server_adderss.sin_port = htons(port);
+    server_adderss.sin_port = htons(static_cast<uint16_t>(port));
     server_adderss.sin_addr.s_addr = INADDR_ANY;
     if (bind(server_socket_fd, (struct sockaddr *)&server_adderss, sizeof(server_adderss)) != 0)
     {
@@ -211,9 +212,6 @@ void StartServer(int port)
         close(server_socket_fd);
         exit(-1);
     }
-
-    struct sockaddr_in client_address;
-    socklen_t client_len = sizeof(client_address);
 
     // configure common epoll for workers
     int epollWorkerFd = epoll_create1(0);
@@ -235,7 +233,7 @@ void StartServer(int port)
     }
 
     LOG_INFO("Started server on port: {}, threadpool: {}, tcp backlog: {}", port, threadPoolSize, tcpBacklogSize);
-    Metrics::SetListenBacklogMax(tcpBacklogSize);
+    Metrics::SetListenBacklogMax(static_cast<std::size_t>(tcpBacklogSize));
     std::thread(CacheServerMetricsBackgroundThread).detach();
 
     // main loop accepting connections 
@@ -438,7 +436,6 @@ int main(int argc, char *argv[])
 
     InitializeUtils();
 
-    std::thread* snapshotThread = nullptr;
     if (SnapshotManager::GetInstance().IsSnapshotEnabled())
     {
         auto snapshot = SnapshotManager::GetInstance().LoadSnapshotOnStartup();
@@ -462,7 +459,7 @@ int main(int argc, char *argv[])
         }
 
         // Start the snapshot background thread
-        snapshotThread = new std::thread(SnapshotBackgroundThread, snapshot);
+        std::thread(SnapshotBackgroundThread, snapshot).detach();
     }
     else
     {

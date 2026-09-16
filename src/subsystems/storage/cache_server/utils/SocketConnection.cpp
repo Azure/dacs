@@ -21,6 +21,7 @@
 #include <errno.h>
 #include <string.h>
 #include <algorithm>
+#include <limits>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
@@ -35,7 +36,8 @@ SocketConnection::~SocketConnection()
 //---------------------------------------------------------------------------------------------------------------------
 int SocketConnection::Read(char* buffer, int size)
 {
-    return read(m_socketFd, buffer, size);
+    if (size < 0) return -1;
+    return static_cast<int>(read(m_socketFd, buffer, static_cast<size_t>(size)));
 }
 //---------------------------------------------------------------------------------------------------------------------
 int SocketConnection::Write(char* buffer, int size)
@@ -50,12 +52,14 @@ int SocketConnection::Write(char* buffer, int size)
         }
     }
 
-    return write(m_socketFd, buffer, size);
+    if (size < 0) return -1;
+    return static_cast<int>(write(m_socketFd, buffer, static_cast<size_t>(size)));
 }
 //---------------------------------------------------------------------------------------------------------------------
 int SocketConnection::WriteFinal(char* buffer, int size)
 {
-    return write(m_socketFd, buffer, size);
+    if (size < 0) return -1;
+    return static_cast<int>(write(m_socketFd, buffer, static_cast<size_t>(size)));
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool SocketConnection::Sendfile(int fileFd, uint64_t fileStartOffset, uint64_t totalLength)
@@ -64,8 +68,11 @@ bool SocketConnection::Sendfile(int fileFd, uint64_t fileStartOffset, uint64_t t
     uint64_t totalWritten = 0;
     while (totalWritten < totalLength)
     {
-        off_t startOffset = fileStartOffset + totalWritten;
-        ssize_t written = sendfile(m_socketFd, fileFd, &startOffset, totalLength - totalWritten);
+        const uint64_t nextOffset = fileStartOffset + totalWritten;
+        if (nextOffset > static_cast<uint64_t>(std::numeric_limits<off_t>::max())) return false;
+        off_t startOffset = static_cast<off_t>(nextOffset);
+        ssize_t written = sendfile(
+            m_socketFd, fileFd, &startOffset, static_cast<size_t>(totalLength - totalWritten));
         if (written <= 0)
         {
             LOG_WARN("Error during sendfile fileFd: {}, errno: {}:{}. total bytes written: {}",
@@ -82,7 +89,7 @@ bool SocketConnection::Sendfile(int fileFd, uint64_t fileStartOffset, uint64_t t
             }
         }
 
-        totalWritten += written;
+        totalWritten += static_cast<uint64_t>(written);
     }
     return true;
 }
@@ -149,7 +156,7 @@ bool SocketConnection::Recvfile(int fileFd, uint64_t totalLength)
         while (nWritten < nSpliced)
         {
             ssize_t w = splice(pipefd[0], nullptr, fileFd, nullptr,
-                               nSpliced - nWritten, SPLICE_F_MOVE | SPLICE_F_MORE);
+                               static_cast<size_t>(nSpliced - nWritten), SPLICE_F_MOVE | SPLICE_F_MORE);
             if (w <= 0)
             {
                 if (w < 0 && errno == EINTR)
@@ -177,7 +184,7 @@ bool SocketConnection::Recvfile(int fileFd, uint64_t totalLength)
             break;
         }
 
-        totalReceived += nSpliced;
+        totalReceived += static_cast<uint64_t>(nSpliced);
     }
 
     close(pipefd[0]);

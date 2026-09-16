@@ -57,9 +57,9 @@ std::atomic_uint_fast64_t nGlobalFailureCounter(0);
 inline const void* GetRandomBuffer(std::size_t nChunkSizeBytes)
 {
     static thread_local char* pBuffer = (char*)malloc(nChunkSizeBytes);
-    for(uint64_t i = 0; i < std::min((uint64_t)50, nChunkSizeBytes); i++)
+    for(std::size_t i = 0; i < std::min<std::size_t>(50, nChunkSizeBytes); i++)
     {
-        pBuffer[i] = rand() % 256;
+        pBuffer[i] = static_cast<char>(rand() % 256);
     }
     return (const void*)pBuffer;
 }
@@ -182,7 +182,7 @@ int64_t GetPercentile(const std::vector<int64_t>& sortedData, double percentile)
         return 0;
     }
     auto clamped = std::max(0.0, std::min(100.0, percentile));
-    auto index = static_cast<std::size_t>((clamped / 100.0) * (sortedData.size() - 1));
+    auto index = static_cast<std::size_t>((clamped / 100.0) * static_cast<double>(sortedData.size() - 1));
     index = std::min(index, sortedData.size() - 1);
     return sortedData[index];
 }
@@ -193,7 +193,7 @@ int64_t GetPercentile(const std::vector<int64_t>& sortedData, double percentile)
 //                                            TClient& client, std::size_t nChunkSizeBytes,
 //                                            std::atomic_uint_fast64_t& nChunksSuccessfullyTransferred)
 template <typename TClient, typename WorkerFunc>
-bool RunPerfTestImpl(/*[in]*/ int nParallelism,
+bool RunPerfTestImpl(/*[in]*/ std::size_t nParallelism,
                      /*[in]*/ uint64_t nDataSizeBytes,
                      /*[in]*/ TClient& client,
                      /*[in]*/ const std::string& strPrefix,
@@ -255,7 +255,8 @@ bool RunPerfTestImpl(/*[in]*/ int nParallelism,
         allPerChunkMs.insert(allPerChunkMs.end(), workerPerChunkMs.begin(), workerPerChunkMs.end());
     }
 
-    std::size_t durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
+    std::size_t durationMs = static_cast<std::size_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count());
     durationMs = std::max(durationMs, (std::size_t)1);
     std::size_t nBytesTransferred = nChunksSuccessfullyTransferred * nChunkSizeBytes;
     std::size_t nThroughputMbps = (nBytesTransferred * 8) / (durationMs * 1000);
@@ -314,7 +315,7 @@ bool RunPerfTestImpl(/*[in]*/ int nParallelism,
 }
 //---------------------------------------------------------------------------------------------------------------------
 // Returns true if all chunks were transferred successfully else false
-bool RunPerfTest(/*[in]*/ int nParallelism,
+bool RunPerfTest(/*[in]*/ std::size_t nParallelism,
                  /*[in]*/ uint64_t nDataSizeBytes,
                  /*[in]*/ CacheClientImpl& client,
                  /*[in]*/ const std::string& strPrefix,
@@ -376,7 +377,8 @@ bool BlobDownloadWithRetries(
                 return false;
             }
 
-            if (downloadResult.Value.ContentRange.Length.Value() != nChunkSizeBytes)
+            if (downloadResult.Value.ContentRange.Length.Value() < 0 ||
+                static_cast<std::size_t>(downloadResult.Value.ContentRange.Length.Value()) != nChunkSizeBytes)
             {
                 LOG_WARN("Expected blob {} read length to be {} but got {}", 
                          strBlobName, nChunkSizeBytes, downloadResult.Value.ContentRange.Length.Value());
@@ -441,7 +443,7 @@ std::vector<int64_t> BlobWorker(/*[in]*/ bool bIsUpload,
 }
 //---------------------------------------------------------------------------------------------------------------------
 // Returns true if all chunks were transferred successfully else false
-bool RunPerfBlobDirectTest(int nParallelism,
+bool RunPerfBlobDirectTest(std::size_t nParallelism,
     uint64_t nDataSizeBytes,
     Azure::Storage::Blobs::BlobContainerClient& containerClient,
     const std::string& strPrefix,
@@ -458,11 +460,11 @@ void add_common_perf_options(po::options_description& description)
 {
     description.add_options()
         ("help", "produce help message")
-        ("num-threads", po::value<int>(), "Number of threads to use for the perf test")
-        ("data-size-GiB", po::value<int>(), "Total size of data to upload/download in GiB")
+        ("num-threads", po::value<std::size_t>(), "Number of threads to use for the perf test")
+        ("data-size-GiB", po::value<std::size_t>(), "Total size of data to upload/download in GiB")
         ("mode", po::value<std::string>(), "Mode ( 'upload' or 'download' )")
         ("prefix", po::value<std::string>(), "Prefix for file uploads. Must be same for upload and download")
-        ("num-iterations", po::value<int>()->default_value(1), "Number of times to run the perf test")
+        ("num-iterations", po::value<std::size_t>()->default_value(1), "Number of times to run the perf test")
         ("cache-retry-max-attempts", po::value<uint32_t>()->default_value(1), "Max attempts for cache-client internal retries (1 disables retries)")
         ("cache-retry-base-delay-ms", po::value<uint64_t>()->default_value(0), "Base delay (ms) for cache-client internal retries")
         ("cache-retry-max-delay-ms", po::value<uint64_t>()->default_value(0), "Max delay (ms) for cache-client internal retries")
@@ -489,7 +491,7 @@ po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
         po::options_description description("Perf test client options");
         add_common_perf_options(description);
         description.add_options()
-            ("server-port", po::value<int>(), "Port to connect to the cache servers")
+            ("server-port", po::value<uint16_t>(), "Port to connect to the cache servers")
             ("server-hostname", po::value<std::string>(), "Hostname(s) of cache server, '#' separated (optional when discovery is enabled)")
             ("ib-enabled", po::value<bool>()->default_value(false), "Enable Infiniband")
             ("is-discovery-enabled", po::value<bool>()->default_value(false), "Enable discovery endpoint (default: false)")
@@ -596,7 +598,7 @@ po::variables_map parse_eviction_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
     {
         po::options_description description("Eviction client options");
         description.add_options()("help", "produce help message")(
-            "server-port", po::value<int>(), "Port to connect to the cache servers")(
+            "server-port", po::value<uint16_t>(), "Port to connect to the cache servers")(
             "server-hostname", po::value<std::string>(), "Hostname(s) of cache server, '#' separated")(
             "last-access-time",
             po::value<std::string>(),
@@ -640,10 +642,10 @@ po::variables_map parse_last_access_dist_args(/*[in]*/ int argc, /*[in]*/ char* 
     {
         po::options_description description("Last access time distribution client options");
         description.add_options()("help", "produce help message")(
-            "server-port", po::value<int>(), "Port to connect to the cache servers")(
+            "server-port", po::value<uint16_t>(), "Port to connect to the cache servers")(
             "server-hostname", po::value<std::string>(), "Hostname(s) of cache server, '#' separated")(
             "distribution-bucket-size-in-hours",
-            po::value<int>(),
+            po::value<uint64_t>(),
             "Size of the distribution bucket in hours");
 
         po::variables_map vm;
@@ -687,12 +689,12 @@ int PerfClient(int argc, char *argv[])
         boost::split(vecHostnames, strHostnames, boost::is_any_of("#"));
     }
 
-    uint16_t nPort = args["server-port"].as<int>();
-    std::size_t nNumThreads = args["num-threads"].as<int>();
-    std::size_t nDataSizeGiB = args["data-size-GiB"].as<int>();
+    uint16_t nPort = args["server-port"].as<uint16_t>();
+    std::size_t nNumThreads = args["num-threads"].as<std::size_t>();
+    std::size_t nDataSizeGiB = args["data-size-GiB"].as<std::size_t>();
     std::string strMode = args["mode"].as<std::string>();
     std::string strPrefix = args["prefix"].as<std::string>();
-    std::size_t nNumIterations = args["num-iterations"].as<int>();
+    std::size_t nNumIterations = args["num-iterations"].as<std::size_t>();
     bool bIsIBEnabled = args["ib-enabled"].as<bool>();
     bool bIsDiscoveryEnabled = args["is-discovery-enabled"].as<bool>();
     std::string strDiscoveryEndpoint = args["discovery-endpoint"].as<std::string>();
@@ -730,7 +732,9 @@ int PerfClient(int argc, char *argv[])
     CacheClientImpl client;
     const CacheClientRetryConfig retryConfig{nRetryMaxAttempts, nRetryBaseDelayMs, nRetryMaxDelayMs};
     // When hostnames provided, size pool for all server*thread combos; otherwise let CacheClient use its default
-    uint32_t nConnectionPoolSize = vecCstrHostnames.empty() ? 0 : nNumThreads * vecCstrHostnames.size();
+    uint32_t nConnectionPoolSize = vecCstrHostnames.empty()
+        ? 0U
+        : static_cast<uint32_t>(nNumThreads * vecCstrHostnames.size());
     if (args.count("connection-pool-size") > 0)
     {
         nConnectionPoolSize = args["connection-pool-size"].as<uint32_t>();
@@ -742,7 +746,7 @@ int PerfClient(int argc, char *argv[])
         return 1;
     }
     CacheClientStatus initStatus = client.Initialize(vecCstrHostnames.empty() ? nullptr : vecCstrHostnames.data(),
-                                                     vecCstrHostnames.size(),
+                                                     static_cast<uint32_t>(vecCstrHostnames.size()),
                                                      nPort,                        /*nCacheServerPort*/
                                                      bIsIBEnabled,                 /*bEnableIB*/
                                                      bEnableCalculateChecksum,     /*bEnableCalculateChecksum*/
@@ -783,11 +787,11 @@ int PerfClient(int argc, char *argv[])
 int PerfDirectBlobClient(int argc, char *argv[])
 {
     auto args = parse_direct_blob_client_args(argc, argv);
-    std::size_t nNumThreads = args["num-threads"].as<int>();
-    std::size_t nDataSizeGiB = args["data-size-GiB"].as<int>();
+    std::size_t nNumThreads = args["num-threads"].as<std::size_t>();
+    std::size_t nDataSizeGiB = args["data-size-GiB"].as<std::size_t>();
     std::string strMode = args["mode"].as<std::string>();
     std::string strPrefix = args["prefix"].as<std::string>();
-    std::size_t nNumIterations = args["num-iterations"].as<int>();
+    std::size_t nNumIterations = args["num-iterations"].as<std::size_t>();
     auto storageAccountName = args["storage-account"].as<std::string>();
     auto storageContainer = args["container"].as<std::string>();
 
@@ -909,7 +913,7 @@ int EvictionClient(int argc, char* argv[])
     auto strHostnames = args["server-hostname"].as<std::string>();
     std::vector<std::string> vecHostnames;
     boost::split(vecHostnames, strHostnames, boost::is_any_of("#"));
-    uint16_t nPort = args["server-port"].as<int>();
+    uint16_t nPort = args["server-port"].as<uint16_t>();
     std::string strLastAccessTime = args["last-access-time"].as<std::string>();
     std::vector<const char*> vecCstrHostnames;
     for (const std::string& hostname : vecHostnames)
@@ -920,13 +924,13 @@ int EvictionClient(int argc, char* argv[])
     CacheClientImpl client;
     const CacheClientRetryConfig retryConfig{1, 0, 0};
     CacheClientStatus initStatus = client.Initialize(vecCstrHostnames.data(),
-                      vecCstrHostnames.size(),
+                      static_cast<uint32_t>(vecCstrHostnames.size()),
                       nPort,                       /*nCacheServerPort*/
                       false,                       /*bEnableIB*/
                       false,                       /*bEnableCalculateChecksum*/
                       false,                       /*bEnableValidateChecksum*/
                       nullptr,                     /*strChecksumAlgorithm*/
-                      vecCstrHostnames.size() * 2, /*nConnectionPoolSize*/
+                      static_cast<uint32_t>(vecCstrHostnames.size() * 2), /*nConnectionPoolSize*/
                       false,                       /*bUseLocalServer*/
                       true,                        /*bReuseConnections*/
                       false,                       /*bIsCacheServerDiscoveryEnabled*/
@@ -964,8 +968,8 @@ int LastAccessTimeDistributionClient(int argc, char* argv[])
     auto strHostnames = args["server-hostname"].as<std::string>();
     std::vector<std::string> vecHostnames;
     boost::split(vecHostnames, strHostnames, boost::is_any_of("#"));
-    uint16_t nPort = args["server-port"].as<int>();
-    uint64_t nDistributionBucketSizeInHours = args["distribution-bucket-size-in-hours"].as<int>();
+    uint16_t nPort = args["server-port"].as<uint16_t>();
+    uint64_t nDistributionBucketSizeInHours = args["distribution-bucket-size-in-hours"].as<uint64_t>();
     std::vector<const char*> vecCstrHostnames;
     for (const std::string& hostname : vecHostnames)
     {
@@ -975,13 +979,13 @@ int LastAccessTimeDistributionClient(int argc, char* argv[])
     CacheClientImpl client;
     const CacheClientRetryConfig retryConfig{1, 0, 0};
     CacheClientStatus initStatus = client.Initialize(vecCstrHostnames.data(),
-                      vecCstrHostnames.size(),
+                      static_cast<uint32_t>(vecCstrHostnames.size()),
                       nPort,                       /*nCacheServerPort*/
                       false,                       /*bEnableIB*/
                       false,                       /*bEnableCalculateChecksum*/
                       false,                       /*bEnableValidateChecksum*/
                       nullptr,                    /*strChecksumAlgorithm*/
-                      vecCstrHostnames.size() * 2, /*nConnectionPoolSize*/
+                      static_cast<uint32_t>(vecCstrHostnames.size() * 2), /*nConnectionPoolSize*/
                       false,                       /*bUseLocalServer*/
                       true,                        /*bReuseConnections*/
                       false,                       /*bIsCacheServerDiscoveryEnabled*/
@@ -1012,7 +1016,7 @@ int LastAccessTimeDistributionClient(int argc, char* argv[])
     {
         LOG_INFO("Successfully requested get last access distribution");
         std::cout << "=== Output Start (CSV of bucket start timestamp,size in bytes, size in GiB) ===" << std::endl;
-        for (int i = 0; i < pLastAccessTimeDistribution->nKeyValuePairs; i++)
+        for (uint32_t i = 0; i < pLastAccessTimeDistribution->nKeyValuePairs; i++)
         {
             std::tm* tm = std::gmtime(&pLastAccessTimeDistribution->arrKeyValuePairs[i].nKey);
 

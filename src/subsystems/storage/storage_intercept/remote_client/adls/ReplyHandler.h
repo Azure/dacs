@@ -16,6 +16,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "Reply.h"
 #include <iostream>
+#include <limits>
 #include <curl/curl.h>
 //---------------------------------------------------------------------------------------------------------------------
 struct ReplyHandler
@@ -25,6 +26,10 @@ struct ReplyHandler
     auto self = static_cast<ReplyHandler *>(userData);
     auto &reply = self->reply;
     auto pDataSink = self->pDataSink;
+    if (size != 0 && nitems > std::numeric_limits<size_t>::max() / size)
+    {
+      return 0;
+    }
     const auto dataSize = size * nitems;
 
     if (reply.responseCode == 0 &&
@@ -41,7 +46,11 @@ struct ReplyHandler
     }
     else if (pDataSink != nullptr)
     {
-      pDataSink->write(buffer, dataSize);
+      if (dataSize > static_cast<size_t>(std::numeric_limits<std::streamsize>::max()))
+      {
+        return 0;
+      }
+      pDataSink->write(buffer, static_cast<std::streamsize>(dataSize));
       if (!pDataSink->good())
       {
         return 0;

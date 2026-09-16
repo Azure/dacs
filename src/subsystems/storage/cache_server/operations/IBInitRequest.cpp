@@ -20,6 +20,7 @@
 #include "Logger.h"
 #include <string>
 #include <vector>
+#include <limits>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 using namespace cache;
@@ -43,10 +44,17 @@ bool IBInitializeClient(IConnection& clientConnection, const IBInitRequest& ibRe
     uint8_t serverIbPort = 0;
     uint8_t serverMtu = 0;
 
+    if (ibRequest.clientibport() > std::numeric_limits<uint8_t>::max() ||
+        ibRequest.clientmtu() > std::numeric_limits<uint8_t>::max())
+    {
+        SET_RESULT(ibResponse, eResponseCode, IBInitResponse::INTERNAL_ERROR);
+        return SendMessageToRemoteFinal(clientConnection, ibResponse, requestid);
+    }
+
     bool bRet = IBManager::GetInstance().SetupQPConnections(
         ibRequest.clientlid(),
-        ibRequest.clientibport(),
-        ibRequest.clientmtu(),
+        static_cast<uint8_t>(ibRequest.clientibport()),
+        static_cast<uint8_t>(ibRequest.clientmtu()),
         ibRequest.clientqpn(),
         serverLid,
         serverIbPort,

@@ -19,7 +19,9 @@
 #include "cache.pb.h"
 #include "CacheUtils.h"
 #include "ICacheClient.h"
+#include <limits>
 #include <thread>
+#include <utility>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cache;
 using namespace cacheutils;
@@ -30,15 +32,15 @@ CacheUploadManager::CacheUploadManager(
     std::shared_ptr<CacheClientImpl> spCacheClientImpl,
     int numUploadThreads,
     uint64_t maxTotalBufferSize)
-    : m_stop(false),
-      m_uploadBufferMemory(0),
-      m_spCacheClientImpl(spCacheClientImpl),
-      m_numUploadThreads(numUploadThreads),
+        : m_uploadBufferMemory(0),
       m_maxBufferMemory(maxTotalBufferSize),
       m_keyExpirySeconds(StorageInterceptConfig::GetInstance().GetCacheKeyExpirySeconds()),
       m_keyGroupId(StorageInterceptConfig::GetInstance().GetCacheKeyGroupId()),
       m_enableSyncUpload(StorageInterceptConfig::GetInstance().GetCacheEnableSyncUpload()),
-      m_bEnableVersionedCacheKeys(StorageInterceptConfig::GetInstance().IsVersionedCacheKeysEnabled())
+            m_bEnableVersionedCacheKeys(StorageInterceptConfig::GetInstance().IsVersionedCacheKeysEnabled()),
+            m_numUploadThreads(numUploadThreads),
+            m_stop(false),
+            m_spCacheClientImpl(std::move(spCacheClientImpl))
 {
     // start worker threads
     if (!m_enableSyncUpload)
@@ -67,9 +69,9 @@ CacheUploadManager::~CacheUploadManager()
         LOG_INFO("Stopping uploader threads");
         m_stop = true;
         m_cvQueue.notify_all();
-        for (int i = 0; i < m_numUploadThreads; ++i)
+        for (auto& uploadThread : m_vecUploadThread)
         {
-            m_vecUploadThread[i]->join();
+            uploadThread->join();
         }
     }
 }
@@ -115,7 +117,13 @@ bool CacheUploadManager::StartUpload(unique_ptr<UploadContext> uploadContext)
         }
 
         metadata.arrKeyValuePairs = metadataEntries.data();
-        metadata.nKeyValuePairs = static_cast<int>(metadataEntries.size());
+        if (metadataEntries.size() > std::numeric_limits<uint32_t>::max())
+        {
+            LOG_ERROR("Cannot upload metadata: entry count {} exceeds the supported maximum {}",
+                metadataEntries.size(), std::numeric_limits<uint32_t>::max());
+            return false;
+        }
+        metadata.nKeyValuePairs = static_cast<uint32_t>(metadataEntries.size());
     }
     else
     {

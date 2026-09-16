@@ -16,12 +16,17 @@
 #include "CommonLogger.h"
 #include "CacheUtils.h"
 #include <cstdint>
+#include <limits>
 //---------------------------------------------------------------------------------------------------------------------
 std::string StaticModuloHasher::GetServer(const std::string& key) const {
     if (m_servers.empty()) {
         return "";
     }
-    uint32_t serverIndex = cacheutils::GetServerIndex(key.c_str(), m_servers.size());
+    if (m_servers.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
+        LOG_ERROR("Server count exceeds supported hashing limit: {}", m_servers.size());
+        return "";
+    }
+    uint32_t serverIndex = cacheutils::GetServerIndex(key.c_str(), static_cast<uint32_t>(m_servers.size()));
     return m_servers[serverIndex];
 }
 //---------------------------------------------------------------------------------------------------------------------

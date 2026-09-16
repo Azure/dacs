@@ -219,12 +219,15 @@ void StorageMetrics::RecordLatency(std::string_view metricName,
     const std::string ioSizeBucket{GetIoSizeBucket(ioSizeBytes)};
 
     // Record overall latency measurement
-    ObserveHistogram(metricName, static_cast<double>(timeMillis));
+    ObserveHistogram(metricName, static_cast<double>(timeMillis), labels);
 
     // Record latency measurement for the specific IO size bucket
     // Note: we could have added the IO size bucket as a label in overall histogram,
     //       but this gives distinct metric name for each bucket
-    ObserveHistogram(std::string{metricName} + "_" + ioSizeBucket, static_cast<double>(timeMillis));
+    ObserveHistogram(
+        std::string{metricName} + "_" + ioSizeBucket,
+        static_cast<double>(timeMillis),
+        labels);
 }
 
 //---------------------------------------------------------------------------------------------------------------------

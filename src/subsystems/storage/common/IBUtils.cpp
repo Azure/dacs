@@ -14,6 +14,7 @@
 
 #include "IBUtils.h"
 #include "CommonLogger.h"
+#include <limits>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
@@ -151,7 +152,8 @@ namespace ibutils
             for(int port = 1; port <= devAttr.phys_port_cnt; port++)
             {
                 struct ibv_port_attr portAttr{};
-                rc = ibv_query_port(context.get(), port, &portAttr);
+                const auto verbsPort = static_cast<uint8_t>(port);
+                rc = ibv_query_port(context.get(), verbsPort, &portAttr);
                 if (rc != 0) 
                 {
                     LOG_WARN("ibv_query_port failed error={},{}", rc, strerror(errno));
@@ -179,7 +181,7 @@ namespace ibutils
 
                 ibvMtu = portAttr.active_mtu;
                 ibvLid = portAttr.lid;
-                ibvPort = port;
+                ibvPort = verbsPort;
                 ibvContext = std::move(context);
                 bDeviceFound = true;
                 LOG_INFO("Found active IB device: {},{}:{},{},{},{},{},{},{}",
@@ -207,6 +209,13 @@ namespace ibutils
     bool SetupQPForSendAndReceive(ibv_qp* ibvQp, uint8_t localIBPort, ibv_mtu ibMtu, uint32_t remoteQpn,
         uint32_t remoteIBLid, uint8_t remoteIBPort)
     {
+        if (remoteIBLid > std::numeric_limits<uint16_t>::max())
+        {
+            LOG_WARN("Remote IB LID={} exceeds the verbs address limit={}",
+                remoteIBLid, std::numeric_limits<uint16_t>::max());
+            return false;
+        }
+
         // Transition to INIT state
         struct ibv_qp_attr qpAttr{};
         qpAttr.qp_state = IBV_QPS_INIT;
@@ -250,7 +259,7 @@ namespace ibutils
 
         // Setup remote path information
         qpAttr.ah_attr.is_global = 0;
-        qpAttr.ah_attr.dlid = remoteIBLid;
+        qpAttr.ah_attr.dlid = static_cast<uint16_t>(remoteIBLid);
         qpAttr.ah_attr.sl = 0;
         qpAttr.ah_attr.src_path_bits = 0;
         qpAttr.ah_attr.port_num = remoteIBPort;

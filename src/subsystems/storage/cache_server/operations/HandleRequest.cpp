@@ -25,6 +25,7 @@
 #include "Logger.h"
 #include "HandleRequest.h"
 #include "GetCacheServers.h"
+#include <limits>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 using namespace cache;
@@ -42,17 +43,19 @@ bool HandleRequest(IConnection& clientConnection,
         return false;
     }
 
-    uint32_t protoSize = ConvertBytesToInt(metaData, REQUEST_METADATA_SIZE);
-    if (protoSize > MAX_REQUEST_PROTO_SIZE)
+    const uint64_t protoSizeValue = ConvertBytesToInt(metaData, REQUEST_METADATA_SIZE);
+    if (protoSizeValue > MAX_REQUEST_PROTO_SIZE ||
+        protoSizeValue > static_cast<uint64_t>(std::numeric_limits<int>::max()))
     {
         LOG_WARN("Rejecting request with invalid protobuf size, id={}, size={}, max={}",
-            clientConnection.GetId(), protoSize, MAX_REQUEST_PROTO_SIZE);
+            clientConnection.GetId(), protoSizeValue, MAX_REQUEST_PROTO_SIZE);
         return false;
     }
+    const uint32_t protoSize = static_cast<uint32_t>(protoSizeValue);
 
     string requestMessage(protoSize, 0);
-    res = ReadBytesToArray(clientConnection, requestMessage.data(), protoSize);
-    if (res != protoSize)
+    res = ReadBytesToArray(clientConnection, requestMessage.data(), static_cast<int>(protoSize));
+    if (res != static_cast<int>(protoSize))
     {
         LOG_WARN("Failed to read protobuf message, id={}, size={}", clientConnection.GetId(), protoSize);
         return false;

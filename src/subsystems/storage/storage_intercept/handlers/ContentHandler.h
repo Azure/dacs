@@ -362,7 +362,7 @@ class ContentHandler
         int AllotNewFd(/*[in]*/ std::unique_ptr<FileDescriptor> fd);
 
         // Check if fd is within our internal range
-        bool IsFdInRange(/*[in]*/ uint64_t fd);
+        bool IsFdInRange(/*[in]*/ int fd);
 
         int GetPropertiesInternal(
             /*[in]*/ MountInfo& mountInfo,
@@ -395,8 +395,8 @@ class ContentHandler
 
     private:
         // file fd allocated range (min/max) we use internally
-        static constexpr uint32_t                                    FD_VALUE_START = 90000;
-        static constexpr uint32_t                                    FD_VALUE_RANGE = 100000;
+        static constexpr int                                         FD_VALUE_START = 90000;
+        static constexpr int                                         FD_VALUE_RANGE = 100000;
 
         // Need to store the error string in a thread local variable
         // so that the calling application will always have access to it

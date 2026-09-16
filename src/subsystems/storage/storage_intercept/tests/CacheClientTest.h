@@ -35,9 +35,9 @@ class CacheClientTest : public TestBase
         std::string GetRandFilename();
 
         template <typename T>
-        void AssertEqArray(T* left, T* right, int arraySize)
+        void AssertEqArray(T* left, T* right, uint64_t arraySize)
         {
-            for (int i = 0; i < arraySize; i++)
+            for (uint64_t i = 0; i < arraySize; i++)
             {
                 ASSERT_EQ(left[i], right[i]);
             }

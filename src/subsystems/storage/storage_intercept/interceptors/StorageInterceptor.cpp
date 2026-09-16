@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "StorageInterceptorImpl.h"
+#include <limits>
 #include "../remote_client/RemoteClientException.h"
 #include <errno.h>
 #include <cstdio>
@@ -700,7 +701,12 @@ extern "C" int vfscanf(FILE* stream, const char* format, va_list ap)
 // SI_* functions already have exception handling in StorageInterceptorImpl
 extern "C" int SI_open(/*[in]*/ const char *pathname, /*[in]*/ int flags, /*[in]*/ mode_t mode, /*[out]*/ char** errorString)
 {
-    return StorageInterceptorImpl::SI_open(pathname, flags, mode, errorString);
+    if (mode > static_cast<mode_t>(std::numeric_limits<int>::max()))
+    {
+        errno = EOVERFLOW;
+        return -1;
+    }
+    return StorageInterceptorImpl::SI_open(pathname, flags, static_cast<int>(mode), errorString);
 }
 //---------------------------------------------------------------------------------------------------------------------
 extern "C" ssize_t SI_pread(/*[in]*/ int fd, /*[in]*/ void* buf, /*[in]*/ size_t nByte, /*[in]*/ off64_t offset, /*[out]*/ char** errorString)

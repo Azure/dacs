@@ -62,35 +62,35 @@
 // Macros to log with request ID. The first argument after the message must be the request ID string.
 #define REQID_STR "reqid:{}| "
 //---------------------------------------------------------------------------------------------------------------------
-#define LOG_DEBUG_REQID(message, request_object, args...) \
-    LOG_DEBUG(REQID_STR message, (request_object).requestid(), ##args)
+#define LOG_DEBUG_REQID(message, request_object, ...) \
+    LOG_DEBUG(REQID_STR message, (request_object).requestid() __VA_OPT__(,) __VA_ARGS__)
 //---------------------------------------------------------------------------------------------------------------------
-#define LOG_INFO_REQID(message, request_object, args...) \
-    LOG_INFO(REQID_STR message, (request_object).requestid(), ##args)
+#define LOG_INFO_REQID(message, request_object, ...) \
+    LOG_INFO(REQID_STR message, (request_object).requestid() __VA_OPT__(,) __VA_ARGS__)
 //---------------------------------------------------------------------------------------------------------------------
-#define LOG_WARN_REQID(message, request_object, args...) \
-    LOG_WARN(REQID_STR message, (request_object).requestid(), ##args)
+#define LOG_WARN_REQID(message, request_object, ...) \
+    LOG_WARN(REQID_STR message, (request_object).requestid() __VA_OPT__(,) __VA_ARGS__)
 //---------------------------------------------------------------------------------------------------------------------
-#define LOG_ERROR_REQID(message, request_object, args...) \
-    LOG_ERROR(REQID_STR message, (request_object).requestid(), ##args)
+#define LOG_ERROR_REQID(message, request_object, ...) \
+    LOG_ERROR(REQID_STR message, (request_object).requestid() __VA_OPT__(,) __VA_ARGS__)
 //---------------------------------------------------------------------------------------------------------------------
-#define LOG_CRITICAL_REQID(message, request_object, args...) \
-    LOG_CRITICAL(REQID_STR message, (request_object).requestid(), ##args)
+#define LOG_CRITICAL_REQID(message, request_object, ...) \
+    LOG_CRITICAL(REQID_STR message, (request_object).requestid() __VA_OPT__(,) __VA_ARGS__)
 //---------------------------------------------------------------------------------------------------------------------
-#define LOG_DEBUG_REQID_STR(message, reqid_str, args...) \
-    LOG_DEBUG(REQID_STR message, reqid_str, ##args)
+#define LOG_DEBUG_REQID_STR(message, reqid_str, ...) \
+    LOG_DEBUG(REQID_STR message, reqid_str __VA_OPT__(,) __VA_ARGS__)
 //---------------------------------------------------------------------------------------------------------------------
-#define LOG_INFO_REQID_STR(message, reqid_str, args...) \
-    LOG_INFO(REQID_STR message, reqid_str, ##args)
+#define LOG_INFO_REQID_STR(message, reqid_str, ...) \
+    LOG_INFO(REQID_STR message, reqid_str __VA_OPT__(,) __VA_ARGS__)
 //---------------------------------------------------------------------------------------------------------------------
-#define LOG_WARN_REQID_STR(message, reqid_str, args...) \
-    LOG_WARN(REQID_STR message, reqid_str, ##args)
+#define LOG_WARN_REQID_STR(message, reqid_str, ...) \
+    LOG_WARN(REQID_STR message, reqid_str __VA_OPT__(,) __VA_ARGS__)
 //---------------------------------------------------------------------------------------------------------------------
-#define LOG_ERROR_REQID_STR(message, reqid_str, args...) \
-    LOG_ERROR(REQID_STR message, reqid_str, ##args)
+#define LOG_ERROR_REQID_STR(message, reqid_str, ...) \
+    LOG_ERROR(REQID_STR message, reqid_str __VA_OPT__(,) __VA_ARGS__)
 //---------------------------------------------------------------------------------------------------------------------
-#define LOG_CRITICAL_REQID_STR(message, reqid_str, args...) \
-    LOG_CRITICAL(REQID_STR message, reqid_str, ##args)
+#define LOG_CRITICAL_REQID_STR(message, reqid_str, ...) \
+    LOG_CRITICAL(REQID_STR message, reqid_str __VA_OPT__(,) __VA_ARGS__)
 //---------------------------------------------------------------------------------------------------------------------
 namespace storageutils
 {

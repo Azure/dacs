@@ -40,7 +40,7 @@ class ICacheClient
             /*[in] */ std::shared_ptr<const FileData> fileData,
             /*[in] */ bool isWrite) = 0;
 
-        virtual bool DeleteGroup(const std::string& groupId) { return true; }
+        virtual bool DeleteGroup(const std::string&) { return true; }
 
         virtual ~ICacheClient() {};
 };

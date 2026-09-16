@@ -69,29 +69,42 @@ int SocketConnection::SendAndFinalize(const char* buffer, uint64_t size)
 //---------------------------------------------------------------------------------------------------------------------
 int SocketConnection::Send(const char* buffer, uint64_t size)
 {
+    if (size > static_cast<uint64_t>(std::numeric_limits<int>::max()))
+    {
+        LOG_ERROR("Socket send size exceeds int return limit: {}", size);
+        errno = EOVERFLOW;
+        return -1;
+    }
+
     uint64_t totalWritten = 0;
     while (totalWritten < size)
     {
-        int bufferLen = size - totalWritten;
-        int tempWrite;
+        const size_t bufferLen = static_cast<size_t>(size - totalWritten);
+        ssize_t tempWrite;
         if ((tempWrite = TimedWrite(buffer + totalWritten, bufferLen)) > 0)
         {
-            totalWritten += tempWrite;
+            totalWritten += static_cast<uint64_t>(tempWrite);
         }
         else 
         {
             LOG_WARN("couldn't complete write to server: fd={}. wrote={} of size={}, error={}, errno={}:{}",
                 GetId(), totalWritten, size, tempWrite, errno, strerror(errno));
-            return totalWritten;
+            return static_cast<int>(totalWritten);
         }
     }
 
-    return totalWritten;
+    return static_cast<int>(totalWritten);
 }
 //---------------------------------------------------------------------------------------------------------------------
 int SocketConnection::Receive(char* buffer, uint64_t size)
 {
-    return TimedRead(buffer, size);
+    if (size > static_cast<uint64_t>(std::numeric_limits<int>::max()))
+    {
+        LOG_ERROR("Socket receive size exceeds int return limit: {}", size);
+        errno = EOVERFLOW;
+        return -1;
+    }
+    return static_cast<int>(TimedRead(buffer, static_cast<size_t>(size)));
 }
 //---------------------------------------------------------------------------------------------------------------------
 int SocketConnection::GetId()
@@ -258,7 +271,7 @@ ssize_t SocketConnection::TimedWrite(const void* buf, size_t nByte)
     }
     else if (written > 0)
     {
-        m_requestBytesWritten += written;
+        m_requestBytesWritten += static_cast<uint64_t>(written);
     }
 
     return written;

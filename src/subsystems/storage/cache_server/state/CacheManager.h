@@ -145,7 +145,8 @@ class CacheManager
 
         inline double GetCacheServerUtilizationPercentage() const
         {
-            return (double)m_totalCachedSize.load() * 100.0 / m_cacheSizeLimitBytes;
+            return static_cast<double>(m_totalCachedSize.load()) * 100.0
+                / static_cast<double>(m_cacheSizeLimitBytes.load());
         }
 
         bool GetLastAccessTimeDistribution(uint64_t distributionBucketIntervalInSeconds,

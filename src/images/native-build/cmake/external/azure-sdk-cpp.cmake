@@ -37,3 +37,14 @@ if(NOT azuresdkforcpp_POPULATED)
     FetchContent_Populate(azuresdkforcpp)
     add_subdirectory(${azuresdkforcpp_SOURCE_DIR} ${azuresdkforcpp_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()
+
+# Keep warnings in Azure SDK headers from being promoted to errors in DACS targets.
+foreach(AZURE_SDK_TARGET azure-core azure-identity azure-storage-common azure-storage-blobs)
+    if(TARGET ${AZURE_SDK_TARGET})
+        get_target_property(AZURE_SDK_INCLUDE_DIRS ${AZURE_SDK_TARGET} INTERFACE_INCLUDE_DIRECTORIES)
+        if(AZURE_SDK_INCLUDE_DIRS)
+            set_property(TARGET ${AZURE_SDK_TARGET} APPEND PROPERTY
+                INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${AZURE_SDK_INCLUDE_DIRS}")
+        endif()
+    endif()
+endforeach()

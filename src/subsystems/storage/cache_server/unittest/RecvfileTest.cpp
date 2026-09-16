@@ -90,13 +90,14 @@ static std::vector<char> ReadFileContents(const std::string& path)
     EXPECT_GE(fd, 0);
     struct stat st{};
     fstat(fd, &st);
-    std::vector<char> data(st.st_size);
+    EXPECT_GE(st.st_size, 0);
+    std::vector<char> data(static_cast<size_t>(st.st_size));
     size_t totalRead = 0;
     while (totalRead < data.size())
     {
         ssize_t n = read(fd, data.data() + totalRead, data.size() - totalRead);
         EXPECT_GT(n, 0);
-        totalRead += n;
+        totalRead += static_cast<size_t>(n);
     }
     close(fd);
     return data;
@@ -176,7 +177,7 @@ TEST_F(SocketConnectionRecvfileTest, HappyPath_LargeData)
                               payloadSize - totalWritten);
             EXPECT_GT(n, 0);
             if (n <= 0) break;
-            totalWritten += n;
+            totalWritten += static_cast<size_t>(n);
         }
         close(m_sockpair[0]);
         m_sockpair[0] = -1;
@@ -314,7 +315,7 @@ TEST_F(IBConnectionRecvfileTest, FailsWhenBufferTooSmall)
     const int bufferDataSize = 100;
     for (int i = 0; i < bufferDataSize; i++)
     {
-        m_buffer[i] = static_cast<char>(i);
+        m_buffer[static_cast<size_t>(i)] = static_cast<char>(i);
     }
 
     auto dummyQp = MakeDummyQp();
@@ -360,7 +361,7 @@ TEST_F(IBConnectionReadTest, ReadExactBuffer)
     const int dataSize = 256;
     for (int i = 0; i < dataSize; i++)
     {
-        m_buffer[i] = static_cast<char>(i);
+        m_buffer[static_cast<size_t>(i)] = static_cast<char>(i);
     }
 
     auto dummyQp = MakeDummyQp();
@@ -381,7 +382,7 @@ TEST_F(IBConnectionReadTest, ReadBeyondBuffer_ReturnsZero)
     const int dataSize = 10;
     for (int i = 0; i < dataSize; i++)
     {
-        m_buffer[i] = static_cast<char>(i);
+        m_buffer[static_cast<size_t>(i)] = static_cast<char>(i);
     }
 
     auto dummyQp = MakeDummyQp();
@@ -403,7 +404,7 @@ TEST_F(IBConnectionReadTest, PartialReads)
     const int dataSize = 100;
     for (int i = 0; i < dataSize; i++)
     {
-        m_buffer[i] = static_cast<char>(i);
+        m_buffer[static_cast<size_t>(i)] = static_cast<char>(i);
     }
 
     auto dummyQp = MakeDummyQp();
@@ -474,7 +475,7 @@ TEST_F(IBConnectionWriteTest, Write_DataIntegrity_BytesAtCorrectOffset)
     IBConnection conn(dummyQp, m_buffer.data(), 0, 0);
 
     const std::string data = "Hello, IB World!";
-    int n = conn.Write(const_cast<char*>(data.data()), data.size());
+    int n = conn.Write(const_cast<char*>(data.data()), static_cast<int>(data.size()));
     EXPECT_EQ(static_cast<int>(data.size()), n);
 
     // Verify data was written to the buffer at offset 0
@@ -490,8 +491,8 @@ TEST_F(IBConnectionWriteTest, Write_MultipleWrites_DataAccumulatesCorrectly)
     const std::string part1 = "HEADER:";
     const std::string part2 = "DATA:12345";
 
-    conn.Write(const_cast<char*>(part1.data()), part1.size());
-    conn.Write(const_cast<char*>(part2.data()), part2.size());
+    conn.Write(const_cast<char*>(part1.data()), static_cast<int>(part1.size()));
+    conn.Write(const_cast<char*>(part2.data()), static_cast<int>(part2.size()));
 
     std::string expected = part1 + part2;
     EXPECT_EQ(0, memcmp(m_buffer.data(), expected.data(), expected.size()));
@@ -556,7 +557,7 @@ TEST_F(IBConnectionWriteTest, ReadAndWrite_UsesSameBuffer_NoOverlap)
 
     // Write a response into the same buffer (server reuses buffer for response)
     const std::string response = "200 OK: file data here";
-    int nWrite = conn.Write(const_cast<char*>(response.data()), response.size());
+    int nWrite = conn.Write(const_cast<char*>(response.data()), static_cast<int>(response.size()));
     EXPECT_EQ(static_cast<int>(response.size()), nWrite);
 
     // The response data should be at the start of the buffer (writeOffset starts at 0)
@@ -590,7 +591,7 @@ protected:
         {
             ssize_t n = write(fd, content.data() + written, content.size() - written);
             EXPECT_GT(n, 0);
-            written += n;
+            written += static_cast<size_t>(n);
         }
         lseek(fd, 0, SEEK_SET);
         return fd;
@@ -615,7 +616,7 @@ TEST_F(IBConnectionSendfileTest, HappyPath_SmallFile)
 
     // Write a header first (like the real protocol does)
     const std::string header = "response-header";
-    conn.Write(const_cast<char*>(header.data()), header.size());
+    conn.Write(const_cast<char*>(header.data()), static_cast<int>(header.size()));
 
     // Sendfile reads file into buffer after the header, then calls FinalizeWrite
     // which posts ibv_post_send via our fake context ops table.
@@ -692,14 +693,14 @@ TEST_F(IBClientServerDataFlowTest, UploadProtocol_HeaderPlusData_ParsedCorrectly
 
     // Simulate a protobuf UploadRequest (just bytes for this test)
     const std::string protoMsg = "upload:filename=test.bin,size=4096";
-    uint32_t protoSize = protoMsg.size();
+    uint32_t protoSize = static_cast<uint32_t>(protoMsg.size());
 
     // Big-endian length prefix
     char prefix[4];
-    prefix[0] = (protoSize >> 24) & 0xFF;
-    prefix[1] = (protoSize >> 16) & 0xFF;
-    prefix[2] = (protoSize >> 8) & 0xFF;
-    prefix[3] = protoSize & 0xFF;
+    prefix[0] = static_cast<char>((protoSize >> 24) & 0xFFU);
+    prefix[1] = static_cast<char>((protoSize >> 16) & 0xFFU);
+    prefix[2] = static_cast<char>((protoSize >> 8) & 0xFFU);
+    prefix[3] = static_cast<char>(protoSize & 0xFFU);
 
     // File data (4096 bytes with pattern)
     const size_t fileSize = 4096;
@@ -728,15 +729,15 @@ TEST_F(IBClientServerDataFlowTest, UploadProtocol_HeaderPlusData_ParsedCorrectly
 
     // Parse length (big-endian)
     uint32_t parsedProtoSize =
-        (static_cast<uint8_t>(metaData[0]) << 24) |
-        (static_cast<uint8_t>(metaData[1]) << 16) |
-        (static_cast<uint8_t>(metaData[2]) << 8) |
-        static_cast<uint8_t>(metaData[3]);
+        (static_cast<uint32_t>(static_cast<uint8_t>(metaData[0])) << 24) |
+        (static_cast<uint32_t>(static_cast<uint8_t>(metaData[1])) << 16) |
+        (static_cast<uint32_t>(static_cast<uint8_t>(metaData[2])) << 8) |
+        static_cast<uint32_t>(static_cast<uint8_t>(metaData[3]));
     EXPECT_EQ(protoSize, parsedProtoSize);
 
     // Read protobuf message
     std::vector<char> parsedProto(parsedProtoSize);
-    n = serverConn.Read(parsedProto.data(), parsedProtoSize);
+    n = serverConn.Read(parsedProto.data(), static_cast<int>(parsedProtoSize));
     EXPECT_EQ(static_cast<int>(parsedProtoSize), n);
     EXPECT_EQ(0, memcmp(parsedProto.data(), protoMsg.data(), protoSize));
 
@@ -746,9 +747,9 @@ TEST_F(IBClientServerDataFlowTest, UploadProtocol_HeaderPlusData_ParsedCorrectly
     while (totalRead < fileSize)
     {
         int chunk = serverConn.Read(parsedFileData.data() + totalRead,
-                                     std::min(static_cast<size_t>(1024), fileSize - totalRead));
+                        static_cast<int>(std::min(static_cast<size_t>(1024), fileSize - totalRead)));
         ASSERT_GT(chunk, 0) << "Read failed at offset " << totalRead;
-        totalRead += chunk;
+        totalRead += static_cast<size_t>(chunk);
     }
     EXPECT_EQ(fileSize, totalRead);
 
@@ -764,7 +765,7 @@ TEST_F(IBClientServerDataFlowTest, UploadProtocol_LargeChunk_32MB)
 {
     // Test with a realistic 32 MB chunk (matches production chunk size)
     const std::string protoMsg(200, 'P');
-    uint32_t protoSize = protoMsg.size();
+    uint32_t protoSize = static_cast<uint32_t>(protoMsg.size());
     char prefix[4] = {0, 0, 0, static_cast<char>(protoSize)};
 
     const size_t chunkSize = 32 * 1024 * 1024;
@@ -790,7 +791,7 @@ TEST_F(IBClientServerDataFlowTest, UploadProtocol_LargeChunk_32MB)
     EXPECT_EQ(protoSize, parsedLen);
 
     std::vector<char> parsedProto(parsedLen);
-    serverConn.Read(parsedProto.data(), parsedLen);
+    serverConn.Read(parsedProto.data(), static_cast<int>(parsedLen));
     EXPECT_EQ(0, memcmp(parsedProto.data(), protoMsg.data(), protoSize));
 
     // Read chunk data in 4 MB pieces (like the server's buffered read path)
@@ -802,7 +803,7 @@ TEST_F(IBClientServerDataFlowTest, UploadProtocol_LargeChunk_32MB)
         size_t toRead = std::min(readChunkSize, chunkSize - totalRead);
         int n = serverConn.Read(parsedChunk.data() + totalRead, static_cast<int>(toRead));
         ASSERT_GT(n, 0) << "Read failed at offset " << totalRead;
-        totalRead += n;
+        totalRead += static_cast<size_t>(n);
     }
     EXPECT_EQ(chunkSize, totalRead);
 
@@ -819,15 +820,15 @@ TEST_F(IBClientServerDataFlowTest, DownloadProtocol_ServerWriteThenSendfile)
 
     // Server writes response header
     const std::string responseHeader = "response:status=200,size=2048";
-    uint32_t respSize = responseHeader.size();
+    uint32_t respSize = static_cast<uint32_t>(responseHeader.size());
     char prefix[4];
-    prefix[0] = (respSize >> 24) & 0xFF;
-    prefix[1] = (respSize >> 16) & 0xFF;
-    prefix[2] = (respSize >> 8) & 0xFF;
-    prefix[3] = respSize & 0xFF;
+    prefix[0] = static_cast<char>((respSize >> 24) & 0xFFU);
+    prefix[1] = static_cast<char>((respSize >> 16) & 0xFFU);
+    prefix[2] = static_cast<char>((respSize >> 8) & 0xFFU);
+    prefix[3] = static_cast<char>(respSize & 0xFFU);
 
     serverConn.Write(prefix, 4);
-    serverConn.Write(const_cast<char*>(responseHeader.data()), responseHeader.size());
+    serverConn.Write(const_cast<char*>(responseHeader.data()), static_cast<int>(responseHeader.size()));
 
     // Verify the buffer contains the correct wire format
     EXPECT_EQ(0, memcmp(m_serverBuffer.data(), prefix, 4));
@@ -852,7 +853,7 @@ TEST_F(IBClientServerDataFlowTest, RecvfileToFile_DataMatchesOriginal)
 
     // Skip header
     char headerBuf[100];
-    int n = serverConn.Read(headerBuf, headerSize);
+    int n = serverConn.Read(headerBuf, static_cast<int>(headerSize));
     EXPECT_EQ(static_cast<int>(headerSize), n);
 
     // Write to file via Recvfile
@@ -880,7 +881,7 @@ TEST_F(IBConnectionRecvfileTest, Recvfile_BadFileDescriptor_Fails)
 {
     // Write to an invalid fd should fail gracefully (not crash)
     const int dataSize = 256;
-    for (int i = 0; i < dataSize; i++) m_buffer[i] = static_cast<char>(i);
+    for (int i = 0; i < dataSize; i++) m_buffer[static_cast<size_t>(i)] = static_cast<char>(i);
 
     auto dummyQp = MakeDummyQp();
     IBConnection conn(dummyQp, m_buffer.data(), 0, dataSize);
@@ -907,7 +908,7 @@ TEST_F(IBConnectionWriteTest, WriteFinal_HappyPath)
     IBConnection conn(dummyQp, m_buffer.data(), 0, 0);
 
     const std::string data = "response-payload";
-    int n = conn.WriteFinal(const_cast<char*>(data.data()), data.size());
+    int n = conn.WriteFinal(const_cast<char*>(data.data()), static_cast<int>(data.size()));
     EXPECT_EQ(static_cast<int>(data.size()), n);
 
     // Verify buffer contents
@@ -921,11 +922,11 @@ TEST_F(IBConnectionWriteTest, WriteFinal_CalledTwice_SecondFails)
     IBConnection conn(dummyQp, m_buffer.data(), 0, 0);
 
     const std::string data1 = "first";
-    int n1 = conn.WriteFinal(const_cast<char*>(data1.data()), data1.size());
+    int n1 = conn.WriteFinal(const_cast<char*>(data1.data()), static_cast<int>(data1.size()));
     EXPECT_EQ(static_cast<int>(data1.size()), n1);
 
     const std::string data2 = "second";
-    int n2 = conn.WriteFinal(const_cast<char*>(data2.data()), data2.size());
+    int n2 = conn.WriteFinal(const_cast<char*>(data2.data()), static_cast<int>(data2.size()));
     EXPECT_EQ(-1, n2);
 }
 //---------------------------------------------------------------------------------------------------------------------

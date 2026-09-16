@@ -38,7 +38,7 @@ void ConsistentHashingTests::InitializeClient(CacheClientImpl& client)
 {
     uint32_t nPort = 9065; // Default test port
     if (const char* envPort = getenv("CACHE_SERVER_PORT")) {
-        nPort = atoi(envPort);
+        nPort = static_cast<uint32_t>(std::stoul(envPort));
     }
     
     const char* arrServers[] = {
@@ -101,7 +101,7 @@ TEST_F(ConsistentHashingTests, ServerDistribution) {
     ASSERT_TRUE(client.IsInitialized());
     
     auto servers = client.m_spConnectionManager->GetAllCacheServerHostnames();
-    ASSERT_GT(servers.size(), 0);
+    ASSERT_GT(servers.size(), 0U);
     
     auto keys = GenerateKeys(300);
     unordered_map<string, int> serverCounts;
@@ -113,11 +113,11 @@ TEST_F(ConsistentHashingTests, ServerDistribution) {
         serverCounts[server]++;
     }
     
-    uint32_t expectedPerServer = keys.size() / servers.size();
+    const double expectedPerServer = static_cast<double>(keys.size()) / static_cast<double>(servers.size());
 
     // Each server should receive at least some keys
     for (const auto& server : servers) {
-        ASSERT_GT(serverCounts[server], expectedPerServer * 0.5) << "Server " << server << " received no keys";
+        ASSERT_GT(static_cast<double>(serverCounts[server]), expectedPerServer * 0.5) << "Server " << server << " received no keys";
     }
     
     // Should only use configured servers
@@ -140,7 +140,7 @@ TEST_F(ConsistentHashingTests, ScaleUpDown) {
     client.m_spConnectionManager->UpdateCacheServers(servers3);
     
     auto currentServers = client.m_spConnectionManager->GetAllCacheServerHostnames();
-    ASSERT_EQ(currentServers.size(), 3);
+    ASSERT_EQ(currentServers.size(), 3U);
     
     // Verify all keys map to valid servers
     for (const auto& key : keys) {
@@ -155,7 +155,7 @@ TEST_F(ConsistentHashingTests, ScaleUpDown) {
 
     client.m_spConnectionManager->UpdateCacheServers(servers5);
     currentServers = client.m_spConnectionManager->GetAllCacheServerHostnames();
-    ASSERT_EQ(currentServers.size(), 5);
+    ASSERT_EQ(currentServers.size(), 5U);
     
     // Verify keys still map to valid servers (now including new ones)
     unordered_map<string, int> counts5;
@@ -177,7 +177,7 @@ TEST_F(ConsistentHashingTests, ScaleUpDown) {
     
     client.m_spConnectionManager->UpdateCacheServers(servers2);
     currentServers = client.m_spConnectionManager->GetAllCacheServerHostnames();
-    ASSERT_EQ(currentServers.size(), 2);
+    ASSERT_EQ(currentServers.size(), 2U);
     
     // Verify keys only map to remaining servers
     for (const auto& key : keys) {
@@ -265,14 +265,14 @@ TEST_F(ConsistentHashingTests, DistributionAnalysis) {
         int min = counts.front();
         int max = counts.back();
         int median = counts[counts.size() / 2];
-        double mean = static_cast<double>(totalKeys) / counts.size();
+        double mean = static_cast<double>(totalKeys) / static_cast<double>(counts.size());
         
         // Calculate standard deviation
         double variance = 0.0;
         for (int count : counts) {
             variance += (count - mean) * (count - mean);
         }
-        double stddev = std::sqrt(variance / counts.size());
+        double stddev = std::sqrt(variance / static_cast<double>(counts.size()));
         
         LOG_INFO("=== {} ===", phase);
         LOG_INFO("Servers: {}, Keys: {}", counts.size(), totalKeys);
@@ -305,7 +305,7 @@ TEST_F(ConsistentHashingTests, DistributionAnalysis) {
     }
     
     // Verify all servers got some keys
-    ASSERT_EQ(distribution100.size(), initialServers);
+    ASSERT_EQ(distribution100.size(), static_cast<size_t>(initialServers));
     for (const auto& server : servers100) {
         ASSERT_GT(distribution100[server], 0) << "Server " << server << " got no keys";
     }
@@ -334,7 +334,7 @@ TEST_F(ConsistentHashingTests, DistributionAnalysis) {
         }
     }
     
-    ASSERT_EQ(distribution120.size(), 120);
+    ASSERT_EQ(distribution120.size(), 120U);
     
     printDistribution("Phase 2: 120 servers", distribution120, numKeys);
     
@@ -374,7 +374,7 @@ TEST_F(ConsistentHashingTests, DistributionAnalysis) {
         }
     }
     
-    ASSERT_EQ(distribution80.size(), 80);
+    ASSERT_EQ(distribution80.size(), 80U);
     
     printDistribution("Phase 3: 80 servers", distribution80, numKeys);
     

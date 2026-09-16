@@ -455,7 +455,7 @@ std::string SdkBlobClient::ReadDirectory(
             {
                 dirEntries.push_back(DirectoryEntry());
                 dirEntries.back().d_ino = D_INO_VAL;
-                dirEntries.back().d_off = dirEntries.size() - 1;
+                dirEntries.back().d_off = static_cast<off64_t>(dirEntries.size() - 1);
                 dirEntries.back().d_reclen = sizeof(DirectoryEntry);
                 dirEntries.back().d_type = DT_DIR;
                 const size_t nameLen = std::min(container.Name.size(), static_cast<size_t>(D_NAME_LEN - 1));
@@ -513,7 +513,7 @@ std::string SdkBlobClient::ReadDirectory(
 
             dirEntries.push_back(DirectoryEntry());
             dirEntries.back().d_ino = D_INO_VAL;
-            dirEntries.back().d_off = dirEntries.size() - 1;
+            dirEntries.back().d_off = static_cast<off64_t>(dirEntries.size() - 1);
             dirEntries.back().d_reclen = sizeof(DirectoryEntry);
             dirEntries.back().d_type = DT_REG;
             const size_t nameLen = std::min(lastComponentName.size(), static_cast<size_t>(D_NAME_LEN - 1));
@@ -533,7 +533,7 @@ std::string SdkBlobClient::ReadDirectory(
 
             dirEntries.push_back(DirectoryEntry());
             dirEntries.back().d_ino = D_INO_VAL;
-            dirEntries.back().d_off = dirEntries.size() - 1;
+            dirEntries.back().d_off = static_cast<off64_t>(dirEntries.size() - 1);
             dirEntries.back().d_reclen = sizeof(DirectoryEntry);
             dirEntries.back().d_type = DT_DIR;
             const size_t nameLen = std::min(lastComponentName.size(), static_cast<size_t>(D_NAME_LEN - 1));

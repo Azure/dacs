@@ -35,8 +35,9 @@ include_directories(
         ./handlers
         ./remote_client/cache
 	/opt/protobufstatic-3.0.0/include
-	/opt/azure-storage-cpplite-0.3.0/include
 )
+
+include_directories(SYSTEM /opt/azure-storage-cpplite-0.3.0/include)
 
 file(GLOB STORAGE_INTERCEPT_SOURCES_COMMON ./remote_client/*cpp ./remote_client/adls/*cpp
         ./remote_client/blob/*cpp ./remote_client/mock/*cpp ./common/*.cpp ./handlers/*cpp ./interceptors/StorageInterceptorImpl.cpp

@@ -18,6 +18,7 @@
 #include <chrono>
 #include <iostream>
 #include <unistd.h>
+#include <limits>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
@@ -78,7 +79,9 @@ bool SendMessageToRemote(IConnection& clientConnection, const ::google::protobuf
     string outputBuffer(REQUEST_METADATA_SIZE, 0);
     ConvertIntToBytes(protoBuffer.size(), outputBuffer.data(), 0, REQUEST_METADATA_SIZE);
     outputBuffer += protoBuffer;
-    if (clientConnection.Write(outputBuffer.data(), outputBuffer.size()) != outputBuffer.size())
+    if (outputBuffer.size() > static_cast<size_t>(std::numeric_limits<int>::max()) ||
+        clientConnection.Write(outputBuffer.data(), static_cast<int>(outputBuffer.size())) !=
+            static_cast<int>(outputBuffer.size()))
     {
         LOG_WARN_REQID_STR("couldn't write response to client id: {}, errno: {}:{}",
             requestid,
@@ -100,7 +103,9 @@ bool SendMessageToRemoteFinal(IConnection& clientConnection, const ::google::pro
     string outputBuffer(REQUEST_METADATA_SIZE, 0);
     ConvertIntToBytes(protoBuffer.size(), outputBuffer.data(), 0, REQUEST_METADATA_SIZE);
     outputBuffer += protoBuffer;
-    if (clientConnection.WriteFinal(outputBuffer.data(), outputBuffer.size()) != outputBuffer.size())
+    if (outputBuffer.size() > static_cast<size_t>(std::numeric_limits<int>::max()) ||
+        clientConnection.WriteFinal(outputBuffer.data(), static_cast<int>(outputBuffer.size())) !=
+            static_cast<int>(outputBuffer.size()))
     {
         LOG_WARN_REQID_STR("couldn't write response to client id: {}, errno: {}:{}",
             requestid,

@@ -381,7 +381,7 @@ namespace fake_ib {
 //---------------------------------------------------------------------------------------------------------------------
 extern "C" {
 
-struct ibv_mr* (ibv_reg_mr)(struct ibv_pd* pd, void* addr, size_t length, int access)
+struct ibv_mr* (ibv_reg_mr)(struct ibv_pd*, void* addr, size_t length, int access)
 {
     fake_ib::reg_mr_call_count++;
     fake_ib::reg_mr_history.push_back({addr, length, access});
@@ -395,13 +395,13 @@ struct ibv_mr* (ibv_reg_mr)(struct ibv_pd* pd, void* addr, size_t length, int ac
 }
 
 struct ibv_mr* ibv_reg_mr_iova2(struct ibv_pd* pd, void* addr, size_t length,
-                                uint64_t iova, unsigned int access)
+                                uint64_t, unsigned int access)
 {
     // Delegate to ibv_reg_mr stub
     return (ibv_reg_mr)(pd, addr, length, static_cast<int>(access));
 }
 
-int ibv_dereg_mr(struct ibv_mr* mr)
+int ibv_dereg_mr(struct ibv_mr*)
 {
     fake_ib::dereg_mr_call_count++;
     if (fake_ib::dereg_mr_fail_next > 0)
@@ -537,7 +537,7 @@ protected:
     }
 
     // Helper: write a known response into the MR buffer (simulates HCA writing recv data)
-    void PlaceResponseInMrBuffer(IBConnection* conn, const std::string& response)
+    void PlaceResponseInMrBuffer(IBConnection*, const std::string& response)
     {
         // The MR buffer pointer was moved into the connection, but the recv SGE
         // points to it. We captured the recv SGE addr in fake_post_recv.
@@ -786,10 +786,10 @@ TEST_F(IBConnectionTest, SendAndFinalize_ConcatenatedDataMatchesProtocol)
     uint32_t protoSize = 100;
     char lengthPrefix[4];
     // Big-endian encoding (matching ConvertIntToBytes)
-    lengthPrefix[0] = (protoSize >> 24) & 0xFF;
-    lengthPrefix[1] = (protoSize >> 16) & 0xFF;
-    lengthPrefix[2] = (protoSize >> 8) & 0xFF;
-    lengthPrefix[3] = protoSize & 0xFF;
+    lengthPrefix[0] = static_cast<char>((protoSize >> 24) & 0xFFU);
+    lengthPrefix[1] = static_cast<char>((protoSize >> 16) & 0xFFU);
+    lengthPrefix[2] = static_cast<char>((protoSize >> 8) & 0xFFU);
+    lengthPrefix[3] = static_cast<char>(protoSize & 0xFFU);
 
     std::vector<char> headerBuf(4 + protoSize);
     memcpy(headerBuf.data(), lengthPrefix, 4);
@@ -1070,7 +1070,7 @@ TEST_F(IBConnectionTest, DirectMR_SendWCMustBeConsumedDuringSend_NotLeftForRecei
     PlaceResponseInMrBuffer(conn.get(), response);
     // Only enqueue RECV — if the code requires a SEND WC here, it means
     // the send phase didn't consume it (bug).
-    PrepareReceive({fake_ib::MakeRecvWC(response.size())});
+    PrepareReceive({fake_ib::MakeRecvWC(static_cast<uint32_t>(response.size()))});
 
     char recvBuf[64] = {};
     int n = conn->Receive(recvBuf, sizeof(recvBuf));
@@ -1105,7 +1105,7 @@ TEST_F(IBConnectionTest, DirectMR_ConnectionReuse_NoDanglingMrFromPreviousReques
     // Simulate receive + reset
     const std::string resp1 = "ok1";
     PlaceResponseInMrBuffer(conn.get(), resp1);
-    PrepareReceive({fake_ib::MakeRecvWC(resp1.size())});
+    PrepareReceive({fake_ib::MakeRecvWC(static_cast<uint32_t>(resp1.size()))});
     char recvBuf[16] = {};
     conn->Receive(recvBuf, sizeof(recvBuf));
 
@@ -1276,7 +1276,7 @@ TEST_F(IBConnectionTest, ConnectionReuse_MultipleRoundsDataIntegrity)
         // Re-create the fake QP context pointers for the existing connection
         // The connection still holds the original qp pointer, so just set the ops table
 
-        char fillByte = 'A' + round;
+        char fillByte = static_cast<char>('A' + round);
         std::string header = "round-" + std::to_string(round);
         conn->Send(header.data(), header.size());
 
@@ -1317,7 +1317,7 @@ TEST_F(IBConnectionTest, Receive_HappyPath_SendThenRecvWC_ReturnsData)
     PlaceResponseInMrBuffer(conn.get(), response);
 
     // Enqueue completions: SEND WC first, then RECV WC
-    PrepareReceive({fake_ib::MakeSendWC(), fake_ib::MakeRecvWC(response.size())});
+    PrepareReceive({fake_ib::MakeSendWC(), fake_ib::MakeRecvWC(static_cast<uint32_t>(response.size()))});
 
     // Read the response
     char recvBuf[64] = {};
@@ -1341,7 +1341,7 @@ TEST_F(IBConnectionTest, Receive_RecvWCBeforeSendWC_StillReturnsCorrectData)
     PlaceResponseInMrBuffer(conn.get(), response);
 
     // RECV arrives before SEND in the CQ
-    PrepareReceive({fake_ib::MakeRecvWC(response.size())});
+    PrepareReceive({fake_ib::MakeRecvWC(static_cast<uint32_t>(response.size()))});
 
     char recvBuf[64] = {};
     int bytesRead = conn->Receive(recvBuf, sizeof(recvBuf));
@@ -1410,7 +1410,7 @@ TEST_F(IBConnectionTest, Receive_ExactBufferSizeRead)
 
     const std::string response = "exact";
     PlaceResponseInMrBuffer(conn.get(), response);
-    PrepareReceive({fake_ib::MakeSendWC(), fake_ib::MakeRecvWC(response.size())});
+    PrepareReceive({fake_ib::MakeSendWC(), fake_ib::MakeRecvWC(static_cast<uint32_t>(response.size()))});
 
     // Read exactly the response size
     char recvBuf[5] = {};
@@ -1725,7 +1725,7 @@ TEST_F(IBConnectionTest, FullCycle_SendReceiveResetSendReceive)
 
     const std::string response1 = "response-1";
     PlaceResponseInMrBuffer(conn.get(), response1);
-    PrepareReceive({fake_ib::MakeSendWC(), fake_ib::MakeRecvWC(response1.size())});
+    PrepareReceive({fake_ib::MakeSendWC(), fake_ib::MakeRecvWC(static_cast<uint32_t>(response1.size()))});
 
     char recvBuf1[64] = {};
     int n1 = conn->Receive(recvBuf1, sizeof(recvBuf1));
@@ -1748,7 +1748,7 @@ TEST_F(IBConnectionTest, FullCycle_SendReceiveResetSendReceive)
 
     const std::string response2 = "response-2-also-different";
     PlaceResponseInMrBuffer(conn.get(), response2);
-    PrepareReceive({fake_ib::MakeSendWC(), fake_ib::MakeRecvWC(response2.size())});
+    PrepareReceive({fake_ib::MakeSendWC(), fake_ib::MakeRecvWC(static_cast<uint32_t>(response2.size()))});
 
     char recvBuf2[64] = {};
     int n2 = conn->Receive(recvBuf2, sizeof(recvBuf2));
@@ -1777,7 +1777,7 @@ TEST_F(IBConnectionTest, FullCycle_DirectMR_SendReceiveReset)
     // Receive response — only RECV WC needed (SEND WC already consumed)
     const std::string response = "uploaded-ok";
     PlaceResponseInMrBuffer(conn.get(), response);
-    PrepareReceive({fake_ib::MakeRecvWC(response.size())});
+    PrepareReceive({fake_ib::MakeRecvWC(static_cast<uint32_t>(response.size()))});
 
     char recvBuf[64] = {};
     int n = conn->Receive(recvBuf, sizeof(recvBuf));
@@ -2049,7 +2049,7 @@ TEST_F(IBConnectionTest, RapidReuse_10Rounds_AlternatingPaths_NoLeak)
         {
             // Direct-MR path
             const uint64_t size = 4 * 1024 * 1024;
-            std::vector<char> buf(size, 'A' + round);
+            std::vector<char> buf(size, static_cast<char>('A' + round));
 
             fake_ib::EnqueueCompletions({fake_ib::MakeSendWC()});
             SignalEventChannel();
@@ -2061,7 +2061,7 @@ TEST_F(IBConnectionTest, RapidReuse_10Rounds_AlternatingPaths_NoLeak)
         {
             // Memcpy path
             const uint64_t size = 1024;
-            std::vector<char> buf(size, 'a' + round);
+            std::vector<char> buf(size, static_cast<char>('a' + round));
             PrepareSendWC();
             int result = conn->SendAndFinalize(buf.data(), size);
             EXPECT_EQ(static_cast<int>(size), result) << "Round " << round;

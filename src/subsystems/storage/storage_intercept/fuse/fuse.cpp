@@ -23,6 +23,7 @@
 #include <assert.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <limits>
 #include "ContentHandler.h"
 #include "StorageInterceptLogger.h"
 #include "StorageInterceptUtils.h"
@@ -49,10 +50,21 @@ static const struct fuse_opt option_spec[] = {
 // TODO: have a context struct instead of global variable
 static std::string mountPath;
 
+static int get_file_descriptor(const struct fuse_file_info *fi)
+{
+	if (fi->fh > static_cast<uint64_t>(std::numeric_limits<int>::max()))
+	{
+		errno = EBADF;
+		return -1;
+	}
+	return static_cast<int>(fi->fh);
+}
+
 static void *dacsfs_init(
     struct fuse_conn_info *conn,
 	struct fuse_config *cfg)
 {
+	(void) conn;
 	//cfg->direct_io = 1; // Can't do direct IO because it doesn't support mmap
 	cfg->kernel_cache = 1;
 	cfg->use_ino = 0;
@@ -71,7 +83,10 @@ static int dacsfs_getattr(
 	int res = 0;
 
 	if(fi)
-		res = ContentHandler::GetInstance().HandleFxstat(1, fi->fh, stbuf);
+	{
+		const int fd = get_file_descriptor(fi);
+		res = fd == -1 ? -errno : ContentHandler::GetInstance().HandleFxstat(1, fd, stbuf);
+	}
 	else
 		res = ContentHandler::GetInstance().HandleLxstat(
 			1,
@@ -113,7 +128,7 @@ static int dacsfs_readdir(
 		struct stat st;
 		memset(&st, 0, sizeof(st));
 		st.st_ino = 0;
-		st.st_mode = de->d_type << 12;
+		st.st_mode = static_cast<mode_t>(de->d_type) << 12;
 		st.st_mode |= 0777;
 
 		if (filler(buf, de->d_name, &st, 0, (fuse_fill_dir_flags)0))
@@ -142,7 +157,7 @@ static int dacsfs_open(const char *path, struct fuse_file_info *fi)
 	if (res == -1)
 		return -errno;
 
-	fi->fh = res;
+	fi->fh = static_cast<uint64_t>(res);
 	return 0;
 }
 
@@ -161,14 +176,18 @@ static int dacsfs_read(
 			path,
 			O_RDONLY);
 	else
-		fd = fi->fh;
+		fd = get_file_descriptor(fi);
 
 	if (fd == -1)
 		return -errno;
 
-	res = ContentHandler::GetInstance().HandlePRead(fd, buf, size, offset);
-	if (res == -1)
+	const ssize_t bytesRead = ContentHandler::GetInstance().HandlePRead(fd, buf, size, offset);
+	if (bytesRead == -1)
 		res = -errno;
+	else if (bytesRead > std::numeric_limits<int>::max())
+		res = -EOVERFLOW;
+	else
+		res = static_cast<int>(bytesRead);
 
 	if (fi == NULL)
 		ContentHandler::GetInstance().HandleClose(fd);
@@ -178,7 +197,8 @@ static int dacsfs_read(
 static int dacsfs_release(const char *path, struct fuse_file_info *fi)
 {
 	(void) path;
-	return ContentHandler::GetInstance().HandleClose(fi->fh);
+	const int fd = get_file_descriptor(fi);
+	return fd == -1 ? -errno : ContentHandler::GetInstance().HandleClose(fd);
 }
 
 static off_t dacsfs_lseek(const char *path, off_t off, int whence, struct fuse_file_info *fi)
@@ -191,7 +211,7 @@ static off_t dacsfs_lseek(const char *path, off_t off, int whence, struct fuse_f
 			path,
 			O_RDONLY);
 	else
-		fd = fi->fh;
+		fd = get_file_descriptor(fi);
 
 	if (fd == -1)
 		return -errno;

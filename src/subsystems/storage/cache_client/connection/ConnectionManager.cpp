@@ -35,6 +35,7 @@
 #include <sys/types.h>
 #include <netdb.h>
 #include <poll.h>
+#include <limits>
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_set>
@@ -116,18 +117,18 @@ ConnectionManager::ConnectionManager(
     ,  m_nMaxConnectionsReuseSize(nMaxConnectionsReuseSize)
     ,  m_nMaxConnsPerServer(0)
     ,  m_bReuseServerConnections(bReuseServerConnections)
-    ,  m_bUseInfiniband(bUseInfiniband)
     ,  m_bEnableCacheServerDiscovery(bEnableCacheServerDiscovery)
     ,  m_nCacheServerDiscoveryIntervalInSeconds(nCacheServerDiscoveryIntervalInSeconds)
     ,  m_cacheDiscoveryEndpoint(cacheDiscoveryEndpoint)
     ,  m_nSocketSndbufSize(nSocketSndbufSize)
     ,  m_nSocketRcvbufSize(nSocketRcvbufSize)
+    ,  m_bUseInfiniband(bUseInfiniband)
     ,  m_bIbZeroCopyEnabled(IsIbZeroCopyEnabled())
     ,  m_hashingStrategy(bEnableConsistentHashing 
         ? HashingStrategy::ConsistentHashing
         : HashingStrategy::StaticModuloHashing)
 {
-    m_ibDevice = {0};
+    m_ibDevice = {};
     m_hasher = HashingFactory::CreateHasher(m_hashingStrategy);
     if (!m_hasher) {
         LOG_ERROR("Failed to create hasher for strategy: {}", 
@@ -235,9 +236,6 @@ void ConnectionManager::UpdateCacheServers(const std::vector<std::string>& vecLa
     std::lock_guard<std::mutex> lockConnections(m_lockCacheServerConnections);
     std::unique_lock<std::shared_mutex> lockData(m_sharedLockCacheServerData); // Exclusive lock for write access
 
-    int nOldCacheServers = m_vecCacheServers.size();
-    int nNewCacheServers = vecLatestCacheServers.size();
-
     // Check if the cache server list is changed. Using a Set<string> to eliminate duplicate hostnames (if any).
     std::set<std::string> oldCacheServersSet(m_vecCacheServers.begin(), m_vecCacheServers.end());
     std::set<std::string> newCacheServersSet(vecLatestCacheServers.begin(), vecLatestCacheServers.end());
@@ -283,7 +281,9 @@ void ConnectionManager::UpdateCacheServers(const std::vector<std::string>& vecLa
     }
 
     m_vecCacheServers.assign(newCacheServersSet.begin(), newCacheServersSet.end());
-    uint32_t nServerNodes = m_vecCacheServers.size();
+    STORAGE_ASSERT(m_vecCacheServers.size() <= static_cast<size_t>(std::numeric_limits<uint32_t>::max()),
+        "Cache server count exceeds supported limit");
+    uint32_t nServerNodes = static_cast<uint32_t>(m_vecCacheServers.size());
     m_nMaxConnsPerServer = (m_nMaxConnectionsReuseSize + nServerNodes - 1) / nServerNodes;
 
     m_hasher->UpdateServers(m_vecCacheServers);
@@ -324,13 +324,9 @@ bool ConnectionManager::InitInfiniband()
         return false;
     }
 
-    LOG_INFO("IB Init successful");
-    m_ibDevice.context = std::move(context);
-    m_ibDevice.pd = std::move(pd);
-
     // Query device capabilities to determine max SGE support
     struct ibv_device_attr devAttr{};
-    int rc = ibv_query_device(m_ibDevice.context.get(), &devAttr);
+    int rc = ibv_query_device(context.get(), &devAttr);
     if (rc != 0)
     {
         LOG_WARN("ibv_query_device failed error={},{}, defaulting max_sge=1", rc, strerror(errno));
@@ -338,10 +334,18 @@ bool ConnectionManager::InitInfiniband()
     }
     else
     {
-        m_ibDevice.max_sge = devAttr.max_sge;
+        if (devAttr.max_sge < 0)
+        {
+            LOG_WARN("Invalid IB device max_sge={}", devAttr.max_sge);
+            return false;
+        }
+        m_ibDevice.max_sge = static_cast<uint32_t>(devAttr.max_sge);
         LOG_INFO("IB device max_sge={}", m_ibDevice.max_sge);
     }
 
+    LOG_INFO("IB Init successful");
+    m_ibDevice.context = std::move(context);
+    m_ibDevice.pd = std::move(pd);
     m_bUseInfiniband = true;
     return true;
 }
@@ -411,7 +415,7 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(std::unique_p
         // SGE[1]=data from caller's directly-registered buffer.
         // Downloads and other ops use only 1 SGE but the limit applies per-QP.
         // Cap to device max_sge to avoid ibv_create_qp failure on limited hardware.
-        int requestedSge = std::min(2, m_ibDevice.max_sge);
+        uint32_t requestedSge = std::min(2U, m_ibDevice.max_sge);
         qpInitAttr.cap.max_send_sge = requestedSge;
         qpInitAttr.cap.max_recv_sge = 1;
 
@@ -509,9 +513,18 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(std::unique_p
     }
 
     // Create one to one qp mapping for client-server communication
+    if (response.serveribport() > std::numeric_limits<uint8_t>::max())
+    {
+        LOG_WARN_REQID("server IB port exceeds uint8_t: {}", *ibRequest, response.serveribport());
+        std::lock_guard<std::mutex> lock(m_lockIbSetupStatusMap);
+        m_mapIbSetupStatus[cacheserver] = IBSetupStatus::PROTOCOL_ERROR;
+        return socketConnection;
+    }
+    const uint8_t serverIbPort = static_cast<uint8_t>(response.serveribport());
     for (int qpn = 0; qpn < IB_CONNECTIONS_PER_SERVER; qpn++)
     {
-        auto qp = std::move(vectorQps[qpn]);
+        const size_t qpnIndex = static_cast<size_t>(qpn);
+        auto qp = std::move(vectorQps[qpnIndex]);
         bool bRet = SetupQPForSendAndReceive(
             qp.get(),
             m_ibDevice.port,
@@ -520,7 +533,7 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(std::unique_p
             (ibv_mtu)std::min((uint32_t)m_ibDevice.mtu, response.servermtu()),
             response.serverqpn().Get(qpn),
             response.serverlid(),
-            response.serveribport());
+            serverIbPort);
         if (!bRet)
         {
             LOG_WARN_REQID("Failed to setup QP id={}", *ibRequest, qp->qp_num);
@@ -545,10 +558,10 @@ std::unique_ptr<IConnection> ConnectionManager::SetupIBConnections(std::unique_p
         // Use the zero-copy path only if it's enabled and the device supports 2 SGEs.
         bool directMrEnabled = (m_ibDevice.max_sge >= 2) && m_bIbZeroCopyEnabled;
         std::unique_ptr<IBConnection> ibConnection = make_unique<IBConnection>(
-            std::move(qp), 
-            std::move(vectorEventChannels[qpn]),
-            std::move(vectorCqs[qpn]), 
-            std::move(mr), 
+            std::move(qp),
+            std::move(vectorEventChannels[qpnIndex]),
+            std::move(vectorCqs[qpnIndex]),
+            std::move(mr),
             std::move(mrBufferBlock),
             directMrEnabled
         );
@@ -773,7 +786,7 @@ std::unique_ptr<IConnection> ConnectionManager::InitFreshConnection(const std::s
         if (setupStatus == IBSetupStatus::FAILURE) {
             LOG_INFO("Skipping IB setup for server={} due to previous status={} "
                 "falling back to socket connection", cacheserver, ToStringIBSetupStatus(setupStatus));
-            return std::move(socketConnection);
+            return socketConnection;
         }
 
         // If IB setup was previously attempted and succeeded or failed due to network or protocol error, re-attempt
@@ -781,7 +794,7 @@ std::unique_ptr<IConnection> ConnectionManager::InitFreshConnection(const std::s
     }
 
     LOG_DEBUG("Created new server connection fd={} cacheserver={}", socketConn->GetId(), cacheserver);
-    return std::move(socketConnection);
+    return socketConnection;
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::unique_ptr<IConnection> ConnectionManager::GetConnection(const std::string& cacheserver)
@@ -809,12 +822,12 @@ std::unique_ptr<IConnection> ConnectionManager::GetConnection(const std::string&
             if (serverConnection->IsValidConnection())
             {
                 LOG_DEBUG("Reusing server connection id={}", serverConnection->GetId());
-                return std::move(serverConnection);
+                return serverConnection;
             }
         }
     }
 
-    return std::move(InitFreshConnection(cacheserver));
+    return InitFreshConnection(cacheserver);
 }
 //---------------------------------------------------------------------------------------------------------------------
 void ConnectionManager::ReleaseConnection(
@@ -830,7 +843,7 @@ void ConnectionManager::ReleaseConnection(
             LOG_DEBUG("Invalid cacheserver={} to perform release connection", cacheserver);
             return;
         }
-        if (m_mapConnectionQueue[cacheserver].size() < m_nMaxConnsPerServer)
+        if (m_mapConnectionQueue[cacheserver].size() < static_cast<size_t>(m_nMaxConnsPerServer))
         {
             LOG_DEBUG("Add connection to reuse pool id={}", serverConnection->GetId());
             serverConnection->ResetConnection();

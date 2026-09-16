@@ -78,9 +78,9 @@ int main(int argc, char* argv[])
         std::string containerName = argv[2];
         std::string blobPath = argv[3];
         int64_t offset = std::stoll(argv[4]);
-        uint32_t chunkSize = std::stoul(argv[5]);
+        uint32_t chunkSize = static_cast<uint32_t>(std::stoul(argv[5]));
         bool ignoreAccountName = ParseBool(argv[6]);
-        uint32_t numServers = std::stoul(argv[7]);
+        uint32_t numServers = static_cast<uint32_t>(std::stoul(argv[7]));
         
         // Validate inputs
         if (offset < 0)

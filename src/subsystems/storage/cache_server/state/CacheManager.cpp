@@ -29,18 +29,18 @@ using namespace std;
 using namespace std::chrono_literals;
 //---------------------------------------------------------------------------------------------------------------------
 CacheManager::CacheManager()
-: m_vCacheInfoMap(NUM_MAPS),
+: m_cacheSizeLimitBytes(DefaultCacheSizeLimitBytes),
+  m_totalCachedSize(0),
+  m_vCacheInfoMap(NUM_MAPS),
   m_vCacheInfoMapMutex(NUM_MAPS),
   m_vCacheTTLMap(NUM_MAPS),
-  m_vCacheGroupIDMap(NUM_MAPS),
-  m_vCacheGroupIDMapMutex(NUM_MAPS),
-  m_stopCleanupThread(false),
-  m_bStopEvictionThread(false),
+  m_ttlWindowSizeSeconds(DefaultCacheTTLWindowSizeSeconds),
   m_bEvictionEnabled(false),
   m_bDynamicEvictionEnabled(false),
-  m_ttlWindowSizeSeconds(DefaultCacheTTLWindowSizeSeconds),
-  m_cacheSizeLimitBytes(DefaultCacheSizeLimitBytes),
-  m_totalCachedSize(0)
+  m_bStopEvictionThread(false),
+  m_vCacheGroupIDMap(NUM_MAPS),
+  m_vCacheGroupIDMapMutex(NUM_MAPS),
+  m_stopCleanupThread(false)
 {
     InitializeEviction();
 
@@ -346,7 +346,7 @@ shared_ptr<Snapshot> CacheManager::TakeSnapshot() const
     snapshot->set_hostname(GetServerHostName());
     int nEntries = 0;
 
-    for (int bucket = 0; bucket < NUM_MAPS; bucket++)
+    for (size_t bucket = 0; bucket < static_cast<size_t>(NUM_MAPS); bucket++)
     {
         auto snapshotBucket = snapshot->add_buckets();
         lock_guard lock(m_vCacheInfoMapMutex[bucket]);
@@ -366,9 +366,9 @@ shared_ptr<Snapshot> CacheManager::TakeSnapshot() const
                 (*fileEntry->mutable_metadata())[metadataIter->first] = metadataIter->second;
             }
 
-            fileEntry->set_expirytimestamp(iter->second.m_expiryTime);
+            fileEntry->set_expirytimestamp(static_cast<uint64_t>(iter->second.m_expiryTime));
             fileEntry->set_groupid(iter->second.m_groupId);
-            fileEntry->set_accesstimestamp(iter->second.m_accessTimestamp);
+            fileEntry->set_accesstimestamp(static_cast<uint64_t>(iter->second.m_accessTimestamp));
         }
     }
 
@@ -385,7 +385,7 @@ shared_ptr<Snapshot> CacheManager::TakeSnapshot() const
 
     // Set save timestamp at the end, this is to ensure that 
     // savetimestamp > accesstimestamp for all files in snapshot
-    snapshot->set_savetimestamp(time(NULL));
+    snapshot->set_savetimestamp(static_cast<uint64_t>(time(NULL)));
     LOG_INFO("Completed taking a snapshot. num entries: {}. toDeleteGroups: {} Snapshot size: {}",
                  nEntries,
                  snapshot->todeletegroups_size(),
@@ -404,12 +404,13 @@ void CacheManager::InitializeFromSnapshot(const Snapshot& snapshot)
     unordered_map<string, list<string>> groupIDMapEntries;
     for (int bucket = 0; bucket < snapshot.buckets_size(); bucket++)
     {
-        lock_guard lock(m_vCacheInfoMapMutex[bucket]);
+        const size_t bucketIndex = static_cast<size_t>(bucket);
+        lock_guard lock(m_vCacheInfoMapMutex[bucketIndex]);
         const SnapshotBucket& snapshotBucket = snapshot.buckets(bucket);
         for (int fileIndex = 0; fileIndex < snapshotBucket.entries_size(); fileIndex++)
         {
             if (snapshotBucket.entries(fileIndex).expirytimestamp() > 0 &&
-                snapshotBucket.entries(fileIndex).expirytimestamp() < now)
+                snapshotBucket.entries(fileIndex).expirytimestamp() < static_cast<uint64_t>(now))
             {
                 LOG_INFO("Skipping expired file from snapshot. bucket: {}, filename: {}",
                     bucket,
@@ -420,15 +421,15 @@ void CacheManager::InitializeFromSnapshot(const Snapshot& snapshot)
             nEntries++;
             const auto& fileEntry = snapshotBucket.entries(fileIndex);
 
-           auto insertedItemIter = m_vCacheInfoMap[bucket].insert(make_pair(fileEntry.filename(),
+           auto insertedItemIter = m_vCacheInfoMap[bucketIndex].insert(make_pair(fileEntry.filename(),
                 CacheInfo(
                     fileEntry.filesize(),
                     fileEntry.metadata(),
                     CacheStatus::COMPLETED,
-                    fileEntry.expirytimestamp(),
+                    static_cast<time_t>(fileEntry.expirytimestamp()),
                     fileEntry.groupid()))).first;
 
-            time_t accessTimestamp = fileEntry.accesstimestamp();
+            time_t accessTimestamp = static_cast<time_t>(fileEntry.accesstimestamp());
             // Backwards compatibility with older snapshots
             // If access timestamp was not available, then all
             // files in the snapshot are given the current time as access time
@@ -442,7 +443,7 @@ void CacheManager::InitializeFromSnapshot(const Snapshot& snapshot)
 
             if (fileEntry.expirytimestamp() > 0)
             {
-                m_vCacheTTLMap[bucket][fileEntry.expirytimestamp()].emplace_back(fileEntry.filename());
+                m_vCacheTTLMap[bucketIndex][static_cast<time_t>(fileEntry.expirytimestamp())].emplace_back(fileEntry.filename());
             }
 
             if (!fileEntry.groupid().empty())
@@ -455,7 +456,7 @@ void CacheManager::InitializeFromSnapshot(const Snapshot& snapshot)
 
         LOG_INFO("Loaded snapshot entries into cache and TTL map for bucket: {}, num bucket entries: {}",
             bucket,
-            m_vCacheInfoMap[bucket].size());
+            m_vCacheInfoMap[bucketIndex].size());
     }
 
     LOG_INFO("Loaded snapshot entries into cache and TTL map. Now Loading into groupID map. num entries: {}, cacheSize: {}",
@@ -491,6 +492,7 @@ void CacheManager::ScanForSnapshotConsistency(const Snapshot& snapshot)
 
     for (int bucket = 0; bucket < snapshot.buckets_size(); bucket++)
     {
+        const size_t bucketIndex = static_cast<size_t>(bucket);
         LOG_INFO("Scanning for snapshot consistency bucket: {} started", bucket);
 
         // Do a readdir to get all files in the cache folder for this bucket on disk
@@ -552,7 +554,7 @@ void CacheManager::ScanForSnapshotConsistency(const Snapshot& snapshot)
         // Delete from cache index the files present in snapshot but not found on disk
         int nDeletedFromCacheIndex = 0;
         unordered_map<string, unordered_set<string>> groupIDMapEntriesToCleanup;
-        std::unique_lock lock(m_vCacheInfoMapMutex[bucket]);
+        std::unique_lock lock(m_vCacheInfoMapMutex[bucketIndex]);
         for (int fileIndex = 0; fileIndex < snapshotBucket.entries_size(); fileIndex++)
         {
             const std::string fileInSnapshot = FileNameEncode(snapshotBucket.entries(fileIndex).filename());
@@ -561,10 +563,10 @@ void CacheManager::ScanForSnapshotConsistency(const Snapshot& snapshot)
                 LOG_INFO("File in snapshot not found on disk. bucket: {}, filename: {}", bucket, fileInSnapshot);
                 nDeletedFromCacheIndex++;
 
-                m_vCacheInfoMap[bucket].erase(fileInSnapshot);
+                m_vCacheInfoMap[bucketIndex].erase(fileInSnapshot);
                 if (snapshotBucket.entries(fileIndex).expirytimestamp() > 0)
                 {
-                    m_vCacheTTLMap[bucket][snapshotBucket.entries(fileIndex).expirytimestamp()].remove(fileInSnapshot);
+                    m_vCacheTTLMap[bucketIndex][static_cast<time_t>(snapshotBucket.entries(fileIndex).expirytimestamp())].remove(fileInSnapshot);
                 }
 
                 if (!snapshotBucket.entries(fileIndex).groupid().empty())
@@ -640,7 +642,7 @@ void CacheManager::CacheCleanupWorker()
 
         // Get all expired keys
         time_t currentTime = time(NULL);
-        for (int bucket = 0; bucket < NUM_MAPS; bucket++)
+        for (size_t bucket = 0; bucket < static_cast<size_t>(NUM_MAPS); bucket++)
         {
             lock_guard lock(m_vCacheInfoMapMutex[bucket]);
             auto iter = m_vCacheTTLMap[bucket].begin();            
@@ -664,7 +666,7 @@ void CacheManager::CacheCleanupWorker()
             string groupId = groupIDsToCleanup.front();
             groupIDsToCleanup.pop();
 
-            int bucket = GetHashBucket(groupId);
+            const auto bucket = GetHashBucket(groupId);
             lock_guard lock(m_vCacheGroupIDMapMutex[bucket]);
             auto iter = m_vCacheGroupIDMap[bucket].find(groupId);
             if (iter != m_vCacheGroupIDMap[bucket].end())
@@ -682,7 +684,7 @@ void CacheManager::CacheCleanupWorker()
         int numFilesDeleted = 0;
 
         // remove the keys from the main cache map
-        for (int bucket = 0; bucket < NUM_MAPS; bucket++)
+        for (size_t bucket = 0; bucket < static_cast<size_t>(NUM_MAPS); bucket++)
         {
             lock_guard lock(m_vCacheInfoMapMutex[bucket]);
             for (auto filename : filesToDelete[bucket])
@@ -711,7 +713,7 @@ void CacheManager::CacheCleanupWorker()
         LOG_INFO("Delete files. num files: {}, size: {}", numFilesDeleted, deleteFileSize);
 
         // Now start deleting the files from disk
-        for (int bucket = 0; bucket < NUM_MAPS; bucket++)
+        for (size_t bucket = 0; bucket < static_cast<size_t>(NUM_MAPS); bucket++)
         {
             for (auto filename : filesToDelete[bucket])
             {
@@ -820,10 +822,15 @@ void CacheManager::InitializeEviction()
             m_nEvictionPassFrequencySeconds = DefaultEvictionPassFrequencySeconds;
             LOG_WARN("Invalid eviction pass frequency set, using default: {}", m_nEvictionPassFrequencySeconds);
         }
+        else if (nValue <= std::numeric_limits<uint32_t>::max())
+        {
+            m_nEvictionPassFrequencySeconds = static_cast<uint32_t>(nValue);
+            LOG_INFO("Eviction pass frequency seconds: {}", m_nEvictionPassFrequencySeconds);
+        }
         else
         {
-            m_nEvictionPassFrequencySeconds = nValue;
-            LOG_INFO("Eviction pass frequency seconds: {}", m_nEvictionPassFrequencySeconds);
+            m_nEvictionPassFrequencySeconds = DefaultEvictionPassFrequencySeconds;
+            LOG_WARN("Eviction pass frequency exceeds supported range, using default: {}", m_nEvictionPassFrequencySeconds);
         }
     }
     else
@@ -945,7 +952,9 @@ void CacheManager::EvictionWorker()
         {
             // Use fixed threshold based on last access time
             time_t now = time(NULL);
-            evictionThreshold = now - m_nEvictionLastAccessThresholdSeconds;
+            evictionThreshold = m_nEvictionLastAccessThresholdSeconds > static_cast<uint64_t>(now)
+                ? 0
+                : now - static_cast<time_t>(m_nEvictionLastAccessThresholdSeconds);
             LOG_INFO("Using fixed eviction threshold: {}", 
                      LOG_READABLE_TIME_UTC(evictionThreshold));
         }
@@ -967,7 +976,7 @@ void CacheManager::EvictByAccessTime(time_t nEvictionLastAccessTime)
     LOG_INFO("Started evict by access time, Eviction last access time: {}", 
              LOG_READABLE_TIME_UTC(nEvictionLastAccessTime));
 
-    for(int bucket = 0; bucket < NUM_MAPS; bucket++)
+    for(size_t bucket = 0; bucket < static_cast<size_t>(NUM_MAPS); bucket++)
     {
         // Each entry in each map points from GroupId -> list of filenames
         vector<unordered_map<string, list<string>>> vecGroupIdFilesToDelete(NUM_MAPS);
@@ -1016,7 +1025,7 @@ void CacheManager::EvictByAccessTime(time_t nEvictionLastAccessTime)
         // so to minimize the number of times we acquire the GroupIdMapBucketLocks
         // we do it this way, and this also lets us avoid race conditions with
         // request processing threads
-        for(int groupIdMapBucket = 0; groupIdMapBucket < NUM_MAPS; groupIdMapBucket++)
+        for(size_t groupIdMapBucket = 0; groupIdMapBucket < static_cast<size_t>(NUM_MAPS); groupIdMapBucket++)
         {
             if (vecGroupIdFilesToDelete[groupIdMapBucket].empty())
             {
@@ -1070,7 +1079,7 @@ bool CacheManager::GetLastAccessTimeDistribution(
     TIMER_START(GetLastAccessTimeDistribution);
 
     // Initialize the distribution vector
-    for (int bucket = 0; bucket < NUM_MAPS; bucket++)
+    for (size_t bucket = 0; bucket < static_cast<size_t>(NUM_MAPS); bucket++)
     {
         lock_guard lock(m_vCacheInfoMapMutex[bucket]);
         for (auto& [filename, cacheInfo] : m_vCacheInfoMap[bucket])
@@ -1100,7 +1109,8 @@ time_t CacheManager::CalculateDynamicEvictionThreshold()
     // Calculate target size to evict: bring utilization down to target percentage
     double currentUtilization = GetCacheServerUtilizationPercentage();
     double targetUtilization = m_dEvictionSizeTarget; 
-    uint64_t targetCacheSize = (uint64_t)(m_cacheSizeLimitBytes * targetUtilization / 100.0);
+    uint64_t targetCacheSize = static_cast<uint64_t>(
+        static_cast<double>(m_cacheSizeLimitBytes.load()) * targetUtilization / 100.0);
     uint64_t currentCacheSize = m_totalCachedSize.load();
     uint64_t sizeToEvict = 0;
     if (currentCacheSize > targetCacheSize)

@@ -117,18 +117,18 @@ TEST_F(CacheClientTest, SimpleUploadDownloadTest)
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 1024*1024*4);
+    ASSERT_EQ(dataRead, 1024ULL*1024*4);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
     // repeat download
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 1024*1024*4);
+    ASSERT_EQ(dataRead, 1024ULL*1024*4);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, 0, outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 1024*1024*4);
+    ASSERT_EQ(dataRead, 1024ULL*1024*4);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -163,7 +163,7 @@ TEST_F(CacheClientTest, DifferentFileSizesUploadDownloadTest)
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 1);
+    ASSERT_EQ(dataRead, 1ULL);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
     // 4MB - 1 byte file test
@@ -185,7 +185,7 @@ TEST_F(CacheClientTest, DifferentFileSizesUploadDownloadTest)
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 1024*1024*4 - 1);
+    ASSERT_EQ(dataRead, 1024ULL*1024*4 - 1);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
     // 4MB + 1 byte file test
@@ -207,7 +207,7 @@ TEST_F(CacheClientTest, DifferentFileSizesUploadDownloadTest)
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 1024*1024*4 + 1);
+    ASSERT_EQ(dataRead, 1024ULL*1024*4 + 1);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
     // 10MB file test
@@ -232,7 +232,7 @@ TEST_F(CacheClientTest, DifferentFileSizesUploadDownloadTest)
 
         cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
         ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-        ASSERT_EQ(dataRead, 1024*1024*10);
+        ASSERT_EQ(dataRead, 1024ULL*1024*10);
         AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
     }
 }
@@ -267,7 +267,7 @@ TEST_F(CacheClientTest, ZeroSizeUploadDownloadTest)
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 0);
+    ASSERT_EQ(dataRead, 0ULL);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(CacheClientTest, PartialDownloadTest)
@@ -301,17 +301,17 @@ TEST_F(CacheClientTest, PartialDownloadTest)
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 1024*1024*4);
+    ASSERT_EQ(dataRead, 1024ULL*1024*4);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, 5, outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 5);
+    ASSERT_EQ(dataRead, 5ULL);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 5, 25, outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 25);
+    ASSERT_EQ(dataRead, 25ULL);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get() + 5, dataRead);
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0,
@@ -320,16 +320,16 @@ TEST_F(CacheClientTest, PartialDownloadTest)
         outBuffer.data(),
         dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 1);
+    ASSERT_EQ(dataRead, 1ULL);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get() + 1024*1024*4 - 1, dataRead);
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 1024*1024*4, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 0);
+    ASSERT_EQ(dataRead, 0ULL);
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 999, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 1024*1024*4 - 999);
+    ASSERT_EQ(dataRead, 1024ULL*1024*4 - 999);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get() + 999, dataRead);
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -341,19 +341,15 @@ TEST_F(CacheClientTest, ParallelUploadDownloadTest)
     }
 
     string version = StorageInterceptUtils::GenerateUUID();
-    uint64_t dataRead = 0;
-    CacheStatus cacheStatus;
-    bool bRetVal;
-
     // Create many files of different file sizes
-    int numFiles = 200;
+    const size_t numFiles = 200;
     string strFileName = GetRandFilename();
     vector<std::shared_ptr<FileData>> dataBuffer(numFiles);
     vector<vector<char>> outBuffer(numFiles);
     vector<string> fileNames(numFiles);
-    for (int i = 0; i < numFiles; i++)
+    for (size_t i = 0; i < numFiles; i++)
     {
-        int randLength = (4*1024*1024 - 10) + (rand() % 21);
+        const size_t randLength = static_cast<size_t>((4*1024*1024 - 10) + (rand() % 21));
         dataBuffer[i] = GetRandDataBuffer(randLength);
         outBuffer[i].resize(randLength);
         fileNames[i] = strFileName + "-" + to_string(i);
@@ -361,7 +357,7 @@ TEST_F(CacheClientTest, ParallelUploadDownloadTest)
 
     // Get lock for all files in parallel
     vector<unique_ptr<thread>> testThreads;
-    for (int i = 0; i < numFiles; ++i)
+    for (size_t i = 0; i < numFiles; ++i)
     {
         auto t = make_unique<thread>([i, &outBuffer, &fileNames, &version, this]() {
             uint64_t dataRead = 0;
@@ -378,7 +374,7 @@ TEST_F(CacheClientTest, ParallelUploadDownloadTest)
     testThreads.clear();
 
     // upload all files in parallel
-    for (int i = 0; i < numFiles; ++i)
+    for (size_t i = 0; i < numFiles; ++i)
     {
         auto t = make_unique<thread>([i, &dataBuffer, &fileNames, &version, this]() {
             bool bRetVal = this->m_cacheClient->Upload("", fileNames[i], version, 0, dataBuffer[i], false /*isWrite*/);
@@ -393,7 +389,7 @@ TEST_F(CacheClientTest, ParallelUploadDownloadTest)
     testThreads.clear();
 
     // Download all files in parallel, allowing asynchronous uploads to finish.
-    for (int i = 0; i < numFiles; ++i)
+    for (size_t i = 0; i < numFiles; ++i)
     {
         auto t = make_unique<thread>([i, &dataBuffer, &outBuffer, &fileNames, &version, this]() {
             uint64_t dataRead = 0;
@@ -412,7 +408,6 @@ TEST_F(CacheClientTest, ParallelUploadDownloadTest)
                 ASSERT_TRUE(cacheStatus == CacheStatus::NOTFOUND || cacheStatus == CacheStatus::NOTFOUND_LOCKED);
                 this_thread::sleep_for(chrono::milliseconds(100));
             }
-
             ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
             ASSERT_EQ(dataRead, dataBuffer[i]->BufferSize);
             AssertEqArray<char>(outBuffer[i].data(), dataBuffer[i]->Buffer.get(), dataRead);
@@ -460,7 +455,7 @@ TEST_F(CacheClientTest, TestUploadLockExpiry)
     }
     testThreads.clear();
 
-    ASSERT_EQ(numLocks, 1);
+    ASSERT_EQ(numLocks.load(), uint_fast32_t{1});
     numLocks = 0;
 
     // The lock status should get reset after a while and we should be able to get the lock status again
@@ -484,7 +479,7 @@ TEST_F(CacheClientTest, TestUploadLockExpiry)
         std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     }
 
-    ASSERT_EQ(numLocks, 1);
+    ASSERT_EQ(numLocks.load(), uint_fast32_t{1});
 
     // We should not get LOCK for a while
     std::vector<char> outBuffer(1024*1024*4);
@@ -545,7 +540,7 @@ TEST_F(CacheClientTest, TestAvoidRemoteDownloadLoopWithUploadSuccessful)
         while(cacheStatus == CacheStatus::NOTFOUND && nIteration < nMaxAttempts);
         ASSERT_EQ(CacheStatus::SUCCESS, cacheStatus);
         ASSERT_FALSE(nIteration >= nMaxAttempts);
-        ASSERT_EQ(dataRead, 1024*1024*4);
+        ASSERT_EQ(dataRead, 1024ULL*1024*4);
     });
 
     t1->join();
@@ -683,13 +678,13 @@ TEST_F(CacheClientTest, VersionedUploadDownloadTest)
     // Download version1 — should get version1 data
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version1, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 1024*1024*4);
+    ASSERT_EQ(dataRead, 1024ULL*1024*4);
     AssertEqArray<char>(outBuffer.data(), dataBufferV1->Buffer.get(), dataRead);
 
     // Download version2 — should get version2 data
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version2, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 1024*1024*4);
+    ASSERT_EQ(dataRead, 1024ULL*1024*4);
     AssertEqArray<char>(outBuffer.data(), dataBufferV2->Buffer.get(), dataRead);
 
     // Download with empty version — should be a separate cache miss

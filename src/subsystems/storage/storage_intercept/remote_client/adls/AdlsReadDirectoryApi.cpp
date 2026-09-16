@@ -27,8 +27,8 @@ AdlsReadDirectoryApi::AdlsReadDirectoryApi(
       hostContext,
       "AdlsReadDirectoryApi")
   , m_strRemotePath(remotePath)
-  , m_vecDirEntries(dirEntries)
   , m_strContinuationToken(continuationToken)
+  , m_vecDirEntries(dirEntries)
   , m_strResultContinuationToken("")
 {
 }

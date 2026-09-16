@@ -68,7 +68,7 @@ class RemoteCacheClient : public ICacheClient, public IAttributesCache
     private:
         std::shared_ptr<CacheClientImpl>                m_spCacheClientImpl;
         std::unique_ptr<CacheUploadManager>             m_spUploadManager;
-        int                                             m_numServerNodes;
+        uint32_t                                        m_numServerNodes;
         InMemoryAttributesCache                         m_inMemAttributeCache;
         const bool                                      m_bAttributesCachePutAllOnReaddir;
         const bool                                      m_bEnableVersionedCacheKeys;

@@ -60,6 +60,10 @@ StreamingClient::StreamingClient(
     : m_strMountName(mountName)
     , m_strRemotePathPrefix(StorageInterceptUtils::GetRemotePathPrefix(mountName))
     , m_enableReadIOLogs(StorageInterceptConfig::GetInstance().GetEnableReadIOLogs())
+    , m_bRemoteDownloadOnlyWhenLockHeldEnabled(StorageInterceptConfig::GetInstance().IsRemoteDownloadOnlyWhenLockHeldEnabled())
+    , m_nRemoteDownloadOnlyWhenLockHeldMaxAttempts(50)
+    , m_nRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs(
+        StorageInterceptConfig::GetInstance().GetRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs())
     , m_nChunkSize(StorageInterceptConfig::GetInstance().GetStreamingChunkSize())
     , m_nSubChunkReadThresholdPercent(StorageInterceptConfig::GetInstance().GetSubChunkReadThresholdPercent())
     , m_bEncryptionEnabled(StorageInterceptConfig::GetInstance().GetCacheEncryptionEnabled(mountName))
@@ -67,21 +71,19 @@ StreamingClient::StreamingClient(
     , m_bDisableSubChunkForChecksumValidation(StorageInterceptConfig::GetInstance().IsSubChunkDisabledForChecksumValidation())
     , m_bEnableChunkOpParallelism(
         StorageInterceptConfig::GetInstance().GetChunkOperationParallelismEnabled(mountName))
-    , m_nMaxChunkOpConcurrency(StorageInterceptConfig::GetInstance().GetChunkOperationMaxConcurrency(mountName))
+    , m_nMaxChunkOpConcurrency(static_cast<uint32_t>(std::min(
+        StorageInterceptConfig::GetInstance().GetChunkOperationMaxConcurrency(mountName),
+        static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()))))
+    , m_nHighPriorityChunkOpsPending(0)
+    , m_nChunkOpsInProgress(0)
     , m_bEnableLargePrefetch(StorageInterceptConfig::GetInstance().GetEnableLargePrefetch(mountName))
     , m_nPrefetchWindowSize(StorageInterceptConfig::GetInstance().GetPrefetchWindowSizeInMB(mountName) * (1*1024*1024))
-    , m_bRemoteDownloadOnlyWhenLockHeldEnabled(StorageInterceptConfig::GetInstance().IsRemoteDownloadOnlyWhenLockHeldEnabled())
-    , m_nRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs(
-        StorageInterceptConfig::GetInstance().GetRemoteDownloadOnlyWhenLockHeldPollingIntervalInSecs())
     , m_bEnableWrite(StorageInterceptConfig::GetInstance().IsWriteSupportEnabled())
     , m_bEnableRemoteWrite(StorageInterceptConfig::GetInstance().IsRemoteWriteEnabled())
     , m_bEnableRemoteWriteAsync(StorageInterceptConfig::GetInstance().IsRemoteWriteAsyncEnabled())
     , m_stopRemoteAsyncUpload(false)
-    , m_nRemoteDownloadOnlyWhenLockHeldMaxAttempts(50)
     , m_nCacheBytesWritten(0)
     , m_nRemoteBytesWritten(0)
-    , m_nHighPriorityChunkOpsPending(0)
-    , m_nChunkOpsInProgress(0)
     , m_nReadChunksTotal(0)
     , m_nReadChunksPrefetchCache(0)
     , m_nReadChunksRemoteCache(0)
@@ -286,7 +288,7 @@ void StreamingClient::ClearClients()
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-void StreamingClient::OpenFile(const std::string& remotePath)
+void StreamingClient::OpenFile(const std::string&)
 {
     // No-op for now
 }
@@ -355,7 +357,10 @@ ssize_t StreamingClient::ReadFile(
         // All data for this read is now in prefetchCache,
         // reading chunks parallely won't speed-up as there won't be remote store calls.
         ssize_t readBytes = ReadChunksSequential(remotePath, pUserBuf, readSize, readOffset, version);
-        UpdateReadStats(readBytes, true);
+        if (readBytes >= 0)
+        {
+            UpdateReadStats(static_cast<size_t>(readBytes), true);
+        }
         LogReadIO(remotePath, readOffset, readSize, readBytes);
         return readBytes;
     }
@@ -365,13 +370,19 @@ ssize_t StreamingClient::ReadFile(
     if (m_bEnableChunkOpParallelism && readSize > m_nChunkSize)
     {
         ssize_t readBytes = ReadChunksParallel(remotePath, pUserBuf, readSize, readOffset, version);
-        UpdateReadStats(readBytes, true);
+        if (readBytes >= 0)
+        {
+            UpdateReadStats(static_cast<size_t>(readBytes), true);
+        }
         LogReadIO(remotePath, readOffset, readSize, readBytes);
         return readBytes;
     }
 
     ssize_t readBytes = ReadChunksSequential(remotePath, pUserBuf, readSize, readOffset, version);
-    UpdateReadStats(readBytes, true);
+    if (readBytes >= 0)
+    {
+        UpdateReadStats(static_cast<size_t>(readBytes), true);
+    }
     LogReadIO(remotePath, readOffset, readSize, readBytes);
     return readBytes;
 }
@@ -425,7 +436,7 @@ ssize_t StreamingClient::WriteFile(
     // 2. writeOffset < fileSize: overwrite case, not supported yet
     // 3. writeOffset > fileSize - sparse file case, add zeroed out data from fileSize to writeOffset
     const std::string cacheFilePath = GetCacheFilePath(remotePath);
-    const size_t fileSize = UploadCache::GetInstance().GetFileSize(cacheFilePath);
+    const off64_t fileSize = UploadCache::GetInstance().GetFileSize(cacheFilePath);
 
     if (writeOffset < fileSize)
     {
@@ -437,16 +448,16 @@ ssize_t StreamingClient::WriteFile(
         return -1;
     }
 
-    ssize_t bytesWritten = 0;
+    size_t bytesWritten = 0;
     while(bytesWritten < writeSize)
     {
-        const off64_t fileWriteLocation = writeOffset + bytesWritten;
+        const off64_t fileWriteLocation = writeOffset + static_cast<off64_t>(bytesWritten);
         const off64_t curChunkFileOffset = fileWriteLocation - (fileWriteLocation % m_nChunkSize);
         const off64_t curChunkLocalOffset = fileWriteLocation - curChunkFileOffset;
         // How many bytes to write out of this chunk starting at the offset within the chunk
         // Or if we have fewer bytes left to write than the chunk size, write only those
-        const off64_t bytesToWrite = std::min(
-            (std::size_t)m_nChunkSize - curChunkLocalOffset,
+        const size_t bytesToWrite = std::min(
+            static_cast<size_t>(m_nChunkSize - curChunkLocalOffset),
             writeSize - bytesWritten);
         const bool isFullChunkWrite = (bytesToWrite == m_nChunkSize) && (curChunkLocalOffset == 0);
         
@@ -464,7 +475,8 @@ ssize_t StreamingClient::WriteFile(
                 m_nChunkSize,
                 isFullChunkWrite ? (char*)ptr : nullptr, // use zero copy for full chunk writes
                 !isFullChunkWrite /* setToZeros */);
-            UploadCache::GetInstance().Put(cacheFilePath, writeData, curChunkFileOffset + bytesToWrite);
+            UploadCache::GetInstance().Put(
+                cacheFilePath, writeData, curChunkFileOffset + static_cast<off64_t>(bytesToWrite));
 
             m_nWriteChunksTotalStarted++;
             if (isFullChunkWrite)
@@ -484,9 +496,9 @@ ssize_t StreamingClient::WriteFile(
     // Update file size to reflect the full extent of data written.
     // Put() only updates file size when a new chunk is created, but writes to
     // existing chunks can extend the file beyond the previously tracked size.
-    UploadCache::GetInstance().UpdateFileSize(cacheFilePath, writeOffset + bytesWritten);
+    UploadCache::GetInstance().UpdateFileSize(cacheFilePath, writeOffset + static_cast<off64_t>(bytesWritten));
 
-    return bytesWritten;
+    return static_cast<ssize_t>(bytesWritten);
 }
 //---------------------------------------------------------------------------------------------------------------------
 ssize_t StreamingClient::ReadChunksSequential(
@@ -545,7 +557,7 @@ ssize_t StreamingClient::ReadChunksSequential(
         bufOffset += bufSizeForChunkCopy;
         chunkOffset += m_nChunkSize;
         nBytesRead += bytesReadIntoBuffer;
-        if (bytesReadIntoBuffer < bufSizeForChunkCopy)
+        if (static_cast<size_t>(bytesReadIntoBuffer) < bufSizeForChunkCopy)
         {
             // EOF has been reached
             break;
@@ -841,7 +853,9 @@ ssize_t StreamingClient::ReadChunkAndCopyToBuffer(
             chunkOffset,
             chunkCopyOffset,
             readChunkData->BufferSize);
-        return readChunkData->BufferSize;
+        STORAGE_ASSERT(readChunkData->BufferSize <= static_cast<size_t>(std::numeric_limits<ssize_t>::max()),
+            "Read chunk size cannot be represented by ssize_t");
+        return static_cast<ssize_t>(readChunkData->BufferSize);
     }
     else
     {
@@ -860,7 +874,9 @@ ssize_t StreamingClient::ReadChunkAndCopyToBuffer(
             chunkOffset,
             chunkCopyOffset,
             copySize);
-        return copySize;
+        STORAGE_ASSERT(copySize <= static_cast<size_t>(std::numeric_limits<ssize_t>::max()),
+            "Read copy size cannot be represented by ssize_t");
+        return static_cast<ssize_t>(copySize);
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -907,7 +923,11 @@ CacheStatus StreamingClient::ProbeCacheServerWithRetry(
         if (cacheStatus == CacheStatus::SUCCESS)
         {
             m_nReadChunksRemoteCache++;
-            m_vecCacheDownloadLatencies[m_nTotalCacheDownloadLatencySamples.fetch_add(1) % m_nLatencySamplesVecSize] = DURATION_MS_GET(cacheDownload);
+            const auto latencyMs = DURATION_MS_GET(cacheDownload)
+            m_vecCacheDownloadLatencies[m_nTotalCacheDownloadLatencySamples.fetch_add(1) % m_nLatencySamplesVecSize] =
+                static_cast<unsigned>(std::min(
+                    latencyMs,
+                    static_cast<decltype(latencyMs)>(std::numeric_limits<unsigned>::max())));
         }
         else if (cacheStatus == CacheStatus::INTERNAL_ERROR)
         {
@@ -959,8 +979,12 @@ ssize_t StreamingClient::DownloadFullChunkFromBlob(
         return -1;
     }
 
-    m_vecRemoteDownloadLatencies[m_nTotaRemotelDownloadLatencySamples.fetch_add(1) % m_nLatencySamplesVecSize] = DURATION_MS_GET(remoteDownload);
-    readData.BufferSize = nBytesFromRemote;
+    const auto latencyMs = DURATION_MS_GET(remoteDownload)
+    m_vecRemoteDownloadLatencies[m_nTotaRemotelDownloadLatencySamples.fetch_add(1) % m_nLatencySamplesVecSize] =
+        static_cast<unsigned>(std::min(
+            latencyMs,
+            static_cast<decltype(latencyMs)>(std::numeric_limits<unsigned>::max())));
+    readData.BufferSize = static_cast<size_t>(nBytesFromRemote);
     m_nReadChunksRemoteClient++;
     return nBytesFromRemote;
 }
@@ -1204,15 +1228,16 @@ void StreamingClient::EnsurePrefetchCacheWindowPopulated(
     const std::string& version)
 {    
     const std::string cacheFilePath = GetCacheFilePath(remotePath);
-    off64_t startWindowOffset = readOffset - (readOffset % m_nPrefetchWindowSize);
-    off64_t endOffset = readOffset + readSize;
-    off64_t endWindowOffset = endOffset - (endOffset % m_nPrefetchWindowSize);
+    const off64_t prefetchWindowSize = static_cast<off64_t>(m_nPrefetchWindowSize);
+    off64_t startWindowOffset = readOffset - (readOffset % prefetchWindowSize);
+    off64_t endOffset = readOffset + static_cast<off64_t>(readSize);
+    off64_t endWindowOffset = endOffset - (endOffset % prefetchWindowSize);
 
     const std::set<off64_t> cachedOffsets = PrefetchCache::GetInstance().GetCachedOffsets(cacheFilePath, version);
 
     // check cached offsets to see how much of prefetch window(s) is already in cache
     off64_t prefetchStart = startWindowOffset;
-    off64_t prefetchEnd = min(off64_t(endWindowOffset + m_nPrefetchWindowSize), fileSize);
+    off64_t prefetchEnd = min(endWindowOffset + prefetchWindowSize, fileSize);
     std::vector<off64_t> uncachedOffsets;
     for (off64_t chunkOffset = prefetchStart; chunkOffset < prefetchEnd; chunkOffset += m_nChunkSize)
     {
@@ -1227,9 +1252,9 @@ void StreamingClient::EnsurePrefetchCacheWindowPopulated(
     // Purge some offsets if we are near the per-file limit of PrefetchCache.
     if (cachedOffsets.size() + uncachedOffsets.size() > PrefetchCache::GetInstance().MAX_ENTRIES_PER_FILE)
     {
-        uint32_t nPurgeNeeded = PrefetchCache::GetInstance().MAX_ENTRIES_PER_FILE -
-            (cachedOffsets.size() + uncachedOffsets.size());
-        uint32_t nPurged = 0;
+        const size_t nPurgeNeeded = cachedOffsets.size() + uncachedOffsets.size() -
+            PrefetchCache::GetInstance().MAX_ENTRIES_PER_FILE;
+        size_t nPurged = 0;
 
         // Pick the offsets to purge.
         // Note: We start purging from end, because we want the first few chunks to last to be considered for purging.
@@ -1294,7 +1319,6 @@ void StreamingClient::EnsurePrefetchCacheWindowPopulated(
         prefetchStart,
         prefetchEnd,        
         asyncReadChunks.size());
-    ssize_t nBytesRead = 0;
     for (auto& asyncReadChunk: asyncReadChunks)
     {
         std::shared_ptr<const FileData> readChunkResult = asyncReadChunk.get();
@@ -1326,7 +1350,10 @@ void StreamingClient::PreChunkOpCheck(bool isLowPriority)
         m_cvChunkOps.wait(lock,
             [this, isLowPriority]
             {
-                int spareSlots = m_nMaxChunkOpConcurrency - this->m_nChunkOpsInProgress;
+                const uint64_t inProgress = this->m_nChunkOpsInProgress.load();
+                const uint64_t spareSlots = inProgress < m_nMaxChunkOpConcurrency
+                    ? static_cast<uint64_t>(m_nMaxChunkOpConcurrency) - inProgress
+                    : 0;
                 if (spareSlots > 0)
                 {
                     if (isLowPriority)
@@ -1402,7 +1429,7 @@ bool StreamingClient::WriteChunksToCache(const std::string& remotePath, const Fi
             if (chunkOffset == lastChunkOffset)
             {
                 // Now the last chunk could have fewer bytes than the chunk size, we need to update the buffersize accordingly
-                writeData->BufferSize = fileSize - lastChunkOffset;
+                writeData->BufferSize = static_cast<size_t>(fileSize - lastChunkOffset);
             }
 
             // Make sure we don't exceed the max allowed concurrency
@@ -1418,7 +1445,7 @@ bool StreamingClient::WriteChunksToCache(const std::string& remotePath, const Fi
                 writeData,
                 version));
 
-            chunkOffset += writeData->BufferSize;
+            chunkOffset += static_cast<off64_t>(writeData->BufferSize);
         }
 
         // Make sure the uploads have completed
@@ -1434,13 +1461,15 @@ bool StreamingClient::WriteChunksToCache(const std::string& remotePath, const Fi
 
     if (ret)
     {
-        m_nCacheBytesWritten += fileSize;
+        STORAGE_ASSERT(fileSize >= 0, "File size cannot be negative");
+        m_nCacheBytesWritten += static_cast<uint64_t>(fileSize);
 
         time_t now = time(NULL);
-        uint64_t timeDiffSecs = now - writeStartTime;
-        if (timeDiffSecs > 0)
+        if (now > writeStartTime)
         {
-            double cacheWriteThroughputMbps = ((double)fileSize * 8) / (timeDiffSecs * 1024 * 1024);
+            const double timeDiffSecs = static_cast<double>(now - writeStartTime);
+            double cacheWriteThroughputMbps = (static_cast<double>(fileSize) * 8.0) /
+                (timeDiffSecs * 1024.0 * 1024.0);
             LOG_INFO("Cache write throughput for mount={} and file={} is {} Mbps."
                 " There may be other files uploading in parallel.",
                 m_strMountName,
@@ -1532,13 +1561,14 @@ bool StreamingClient::WriteChunksToRemoteStoreImpl(
     if(fileSize > 0)
     {
         // This is not a chunk operation so no need to check for concurrency limits
-        size_t numBlocks = (fileSize + m_nChunkSize - 1) / m_nChunkSize;
+        size_t numBlocks = static_cast<size_t>((fileSize + m_nChunkSize - 1) / m_nChunkSize);
         std::atomic_load(&m_spRemoteClient)->PrepareBlocksForUpload(remotePath, numBlocks);
 
         // Iterate through chunks
         while(chunkOffset < fileSize)
         {
-            size_t chunkSize = (chunkOffset == lastChunkOffset) ? (fileSize - lastChunkOffset) : m_nChunkSize;
+            size_t chunkSize = static_cast<size_t>(
+                (chunkOffset == lastChunkOffset) ? (fileSize - lastChunkOffset) : m_nChunkSize);
             if (copyFromCacheToRemote)
             {
                 writeChunkFutures.push_back(
@@ -1557,7 +1587,7 @@ bool StreamingClient::WriteChunksToRemoteStoreImpl(
                         chunkSize));
             }
 
-            chunkOffset += chunkSize;
+            chunkOffset += static_cast<off64_t>(chunkSize);
         }
 
         // Make sure the uploads have completed
@@ -1589,13 +1619,14 @@ bool StreamingClient::WriteChunksToRemoteStoreImpl(
 
     if (ret)
     {
-        m_nRemoteBytesWritten += fileSize;
+        STORAGE_ASSERT(fileSize >= 0, "File size cannot be negative");
+        m_nRemoteBytesWritten += static_cast<uint64_t>(fileSize);
         time_t now = time(NULL);
-        uint64_t timeDiffSecs = now - writeStartTime;
-
-        if (timeDiffSecs > 0)
+        if (now > writeStartTime)
         {
-            double remoteWriteThroughputMbps = ((double)fileSize * 8) / (timeDiffSecs * 1024 * 1024);
+            const double timeDiffSecs = static_cast<double>(now - writeStartTime);
+            double remoteWriteThroughputMbps = (static_cast<double>(fileSize) * 8.0) /
+                (timeDiffSecs * 1024.0 * 1024.0);
             LOG_INFO("Remote write throughput for mount={} and file={} is {} Mbps."
                 " There may be other files uploading in parallel.",
                 m_strMountName,
@@ -1760,7 +1791,7 @@ void StreamingClient::UpdateReadStats(size_t readSize, bool finalRead)
         return;
     }
 
-    const int readIndex = finalRead ? 1 : 0;
+    const size_t readIndex = finalRead ? 1U : 0U;
     m_nReadFileTotal[readIndex]++;
     m_nReadTotalBytes[readIndex] += readSize;
 
@@ -1891,10 +1922,10 @@ void StreamingClient::LogReadChunkStats()
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::LogDownloadLatencyStats()
 {
-    unsigned nNumCachdeDownloadLatencySamples =
-        std::min((uint64_t)m_nTotalCacheDownloadLatencySamples, (uint64_t)m_nLatencySamplesVecSize);
-    unsigned nNumRemoteDownloadLatencySamples =
-        std::min((uint64_t)m_nTotaRemotelDownloadLatencySamples, (uint64_t)m_nLatencySamplesVecSize);
+    const unsigned nNumCachdeDownloadLatencySamples = static_cast<unsigned>(
+        std::min(m_nTotalCacheDownloadLatencySamples.load(), static_cast<uint64_t>(m_nLatencySamplesVecSize)));
+    const unsigned nNumRemoteDownloadLatencySamples = static_cast<unsigned>(
+        std::min(m_nTotaRemotelDownloadLatencySamples.load(), static_cast<uint64_t>(m_nLatencySamplesVecSize)));
 
     LogDownloadLatencyStatsInner(m_vecCacheDownloadLatencies, nNumCachdeDownloadLatencySamples, "Cache");
     LogDownloadLatencyStatsInner(m_vecRemoteDownloadLatencies, nNumRemoteDownloadLatencySamples, "Remote");
@@ -1913,7 +1944,11 @@ void StreamingClient::LogDownloadLatencyStatsInner(const std::vector<unsigned>& 
     std::copy_n(vecLatencies.begin(), nNumSamples, vecLatenciesCopy.begin());
     std::sort(vecLatenciesCopy.begin(), vecLatenciesCopy.end());
 
-    unsigned nAvgLatency = std::accumulate(vecLatenciesCopy.begin(), vecLatenciesCopy.end(), 0ULL) / nNumSamples;
+    const uint64_t averageLatency =
+        std::accumulate(vecLatenciesCopy.begin(), vecLatenciesCopy.end(), uint64_t{0}) / nNumSamples;
+    const unsigned nAvgLatency = static_cast<unsigned>(averageLatency);
+    const size_t p50Index = static_cast<size_t>(nNumSamples / 2U);
+    const size_t p95Index = static_cast<size_t>((nNumSamples * 95U) / 100U);
     LOG_INFO("Download latencies (ms) from {} MountName={} Samples={} Min={} Max={} Avg={} P50={} P95={}",
                 strSource,
                 m_strMountName,
@@ -1921,8 +1956,8 @@ void StreamingClient::LogDownloadLatencyStatsInner(const std::vector<unsigned>& 
                 vecLatenciesCopy.front(),
                 vecLatenciesCopy.back(),
                 nAvgLatency,
-                vecLatenciesCopy[nNumSamples * 0.5],
-                vecLatenciesCopy[nNumSamples * 0.95]);
+                vecLatenciesCopy[p50Index],
+                vecLatenciesCopy[p95Index]);
 }
 //---------------------------------------------------------------------------------------------------------------------
 void StreamingClient::LogGetPropertiesStats()

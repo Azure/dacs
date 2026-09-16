@@ -100,7 +100,8 @@ bool IBConnection::WaitForSendWC(uint64_t bytesSent)
         pollFd.fd     = m_eventChannel->fd;
         pollFd.events = POLLIN;
         uint64_t timeoutMillis = CalculateTimeoutMillis(bytesSent);
-        int pollRc = poll(&pollFd, 1, timeoutMillis);
+        int pollRc = poll(&pollFd, 1, static_cast<int>(std::min(
+            timeoutMillis, static_cast<uint64_t>(std::numeric_limits<int>::max()))));
         if (pollRc <= 0)
         {
             LOG_WARN("poll failed/timed out waiting for SEND WC qp={} rc={} timeout={}ms",
@@ -159,7 +160,13 @@ bool IBConnection::WaitForSendWC(uint64_t bytesSent)
             else if (wc.opcode == IBV_WC_RECV)
             {
                 LOG_DEBUG("RECV WC arrived during SEND wait qp={} bytes={}", GetId(), wc.byte_len);
-                m_responseLength = wc.byte_len;
+                if (wc.byte_len > static_cast<uint32_t>(std::numeric_limits<int32_t>::max()))
+                {
+                    LOG_ERROR("Response length exceeds supported limit qp={} bytes={}", GetId(), wc.byte_len);
+                    m_qpError = true;
+                    return false;
+                }
+                m_responseLength = static_cast<int32_t>(wc.byte_len);
             }
         }
         while (nEvents > 0);
@@ -232,6 +239,12 @@ bool IBConnection::FinalizeWrite()
 int IBConnection::Send(const char* buffer, uint64_t size)
 {
     LOG_DEBUG("Send qp={} size={}", GetId(), size);
+    if (size > static_cast<uint64_t>(std::numeric_limits<int>::max()))
+    {
+        LOG_ERROR("Write size exceeds int return limit qp={} size={}", GetId(), size);
+        m_qpError = true;
+        return -1;
+    }
     if (m_writeOffset + size > IB_BUFFER_SIZE)
     {
         LOG_ERROR("Write size exceeds buffer limit qp={} total size={} limit={}",
@@ -242,7 +255,7 @@ int IBConnection::Send(const char* buffer, uint64_t size)
 
     memcpy(m_mrBuffer.get() + m_writeOffset, buffer, size);
     m_writeOffset += size;
-    return size;
+    return static_cast<int>(size);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool IBConnection::FinalizeWriteWithExternalBuffer(const char* dataBuffer, uint64_t dataSize)
@@ -313,7 +326,7 @@ bool IBConnection::FinalizeWriteWithExternalBuffer(const char* dataBuffer, uint6
     sg[0].length = m_writeOffset;
     sg[0].lkey   = m_mr->lkey;
     sg[1].addr   = (uintptr_t)dataBuffer;
-    sg[1].length = dataSize;
+    sg[1].length = static_cast<uint32_t>(dataSize);
     sg[1].lkey   = m_externalMr->lkey;
 
     struct ibv_send_wr wr{};
@@ -369,6 +382,13 @@ int IBConnection::SendAndFinalize(const char* buffer, uint64_t size)
 {
     LOG_DEBUG("SendAndFinalize qp={} size={}", GetId(), size);
 
+    if (size > static_cast<uint64_t>(std::numeric_limits<int>::max()))
+    {
+        LOG_ERROR("Write size exceeds int return limit qp={} size={}", GetId(), size);
+        m_qpError = true;
+        return -1;
+    }
+
     // For large buffers, register caller's buffer directly to avoid memcpy.
     // Only used when the device supports 2-SGE sends (header + data).
     if (m_directMrEnabled && size >= DIRECT_REG_THRESHOLD)
@@ -379,7 +399,7 @@ int IBConnection::SendAndFinalize(const char* buffer, uint64_t size)
             m_qpError = true;
             return -1;
         }
-        return size;
+        return static_cast<int>(size);
     }
 
     // Small buffer: use original memcpy path
@@ -411,7 +431,8 @@ int IBConnection::Receive(char* buffer, uint64_t size)
             pollFd.fd = m_eventChannel->fd;
             pollFd.events = POLLIN;
             uint64_t timeoutMillis = CalculateTimeoutMillis(size);
-            int rc = poll(&pollFd, 1, timeoutMillis);
+            int rc = poll(&pollFd, 1, static_cast<int>(std::min(
+                timeoutMillis, static_cast<uint64_t>(std::numeric_limits<int>::max()))));
             if (rc < 0) {
                 LOG_WARN("Failed to poll on event fd={} error={},{}", pollFd.fd, rc, strerror(errno));
                 m_qpError = true;
@@ -487,7 +508,13 @@ int IBConnection::Receive(char* buffer, uint64_t size)
                 else if (wc.opcode == IBV_WC_RECV)
                 {
                     bResponse = true;
-                    m_responseLength = wc.byte_len;
+                    if (wc.byte_len > static_cast<uint32_t>(std::numeric_limits<int32_t>::max()))
+                    {
+                        LOG_ERROR("Response length exceeds supported limit qp={} bytes={}", GetId(), wc.byte_len);
+                        m_qpError = true;
+                        return -1;
+                    }
+                    m_responseLength = static_cast<int32_t>(wc.byte_len);
                     LOG_DEBUG("Received response successfully qp={} bytes={}", GetId(), m_responseLength);
                     break;
                 }
@@ -501,8 +528,8 @@ int IBConnection::Receive(char* buffer, uint64_t size)
         int readBytes = std::min((int)size, m_responseLength - (int)m_readOffset);
         if (readBytes > 0)
         {
-            memcpy(buffer, m_mrBuffer.get() + m_readOffset, readBytes);
-            m_readOffset += readBytes;
+            memcpy(buffer, m_mrBuffer.get() + m_readOffset, static_cast<size_t>(readBytes));
+            m_readOffset += static_cast<uint32_t>(readBytes);
             LOG_DEBUG("Read bytes={} from IB buffer qp={}", readBytes, GetId());
         }
         else

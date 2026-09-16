@@ -19,6 +19,7 @@
 class ILogger
 {
 public:
+    virtual ~ILogger() = default;
     virtual void Shutdown() = 0;
     virtual void Flush() = 0;
     virtual void LogOutput(std::string logContent) = 0;

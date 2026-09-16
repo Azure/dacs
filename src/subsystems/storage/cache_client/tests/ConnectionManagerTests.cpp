@@ -139,7 +139,7 @@ std::unique_ptr<ConnectionManager> ConnectionManagerTests::CreateConnectionManag
     );
 }
 //---------------------------------------------------------------------------------------------------------------------
-int ConnectionManagerTests::StartMockServer(uint16_t port, bool acceptConnections)
+int ConnectionManagerTests::StartMockServer(uint16_t port, bool)
 {
     int serverFd = socket(AF_INET, SOCK_STREAM, 0);
     if (serverFd < 0)
@@ -199,7 +199,7 @@ TEST_F(ConnectionManagerTests, InitializationWithLocalServer)
     auto connManager = CreateConnectionManager({}, true);
     
     auto servers = connManager->GetAllCacheServerHostnames();
-    ASSERT_EQ(servers.size(), 1);
+    ASSERT_EQ(servers.size(), 1U);
     EXPECT_EQ(servers[0], "127.0.0.1");
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -209,7 +209,7 @@ TEST_F(ConnectionManagerTests, InitializationWithMultipleServers)
     auto connManager = CreateConnectionManager(servers);
     
     auto actualServers = connManager->GetAllCacheServerHostnames();
-    ASSERT_EQ(actualServers.size(), 3);
+    ASSERT_EQ(actualServers.size(), 3U);
     
     // Servers should be sorted (due to set conversion in UpdateCacheServers)
     std::sort(servers.begin(), servers.end());

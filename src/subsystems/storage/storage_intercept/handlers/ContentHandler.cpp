@@ -84,7 +84,8 @@ ContentHandler::ContentHandler()
 
     // There should be no logging from this constructor to prevent deadlock with LFS interceptor.
     LoadMountInfoConfig();
-    srand(time(NULL));
+    // srand accepts an unsigned seed; retaining the low-order bits is sufficient for this non-cryptographic use.
+    srand(static_cast<unsigned>(time(NULL)));
 }
 //---------------------------------------------------------------------------------------------------------------------
 ContentHandler& ContentHandler::GetInstance()
@@ -137,8 +138,8 @@ ContentHandler::MountInfo* ContentHandler::CheckInterceptionForPath(
         if (m_bIsFuseMount)
         {
             outRelativePath = "";
-            int pathLen = strlen(path);
-            int pathIdx = 0;
+            const size_t pathLen = strlen(path);
+            size_t pathIdx = 0;
             const char SEPARATOR_CHAR = '/';
 
             if (pathLen == 0) {
@@ -970,16 +971,16 @@ off64_t ContentHandler::HandleLseek(int fd, off64_t offset, int whence)
 
     MountInfo& mountInfo = GetMountInfo(fdIt->second->MountName);
     off64_t nextOffset = fdIt->second->FileOffset;
-    int isModified = 0;
+    bool isModified = false;
     switch(whence)
     {
         case SEEK_SET:
-            isModified = (offset ^ nextOffset);
+            isModified = offset != nextOffset;
             nextOffset = offset;
             break;
 
         case SEEK_CUR:
-            isModified |= offset;
+            isModified = offset != 0;
             nextOffset += offset;
             break;
 
@@ -1001,12 +1002,12 @@ off64_t ContentHandler::HandleLseek(int fd, off64_t offset, int whence)
                 return nextOffset;
             }
 
-            isModified = (fileSize + offset) ^ nextOffset;
+            isModified = fileSize + offset != nextOffset;
             nextOffset = fileSize + offset;
             break;
 
     }
-    if (isModified == 0)
+    if (!isModified)
     {
         return nextOffset;
     }
@@ -1152,7 +1153,7 @@ void* ContentHandler::HandleReaddir(void* dirp, bool isRead64)
     if (static_cast<size_t>(dirStream.Offset) < dirStream.Entries.size())
     {
         // Entry available to read
-        DirectoryEntry* ret = &(dirStream.Entries[dirStream.Offset]);
+        DirectoryEntry* ret = &(dirStream.Entries[static_cast<size_t>(dirStream.Offset)]);
         dirStream.Offset++;
         return ret;
     }
@@ -1908,7 +1909,11 @@ uint32_t ContentHandler::GetOpenFileHandleCount(const std::string& remotePath)
         return 0;
     }
 
-    return fdListIt->second.size();
+    if (fdListIt->second.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max()))
+    {
+        return std::numeric_limits<uint32_t>::max();
+    }
+    return static_cast<uint32_t>(fdListIt->second.size());
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool ContentHandler::IsOpenedForWrite(const std::string& remotePath)
@@ -1938,7 +1943,6 @@ int ContentHandler::AllotNewFd(std::unique_ptr<FileDescriptor> fd)
     const uint8_t maxAttempts = 5;
     uint8_t nAttempts = 0;
 
-    const bool isWriteMode = fd->IsWriteMode;
     const std::string remotePath = fd->RemotePath;
 
     std::unique_lock<std::mutex> openHandlesLock(m_lockOpenHandles);
@@ -1968,7 +1972,7 @@ int ContentHandler::AllotNewFd(std::unique_ptr<FileDescriptor> fd)
     return -1;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool ContentHandler::IsFdInRange(uint64_t fd)
+bool ContentHandler::IsFdInRange(int fd)
 {
     // Check if fd is within our alloted range
     if (fd < FD_VALUE_START || fd >= (FD_VALUE_START + FD_VALUE_RANGE))
@@ -1997,7 +2001,20 @@ void ContentHandler::PopulateStatBuf(const FileAttributes& stats, struct stat64*
     statbuf->st_mtime = stats.mTime.tv_sec;
     statbuf->st_atime = stats.aTime.tv_sec;
     statbuf->st_ctime = stats.cTime.tv_sec;
-    statbuf->st_blksize = StorageInterceptConfig::GetInstance().GetIoBlockSize();
+    const uint32_t ioBlockSize = StorageInterceptConfig::GetInstance().GetIoBlockSize();
+    using StatBlockSize = decltype(statbuf->st_blksize);
+    if (static_cast<uintmax_t>(ioBlockSize) >
+        static_cast<uintmax_t>(std::numeric_limits<StatBlockSize>::max()))
+    {
+        LOG_WARN("Configured I/O block size {} exceeds the platform stat block-size limit {}; clamping it",
+            ioBlockSize,
+            std::numeric_limits<StatBlockSize>::max());
+        statbuf->st_blksize = std::numeric_limits<StatBlockSize>::max();
+    }
+    else
+    {
+        statbuf->st_blksize = static_cast<StatBlockSize>(ioBlockSize);
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 void ContentHandler::CopyStat64ToStat(const struct stat64* stat64buf, struct stat* statbuf)

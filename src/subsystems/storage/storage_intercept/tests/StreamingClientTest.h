@@ -35,7 +35,7 @@ class StreamingClientTest : public TestBase
             /*[in]*/ size_t bufferSize,
             /*[in]*/ size_t offset,
             /*[in]*/ ssize_t expectedBytesRead,
-            /*[in]*/ int expectedZeroCopyReads);
+            /*[in]*/ uint64_t expectedZeroCopyReads);
         
         void WriteAppendsTest(
             /*[in]*/ const std::string& remotePath,

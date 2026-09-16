@@ -42,9 +42,6 @@ set(CMAKE_MODULE_PATH ${CMAKE_DEP_CMAKE_DIR}/external)
 
 add_definitions(-D_GLIBCXX_USE_NANOSLEEP)
 
-# Treat warnings as errors
-add_compile_options(-Werror)
-
 
 # Compile time symbol checking like check_cxx_symbol_exists(std::fopen "cstdio" HAVE_STD_FOPEN)
 include(CheckCXXSymbolExists)
@@ -88,6 +85,28 @@ include(${CMAKE_SOURCE_DIR}/src/images/native-build/cmake/external/azure-sdk-cpp
 
 # Google protobuf static lib
 include(${CMAKE_EXTERNAL_PROJECT}/protobufstatic_include.cmake)
+
+# Enable strict diagnostics only after declaring third-party projects. Directory
+# compile options are inherited by subdirectories, so placing this earlier also
+# applies DACS's -Werror policy to external SDK source that we do not own.
+# -Werror alone does not enable diagnostics; in particular, Clang accepts an
+# implicit ssize_t-to-int conversion unless -Wshorten-64-to-32 is enabled.
+add_compile_options(
+    $<$<COMPILE_LANG_AND_ID:C,Clang>:-Wall>
+    $<$<COMPILE_LANG_AND_ID:C,Clang>:-Wextra>
+    $<$<COMPILE_LANG_AND_ID:C,Clang>:-Wpedantic>
+    $<$<COMPILE_LANG_AND_ID:C,Clang>:-Wconversion>
+    $<$<COMPILE_LANG_AND_ID:C,Clang>:-Wsign-conversion>
+    $<$<COMPILE_LANG_AND_ID:C,Clang>:-Wshorten-64-to-32>
+    $<$<COMPILE_LANG_AND_ID:C,Clang>:-Werror>
+    $<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Wall>
+    $<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Wextra>
+    $<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Wpedantic>
+    $<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Wconversion>
+    $<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Wsign-conversion>
+    $<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Wshorten-64-to-32>
+    $<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Werror>
+)
 
 # ctest
 include(CTest)

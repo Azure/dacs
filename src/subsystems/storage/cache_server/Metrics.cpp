@@ -88,27 +88,26 @@ void Metrics::Init()
             .Help("Total accept() errors, labeled by errno value.")
             .Register(*MetricsStore::s_instance.m_spRegistry);
 
-    int nSize = MetricsStore::m_arrRequestTypes.size();
+    const size_t nSize = MetricsStore::m_arrRequestTypes.size();
     MetricsStore::s_instance.m_vecSuccessfulRequestLatencies.resize(nSize);
 
-    for (int i = 0; i < nSize; i++)
+    for (size_t i = 0; i < nSize; i++)
     {
         //creates a histogram with the following bucket intervals 0-5.0, 0.5-10.0 ...., 5000.0-10000.0, 10000.0-inf
         prometheus::Histogram::BucketBoundaries buckets = {5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0};
         std::string str = MetricsStore::m_arrRequestTypes[i];
-        int index = i;
-        MetricsStore::s_instance.m_vecSuccessfulRequestLatencies[index] = &prometheus::BuildHistogram()
+        MetricsStore::s_instance.m_vecSuccessfulRequestLatencies[i] = &prometheus::BuildHistogram()
                 .Name("cache_server_successful_request_latency_ms")
                 .Help("Latency of successful requests.")
                 .Register(*MetricsStore::s_instance.m_spRegistry)
-            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}, {"request_type", str}, {"status", MetricsStore::m_arrResponseCodes[(int)ResponseCode::SUCCESS]}}, buckets);
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}, {"request_type", str}, {"status", MetricsStore::m_arrResponseCodes[static_cast<size_t>(ResponseCode::SUCCESS)]}}, buckets);
 
-        int requestVecSize = MetricsStore::m_arrResponseCodes.size();
+        const size_t requestVecSize = MetricsStore::m_arrResponseCodes.size();
         MetricsStore::s_instance.m_vecRequestCounter.push_back(std::vector<prometheus::Counter*>(requestVecSize));
-        for( int j = 0; j < requestVecSize; j++)
+        for(size_t j = 0; j < requestVecSize; j++)
         {
             std::string errorCode = MetricsStore::m_arrResponseCodes[j];
-            MetricsStore::s_instance.m_vecRequestCounter[index][j] = &prometheus::BuildCounter()
+            MetricsStore::s_instance.m_vecRequestCounter[i][j] = &prometheus::BuildCounter()
                     .Name("cache_server_request_counter")
                     .Help("Number of requests.")
                     .Register(*MetricsStore::s_instance.m_spRegistry)
@@ -145,47 +144,48 @@ void Metrics::RegisterRequest(enum Request::TypeCase eRequestType,
                               double dLatency,
                               std::size_t nBytes)
 {
+    const size_t requestIndex = static_cast<size_t>(eRequestType);
 
     switch (eResponseCode)
     {
         case ResponseCode::SUCCESS:
-            MetricsStore::s_instance.m_vecRequestCounter[(int)eRequestType][(int)ResponseCode::SUCCESS]->Increment();
-            MetricsStore::s_instance.m_vecSuccessfulRequestLatencies[(int)eRequestType]->Observe(dLatency);
+            MetricsStore::s_instance.m_vecRequestCounter[requestIndex][static_cast<size_t>(ResponseCode::SUCCESS)]->Increment();
+            MetricsStore::s_instance.m_vecSuccessfulRequestLatencies[requestIndex]->Observe(dLatency);
             if(eRequestType == Request::TypeCase::kDownloadrequest)
             {
-                MetricsStore::s_instance.m_pDownloadRequestSizeHistogram->Observe(nBytes);
+                MetricsStore::s_instance.m_pDownloadRequestSizeHistogram->Observe(static_cast<double>(nBytes));
             }
             else if (eRequestType == Request::TypeCase::kUploadrequest)
             {
-                MetricsStore::s_instance.m_pUploadRequestSizeHistogram->Observe(nBytes);
+                MetricsStore::s_instance.m_pUploadRequestSizeHistogram->Observe(static_cast<double>(nBytes));
             }
             break;
         case ResponseCode::INVALID_TRANSITION:
-            MetricsStore::s_instance.m_vecRequestCounter[(int)eRequestType][(int)ResponseCode::INVALID_TRANSITION]->Increment();
+            MetricsStore::s_instance.m_vecRequestCounter[requestIndex][static_cast<size_t>(ResponseCode::INVALID_TRANSITION)]->Increment();
             break;
         case ResponseCode::BAD_REQUEST:
-            MetricsStore::s_instance.m_vecRequestCounter[(int)eRequestType][(int)ResponseCode::BAD_REQUEST]->Increment();
+            MetricsStore::s_instance.m_vecRequestCounter[requestIndex][static_cast<size_t>(ResponseCode::BAD_REQUEST)]->Increment();
             break;
         case ResponseCode::INTERNAL_ERROR:
-            MetricsStore::s_instance.m_vecRequestCounter[(int)eRequestType][(int)ResponseCode::INTERNAL_ERROR]->Increment();
+            MetricsStore::s_instance.m_vecRequestCounter[requestIndex][static_cast<size_t>(ResponseCode::INTERNAL_ERROR)]->Increment();
             break;
         case ResponseCode::NETWORK_ERROR:
-            MetricsStore::s_instance.m_vecRequestCounter[(int)eRequestType][(int)ResponseCode::NETWORK_ERROR]->Increment();
+            MetricsStore::s_instance.m_vecRequestCounter[requestIndex][static_cast<size_t>(ResponseCode::NETWORK_ERROR)]->Increment();
             break;
         default:
-            MetricsStore::s_instance.m_vecRequestCounter[(int)eRequestType][(int)ResponseCode::NOT_SET]->Increment();
+            MetricsStore::s_instance.m_vecRequestCounter[requestIndex][static_cast<size_t>(ResponseCode::NOT_SET)]->Increment();
             break;         
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
 void Metrics::UpdateCacheSize(std::size_t nBytes)
 {
-    MetricsStore::s_instance.m_pCacheSizeGauge->Set(nBytes);
+    MetricsStore::s_instance.m_pCacheSizeGauge->Set(static_cast<double>(nBytes));
 }
 //---------------------------------------------------------------------------------------------------------------------
 void Metrics::SetListenBacklogMax(std::size_t backlog)
 {
-    MetricsStore::s_instance.m_pListenBacklogMaxGauge->Set(backlog);
+    MetricsStore::s_instance.m_pListenBacklogMaxGauge->Set(static_cast<double>(backlog));
 }
 //---------------------------------------------------------------------------------------------------------------------
 void Metrics::IncrementAcceptQueueOverflows(uint64_t delta)
@@ -230,7 +230,7 @@ void Metrics::IncrementPassiveOpens(uint64_t delta)
 //---------------------------------------------------------------------------------------------------------------------
 void Metrics::UpdateOpenFdCount(std::size_t count)
 {
-    MetricsStore::s_instance.m_pOpenFdCountGauge->Set(count);
+    MetricsStore::s_instance.m_pOpenFdCountGauge->Set(static_cast<double>(count));
 }
 //---------------------------------------------------------------------------------------------------------------------
 void Metrics::IncrementAcceptError(int errnum)

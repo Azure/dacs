@@ -40,13 +40,13 @@ public:
         }
 
         int toRead = std::min(size, available);
-        std::memcpy(buffer, m_readData.data() + m_readPos, toRead);
+        std::memcpy(buffer, m_readData.data() + m_readPos, static_cast<size_t>(toRead));
         m_readPos += toRead;
         return toRead;
     }
 
-    int Write(char* buffer, int size) override { return size; }
-    int WriteFinal(char* buffer, int size) override { return size; }
+    int Write(char*, int size) override { return size; }
+    int WriteFinal(char*, int size) override { return size; }
     bool Sendfile(int, uint64_t, uint64_t) override { return true; }
     bool Recvfile(int, uint64_t) override { return true; }
     int GetId() override { return 4242; }

@@ -37,14 +37,14 @@ class ErrorHandler
     static ErrorHandler& GetInstance();
 
     void ResetState();
-    void SetError(/*[in]*/ const std::string& error, /*[in]*/ const int tid = ::gettid());
-    char* GetLastError(/*[in]*/ const int tid = ::gettid());
-    bool IsErrorSet(/*[in]*/ const int tid = ::gettid());
+    void SetError(/*[in]*/ const std::string& error, /*[in]*/ const pid_t tid = static_cast<pid_t>(::gettid()));
+    char* GetLastError(/*[in]*/ const pid_t tid = static_cast<pid_t>(::gettid()));
+    bool IsErrorSet(/*[in]*/ const pid_t tid = static_cast<pid_t>(::gettid()));
 
   private:
     ErrorHandler();
 
     std::mutex m_lock;
-    std::unordered_map<int, std::string> m_mapTidToErrorString;
+    std::unordered_map<pid_t, std::string> m_mapTidToErrorString;
 };
 //---------------------------------------------------------------------------------------------------------------------

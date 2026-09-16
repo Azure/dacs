@@ -15,6 +15,7 @@
 #include "LogUtils.h"
 #include <time.h>
 #include <atomic>
+#include <limits>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
@@ -22,8 +23,14 @@ namespace storageutils
 {
     bool LogRarelyTime(std::atomic_uint_fast32_t& lastReportTimestampSeconds, uint32_t reportPeriodSeconds)
     {
-        const uint64_t currentTimestamp = time(NULL);
-        uint64_t lastReportedTimestamp = lastReportTimestampSeconds;
+        const time_t currentTime = time(nullptr);
+        if (currentTime < 0 || static_cast<uintmax_t>(currentTime) > std::numeric_limits<uint_fast32_t>::max())
+        {
+            return false;
+        }
+
+        const auto currentTimestamp = static_cast<uint_fast32_t>(currentTime);
+        uint_fast32_t lastReportedTimestamp = lastReportTimestampSeconds;
         if (currentTimestamp > lastReportedTimestamp + reportPeriodSeconds)
         {
 

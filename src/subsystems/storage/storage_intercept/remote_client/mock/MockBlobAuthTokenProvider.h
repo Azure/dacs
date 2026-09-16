@@ -32,9 +32,9 @@ public:
 
 private:
     int attemptCount = 0;
-    long mockStatusCode = 200;  
+    long mockStatusCode = 200;
 
 protected:
-    long GetStatusCode(CURL* curl) override { return mockStatusCode; }  
+    long GetStatusCode(CURL*) override { return mockStatusCode; }
     void SetStatusCode(long code) { mockStatusCode = code; }
 };

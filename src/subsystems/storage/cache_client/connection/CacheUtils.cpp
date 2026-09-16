@@ -20,6 +20,7 @@
 #include <iomanip>
 #include <openssl/sha.h>
 #include <map>
+#include <limits>
 #include <regex>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cache;
@@ -54,14 +55,14 @@ namespace cacheutils
 //---------------------------------------------------------------------------------------------------------------------
     bool WriteAll(IConnection* connection, void *buffer, size_t nBytes)
     {
-        uint64_t totalWritten = connection->Send(static_cast<const char*>(buffer), nBytes);
-        return totalWritten == nBytes;
+        const int totalWritten = connection->Send(static_cast<const char*>(buffer), nBytes);
+        return totalWritten >= 0 && static_cast<size_t>(totalWritten) == nBytes;
     }
 //---------------------------------------------------------------------------------------------------------------------
     bool WriteAllFinal(IConnection* connection, const void *buffer, size_t nBytes)
     {
-        uint64_t totalWritten = connection->SendAndFinalize(static_cast<const char*>(buffer), nBytes);
-        return totalWritten == nBytes;
+        const int totalWritten = connection->SendAndFinalize(static_cast<const char*>(buffer), nBytes);
+        return totalWritten >= 0 && static_cast<size_t>(totalWritten) == nBytes;
     }
 //---------------------------------------------------------------------------------------------------------------------
     bool ReadAll(IConnection* connection, void *buffer, size_t nBytes)
@@ -72,7 +73,7 @@ namespace cacheutils
             int tempRead;
             if ((tempRead = connection->Receive(static_cast<char*>(buffer) + totalRead, nBytes - totalRead)) > 0)
             {
-                totalRead += tempRead;
+                totalRead += static_cast<uint64_t>(tempRead);
             }
             else 
             {
@@ -92,7 +93,9 @@ namespace cacheutils
         while (totalRead < size)
         {
             int tempRead;
-            if ((tempRead = connection->Receive(data + totalRead, size - totalRead)) > 0)
+            if ((tempRead = connection->Receive(
+                data + totalRead,
+                static_cast<uint64_t>(size - totalRead))) > 0)
             {
                 totalRead += tempRead;
             }
@@ -120,9 +123,11 @@ namespace cacheutils
         
         outputBuffer += protoBuffer;
 
-        if (connection->Send(outputBuffer.data(), outputBuffer.size()) != outputBuffer.size())
+        const int bytesSent = connection->Send(outputBuffer.data(), outputBuffer.size());
+        if (bytesSent < 0 || static_cast<size_t>(bytesSent) != outputBuffer.size())
         {
-            LOG_ERROR("couldn't send message to remote id={}", connection->GetId());
+            LOG_ERROR("couldn't send message to remote id={}, bytesSent={}, expectedBytes={}",
+                connection->GetId(), bytesSent, outputBuffer.size());
             return false;
         }
         return true;
@@ -142,9 +147,11 @@ namespace cacheutils
         
         outputBuffer += protoBuffer;
 
-        if (connection->SendAndFinalize(outputBuffer.data(), outputBuffer.size()) != outputBuffer.size())
+        const int bytesSent = connection->SendAndFinalize(outputBuffer.data(), outputBuffer.size());
+        if (bytesSent < 0 || static_cast<size_t>(bytesSent) != outputBuffer.size())
         {
-            LOG_ERROR("couldn't send message to remote id={}", connection->GetId());
+            LOG_ERROR("couldn't send message to remote id={}, bytesSent={}, expectedBytes={}",
+                connection->GetId(), bytesSent, outputBuffer.size());
             return false;
         }
         return true;
@@ -160,9 +167,16 @@ namespace cacheutils
             return false;
         }
 
-        uint32_t protoSize = ConvertBytesToInt(metaData, REQUEST_METADATA_SIZE);
+        const uint64_t decodedProtoSize = ConvertBytesToInt(metaData, REQUEST_METADATA_SIZE);
+        if (decodedProtoSize > static_cast<uint64_t>(std::numeric_limits<int>::max()))
+        {
+            LOG_ERROR("Protobuf message exceeds supported size, id={}, size={}",
+                connection->GetId(), decodedProtoSize);
+            return false;
+        }
+        const int protoSize = static_cast<int>(decodedProtoSize);
 
-        string requestMessage(protoSize, 0);
+        string requestMessage(static_cast<size_t>(protoSize), 0);
         res = ReadBytesToArray(connection, requestMessage.data(), protoSize);
         if (res != protoSize)
         {

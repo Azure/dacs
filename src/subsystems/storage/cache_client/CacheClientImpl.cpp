@@ -31,20 +31,20 @@ using namespace cacheutils;
 using namespace cache;
 //---------------------------------------------------------------------------------------------------------------------
 #define CACHECLIENT_EXTENDED_CONTEXT "cacheKey:{}| hostname:{}| connectionId:{}| "
-#define LOG_DEBUG_CACHECLIENT_EXTENDED(message, request_object, args...) \
+#define LOG_DEBUG_CACHECLIENT_EXTENDED(message, request_object, ...) \
     LOG_DEBUG_REQID(CACHECLIENT_EXTENDED_CONTEXT message, request_object, \
-        strCacheKey, hostname, serverConnection->GetId(), ##args)
-#define LOG_INFO_CACHECLIENT_EXTENDED(message, request_object, args...) \
+    strCacheKey, hostname, serverConnection->GetId() __VA_OPT__(,) __VA_ARGS__)
+#define LOG_INFO_CACHECLIENT_EXTENDED(message, request_object, ...) \
     LOG_INFO_REQID(CACHECLIENT_EXTENDED_CONTEXT message, request_object, \
-        strCacheKey, hostname, serverConnection->GetId(), ##args)
-#define LOG_WARN_CACHECLIENT_EXTENDED(message, request_object, args...) \
+    strCacheKey, hostname, serverConnection->GetId() __VA_OPT__(,) __VA_ARGS__)
+#define LOG_WARN_CACHECLIENT_EXTENDED(message, request_object, ...) \
     LOG_WARN_REQID(CACHECLIENT_EXTENDED_CONTEXT message, request_object, \
-        strCacheKey, hostname, serverConnection->GetId(), ##args)
-#define LOG_ERROR_CACHECLIENT_EXTENDED(message, request_object, args...) \
+    strCacheKey, hostname, serverConnection->GetId() __VA_OPT__(,) __VA_ARGS__)
+#define LOG_ERROR_CACHECLIENT_EXTENDED(message, request_object, ...) \
     LOG_ERROR_REQID(CACHECLIENT_EXTENDED_CONTEXT message, request_object, \
-        strCacheKey, hostname, serverConnection->GetId(), ##args)
+    strCacheKey, hostname, serverConnection->GetId() __VA_OPT__(,) __VA_ARGS__)
 //---------------------------------------------------------------------------------------------------------------------
-std::size_t CacheClientImpl::nDefaultConnectionPoolSize = 1024;
+uint32_t CacheClientImpl::nDefaultConnectionPoolSize = 1024;
 //---------------------------------------------------------------------------------------------------------------------
 CacheClientImpl::CacheClientImpl()
 : m_bInitialized{false}
@@ -269,7 +269,7 @@ CacheClientStatus CacheClientImpl::Upload(
         auto& fileMetadata = *(uploadRequest->mutable_metadata());
         if(pMetadata != nullptr)
         {
-            for(int metadataIdx = 0; metadataIdx < pMetadata->nKeyValuePairs; metadataIdx++)
+            for(uint32_t metadataIdx = 0; metadataIdx < pMetadata->nKeyValuePairs; metadataIdx++)
             {
                 fileMetadata[pMetadata->arrKeyValuePairs[metadataIdx].strKey] =
                     pMetadata->arrKeyValuePairs[metadataIdx].strValue;
@@ -308,7 +308,7 @@ CacheClientStatus CacheClientImpl::Upload(
             return CacheClientStatus::INTERNAL_ERROR;
         }
 
-        if(encLen == nBufferLength)
+        if(encLen >= 0 && static_cast<size_t>(encLen) == nBufferLength)
         {
             pBuffer = encBuffer.get();
         }
@@ -323,7 +323,7 @@ CacheClientStatus CacheClientImpl::Upload(
             return CacheClientStatus::INTERNAL_ERROR;
         }
         LOG_DEBUG_REQID("Cache server hostname for file: {} is {}", *uploadRequest, strCacheKey, hostname);
-        std::unique_ptr<IConnection> serverConnection = std::move(m_spConnectionManager->GetConnection(hostname));
+        std::unique_ptr<IConnection> serverConnection = m_spConnectionManager->GetConnection(hostname);
         if(serverConnection.get() == nullptr)
         {
             LOG_WARN_REQID("couldn't get server connection, ignoring upload for file: {}", *uploadRequest, strCacheKey);
@@ -522,7 +522,7 @@ CacheClientStatus CacheClientImpl::Download(
     }
     LOG_DEBUG_REQID("Cache server hostname for file: {} is {}", *downloadRequest, strCacheKey, hostname);
 
-    std::unique_ptr<IConnection> serverConnection = std::move(m_spConnectionManager->GetConnection(hostname));
+    std::unique_ptr<IConnection> serverConnection = m_spConnectionManager->GetConnection(hostname);
     if(!serverConnection.get())
     {
         LOG_WARN_REQID(
@@ -587,7 +587,7 @@ CacheClientStatus CacheClientImpl::Download(
         response.filesize(),
         response.isfulldownload());
 
-    std::size_t actualReadLen = -1;
+    std::size_t actualReadLen = 0;
     if(response.result() == DownloadResponse::SUCCESS)
     {
         actualReadLen = response.filesize();
@@ -714,7 +714,7 @@ CacheClientStatus CacheClientImpl::Download(
         }
         if(pMetadata != nullptr)
         {
-            pMetadata->nKeyValuePairs = response.metadata_size();
+            pMetadata->nKeyValuePairs = static_cast<uint32_t>(response.metadata_size());
             pMetadata->arrKeyValuePairs = new KeyValuePair[pMetadata->nKeyValuePairs];
 
             uint32_t entryIndex = 0;
@@ -812,7 +812,7 @@ CacheClientStatus CacheClientImpl::DeleteGroupFromServer(
     deleteGroupRequest->set_requestid(strCorrelationId);
     deleteGroupRequest->set_groupid(groupID);
 
-    std::unique_ptr<IConnection> connection = std::move(m_spConnectionManager->GetConnection(hostname));
+    std::unique_ptr<IConnection> connection = m_spConnectionManager->GetConnection(hostname);
 
     if(!connection || !connection.get())
     {
@@ -941,7 +941,7 @@ CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
         lastAccessTimeDistributionRequest->set_requestid(strCorrelationId);
         lastAccessTimeDistributionRequest->set_distributionbucketsizeinhours(nDistributionBucketSizeInHours);
 
-        std::unique_ptr<IConnection> connection = std::move(m_spConnectionManager->GetConnection(hostname));
+        std::unique_ptr<IConnection> connection = m_spConnectionManager->GetConnection(hostname);
         if(!connection || !connection.get())
         {
             LOG_ERROR_REQID("Couldn't get server connection, access time distribution request for server: {}",
@@ -1083,7 +1083,7 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
         deleteByLastAccessTimeRequest->set_requestid(strCorrelationId);
         deleteByLastAccessTimeRequest->set_lastaccesstime(lastAccessTime);
 
-        std::unique_ptr<IConnection> connection = std::move(m_spConnectionManager->GetConnection(hostname));
+        std::unique_ptr<IConnection> connection = m_spConnectionManager->GetConnection(hostname);
 
         if(!connection || !connection.get())
         {

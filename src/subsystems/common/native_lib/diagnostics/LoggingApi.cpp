@@ -176,7 +176,8 @@ pid_t LoggingApi::Gettid()
 {
     if(m_nCachedTidTLS == INVALID_TID)
     {
-        m_nCachedTidTLS = ::gettid();
+        // SYS_gettid returns long, but Linux thread IDs use the pid_t domain.
+        m_nCachedTidTLS = static_cast<pid_t>(::gettid());
     }
 
     return m_nCachedTidTLS;

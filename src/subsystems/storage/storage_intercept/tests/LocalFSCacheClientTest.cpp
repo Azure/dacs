@@ -84,18 +84,18 @@ TEST_F(LocalFSCacheClientTest, SimpleUploadDownloadTest)
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 1024*1024*4);
+    ASSERT_EQ(dataRead, 1024ULL*1024*4);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
     // repeat download
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 1024*1024*4);
+    ASSERT_EQ(dataRead, 1024ULL*1024*4);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, 0, outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 0);
+    ASSERT_EQ(dataRead, 0ULL);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
     // Different version should miss — cache key includes version
@@ -132,7 +132,7 @@ TEST_F(LocalFSCacheClientTest, DifferentFileSizesUploadDownloadTest)
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 1);
+    ASSERT_EQ(dataRead, 1ULL);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
     // 4MB - 1 byte file test
@@ -151,7 +151,7 @@ TEST_F(LocalFSCacheClientTest, DifferentFileSizesUploadDownloadTest)
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 1024*1024*4 - 1);
+    ASSERT_EQ(dataRead, 1024ULL*1024*4 - 1);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
     // 4MB + 1 byte file test
@@ -170,7 +170,7 @@ TEST_F(LocalFSCacheClientTest, DifferentFileSizesUploadDownloadTest)
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 1024*1024*4 + 1);
+    ASSERT_EQ(dataRead, 1024ULL*1024*4 + 1);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 
     outBuffer.resize(1024*1024*10);
@@ -188,7 +188,7 @@ TEST_F(LocalFSCacheClientTest, DifferentFileSizesUploadDownloadTest)
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 1024*1024*10);
+    ASSERT_EQ(dataRead, 1024ULL*1024*10);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get(), dataRead);
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -219,7 +219,7 @@ TEST_F(LocalFSCacheClientTest, ZeroSizeUploadDownloadTest)
 
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, 0, outBuffer.size(), outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 0);
+    ASSERT_EQ(dataRead, 0ULL);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(LocalFSCacheClientTest, SubChunkOffsetDownloadTest)
@@ -264,7 +264,7 @@ TEST_F(LocalFSCacheClientTest, SubChunkOffsetDownloadTest)
     outBuffer.resize(1);
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, lastByteOffset, 1, outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 1);
+    ASSERT_EQ(dataRead, 1ULL);
     ASSERT_EQ(outBuffer[0], dataBuffer->Buffer.get()[lastByteOffset]);
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -291,14 +291,14 @@ TEST_F(LocalFSCacheClientTest, SubChunkOffsetPastEOFTest)
     std::vector<char> outBuffer(256);
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, fileSize + 100, 256, outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 0);
+    ASSERT_EQ(dataRead, 0ULL);
 
     // Download where startOffset + length exceeds file size — should return partial read
     const uint64_t partialOffset = fileSize - 100;
     outBuffer.resize(256);
     cacheStatus = m_cacheClient->DownloadSync("", strFileName, version, 0, partialOffset, 256, outBuffer.data(), dataRead);
     ASSERT_EQ(cacheStatus, CacheStatus::SUCCESS);
-    ASSERT_EQ(dataRead, 100);
+    ASSERT_EQ(dataRead, 100ULL);
     AssertEqArray<char>(outBuffer.data(), dataBuffer->Buffer.get() + partialOffset, dataRead);
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -310,19 +310,15 @@ TEST_F(LocalFSCacheClientTest, ParallelUploadDownloadTest)
     }
 
     string version = StorageInterceptUtils::GenerateUUID();
-    uint64_t dataRead = 0;
-    CacheStatus cacheStatus;
-    bool bRetVal;
-
     // Create many files of different file sizes
-    int numFiles = 200;
+    const size_t numFiles = 200;
     string strFileName = GetRandFilename();
     vector<std::shared_ptr<FileData>> dataBuffer(numFiles);
     vector<vector<char>> outBuffer(numFiles);
     vector<string> fileNames(numFiles);
-    for (int i = 0; i < numFiles; i++)
+    for (size_t i = 0; i < numFiles; i++)
     {
-        int randLength = (4*1024*1024 - 10) + (rand() % 21);
+        const size_t randLength = static_cast<size_t>((4*1024*1024 - 10) + (rand() % 21));
         dataBuffer[i] = GetRandDataBuffer(randLength);
         outBuffer[i].resize(randLength);
         fileNames[i] = strFileName + "-" + to_string(i);
@@ -330,7 +326,7 @@ TEST_F(LocalFSCacheClientTest, ParallelUploadDownloadTest)
 
     // Get lock for all files in parallel
     vector<unique_ptr<thread>> testThreads;
-    for (int i = 0; i < numFiles; ++i)
+    for (size_t i = 0; i < numFiles; ++i)
     {
         auto t = make_unique<thread>([i, &outBuffer, &fileNames, &version, this]() {
             uint64_t dataRead = 0;
@@ -347,7 +343,7 @@ TEST_F(LocalFSCacheClientTest, ParallelUploadDownloadTest)
     testThreads.clear();
 
     // upload all files in parallel
-    for (int i = 0; i < numFiles; ++i)
+    for (size_t i = 0; i < numFiles; ++i)
     {
         auto t = make_unique<thread>([i, &dataBuffer, &fileNames, &version, this]() {
             bool bRetVal = this->m_cacheClient->Upload("", fileNames[i], version, 0, dataBuffer[i], false /*isWrite*/);
@@ -366,7 +362,7 @@ TEST_F(LocalFSCacheClientTest, ParallelUploadDownloadTest)
     sleep(5);
 
     // download all files in parallel
-    for (int i = 0; i < numFiles; ++i)
+    for (size_t i = 0; i < numFiles; ++i)
     {
         auto t = make_unique<thread>([i, &dataBuffer, &outBuffer, &fileNames, &version, this]() {
             uint64_t dataRead = 0;

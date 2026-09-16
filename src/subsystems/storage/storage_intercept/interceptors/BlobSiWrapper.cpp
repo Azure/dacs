@@ -243,7 +243,9 @@ bool generate_si_config(const char* config_path)
             strcasestr(line, "key") ||
             strcasestr(line, "sas"))
         {
-            LOG_INFO("  {} <redacted>", std::string(line, strchr(line, ' ') ? (strchr(line, ' ') - line) : 0));
+            const char* separator = strchr(line, ' ');
+            const size_t nameLength = separator == nullptr ? 0U : static_cast<size_t>(separator - line);
+            LOG_INFO("  {} <redacted>", std::string(line, nameLength));
         }
         else
         {

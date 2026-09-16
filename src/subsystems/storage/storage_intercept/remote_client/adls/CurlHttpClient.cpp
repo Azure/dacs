@@ -14,6 +14,7 @@
 
 #include "CurlHttpClient.h"
 #include <jsoncpp/json/json.h>
+#include <limits>
 #include <sstream>
 //---------------------------------------------------------------------------------------------------------------------
 #define CURL_THROW_ERROR(curlCode) \
@@ -24,10 +25,10 @@ throw CurlClientException("Curl Error: " + std::string(errinfo))
 #define CHECK_CURL(curlCode) { if ( (CURLcode) curlCode != CURLE_OK) { CURL_THROW_ERROR(curlCode); } }
 //---------------------------------------------------------------------------------------------------------------------
 CurlHttpClient::CurlHttpClient(bool reuseConnection)
-  : m_bReuseConnection(reuseConnection)
-  , m_activeHttpHeaders()
-  , m_curlHandle(nullptr)
+  : m_curlHandle(nullptr)
   , m_curl(NULL)
+  , m_activeHttpHeaders()
+  , m_bReuseConnection(reuseConnection)
 {
   if (!m_bReuseConnection)
   {
@@ -35,7 +36,7 @@ CurlHttpClient::CurlHttpClient(bool reuseConnection)
   }
   else
   {
-    m_curlHandle = std::move(CurlConnectionManager::GetInstance().GetCurlHandle());
+    m_curlHandle = CurlConnectionManager::GetInstance().GetCurlHandle();
   }
 
   m_curl = m_curlHandle->pHandle;
@@ -190,7 +191,7 @@ void CurlHttpClient::SetHttpHeaders(
       throw CurlClientException("libcurl request headers setup failed");
     }
   }
-  m_activeHttpHeaders = std::move(std::unique_ptr<curl_slist>(headersRaw));
+  m_activeHttpHeaders = std::unique_ptr<curl_slist>(headersRaw);
   CHECK_CURL(curl_easy_setopt(m_curl, CURLOPT_HTTPHEADER, m_activeHttpHeaders.get()));
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -198,8 +199,11 @@ size_t CurlHttpClient::StreamReadCallback(char *buffer, size_t size, size_t nite
 {
   auto pIStream = static_cast<std::istream *>(userdata);
   const auto dataSize = size * nitems;
-  pIStream->read(buffer, dataSize);
-  return pIStream->gcount();
+  const std::streamsize readSize = static_cast<std::streamsize>(std::min(
+    dataSize, static_cast<size_t>(std::numeric_limits<std::streamsize>::max())));
+  pIStream->read(buffer, readSize);
+  const std::streamsize bytesRead = pIStream->gcount();
+  return bytesRead > 0 ? static_cast<size_t>(bytesRead) : 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool CurlHttpClient::TryParseRemoteError(const std::string &s, RemoteError &remoteError)

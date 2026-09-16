@@ -59,7 +59,7 @@ TEST_F(GetCacheChunkPropertiesTest, TestSHA256Hex)
     std::string result = GetSHA256Hex(input);
     
     // SHA256 hash should be 64 characters (256 bits = 32 bytes = 64 hex chars)
-    EXPECT_EQ(result.length(), 64);
+    EXPECT_EQ(result.length(), 64U);
     
     // Should be consistent - same input should produce same output
     std::string result2 = GetSHA256Hex(input);
@@ -78,7 +78,7 @@ TEST_F(GetCacheChunkPropertiesTest, TestGetServerIndex)
     const char* filePath = "test/file/path";
     
     // Test with single server
-    EXPECT_EQ(GetServerIndex(filePath, 1), 0);
+    EXPECT_EQ(GetServerIndex(filePath, 1), 0U);
     
     // Test with multiple servers - should return consistent result
     uint32_t numServers = 4;
@@ -103,7 +103,7 @@ TEST_F(GetCacheChunkPropertiesTest, TestCacheKeyGeneration_DefaultChunkSize)
     std::string cacheKey = GenerateCacheKey(accountName, containerName, blobPath, 0, defaultChunkSize, false);
     
     // Should be a valid SHA256 hash (64 hex characters)
-    EXPECT_EQ(cacheKey.length(), 64);
+    EXPECT_EQ(cacheKey.length(), 64U);
     
     // Should be consistent
     std::string cacheKey2 = GenerateCacheKey(accountName, containerName, blobPath, 0, defaultChunkSize, false);
@@ -116,7 +116,7 @@ TEST_F(GetCacheChunkPropertiesTest, TestCacheKeyGeneration_CustomChunkSize)
     std::string cacheKey = GenerateCacheKey(accountName, containerName, blobPath, 0, customChunkSize, false);
     
     // Should be a valid SHA256 hash
-    EXPECT_EQ(cacheKey.length(), 64);
+    EXPECT_EQ(cacheKey.length(), 64U);
     
     // Should be different from default chunk size key
     std::string defaultKey = GenerateCacheKey(accountName, containerName, blobPath, 0, defaultChunkSize, false);
@@ -129,7 +129,7 @@ TEST_F(GetCacheChunkPropertiesTest, TestCacheKeyGeneration_IgnoreAccount)
     std::string cacheKey = GenerateCacheKey(accountName, containerName, blobPath, 0, defaultChunkSize, true);
     
     // Should be valid
-    EXPECT_EQ(cacheKey.length(), 64);
+    EXPECT_EQ(cacheKey.length(), 64U);
     
     // Should be different from normal key
     std::string normalKey = GenerateCacheKey(accountName, containerName, blobPath, 0, defaultChunkSize, false);
@@ -163,7 +163,7 @@ TEST_F(GetCacheChunkPropertiesTest, TestCompleteWorkflow)
     
     // Generate cache key
     std::string cacheKey = GenerateCacheKey(accountName, containerName, blobPath, offset, chunkSize, ignoreAccount);
-    EXPECT_EQ(cacheKey.length(), 64);
+    EXPECT_EQ(cacheKey.length(), 64U);
  
     // Calculate server index
     uint32_t serverIndex = GetServerIndex(cacheKey.c_str(), numServers);
@@ -205,17 +205,17 @@ TEST_F(GetCacheChunkPropertiesTest, TestEdgeCases)
 {
     // Test with empty strings
     std::string emptyKey = GenerateCacheKey("", "", "", 0, defaultChunkSize, false);
-    EXPECT_EQ(emptyKey.length(), 64); // Should still produce valid hash
+    EXPECT_EQ(emptyKey.length(), 64U); // Should still produce valid hash
     
     // Test with very large offset
     int64_t largeOffset = 1000000000000LL; // 1TB
     std::string largeOffsetKey = GenerateCacheKey(accountName, containerName, blobPath, largeOffset, defaultChunkSize, false);
-    EXPECT_EQ(largeOffsetKey.length(), 64);
+    EXPECT_EQ(largeOffsetKey.length(), 64U);
     
     // Test with very small chunk size
     uint32_t smallChunkSize = 1024; // 1KB
     std::string smallChunkKey = GenerateCacheKey(accountName, containerName, blobPath, 0, smallChunkSize, false);
-    EXPECT_EQ(smallChunkKey.length(), 64);
+    EXPECT_EQ(smallChunkKey.length(), 64U);
     
     // Test server index with large number of servers
     uint32_t manyServers = 1000;

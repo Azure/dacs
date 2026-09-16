@@ -22,7 +22,7 @@ ThreadPool::ThreadPool(int size)
   m_bAlive = true;
   for (int i = 0; i < size; ++i)
   {
-    auto t = new std::thread([this, i]()
+    auto t = new std::thread([this]()
     {
       while (m_bAlive || !isQueueEmpty())
       {

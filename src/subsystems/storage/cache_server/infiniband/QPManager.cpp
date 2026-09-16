@@ -21,14 +21,14 @@ using namespace std;
 using namespace ibutils;
 //---------------------------------------------------------------------------------------------------------------------
 QPManager::QPManager(uint32_t maxQps)
-: m_qpInactiveExpirySeconds(DEFAULT_QP_EXPIRY_SECONDS),
-  m_cleanupIntervalSeconds(DEFAULT_QP_CLEANUP_INTERVAL_SECONDS),
-  m_nActiveQps(0),
-  m_criticalQpsLimit((maxQps * DEFAULT_QP_CRITICAL_LIMIT_PERCENT) / 100),
-  m_vQpsMap(NUM_MAPS),
+: m_vQpsMap(NUM_MAPS),
   m_vQpsLruQueue(NUM_MAPS),
   m_vQpsMutex(NUM_MAPS),
-  m_stopCleanupThread(false)
+  m_nActiveQps(0),
+  m_qpInactiveExpirySeconds(DEFAULT_QP_EXPIRY_SECONDS),
+  m_cleanupIntervalSeconds(DEFAULT_QP_CLEANUP_INTERVAL_SECONDS),
+  m_stopCleanupThread(false),
+  m_criticalQpsLimit((maxQps * DEFAULT_QP_CRITICAL_LIMIT_PERCENT) / 100)
 {
     m_qpCleanupThread = make_unique<thread>([this]() {
         this->QPCleanupWorker();
@@ -101,7 +101,7 @@ ibutils::shared_ibv_qp QPManager::CreateQP(ibv_cq* sendCQ, ibv_srq* receiveSRQ, 
     // There could be multiple threads doing the same operation in corner case scenarios causing more than expected QP
     // deletions. Doing modulo 10 to reduce the worst case occurrence by 1 order of magnitude. Also doing this a 
     // few times should be fine since we have already hit high QP count. 
-    uint32_t numQps = ++m_nActiveQps;
+    const uint_fast32_t numQps = ++m_nActiveQps;
     if (numQps >= m_criticalQpsLimit && numQps % 10 == 0)
     {
         LOG_WARN("Num active qp={} crossed critical limit={}", numQps, m_criticalQpsLimit);
@@ -109,7 +109,6 @@ ibutils::shared_ibv_qp QPManager::CreateQP(ibv_cq* sendCQ, ibv_srq* receiveSRQ, 
         // Iterate all the caches and remove one LRU entry from each bucket even if it has not expired
         for (uint32_t mapBucket = 0; mapBucket < NUM_MAPS; mapBucket++)
         {
-            time_t currentTime = time(NULL);
             lock_guard lock(m_vQpsMutex[mapBucket]);
             if (!m_vQpsLruQueue[mapBucket].empty())
             {
