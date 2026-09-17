@@ -15,6 +15,22 @@ parameters:
     type: string
   - name: azureStorageBlobPath
     type: string
+  - name: advancedTestGroups
+    type: object
+    default:
+      - name: Cache
+        value: cache
+      - name: Encryption
+        value: encryption
+  - name: specializedTestGroups
+    type: object
+    default:
+      - name: Snapshot
+        value: snapshot
+      - name: Eviction
+        value: eviction
+      - name: Remote
+        value: remote
 
 jobs:
   - job: ServerlessTests_${{ parameters.architecture }}
@@ -99,70 +115,74 @@ jobs:
         env:
           SI_azBlobAccessToken: $(SI_azBlobAccessToken)
 
-  - job: CacheAdvancedTests_${{ parameters.architecture }}
-    displayName: ${{ parameters.architecture }} - Cache advanced tests
-    timeoutInMinutes: 60
-    steps:
-      - template: Dacs.RestoreBuild.Steps.yml
-        parameters:
-          architecture: ${{ parameters.architecture }}
-      - template: Dacs.AzureAuthentication.Steps.yml
-        parameters:
-          architecture: ${{ parameters.architecture }}
-          acrName: ${{ parameters.acrName }}
-          azureServiceConnection: ${{ parameters.azureServiceConnection }}
-          azureStorageBlobPath: ${{ parameters.azureStorageBlobPath }}
-      - bash: |
-          set -euo pipefail
-          BUILD_ARCH="${{ parameters.architecture }}" \
-          DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
-          USE_AZURE_CFS=true \
-          DACS_AZURE_STORAGE_ACCOUNT="$(DACS_AZURE_STORAGE_ACCOUNT)" \
-          DACS_AZURE_STORAGE_CONTAINER="$(DACS_AZURE_STORAGE_CONTAINER)" \
-          SI_azBlobAccessToken="$(SI_azBlobAccessToken)" \
-            ./bldenv.sh /usr/bin/env \
-              ADO_PIPELINE=true \
-              ./src/subsystems/storage/storage_intercept/integration_tests/test_cache_advanced.sh Release
-        workingDirectory: $(Pipeline.Workspace)/s/dacs
-        displayName: Run cache advanced Azure integration tests
-        env:
-          SI_azBlobAccessToken: $(SI_azBlobAccessToken)
-      - bash: |
-          set -euo pipefail
-          echo "Fuse client error logs:"
-          cat ./singularityfs.err 2>/dev/null || echo "No error logs found"
-          echo ""
-          echo "Fuse client output logs:"
-          cat ./singularityfs.log 2>/dev/null || echo "No output logs found"
-        workingDirectory: $(Pipeline.Workspace)/s/dacs
-        displayName: Print Fuse client logs
-        condition: succeededOrFailed()
+  - ${{ each testGroup in parameters.advancedTestGroups }}:
+      - job: CacheAdvancedTests_${{ parameters.architecture }}_${{ testGroup.value }}
+        displayName: ${{ parameters.architecture }} - Cache advanced (${{ testGroup.name }})
+        timeoutInMinutes: 60
+        steps:
+          - template: Dacs.RestoreBuild.Steps.yml
+            parameters:
+              architecture: ${{ parameters.architecture }}
+          - template: Dacs.AzureAuthentication.Steps.yml
+            parameters:
+              architecture: ${{ parameters.architecture }}
+              acrName: ${{ parameters.acrName }}
+              azureServiceConnection: ${{ parameters.azureServiceConnection }}
+              azureStorageBlobPath: ${{ parameters.azureStorageBlobPath }}
+          - bash: |
+              set -euo pipefail
+              BUILD_ARCH="${{ parameters.architecture }}" \
+              DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
+              USE_AZURE_CFS=true \
+              DACS_AZURE_STORAGE_ACCOUNT="$(DACS_AZURE_STORAGE_ACCOUNT)" \
+              DACS_AZURE_STORAGE_CONTAINER="$(DACS_AZURE_STORAGE_CONTAINER)" \
+              SI_azBlobAccessToken="$(SI_azBlobAccessToken)" \
+                ./bldenv.sh /usr/bin/env \
+                  ADO_PIPELINE=true \
+                  DACS_TEST_GROUP="${{ testGroup.value }}" \
+                  ./src/subsystems/storage/storage_intercept/integration_tests/test_cache_advanced.sh Release
+            workingDirectory: $(Pipeline.Workspace)/s/dacs
+            displayName: Run cache advanced ${{ testGroup.value }} tests
+            env:
+              SI_azBlobAccessToken: $(SI_azBlobAccessToken)
+          - bash: |
+              set -euo pipefail
+              echo "Fuse client error logs:"
+              cat ./singularityfs.err 2>/dev/null || echo "No error logs found"
+              echo ""
+              echo "Fuse client output logs:"
+              cat ./singularityfs.log 2>/dev/null || echo "No output logs found"
+            workingDirectory: $(Pipeline.Workspace)/s/dacs
+            displayName: Print Fuse client logs
+            condition: succeededOrFailed()
 
-  - job: CacheSpecializedTests_${{ parameters.architecture }}
-    displayName: ${{ parameters.architecture }} - Cache specialized tests
-    timeoutInMinutes: 60
-    steps:
-      - template: Dacs.RestoreBuild.Steps.yml
-        parameters:
-          architecture: ${{ parameters.architecture }}
-      - template: Dacs.AzureAuthentication.Steps.yml
-        parameters:
-          architecture: ${{ parameters.architecture }}
-          acrName: ${{ parameters.acrName }}
-          azureServiceConnection: ${{ parameters.azureServiceConnection }}
-          azureStorageBlobPath: ${{ parameters.azureStorageBlobPath }}
-      - bash: |
-          set -euo pipefail
-          BUILD_ARCH="${{ parameters.architecture }}" \
-          DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
-          USE_AZURE_CFS=true \
-          DACS_AZURE_STORAGE_ACCOUNT="$(DACS_AZURE_STORAGE_ACCOUNT)" \
-          DACS_AZURE_STORAGE_CONTAINER="$(DACS_AZURE_STORAGE_CONTAINER)" \
-          SI_azBlobAccessToken="$(SI_azBlobAccessToken)" \
-            ./bldenv.sh /usr/bin/env \
-              ADO_PIPELINE=true \
-              ./src/subsystems/storage/storage_intercept/integration_tests/test_cache_specialized.sh Release
-        workingDirectory: $(Pipeline.Workspace)/s/dacs
-        displayName: Run cache specialized Azure integration tests
-        env:
-          SI_azBlobAccessToken: $(SI_azBlobAccessToken)
+  - ${{ each testGroup in parameters.specializedTestGroups }}:
+      - job: CacheSpecializedTests_${{ parameters.architecture }}_${{ testGroup.value }}
+        displayName: ${{ parameters.architecture }} - Cache specialized (${{ testGroup.name }})
+        timeoutInMinutes: 60
+        steps:
+          - template: Dacs.RestoreBuild.Steps.yml
+            parameters:
+              architecture: ${{ parameters.architecture }}
+          - template: Dacs.AzureAuthentication.Steps.yml
+            parameters:
+              architecture: ${{ parameters.architecture }}
+              acrName: ${{ parameters.acrName }}
+              azureServiceConnection: ${{ parameters.azureServiceConnection }}
+              azureStorageBlobPath: ${{ parameters.azureStorageBlobPath }}
+          - bash: |
+              set -euo pipefail
+              BUILD_ARCH="${{ parameters.architecture }}" \
+              DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
+              USE_AZURE_CFS=true \
+              DACS_AZURE_STORAGE_ACCOUNT="$(DACS_AZURE_STORAGE_ACCOUNT)" \
+              DACS_AZURE_STORAGE_CONTAINER="$(DACS_AZURE_STORAGE_CONTAINER)" \
+              SI_azBlobAccessToken="$(SI_azBlobAccessToken)" \
+                ./bldenv.sh /usr/bin/env \
+                  ADO_PIPELINE=true \
+                  DACS_TEST_GROUP="${{ testGroup.value }}" \
+                  ./src/subsystems/storage/storage_intercept/integration_tests/test_cache_specialized.sh Release
+            workingDirectory: $(Pipeline.Workspace)/s/dacs
+            displayName: Run cache specialized ${{ testGroup.value }} tests
+            env:
+              SI_azBlobAccessToken: $(SI_azBlobAccessToken)

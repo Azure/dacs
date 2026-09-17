@@ -19,8 +19,7 @@ name: Build
 # The image builds are split per image so they run on separate runners:
 #
 #   compile --+--> images-cpp (matrix: cache-server, cache-test-client)
-#             +--> python-package (make python-package) -> dacs-wheel artifact
-#             +--> rust-package (make rust-package) -> dacs-rust-crate artifact
+#             +--> packages (Python wheel and Rust crate)
 #   images-go (matrix: scheduler, controller)   # no needs: runs alongside compile
 #
 # The two Go images compile Go from source inside their own Dockerfiles and do
@@ -52,7 +51,7 @@ on:
 permissions: {}
 
 jobs:
-  # Compile once. Publishes the build tree so images, python-package and the
+  # Compile once. Publishes the build tree so images, packages, and the
   # caller's test jobs can all reuse it. Builds and gha-caches the native-build
   # toolchain image so downstream jobs restore it cheaply.
   compile:
@@ -106,34 +105,27 @@ jobs:
       # private ACR. The tag matches what bldenv.sh looks up (derived from the
       # runner arch, so this is correct on amd64 and arm64 runners alike), so
       # `make build` reuses this locally loaded image instead of trying to pull
-      # it. We docker save it to an artifact so the downstream in-container jobs
-      # (test, pytest, wheel) can docker load the exact same image instead of
-      # rebuilding it; the gha cache keeps this build step itself fast on re-runs.
+      # it. BuildKit writes the Docker archive directly so downstream jobs can
+      # load the exact same image without a separate docker save export.
       - name: Resolve native-build image tag
         id: image
         run: |
           arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
           echo "tag=dacstest.azurecr.io/dacs/native-build:linux-${arch}" >> "$GITHUB_OUTPUT"
 
-      - name: Build native-build container image
+      - name: Build and export native-build container image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: src/images/native-build
           file: src/images/native-build/Dockerfile
           tags: ${{ steps.image.outputs.tag }}
-          load: true
           push: false  # build locally only; never pushed to a registry
           cache-from: type=gha,scope=native-build-${{ inputs.build_arch }}
-          cache-to: type=gha,scope=native-build-${{ inputs.build_arch }},mode=max
+          cache-to: type=gha,scope=native-build-${{ inputs.build_arch }},mode=min
+          outputs: type=docker,dest=/tmp/dacs-native-build-image-${{ inputs.build_arch }}.tar
 
-      # Publish the toolchain image so the in-container test/pytest/wheel jobs can
-      # load the identical image (docker save -> artifact -> docker load) rather
-      # than reconstructing it from the layer cache in every job.
-      - name: Save native-build image to a tarball
-        env:
-          BUILD_ARCH: ${{ inputs.build_arch }}
-          IMAGE_TAG: ${{ steps.image.outputs.tag }}
-        run: docker save -o "/tmp/dacs-native-build-image-${BUILD_ARCH}.tar" "$IMAGE_TAG"
+      - name: Load native-build image
+        run: docker load -i "/tmp/dacs-native-build-image-${BUILD_ARCH}.tar"
 
       - name: Upload native-build image
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -142,6 +134,7 @@ jobs:
           path: /tmp/dacs-native-build-image-${{ inputs.build_arch }}.tar
           retention-days: 1
           if-no-files-found: error
+          compression-level: 0
 
       - name: Build
         run: make build
@@ -156,9 +149,12 @@ jobs:
       # than upload the dirs directly) to preserve the executable bit on the
       # compiled binaries, which actions/upload-artifact would otherwise drop.
       - name: Pack build tree
-        env:
-          BUILD_ARCH: ${{ inputs.build_arch }}
-        run: tar -cf "/tmp/dacs-build-tree-${BUILD_ARCH}.tar" bin $(find build -name 'CTestTestfile.cmake')
+        run: |
+          mapfile -d '' -t ctest_files < <(
+            find build -name 'CTestTestfile.cmake' -print0
+          )
+          tar -cf "/tmp/dacs-build-tree-${BUILD_ARCH}.tar" \
+            bin "${ctest_files[@]}"
 
       - name: Upload build tree
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -167,6 +163,7 @@ jobs:
           path: /tmp/dacs-build-tree-${{ inputs.build_arch }}.tar
           retention-days: 1
           if-no-files-found: error
+          compression-level: 0
 
   # Build the two Go component images (scheduler, controller). They compile Go
   # from source inside their own Dockerfiles and do NOT need the C++ build tree,
@@ -174,8 +171,8 @@ jobs:
   # builds on its own runner (matrix) via docker/build-push-action with the
   # GitHub Actions layer cache (scoped per image and architecture), so the Go
   # module download and build layers persist across runs without amd64 and arm64
-  # overwriting each other. The image is loaded into the Docker store and
-  # uploaded as a tarball.
+  # overwriting each other. BuildKit exports the image directly as the tarball
+  # uploaded for downstream consumers.
   images-go:
     name: Go image (${{ matrix.image.name }})
     runs-on: ${{ inputs.runner }}
@@ -215,17 +212,23 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
+      - name: Resolve image version
+        id: image
+        run: echo "version=$(./.pipelines/scripts/get-version.sh container)" >> "$GITHUB_OUTPUT"
+
       - name: Build ${{ matrix.image.name }} image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: ${{ matrix.image.context }}
           file: ${{ matrix.image.file }}
-          tags: ${{ matrix.image.name }}:local
-          load: true
+          tags: |
+            ${{ matrix.image.name }}:local
+            ${{ matrix.image.name }}:${{ steps.image.outputs.version }}
+          outputs: type=docker,dest=${{ runner.temp }}/dacs-image-${{ matrix.image.name }}.tar
           cache-from: type=gha,scope=${{ matrix.image.name }}-${{ inputs.build_arch }}
           cache-to: type=gha,scope=${{ matrix.image.name }}-${{ inputs.build_arch }},mode=max
 
-      - name: Save and upload ${{ matrix.image.name }} image
+      - name: Upload ${{ matrix.image.name }} image
         uses: $/.github/actions/upload-image
         with:
           name: ${{ matrix.image.name }}
@@ -250,8 +253,10 @@ jobs:
         image:
           - name: cache-server
             file: CacheServer.Dockerfile
+            cache-mode: min
           - name: cache-test-client
             file: CacheClient.Dockerfile
+            cache-mode: max
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -282,30 +287,33 @@ jobs:
           BUILD_CONFIGURATION: ${{ inputs.build_type }}
           BUILD_ARCH: ${{ inputs.build_arch }}
 
+      - name: Resolve image version
+        id: image
+        run: echo "version=$(./.pipelines/scripts/get-version.sh container)" >> "$GITHUB_OUTPUT"
+
       - name: Build ${{ matrix.image.name }} image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: Docker
           file: Docker/${{ matrix.image.file }}
-          tags: ${{ matrix.image.name }}:local
-          load: true
+          tags: |
+            ${{ matrix.image.name }}:local
+            ${{ matrix.image.name }}:${{ steps.image.outputs.version }}
           push: false
+          outputs: type=docker,dest=${{ runner.temp }}/dacs-image-${{ matrix.image.name }}.tar
           cache-from: type=gha,scope=${{ matrix.image.name }}-${{ inputs.build_arch }}
-          cache-to: type=gha,scope=${{ matrix.image.name }}-${{ inputs.build_arch }},mode=max
+          cache-to: type=gha,scope=${{ matrix.image.name }}-${{ inputs.build_arch }},mode=${{ matrix.image.cache-mode }}
 
-      - name: Save and upload ${{ matrix.image.name }} image
+      - name: Upload ${{ matrix.image.name }} image
         uses: $/.github/actions/upload-image
         with:
           name: ${{ matrix.image.name }}
           arch: ${{ inputs.build_arch }}
 
-  # Build the dacs-client wheel from the compiled native library. Runs in the
-  # native-build container (glibc-consistent with the compiled .so) via the
-  # make target, so the composite restores the toolchain image. Runs in parallel
-  # with the image jobs. Catches packaging regressions (missing data files, broken
-  # auditwheel repair) before publish.
-  python-package:
-    name: Python package (wheel)
+  # Build the Python wheel and Rust crate in one job so the large native-build
+  # image and build tree are restored only once.
+  packages:
+    name: Python and Rust packages
     needs: compile
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
@@ -343,38 +351,6 @@ jobs:
           path: src/subsystems/storage/dacs_client/dist/*.whl
           retention-days: 1
           if-no-files-found: error
-
-  # Package the Rust client with the matching architecture's native library.
-  # This job only uploads a workflow artifact and has no package publishing
-  # permissions or registry credentials.
-  rust-package:
-    name: Rust package (crate)
-    needs: compile
-    runs-on: ${{ inputs.runner }}
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    env:
-      BUILD_TYPE: ${{ inputs.build_type }}
-      BUILD_ARCH: ${{ inputs.build_arch }}
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
-
-      - name: Check out the code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: Restore build tree
-        uses: $/.github/actions/restore-build
-        with:
-          artifact: dacs-build-tree-${{ inputs.build_arch }}
-          native-build-image-artifact: dacs-native-build-image-${{ inputs.build_arch }}
 
       - name: Cache Cargo dependencies and build outputs
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

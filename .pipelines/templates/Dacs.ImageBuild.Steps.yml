@@ -19,6 +19,8 @@ parameters:
     type: string
   - name: azureServiceConnection
     type: string
+  - name: buildCacheScope
+    type: string
 
 steps:
   - template: Dacs.RestoreBuild.Steps.yml
@@ -73,16 +75,17 @@ steps:
       DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
       BUILD_TYPE=Release \
       BUILD_ARCH="${{ parameters.architecture }}" \
+      BUILD_CACHE_SCOPE="${{ parameters.buildCacheScope }}" \
         make images
     displayName: Build linux/${{ parameters.architecture }} images
     workingDirectory: $(Pipeline.Workspace)/s/dacs
 
   - bash: |
       set -euo pipefail
+
       DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io/dacs" \
-      BUILD_NUMBER="$(finalTag)" \
+      BUILD_ID="$(Build.BuildId)" \
       BUILD_ARCH="${{ parameters.architecture }}" \
-      OUTPUT_DIR="$(Build.ArtifactStagingDirectory)/container-images" \
-        ./.pipelines/scripts/publish/save-image-tarballs.sh
-    displayName: Package linux/${{ parameters.architecture }} images
+        ./.pipelines/scripts/publish/push-candidate-images.sh
+    displayName: Push linux/${{ parameters.architecture }} candidate images
     workingDirectory: $(Pipeline.Workspace)/s/dacs

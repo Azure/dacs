@@ -72,3 +72,4 @@ extends:
           azureServiceConnection: ${{ parameters.azureServiceConnection }}
           azureStorageBlobPath: ${{ parameters.azureStorageBlobPath }}
           pushNativeBuildImages: true
+          buildCacheScope: main

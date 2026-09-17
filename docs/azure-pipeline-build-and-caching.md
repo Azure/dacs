@@ -7,10 +7,12 @@ when official builds update rolling build images.
 
 The design has two priorities:
 
-1. Build inputs must always be evaluated so a stale image cannot hide a
-   dependency or Dockerfile change.
+1. Native-build images must be tied to the exact source commit that produced
+   them so a stale rolling image cannot hide a dependency or Dockerfile change.
 2. Unchanged work should be restored from architecture-specific caches instead
    of being rebuilt.
+3. Large application images should stay in ACR instead of being exported,
+   uploaded, downloaded, loaded, and pushed again between pipeline stages.
 
 For the GitHub Actions implementation of the same build, see
 [GitHub Actions build and caching](github-actions-build-and-caching.md).
@@ -39,38 +41,30 @@ validation leaves it disabled.
         Build Python wheel                    Build Python wheel
         Build Rust crate                      Build Rust crate
         Package build artifacts               Package build artifacts
-        Official only: push rolling tag       Official only: push rolling tag
-        dacs/native-build:linux-amd64          dacs/native-build:linux-arm64
+        Official: push exact + rolling tags   Official: push exact + rolling tags
+        native-build:git-<sha>-linux-amd64     native-build:git-<sha>-linux-arm64
+        native-build:linux-amd64               native-build:linux-arm64
                     |                                   |
           +---------+---------+               +---------+---------+
           |                   |               |                   |
    Images_amd64       AzureTests_amd64  Images_arm64       AzureTests_arm64
-          |                                   |
-   Build application images            Build application images
-   Package image tarballs               Package image tarballs
-          |                                   |
-          +-----------------+-----------------+
-                            |
-                         Package
-                            |
-                  Package Helm charts and
-                     release metadata
-                            |
-         +------------------+------------------+
-         |                                     |
- AzureTests_amd64 and arm64               Package succeeded
-         |                                     |
-         +------------------+------------------+
-                            |
-                      PublishImages
-                            |
-               Push immutable application
-                 images and Helm charts
+          |                   |               |                   |
+   Build application   Sharded storage   Build application   Sharded storage
+   images and push     and Python tests   images and push     and Python tests
+   candidate tags                        candidate tags
+          |                   |               |                   |
+          +-------------------+-------+-------+-------------------+
+                                      |
+                                   Package
+                                      |
+                        Package and publish Helm charts
+                        Promote candidate image manifests
+                        Write release metadata
 ```
 
 Official architecture jobs push their rolling native-build tag after
 compilation and package creation. The tags are not gated on later test,
-application-image publication, or Helm publication stages.
+application-image promotion, or Helm publication steps.
 
 ## Native-build image lifecycle
 
@@ -84,11 +78,9 @@ Each architecture build calls:
 .pipelines/scripts/build/rebuild-native-build-image.sh
 ```
 
-The script always asks BuildKit to evaluate the current Dockerfile and build
-context. It does not use a Git branch comparison to decide whether to build.
-This is important for official `main` builds, where `origin/main` and `HEAD`
-normally identify the same commit and therefore cannot reveal whether the
-existing rolling image is older.
+The script first tries to pull the commit-addressed native-build image. When
+that image exists, it retags the image locally and skips BuildKit. Otherwise,
+BuildKit evaluates the current Dockerfile and build context.
 
 The BuildKit invocation uses:
 
@@ -99,7 +91,7 @@ mcr.microsoft.com/oss/v2/moby/buildkit:v0.31.0
 --pull
 --platform linux/<architecture>
 --cache-from type=registry,ref=<native cache reference>
---cache-to type=registry,ref=<native cache reference>,mode=max
+--cache-to type=registry,ref=<native cache reference>,mode=min
 --load
 ```
 
@@ -121,27 +113,43 @@ rate limits. The pipeline pins the multi-architecture manifest by digest.
 ## Native-build cache references
 
 BuildKit stores intermediate and final layers in architecture-specific ACR
-cache references:
+cache references. Official builds write the stable `main` cache:
 
 ```text
-dacstest.azurecr.io/dacs/native-build:buildcache-linux-amd64
-dacstest.azurecr.io/dacs/native-build:buildcache-linux-arm64
+dacstest.azurecr.io/dacs/native-build:buildcache-main-linux-amd64
+dacstest.azurecr.io/dacs/native-build:buildcache-main-linux-arm64
+```
+
+Pull request builds import the `main` cache and a cache dedicated to the pull
+request, but write only the pull-request cache:
+
+```text
+dacstest.azurecr.io/dacs/native-build:buildcache-pr-<id>-linux-amd64
+dacstest.azurecr.io/dacs/native-build:buildcache-pr-<id>-linux-arm64
 ```
 
 These references are build caches, not release images. Consumers should not
-run or deploy them.
+run or deploy them. The same cache scopes are used for the C++ application
+image caches, preventing a pull request from replacing the cache manifest used
+by official builds.
+
+Both scopes also import the previous `buildcache-linux-<arch>` reference as a
+read-only migration source. No pipeline writes that legacy reference after
+cache isolation is enabled.
 
 BuildKit calculates cache validity from Dockerfile instructions, copied files,
 build arguments, base images, and the build context. If the fmt dependency
 definition changes, for example, the affected dependency layer is rebuilt
 while unrelated earlier layers can still be restored.
 
-## Rolling native-build tags
+## Native-build image tags
 
 After each official architecture job compiles the source and creates its build
-artifacts, it directly pushes:
+artifacts, it directly pushes a commit-addressed image and the rolling tag:
 
 ```text
+dacstest.azurecr.io/dacs/native-build:git-<commit>-linux-amd64
+dacstest.azurecr.io/dacs/native-build:git-<commit>-linux-arm64
 dacstest.azurecr.io/dacs/native-build:linux-amd64
 dacstest.azurecr.io/dacs/native-build:linux-arm64
 ```
@@ -177,17 +185,23 @@ Docker/CacheClient.Dockerfile
 
 Their operating-system packages and other runtime dependencies are part of
 these Dockerfiles rather than separate DACS base images. Azure Pipelines uses
-architecture-specific BuildKit cache references for the complete images:
+the same official and per-PR cache scopes as the native-build image:
 
 ```text
-dacstest.azurecr.io/cache-server:buildcache-linux-amd64
-dacstest.azurecr.io/cache-server:buildcache-linux-arm64
-dacstest.azurecr.io/cache-test-client:buildcache-linux-amd64
-dacstest.azurecr.io/cache-test-client:buildcache-linux-arm64
+dacstest.azurecr.io/cache-server:buildcache-main-linux-amd64
+dacstest.azurecr.io/cache-server:buildcache-pr-<id>-linux-amd64
+dacstest.azurecr.io/cache-test-client:buildcache-main-linux-amd64
+dacstest.azurecr.io/cache-test-client:buildcache-pr-<id>-linux-amd64
 ```
 
-These references contain reusable build layers only. They are not deployment
-tags and are not published as application images.
+Equivalent references exist for `arm64`. These references contain reusable
+build layers only. They are not deployment tags and are not published as
+application images.
+
+The single-stage native-build and CacheServer images export `mode=min` caches.
+That retains the final-stage cache needed for repeated builds without storing
+unused intermediate records. The multi-stage CacheClient image keeps
+`mode=max` so dependency and builder stages remain reusable.
 
 Public base images use readable tags pinned to SHA-256 manifest digests. The
 digest guarantees that a build uses the reviewed image contents even if the
@@ -214,30 +228,62 @@ Pipeline artifacts move outputs between jobs without rebuilding them:
 
 | Artifact | Producer | Consumers |
 | --- | --- | --- |
-| `dacs-build-tree-linux-<arch>` | Architecture build job | Tests and C++ image jobs |
-| `dacs-python-wheel-linux-<arch>` | Architecture build job | Package consumers |
-| `dacs-rust-crate-linux-<arch>` | Architecture build job | Package consumers |
-| `container-images-linux-<arch>` | Architecture image job | `PublishImages` |
-| `helm-charts` | `Package` | `PublishImages` |
-| `release-metadata` | `Package` | `PublishImages` |
+| `dacs-build-linux-<arch>` | Architecture build job | Tests, C++ image jobs, and package consumers |
+| `dacs-release` | `Package` | Build record and release consumers |
 
-Container image tarballs are checksummed before publication. `PublishImages`
-loads the tarballs and pushes immutable application image tags. Helm charts
-are also published only after their checksums and metadata are validated.
+The architecture artifact contains `build-tree/`, `python-wheel/`, and
+`rust-crate/` subdirectories. Publishing one output avoids repeating 1ES
+binary analysis, SBOM generation, and artifact publication for three separate
+outputs. The release artifact similarly contains `helm-charts/` and
+`release-metadata/` under one output.
+
+Application image jobs do not create pipeline artifacts. Each architecture
+pushes the four local images directly to build-specific candidate tags:
+
+```text
+<image>:candidate-<Build.BuildId>-linux-amd64
+<image>:candidate-<Build.BuildId>-linux-arm64
+```
+
+After both image stages and both Azure test stages succeed, the `Package` job
+promotes those ACR manifests to immutable
+architecture tags and creates the multi-platform tags. Promotion is
+registry-side, so the pipeline does not transport approximately 1 GB of Docker
+tarballs through the artifact service or run `docker load` before publication.
+The same job packages, validates, and publishes Helm charts, removing the
+separate publication stage and its agent allocation delay.
 
 Registry objects serve different purposes:
 
 | Object | Mutable | Intended use |
 | --- | --- | --- |
-| `buildcache-linux-<arch>` | Yes | Native and C++ application BuildKit layer caches |
+| `buildcache-main-linux-<arch>` | Yes | Official native and C++ application BuildKit layer caches |
+| `buildcache-pr-<id>-linux-<arch>` | Yes | Pull-request-specific BuildKit layer caches |
+| `dacs/native-build:git-<commit>-linux-<arch>` | No | Exact native toolchain image for repeated builds |
 | `dacs/native-build:linux-<arch>` | Yes | Rolling toolchain image used by local builds |
+| `candidate-<build-id>-linux-<arch>` | No | Build-specific application image awaiting promotion |
 | Application image version tags | No | Release and deployment inputs |
 
 ## Pull request and official build behavior
 
-Both pipeline types can read and update BuildKit cache references after ACR
-authentication. Cache writes improve later builds but do not change a
-deployable or rolling image tag.
+Both pipeline types can read the official `main` BuildKit cache after ACR
+authentication. Official builds update that cache. Pull request builds update
+only their per-PR cache, so branch-specific Dockerfile changes cannot evict the
+official cache manifest.
+
+Whenever `dacs-pullrequest` is queued, it runs the complete Azure-backed test
+matrix for both AMD64 and ARM64. Test selection never drops an architecture or
+skips suites based on changed paths.
+
+The longest storage suites are sharded within each architecture:
+
+| Script | Jobs |
+| --- | --- |
+| `test_cache_advanced.sh` | Cache behavior, encryption |
+| `test_cache_specialized.sh` | Snapshot, eviction, remote distribution |
+
+`DACS_TEST_GROUP` selects the shard. Its default remains `all`, preserving the
+existing local command behavior.
 
 Only `dacs-official` sets:
 
@@ -281,9 +327,9 @@ Building native-build image for linux/<architecture>
 ```
 
 Inspect the following BuildKit output to see which Dockerfile layers were
-restored or rebuilt. In Azure Pipelines, the build should always show the
-BuildKit build step before compilation. A direct pull-and-exit decision
-indicates older pipeline logic.
+restored or rebuilt. If the exact commit-addressed image already exists, the
+job instead reports that it is using the existing native-build image and skips
+BuildKit.
 
 ### A Dockerfile change appears to be ignored
 
@@ -307,9 +353,9 @@ Later test or publication stages do not control this push.
 ### A cache reference is unavailable
 
 BuildKit treats a missing cache as a cold build. Verify ACR authentication and
-write permission if cache export fails. Do not replace an unavailable cache
-with a stale rolling image; the image must still be evaluated from current
-inputs.
+write permission if cache export fails. A missing commit-addressed image is
+also expected for a new commit; the script then evaluates the current inputs
+with BuildKit.
 
 ## Related documentation
 
