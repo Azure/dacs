@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Build the manager binary
-FROM mcr.microsoft.com/oss/go/microsoft/golang:1.26@sha256:1c312e239157abd92e3eb83091ac5febb914b57eb117af7faa46659109632bdd AS builder
+FROM mcr.microsoft.com/oss/go/microsoft/golang:1.26@sha256:04d6b838fcb436f2806781a639b8b7fd364b75ad6bfb306ce43b1c3ada284b04 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
