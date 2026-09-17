@@ -33,6 +33,7 @@ validation leaves it disabled.
                     |                                   |
              Build_amd64                         Build_arm64
                     |                                   |
+        Verify MCR base images              Verify MCR base images
         Build/load native-build image        Build/load native-build image
         Compile C++ and Go                    Compile C++ and Go
         Build Python wheel                    Build Python wheel
@@ -193,13 +194,17 @@ digest guarantees that a build uses the reviewed image contents even if the
 upstream tag is moved. Dependabot proposes reviewed updates when a newer digest
 is available for the configured tag.
 
-Before either architecture build starts, the `VerifyBaseImages` stage discovers
-every MCR base image referenced by a Dockerfile and validates its ESRP signature
-with the built-in Azure Pipelines `Notation@0` task. The stage downloads the
-public Microsoft supply-chain and timestamp roots over HTTPS, verifies their
-pinned SHA-256 fingerprints, and applies the same strict trust policy used by
-GitHub Actions. An unpinned image, invalid signature, untrusted signer, or
-repository missing from the trust policy fails the pipeline.
+At the start of each architecture build, the shared
+`Dacs.VerifyBaseImages.Steps.yml` template discovers every MCR base image
+referenced by a Dockerfile and validates its ESRP signature with the built-in
+Azure Pipelines `Notation@0` task. Running verification on the already
+allocated compile agents removes the dedicated verification agent and stage
+transition while preserving verification before compilation on both
+architectures. The template downloads the public Microsoft supply-chain and
+timestamp roots over HTTPS, verifies their pinned SHA-256 fingerprints, and
+applies the same strict trust policy used by GitHub Actions. An unpinned image,
+invalid signature, untrusted signer, or repository missing from the trust
+policy fails the corresponding architecture build.
 
 The Go scheduler and controller images compile Go in their own Dockerfiles.
 
