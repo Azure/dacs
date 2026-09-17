@@ -18,6 +18,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "IChecksumStrategy.h"
 #include <string>
+#include <string_view>
 //---------------------------------------------------------------------------------------------------------------------
 // Checksum algorithm enumeration
 enum class ChecksumAlgorithm : uint8_t
@@ -34,7 +35,7 @@ public:
     static IChecksumStrategy* GetChecksumStrategyInstance(ChecksumAlgorithm algorithm);
     
     // Parse algorithm string to enum
-    static ChecksumAlgorithm ParseAlgorithm(const std::string& algorithmStr);
+    static ChecksumAlgorithm ParseAlgorithm(std::string_view algorithmStr);
     
     // Get algorithm name string from enum
     static std::string GetAlgorithmName(ChecksumAlgorithm algorithm);

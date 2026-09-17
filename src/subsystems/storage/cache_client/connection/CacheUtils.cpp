@@ -18,6 +18,7 @@
 #include "IConnection.h"
 #include <sys/socket.h>
 #include <iomanip>
+#include <limits>
 #include <openssl/sha.h>
 #include <map>
 #include <limits>
@@ -109,21 +110,31 @@ namespace cacheutils
         return totalRead;
     }
 //---------------------------------------------------------------------------------------------------------------------
-    bool SendMessageToRemote(IConnection* connection, const ::google::protobuf::Message& message)
+    static bool SendMessageToRemoteInternal(
+        IConnection* connection,
+        const ::google::protobuf::Message& message,
+        bool finalize)
     {
-        string protoBuffer;
-        if (!message.SerializeToString(&protoBuffer))
+        const size_t protoSize = message.ByteSizeLong();
+        if (protoSize > std::numeric_limits<int>::max())
+        {
+            LOG_ERROR("protobuf message is too large to send: {} bytes. Max allowed is {}",
+                protoSize,
+                std::numeric_limits<int>::max());
+            return false;
+        }
+
+        string outputBuffer(REQUEST_METADATA_SIZE + protoSize, 0);
+        ConvertIntToBytes(protoSize, outputBuffer.data(), 0, REQUEST_METADATA_SIZE);
+        if (!message.SerializeToArray(outputBuffer.data() + REQUEST_METADATA_SIZE, static_cast<int>(protoSize)))
         {
             LOG_ERROR("couldn't serialize message proto");
             return false;
         }
 
-        string outputBuffer(REQUEST_METADATA_SIZE, 0);
-        ConvertIntToBytes(protoBuffer.size(), outputBuffer.data(), 0, REQUEST_METADATA_SIZE);
-        
-        outputBuffer += protoBuffer;
-
-        const int bytesSent = connection->Send(outputBuffer.data(), outputBuffer.size());
+        const int bytesSent = finalize
+            ? connection->SendAndFinalize(outputBuffer.data(), outputBuffer.size())
+            : connection->Send(outputBuffer.data(), outputBuffer.size());
         if (bytesSent < 0 || static_cast<size_t>(bytesSent) != outputBuffer.size())
         {
             LOG_ERROR("couldn't send message to remote id={}, bytesSent={}, expectedBytes={}",
@@ -133,28 +144,14 @@ namespace cacheutils
         return true;
     }
 //---------------------------------------------------------------------------------------------------------------------
+    bool SendMessageToRemote(IConnection* connection, const ::google::protobuf::Message& message)
+    {
+        return SendMessageToRemoteInternal(connection, message, false);
+    }
+//---------------------------------------------------------------------------------------------------------------------
     bool SendMessageToRemoteFinal(IConnection* connection, const ::google::protobuf::Message& message)
     {
-        string protoBuffer;
-        if (!message.SerializeToString(&protoBuffer))
-        {
-            LOG_ERROR("couldn't serialize message proto");
-            return false;
-        }
-
-        string outputBuffer(REQUEST_METADATA_SIZE, 0);
-        ConvertIntToBytes(protoBuffer.size(), outputBuffer.data(), 0, REQUEST_METADATA_SIZE);
-        
-        outputBuffer += protoBuffer;
-
-        const int bytesSent = connection->SendAndFinalize(outputBuffer.data(), outputBuffer.size());
-        if (bytesSent < 0 || static_cast<size_t>(bytesSent) != outputBuffer.size())
-        {
-            LOG_ERROR("couldn't send message to remote id={}, bytesSent={}, expectedBytes={}",
-                connection->GetId(), bytesSent, outputBuffer.size());
-            return false;
-        }
-        return true;
+        return SendMessageToRemoteInternal(connection, message, true);
     }
 //---------------------------------------------------------------------------------------------------------------------
     bool ReadMessageFromRemote(IConnection* connection, string& message)
@@ -176,18 +173,18 @@ namespace cacheutils
         }
         const int protoSize = static_cast<int>(decodedProtoSize);
 
-        string requestMessage(static_cast<size_t>(protoSize), 0);
-        res = ReadBytesToArray(connection, requestMessage.data(), protoSize);
+        message.resize(static_cast<size_t>(protoSize));
+        res = ReadBytesToArray(connection, message.data(), protoSize);
         if (res != protoSize)
         {
+            message.clear();
             LOG_ERROR("error: Failed to read protobuf message, id={}", connection->GetId());
             return false;
         }
-        message = requestMessage;
         return true;
     }
 //---------------------------------------------------------------------------------------------------------------------
-    uint32_t GetServerIndex(const char* filePath, uint32_t numServers)
+    uint32_t GetServerIndex(std::string_view filePath, uint32_t numServers)
     {
         if (numServers > 1)
         {
@@ -203,8 +200,6 @@ namespace cacheutils
 //---------------------------------------------------------------------------------------------------------------------
 bool IsValidLastAccessTime(const char* lastAccessTime)
 {
-
-    std::string timeStr(lastAccessTime);
     int day, month, year, hour, minute, second, milliseconds;
     char timezoneIndicator;
 
@@ -219,12 +214,12 @@ bool IsValidLastAccessTime(const char* lastAccessTime)
             minute >= 0 && minute <= 59 && second >= 0 && second <= 59 && milliseconds >= 0 && milliseconds <= 999);
 }
 //---------------------------------------------------------------------------------------------------------------------
-    std::string GetSHA256Hex(const std::string& message)
+    std::string GetSHA256Hex(std::string_view message)
     {
         unsigned char shaHash[SHA256_DIGEST_LENGTH];
         SHA256_CTX sha256;
         SHA256_Init(&sha256);
-        SHA256_Update(&sha256, message.c_str(), message.size());
+        SHA256_Update(&sha256, message.data(), message.size());
         SHA256_Final(shaHash, &sha256);
 
         // hex encode the sha digest

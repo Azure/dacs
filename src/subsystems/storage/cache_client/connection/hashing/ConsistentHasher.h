@@ -23,7 +23,7 @@
 class ConsistentHasher: public BaseHasher {
 public:
     ConsistentHasher(uint64_t virtualNodes = DEFAULT_VIRTUAL_NODES) : m_virtualNodes(virtualNodes) {}  
-    std::string GetServer(const std::string& key) const override;
+    std::string GetServer(std::string_view key) const override;
     void UpdateServers(const std::vector<std::string>& servers) override;
 
     std::vector<std::string> GetServerList() const;
@@ -32,7 +32,7 @@ public:
 private:
     void AddServerToRing(const std::string& server, std::map<uint64_t, std::string>& ring);
     void RemoveServerFromRing(const std::string& server, std::map<uint64_t, std::string>& ring);
-    static uint64_t HexToUint64(const std::string& hexString);
+    static uint64_t HexToUint64(std::string_view hexString);
 
     const uint64_t m_virtualNodes;
     std::map<uint64_t, std::string> m_ring;  // SHA256 hex hash -> server hostname

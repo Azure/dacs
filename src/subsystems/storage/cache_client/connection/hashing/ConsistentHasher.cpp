@@ -16,23 +16,32 @@
 #include "CommonLogger.h"
 #include "CacheUtils.h"
 #include <algorithm>
+#include <charconv>
 #include <set>
 #include <cstdint>
 //---------------------------------------------------------------------------------------------------------------------
-uint64_t ConsistentHasher::HexToUint64(const std::string& hexString) {
+uint64_t ConsistentHasher::HexToUint64(std::string_view hexString) {
     // XOR-fold all 256 bits into 64 bits to preserve full hash entropy.
     // Splitting 256 bits into four 64-bit chunks and XOR them together.
     uint64_t result = 0;
     
     // Process in 4 chunks: bits [0-63], [64-127], [128-191], [192-255]
+    STORAGE_ASSERT(hexString.size() == 64, "Hex string must be 64 characters long");
     for (size_t i = 0; i < 64; i += 16) {
-        result ^= std::stoull(hexString.substr(i, 16), nullptr, 16);
+        uint64_t chunk = 0;
+        const char* chunkBegin = hexString.data() + i;
+        const char* chunkEnd = chunkBegin + 16;
+        const auto conversion = std::from_chars(chunkBegin, chunkEnd, chunk, 16);
+        if (conversion.ec != std::errc{} || conversion.ptr != chunkEnd) {
+            STORAGE_ASSERT(false, "Failed to convert hex chunk to uint64_t");
+        }
+        result ^= chunk;
     }
     
     return result;
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::string ConsistentHasher::GetServer(const std::string& key) const {
+std::string ConsistentHasher::GetServer(std::string_view key) const {
     std::shared_lock<std::shared_mutex> lock(m_mutex);
     if (m_servers.empty()) return "";
 

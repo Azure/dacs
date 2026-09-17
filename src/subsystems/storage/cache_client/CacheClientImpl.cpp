@@ -136,8 +136,7 @@ CacheClientStatus CacheClientImpl::Initialize(
         return CacheClientStatus::INVALID_ARGUMENT;
     }
     m_retryConfig = retryConfig;
-    std::string algorithmStr = (strChecksumAlgorithm == nullptr || strlen(strChecksumAlgorithm) == 0) ? 
-        "" : std::string(strChecksumAlgorithm);
+    const std::string_view algorithmStr = strChecksumAlgorithm == nullptr ? std::string_view{} : strChecksumAlgorithm;
     
     m_checksumAlgorithm = ChecksumFactory::ParseAlgorithm(algorithmStr);
     if (m_checksumAlgorithm == ChecksumAlgorithm::INVALID)

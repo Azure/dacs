@@ -1043,7 +1043,7 @@ void ConnectionManager::MonitorCacheServers()
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
-std::string ConnectionManager::GetCacheServerHostname(const std::string& strCacheKey) const
+std::string ConnectionManager::GetCacheServerHostname(std::string_view strCacheKey) const
 {
     std::shared_lock<std::shared_mutex> readLock(m_sharedLockCacheServerData); // Shared lock for concurrent read access
     
