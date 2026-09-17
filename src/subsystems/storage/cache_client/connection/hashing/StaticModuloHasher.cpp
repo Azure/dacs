@@ -18,7 +18,7 @@
 #include <cstdint>
 #include <limits>
 //---------------------------------------------------------------------------------------------------------------------
-std::string StaticModuloHasher::GetServer(const std::string& key) const {
+std::string StaticModuloHasher::GetServer(std::string_view key) const {
     if (m_servers.empty()) {
         return "";
     }
@@ -26,7 +26,7 @@ std::string StaticModuloHasher::GetServer(const std::string& key) const {
         LOG_ERROR("Server count exceeds supported hashing limit: {}", m_servers.size());
         return "";
     }
-    uint32_t serverIndex = cacheutils::GetServerIndex(key.c_str(), static_cast<uint32_t>(m_servers.size()));
+    uint32_t serverIndex = cacheutils::GetServerIndex(key, static_cast<uint32_t>(m_servers.size()));
     return m_servers[serverIndex];
 }
 //---------------------------------------------------------------------------------------------------------------------

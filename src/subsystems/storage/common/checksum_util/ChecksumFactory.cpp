@@ -44,7 +44,7 @@ IChecksumStrategy* ChecksumFactory::GetChecksumStrategyInstance(ChecksumAlgorith
     }
 }
 
-ChecksumAlgorithm ChecksumFactory::ParseAlgorithm(const std::string& algorithmStr)
+ChecksumAlgorithm ChecksumFactory::ParseAlgorithm(std::string_view algorithmStr)
 {
     if (algorithmStr.empty())
     {
@@ -52,15 +52,18 @@ ChecksumAlgorithm ChecksumFactory::ParseAlgorithm(const std::string& algorithmSt
         return ChecksumAlgorithm::INVALID;
     }
 
-    // Convert to lowercase for case-insensitive comparison
-    std::string algoStr = algorithmStr;
-    std::transform(algoStr.begin(), algoStr.end(), algoStr.begin(), ::tolower);
+    const auto equalsIgnoreCase = [algorithmStr](std::string_view expected) {
+        return std::equal(algorithmStr.begin(), algorithmStr.end(), expected.begin(), expected.end(),
+            [](unsigned char lhs, unsigned char rhs) {
+                return std::tolower(lhs) == std::tolower(rhs);
+            });
+    };
 
-    if (algoStr == "xxhash32")
+    if (equalsIgnoreCase("xxhash32"))
     {
         return ChecksumAlgorithm::XXHASH32;
     }
-    else if (algoStr == "crc32")
+    else if (equalsIgnoreCase("crc32"))
     {
         return ChecksumAlgorithm::CRC32;
     }

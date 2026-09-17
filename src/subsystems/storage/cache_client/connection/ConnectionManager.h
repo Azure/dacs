@@ -23,6 +23,7 @@
 #include <map>
 #include <queue>
 #include <string>
+#include <string_view>
 #include <mutex>
 #include <condition_variable>
 #include <shared_mutex>
@@ -63,7 +64,7 @@ class ConnectionManager
             /*[in]*/ std::unique_ptr<IConnection> serverConnection,
             /*[in]*/ const bool errorConnection);
 
-        std::string GetCacheServerHostname(const std::string& strCacheKey) const;
+        std::string GetCacheServerHostname(std::string_view strCacheKey) const;
         std::vector<std::string> GetAllCacheServerHostnames() const;
 
     private:

@@ -17,7 +17,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 class StaticModuloHasher : public BaseHasher {
 public:
-    std::string GetServer(const std::string& key) const override;
+    std::string GetServer(std::string_view key) const override;
     void UpdateServers(const std::vector<std::string>& servers) override;
 };
 //---------------------------------------------------------------------------------------------------------------------

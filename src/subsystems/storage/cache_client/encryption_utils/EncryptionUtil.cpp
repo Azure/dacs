@@ -184,8 +184,7 @@ std::string EncryptionUtil::GenerateIV()
     // Generate random IV of 12 bytes (default length)
     static thread_local boost::uuids::random_generator uuidGenerator;
     boost::uuids::uuid uuid = uuidGenerator();
-    std::string uuidStr(uuid.begin(), uuid.end());
-    return uuidStr.substr(0, 12);
+    return std::string(uuid.begin(), uuid.begin() + 12);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool EncryptionUtil::DoEncrypt(UploadRequest* uploadRequest,
