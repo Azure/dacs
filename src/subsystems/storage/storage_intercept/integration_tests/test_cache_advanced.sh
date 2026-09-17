@@ -36,6 +36,15 @@ SCRIPT_DIR="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 export BUILD_CONFIGURATION="${1:-Debug}"
 source "${SCRIPT_DIR}/test_common.sh"
 
+TEST_GROUP="${DACS_TEST_GROUP:-all}"
+case "$TEST_GROUP" in
+  all|cache|encryption) ;;
+  *)
+    echo "Unknown DACS_TEST_GROUP: $TEST_GROUP" >&2
+    exit 1
+    ;;
+esac
+
 echo "================================================"
 echo "CACHE ADVANCED TESTS - Starting"
 echo "================================================"
@@ -67,6 +76,7 @@ fi
 # Test liveness of the cache server
 test_liveness
 
+if [[ "$TEST_GROUP" == "all" || "$TEST_GROUP" == "cache" ]]; then
 # Run the cache server test
 run_cacheserver_test
 
@@ -100,7 +110,9 @@ echo "Blob Integration test with discovery cache enabled failed"
 exit 1
 fi
 echo -e "Blob Integration test with discovery cache enabled passed\n\n"
+fi
 
+if [[ "$TEST_GROUP" == "all" || "$TEST_GROUP" == "encryption" ]]; then
 echo "Running unit tests against blob with cache and encryption enabled"
 add_interception_config_blob_with_cache_encryption /mnt/dataPathIntcpt
 cd ${REPOSITORY_ROOT}/build/$BUILD_CONFIGURATION/$BUILD_ARCH
@@ -121,6 +133,7 @@ echo "Blob Integration test with cache and encryption failed"
 exit 1
 fi
 echo -e "Running integration test against blob with cache and encryption passed\n\n"
+fi
 
 stop_cache_server
 

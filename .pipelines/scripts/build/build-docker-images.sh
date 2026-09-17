@@ -18,12 +18,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/build-cache.sh"
 DOCKER_DIR="$REPOSITORY_ROOT/Docker"
 CACHE_CONTROLLER_DIR="$REPOSITORY_ROOT/src/subsystems/cache-controller"
 SCHEDULER_DIR="$REPOSITORY_ROOT/src/subsystems/storage/cache_server_scheduler"
 BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
 ENABLE_REGISTRY_BUILD_CACHE="${ENABLE_REGISTRY_BUILD_CACHE:-false}"
 BUILDKIT_IMAGE="${BUILDKIT_IMAGE:-mcr.microsoft.com/oss/v2/moby/buildkit:v0.31.0@sha256:fe54b035f7e18247c19d74adfaae42f62f44dca1fd00ae35b795a662a6126d67}"
+BUILD_CACHE_SCOPE="$(resolve_build_cache_scope "${BUILD_CACHE_SCOPE:-main}")"
 UBUNTU_ARCHIVE_MIRROR="${UBUNTU_ARCHIVE_MIRROR:-}"
 if [[ "${USE_AZURE_CFS:-false}" == "true" && -z "$UBUNTU_ARCHIVE_MIRROR" ]]; then
     UBUNTU_ARCHIVE_MIRROR="http://azure.archive.ubuntu.com/ubuntu"
@@ -63,17 +66,6 @@ if [[ -z "$REGISTRY" ]]; then
 fi
 echo "image registry: $REGISTRY"
 
-# Reclaim disk before we start building images. Warm CI agents accumulate
-# gigabytes of stale BuildKit layer cache from prior runs. That cache is a
-# pure performance optimization; the (re)builds below will repopulate what
-# they need. Without this, the cache client build -- which contains a Go-based
-# blobfuse2 builder stage -- can hit ENOSPC on agents that were already near
-# their disk quota (~95%) before this job started.
-echo "Pruning stale Docker BuildKit cache to reclaim disk..."
-docker builder prune -af >/dev/null 2>&1 || true
-docker image prune -f >/dev/null 2>&1 || true
-df -h / | tail -1 || true
-
 BUILDER_NAME=""
 cleanup() {
     if [[ -n "$BUILDER_NAME" ]]; then
@@ -102,14 +94,24 @@ build_cpp_image() {
     local build_options=(--pull)
 
     if [[ "$ENABLE_REGISTRY_BUILD_CACHE" == "true" ]]; then
-        local cache_image="${REGISTRY}/${name}:buildcache-linux-${BUILD_ARCH}"
+        local cache_image="${REGISTRY}/${name}:buildcache-${BUILD_CACHE_SCOPE}-linux-${BUILD_ARCH}"
+        local main_cache_image="${REGISTRY}/${name}:buildcache-main-linux-${BUILD_ARCH}"
+        local legacy_cache_image="${REGISTRY}/${name}:buildcache-linux-${BUILD_ARCH}"
+        local cache_mode="max"
+        if [[ "$name" == "cache-server" ]]; then
+            cache_mode="min"
+        fi
         build_command=(docker buildx build)
         build_options+=(
             --platform "linux/${BUILD_ARCH}"
             --cache-from "type=registry,ref=${cache_image}"
-            --cache-to "type=registry,ref=${cache_image},mode=max"
+            --cache-to "type=registry,ref=${cache_image},mode=${cache_mode}"
             --load
         )
+        if [[ "$cache_image" != "$main_cache_image" ]]; then
+            build_options+=(--cache-from "type=registry,ref=${main_cache_image}")
+        fi
+        build_options+=(--cache-from "type=registry,ref=${legacy_cache_image}")
     fi
 
     "${build_command[@]}" "${build_options[@]}" \

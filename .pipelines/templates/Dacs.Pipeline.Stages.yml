@@ -26,9 +26,12 @@ parameters:
     type: string
     default: az://dacstest.blob.core.windows.net/dataset/client-integration
   - name: pushNativeBuildImages
-    displayName: Push rolling native-build tags
+    displayName: Push exact and rolling native-build tags
     type: boolean
     default: false
+  - name: buildCacheScope
+    displayName: Registry BuildKit cache scope
+    type: string
 
 stages:
   - stage: Build_amd64
@@ -41,14 +44,8 @@ stages:
         templateContext:
           outputs:
             - output: pipelineArtifact
-              path: $(Build.ArtifactStagingDirectory)/build-tree
-              artifact: dacs-build-tree-linux-amd64
-            - output: pipelineArtifact
-              path: $(Build.ArtifactStagingDirectory)/python-wheel
-              artifact: dacs-python-wheel-linux-amd64
-            - output: pipelineArtifact
-              path: $(Build.ArtifactStagingDirectory)/rust-crate
-              artifact: dacs-rust-crate-linux-amd64
+              path: $(Build.ArtifactStagingDirectory)/build
+              artifact: dacs-build-linux-amd64
         steps:
           - checkout: self
             path: s/dacs
@@ -62,6 +59,7 @@ stages:
               acrName: ${{ parameters.acrName }}
               azureServiceConnection: ${{ parameters.azureServiceConnection }}
               pushNativeBuildImage: ${{ parameters.pushNativeBuildImages }}
+              buildCacheScope: ${{ parameters.buildCacheScope }}
 
   - stage: Build_arm64
     displayName: Compile linux/arm64
@@ -78,14 +76,8 @@ stages:
         templateContext:
           outputs:
             - output: pipelineArtifact
-              path: $(Build.ArtifactStagingDirectory)/build-tree
-              artifact: dacs-build-tree-linux-arm64
-            - output: pipelineArtifact
-              path: $(Build.ArtifactStagingDirectory)/python-wheel
-              artifact: dacs-python-wheel-linux-arm64
-            - output: pipelineArtifact
-              path: $(Build.ArtifactStagingDirectory)/rust-crate
-              artifact: dacs-rust-crate-linux-arm64
+              path: $(Build.ArtifactStagingDirectory)/build
+              artifact: dacs-build-linux-arm64
         steps:
           - checkout: self
             path: s/dacs
@@ -99,6 +91,7 @@ stages:
               acrName: ${{ parameters.acrName }}
               azureServiceConnection: ${{ parameters.azureServiceConnection }}
               pushNativeBuildImage: ${{ parameters.pushNativeBuildImages }}
+              buildCacheScope: ${{ parameters.buildCacheScope }}
 
   - stage: Images_amd64
     displayName: Build linux/amd64 images
@@ -107,17 +100,13 @@ stages:
       - job: Images_amd64
         displayName: Build linux/amd64 images
         timeoutInMinutes: 120
-        templateContext:
-          outputs:
-            - output: pipelineArtifact
-              path: $(Build.ArtifactStagingDirectory)/container-images
-              artifact: container-images-linux-amd64
         steps:
           - template: /.pipelines/templates/Dacs.ImageBuild.Steps.yml@self
             parameters:
               architecture: amd64
               acrName: ${{ parameters.acrName }}
               azureServiceConnection: ${{ parameters.azureServiceConnection }}
+              buildCacheScope: ${{ parameters.buildCacheScope }}
 
   - stage: Images_arm64
     displayName: Build linux/arm64 images
@@ -131,17 +120,13 @@ stages:
       - job: Images_arm64
         displayName: Build linux/arm64 images
         timeoutInMinutes: 120
-        templateContext:
-          outputs:
-            - output: pipelineArtifact
-              path: $(Build.ArtifactStagingDirectory)/container-images
-              artifact: container-images-linux-arm64
         steps:
           - template: /.pipelines/templates/Dacs.ImageBuild.Steps.yml@self
             parameters:
               architecture: arm64
               acrName: ${{ parameters.acrName }}
               azureServiceConnection: ${{ parameters.azureServiceConnection }}
+              buildCacheScope: ${{ parameters.buildCacheScope }}
 
   - stage: AzureTests_amd64
     displayName: Azure-backed tests linux/amd64
@@ -183,14 +168,18 @@ stages:
           azureStorageBlobPath: ${{ parameters.azureStorageBlobPath }}
 
   - stage: Package
-    displayName: Package DACS artifacts
+    displayName: Package and publish DACS artifacts
     dependsOn:
       - Images_amd64
       - Images_arm64
+      - AzureTests_amd64
+      - AzureTests_arm64
     condition: >-
       and(
         in(dependencies.Images_amd64.result, 'Succeeded', 'SucceededWithIssues'),
-        in(dependencies.Images_arm64.result, 'Succeeded', 'SucceededWithIssues')
+        in(dependencies.Images_arm64.result, 'Succeeded', 'SucceededWithIssues'),
+        in(dependencies.AzureTests_amd64.result, 'Succeeded', 'SucceededWithIssues'),
+        in(dependencies.AzureTests_arm64.result, 'Succeeded', 'SucceededWithIssues')
       )
     jobs:
       - job: Package
@@ -199,11 +188,8 @@ stages:
         templateContext:
           outputs:
             - output: pipelineArtifact
-              path: $(Build.ArtifactStagingDirectory)/helm-charts
-              artifact: helm-charts
-            - output: pipelineArtifact
-              path: $(Build.ArtifactStagingDirectory)/release-metadata
-              artifact: release-metadata
+              path: $(Build.ArtifactStagingDirectory)/release
+              artifact: dacs-release
         steps:
           - checkout: self
             path: s/dacs
@@ -225,8 +211,12 @@ stages:
               export DOCKER_REGISTRY="$registry"
               ./.pipelines/scripts/publish/publish-helm-chart.sh
 
-              readonly helm_artifacts="$(Build.ArtifactStagingDirectory)/helm-charts"
-              readonly release_metadata="$(Build.ArtifactStagingDirectory)/release-metadata"
+              readonly release_artifacts="$(Build.ArtifactStagingDirectory)/release"
+              readonly helm_artifacts="$release_artifacts/helm-charts"
+              readonly release_metadata="$release_artifacts/release-metadata"
+              readonly source_version="$(./.pipelines/scripts/get-version.sh source)"
+              readonly container_version="$(finalTag)"
+              readonly git_commit="$(git rev-parse HEAD)"
               mkdir -p "$helm_artifacts" "$release_metadata"
 
               cp dist/*.tgz "$helm_artifacts/"
@@ -237,121 +227,40 @@ stages:
               )
 
               printf '%s\n' \
-                "SOURCE_VERSION=$(./.pipelines/scripts/get-version.sh source)" \
-                "CONTAINER_VERSION=$(finalTag)" \
-                "GIT_COMMIT=$(git rev-parse HEAD)" \
-                "IMAGE_ARTIFACT_AMD64=container-images-linux-amd64" \
-                "IMAGE_ARTIFACT_ARM64=container-images-linux-arm64" \
-                "CACHE_SERVER_IMAGE=$registry/dacs/cache-server:$(finalTag)-linux-{amd64,arm64}" \
-                "CACHE_CLIENT_IMAGE=$registry/dacs/cache-test-client:$(finalTag)-linux-{amd64,arm64}" \
-                "CACHE_SERVER_SCHEDULER_IMAGE=$registry/dacs/cacheserver-scheduler:$(finalTag)-linux-{amd64,arm64}" \
-                "CACHE_CONTROLLER_IMAGE=$registry/dacs/cache-controller:$(finalTag)-linux-{amd64,arm64}" \
+                "SOURCE_VERSION=$source_version" \
+                "CONTAINER_VERSION=$container_version" \
+                "GIT_COMMIT=$git_commit" \
+                "CACHE_SERVER_IMAGE=$registry/dacs/cache-server:${container_version}-linux-{amd64,arm64}" \
+                "CACHE_CLIENT_IMAGE=$registry/dacs/cache-test-client:${container_version}-linux-{amd64,arm64}" \
+                "CACHE_SERVER_SCHEDULER_IMAGE=$registry/dacs/cacheserver-scheduler:${container_version}-linux-{amd64,arm64}" \
+                "CACHE_CONTROLLER_IMAGE=$registry/dacs/cache-controller:${container_version}-linux-{amd64,arm64}" \
                 > "$release_metadata/docker-images.txt"
               cp helm-chart.txt "$release_metadata/"
 
               printf '%s\n' \
-                "CONTAINER_VERSION=$(finalTag)" \
-                "GIT_COMMIT=$(git rev-parse HEAD)" \
+                "CONTAINER_VERSION=$container_version" \
+                "GIT_COMMIT=$git_commit" \
                 "IMAGE_REGISTRY=$registry/dacs" \
                 > "$release_metadata/release.env"
             displayName: Package versioned artifacts
             workingDirectory: $(Pipeline.Workspace)/s/dacs
 
-  - stage: PublishImages
-    displayName: Publish immutable DACS artifacts
-    dependsOn:
-      - Package
-      - AzureTests_amd64
-      - AzureTests_arm64
-    jobs:
-      - job: PublishImages
-        displayName: Publish immutable images and Helm charts
-        timeoutInMinutes: 120
-        steps:
-          - checkout: self
-            path: s/dacs
-            fetchDepth: 1
-
-          - task: DownloadPipelineArtifact@2
-            displayName: Download linux/amd64 images
-            inputs:
-              buildType: current
-              artifact: container-images-linux-amd64
-              targetPath: $(Pipeline.Workspace)/artifacts/container-images-linux-amd64
-
-          - task: DownloadPipelineArtifact@2
-            displayName: Download linux/arm64 images
-            inputs:
-              buildType: current
-              artifact: container-images-linux-arm64
-              targetPath: $(Pipeline.Workspace)/artifacts/container-images-linux-arm64
-
-          - task: DownloadPipelineArtifact@2
-            displayName: Download release metadata
-            inputs:
-              buildType: current
-              artifact: release-metadata
-              targetPath: $(Pipeline.Workspace)/artifacts/release-metadata
-
-          - task: HelmInstaller@1
-            displayName: Install Helm
-            inputs:
-              helmVersionToInstall: 3.21.3
-
-          - task: DownloadPipelineArtifact@2
-            displayName: Download Helm charts
-            inputs:
-              buildType: current
-              artifact: helm-charts
-              targetPath: $(Pipeline.Workspace)/artifacts/helm-charts
-
           - task: AzureCLI@2
-            displayName: Publish immutable images
+            displayName: Promote candidate images
             inputs:
               azureSubscription: ${{ parameters.azureServiceConnection }}
               scriptType: bash
               scriptLocation: inlineScript
+              workingDirectory: $(Pipeline.Workspace)/s/dacs
               inlineScript: |
                 set -euo pipefail
 
-                readonly repository_root="$(Pipeline.Workspace)/s/dacs"
-                readonly artifacts_root="$(Pipeline.Workspace)/artifacts"
-                readonly release_metadata="$artifacts_root/release-metadata/release.env"
-                test -f "$release_metadata"
-                # shellcheck disable=SC1090
-                source "$release_metadata"
-                : "${CONTAINER_VERSION:?release metadata is missing CONTAINER_VERSION}"
-                : "${IMAGE_REGISTRY:?release metadata is missing IMAGE_REGISTRY}"
-
-                for architecture in amd64 arm64; do
-                  image_dir="$artifacts_root/container-images-linux-$architecture"
-                  (
-                    cd "$image_dir"
-                    sha256sum -c SHA256SUMS
-                  )
-
-                  while IFS= read -r -d '' archive; do
-                    gzip -dc "$archive" | docker load
-                  done < <(find "$image_dir" -maxdepth 1 -name '*.tar.gz' -print0)
-                done
-
                 az acr login --name "${{ parameters.acrName }}"
-
-                for architecture in amd64 arm64; do
-                  for image in \
-                    cache-server \
-                    cache-test-client \
-                    cacheserver-scheduler \
-                    cache-controller; do
-                    docker push \
-                      "${IMAGE_REGISTRY}/${image}:${CONTAINER_VERSION}-linux-${architecture}"
-                  done
-                done
-
-                DOCKER_REGISTRY="$IMAGE_REGISTRY" \
-                BUILD_NUMBER="$CONTAINER_VERSION" \
+                DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io/dacs" \
+                BUILD_ID="$(Build.BuildId)" \
+                BUILD_NUMBER="$(finalTag)" \
                 BUILD_ARCHS="amd64 arm64" \
-                  "$repository_root/.pipelines/scripts/publish/publish-multiplatform-manifests.sh"
+                  ./.pipelines/scripts/publish/promote-candidate-images.sh
 
           - task: AzureCLI@2
             displayName: Publish immutable Helm charts
@@ -362,7 +271,7 @@ stages:
               inlineScript: |
                 set -euo pipefail
 
-                readonly chart_artifacts="$(Pipeline.Workspace)/artifacts/helm-charts"
+                readonly chart_artifacts="$(Build.ArtifactStagingDirectory)/release/helm-charts"
                 readonly chart_metadata="$chart_artifacts/helm-chart.txt"
                 test -f "$chart_metadata"
 

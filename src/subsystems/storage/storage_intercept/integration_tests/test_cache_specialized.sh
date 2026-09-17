@@ -34,6 +34,15 @@ SCRIPT_DIR="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 export BUILD_CONFIGURATION="${1:-Debug}"
 source "${SCRIPT_DIR}/test_common.sh"
 
+TEST_GROUP="${DACS_TEST_GROUP:-all}"
+case "$TEST_GROUP" in
+  all|snapshot|eviction|remote) ;;
+  *)
+    echo "Unknown DACS_TEST_GROUP: $TEST_GROUP" >&2
+    exit 1
+    ;;
+esac
+
 echo "================================================"
 echo "CACHE SPECIALIZED TESTS - Starting"
 echo "================================================"
@@ -42,30 +51,35 @@ echo "================================================"
 # SECTION 10: SPECIALIZED VALIDATION AND INTEGRATION TESTS
 #===============================================================================
 
-echo "Running snapshot validation tests"
-source "$SCRIPT_DIR/snapshot_integration_test.sh"
-__run_restart_snapshot_basic_test__
-__test_snapshot_disk_mismatch__
-__test_no_crash_on_invalid_snapshot__
-__test_upload_download_snapshot_in_parallel__
-__test_no_crash_on_truncated_snapshot__
-echo -e "Snapshot validation tests passed\n\n"
+if [[ "$TEST_GROUP" == "all" || "$TEST_GROUP" == "snapshot" ]]; then
+  echo "Running snapshot validation tests"
+  source "$SCRIPT_DIR/snapshot_integration_test.sh"
+  __run_restart_snapshot_basic_test__
+  __test_snapshot_disk_mismatch__
+  __test_no_crash_on_invalid_snapshot__
+  __test_upload_download_snapshot_in_parallel__
+  __test_no_crash_on_truncated_snapshot__
+  echo -e "Snapshot validation tests passed\n\n"
+fi
 
-echo "Running cache eviction validation tests"
-source "$SCRIPT_DIR/eviction_integration_test.sh"
-__run_cache_client_lib_test_with_eviction__
-__run_eviction_test_with_parallel_upload_download__
-__run_eviction_test_with_restart_snapshot__
-__run_delete_by_last_access_time__
-echo -e "Cache eviction validation tests passed\n\n"
+if [[ "$TEST_GROUP" == "all" || "$TEST_GROUP" == "eviction" ]]; then
+  echo "Running cache eviction validation tests"
+  source "$SCRIPT_DIR/eviction_integration_test.sh"
+  __run_cache_client_lib_test_with_eviction__
+  __run_eviction_test_with_parallel_upload_download__
+  __run_eviction_test_with_restart_snapshot__
+  __run_delete_by_last_access_time__
+  echo -e "Cache eviction validation tests passed\n\n"
 
-source "$SCRIPT_DIR/last_access_distribution_integration_test.sh"
-__run__test__last_access_time_distribution__
+  source "$SCRIPT_DIR/last_access_distribution_integration_test.sh"
+  __run__test__last_access_time_distribution__
+fi
 
 #===============================================================================
 # SECTION: REMOTE CACHE TESTS
 #===============================================================================
 
+if [[ "$TEST_GROUP" == "all" || "$TEST_GROUP" == "remote" ]]; then
 export CACHESERVER_HOSTNAME="testhost"
 export CACHESERVER_SNAPSHOT_INTERVAL="1"
 export CACHESERVER_EVICTION_ENABLED="true"
@@ -120,6 +134,7 @@ fi
 echo -e "checksum both-legs test passed\n\n"
 
 stop_cache_server
+fi
 
 echo "================================================"
 echo "CACHE SPECIALIZED TESTS - COMPLETED SUCCESSFULLY"

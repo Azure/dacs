@@ -19,33 +19,27 @@ For the Azure implementation, see
 `.github/workflows/build.yml` workflow once for each architecture.
 
 ```text
-                              ci.yml
-                                |
-                    +-----------+-----------+
-                    |                       |
-             build(amd64)               build(arm64)
-                    |                       |
-          reusable build.yml         reusable build.yml
-                    |                       |
-          +---------+---------+   +---------+---------+
-          |         |         |   |         |         |
-       compile   images-go  packages     same jobs for arm64
-          |
-   Build/load native-build
-   Compile C++ and Go
-   Save native image artifact
-   Save build-tree artifact
-          |
-   +------+--------------------------+
-   |                  |              |
-images-cpp      python-package   rust-package
-   |
-Build cached C++ images
-   |
-   +----------------------+-----------------------+
-                          |
-                 Per-image tar artifacts
-                          |
+                           ci.yml
+                             |
+                 +-----------+-----------+
+                 |                       |
+          build(amd64)               build(arm64)
+                 |                       |
+       reusable build.yml         reusable build.yml
+
+Each reusable workflow runs the same architecture-specific graph:
+
+                  +----------------+
+                  |                |
+               compile         images-go
+                  |
+          +-------+-------+
+          |               |
+      images-cpp        packages
+
+The build jobs publish the native image, build tree, component images, Python
+wheel, and Rust crate. The caller then consumes those artifacts:
+
           +---------------+----------------+
           |               |                |
       unit-test       image-scan      integration-test
@@ -65,10 +59,10 @@ src/images/native-build/Dockerfile
 `docker/build-push-action` uses:
 
 ```text
-load: true
 push: false
 cache-from: type=gha,scope=native-build-<architecture>
-cache-to: type=gha,scope=native-build-<architecture>,mode=max
+cache-to: type=gha,scope=native-build-<architecture>,mode=min
+outputs: type=docker,dest=/tmp/dacs-native-build-image-<architecture>.tar
 ```
 
 The image is tagged with the ACR-shaped name expected by `bldenv.sh`, but it
@@ -79,15 +73,16 @@ dacstest.azurecr.io/dacs/native-build:linux-amd64
 dacstest.azurecr.io/dacs/native-build:linux-arm64
 ```
 
-The `compile` job saves the loaded image to a tarball and uploads it as:
+BuildKit writes the Docker archive directly. The `compile` job loads it once
+for compilation and uploads the same archive as:
 
 ```text
 dacs-native-build-image-amd64
 dacs-native-build-image-arm64
 ```
 
-Downstream jobs download and load the exact image. They do not rebuild it and
-do not depend on private ACR access.
+Downstream jobs download and load the exact image. They do not rebuild it,
+rerun `docker save`, or depend on private ACR access.
 
 ## GitHub Actions BuildKit caches
 
@@ -111,9 +106,10 @@ cache-controller-arm64
 The cache scopes prevent one architecture or image from overwriting another
 image's cache history.
 
-`mode=max` stores intermediate layers as well as final layers. This is
-important for multi-stage Dockerfiles because dependency-download and compiler
-layers can be reused even when the final image layer changes.
+The single-stage native-build and CacheServer images use `mode=min` to avoid
+exporting intermediate cache records that no later stage can reuse. The
+multi-stage CacheClient, scheduler, and controller images retain `mode=max` so
+dependency-download and compiler stages remain reusable.
 
 ## Compiler and package caches
 
@@ -143,7 +139,7 @@ src/subsystems/storage/rust/dacs_client/target
 ```
 
 Its key includes the runner operating system, architecture, and
-`Cargo.lock` hash. Unit-test and Rust-package jobs use the same cache boundary.
+`Cargo.lock` hash. The unit-test and packages jobs use the same cache boundary.
 
 ## Build-tree and package artifacts
 
@@ -167,12 +163,15 @@ The reusable workflow also uploads:
 
 | Artifact pattern | Contents |
 | --- | --- |
-| `dacs-native-build-image-<arch>` | Saved native toolchain image |
+| `dacs-native-build-image-<arch>` | BuildKit-exported native toolchain image |
 | `dacs-build-tree-<arch>` | Native binaries and CTest metadata |
-| `dacs-image-<name>-<arch>` | Saved component container image |
+| `dacs-image-<name>-<arch>` | BuildKit-exported component image |
 | `dacs-wheel-<arch>` | Python wheel |
 | `dacs-rust-crate-<arch>` | Rust crate |
 
+Large Docker and build-tree archives are uploaded with compression disabled.
+They are already composed mostly of compressed packages and binaries, so ZIP
+recompression adds CPU time without materially reducing transfer size.
 Artifacts are scoped to the workflow run and have short retention periods.
 They are transport objects between jobs, not releases.
 
@@ -210,7 +209,9 @@ Notation itself is installed from the official 1.3.2 release archive using a
 pinned SHA-256 checksum because the pinned setup action's built-in release table
 does not include that version.
 
-The resulting images are saved as workflow artifacts for tests and scanning.
+BuildKit exports each resulting image directly as a Docker archive containing
+both its local and versioned tags. The archive is uploaded without first
+loading the image and running `docker save`.
 
 ## Go application images
 
@@ -219,15 +220,17 @@ They do not depend on the native build tree, so their matrix jobs can run in
 parallel with native compilation.
 
 Each Go image has its own architecture-specific BuildKit cache scope and its
-own saved image artifact.
+own directly exported image artifact.
 
 ## Tests and scans reuse build outputs
 
 Downstream jobs consume artifacts from the build matrix:
 
 - Unit tests restore the build tree and native-build image.
-- Python and Rust package jobs restore the same architecture's build outputs.
-- Image scans load one component image artifact per matrix job.
+- The combined Python and Rust package job restores each architecture's build
+  outputs once and emits both package artifacts.
+- Image scans pass one component Docker archive directly to Trivy without
+  loading it into Docker.
 - Minikube integration tests load the component image artifacts they deploy.
 
 No downstream job should recompile native source merely to run a test.
@@ -239,6 +242,9 @@ The same workflow runs for pull requests and pushes to `main`.
 GitHub Actions concurrency cancels an older in-progress run for the same pull
 request. Pushes to `main` use the run ID in the concurrency group, so separate
 main pushes are not grouped by branch in this workflow.
+
+Every triggered workflow runs the complete build, unit-test, image-scan, and
+Minikube integration-test matrix for both AMD64 and ARM64.
 
 Both pull request and `main` runs can populate GitHub Actions caches. Neither
 path publishes the native-build image, application images, Python wheel, or
@@ -260,7 +266,7 @@ The systems use parallel concepts:
 | Build tree between jobs | Workflow artifact | Pipeline artifact |
 | ccache | `actions/cache` | `Cache@2` |
 | Cargo cache | `actions/cache` | `Cache@2` |
-| Registry publication | None in CI | Immutable images and official native promotion |
+| Registry publication | None in CI | Build candidates and registry-side promotion |
 
 The common correctness rule is the same: always evaluate current Docker build
 inputs, then let BuildKit decide which layers remain valid.
@@ -291,7 +297,8 @@ toolchain image, or build type changed.
 ### An image scan cannot find its image
 
 Confirm that the expected `dacs-image-<name>-<architecture>` artifact exists
-and that `docker load` completed before the scan.
+and contains `/tmp/dacs-image-<name>.tar` after download. Trivy scans that
+archive directly; the scan job does not run `docker load`.
 
 ### Documentation-only changes do not run CI
 

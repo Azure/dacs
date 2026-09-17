@@ -27,24 +27,16 @@ steps:
     persistCredentials: ${{ parameters.persistCredentials }}
 
   - task: DownloadPipelineArtifact@2
-    displayName: Download linux/${{ parameters.architecture }} build tree
+    displayName: Download linux/${{ parameters.architecture }} build artifacts
     inputs:
       buildType: current
-      artifact: dacs-build-tree-linux-${{ parameters.architecture }}
-      targetPath: $(Pipeline.Workspace)/artifacts/build-tree
-
-  - ${{ if eq(parameters.restoreWheel, true) }}:
-      - task: DownloadPipelineArtifact@2
-        displayName: Download linux/${{ parameters.architecture }} Python wheel
-        inputs:
-          buildType: current
-          artifact: dacs-python-wheel-linux-${{ parameters.architecture }}
-          targetPath: $(Pipeline.Workspace)/s/dacs/src/subsystems/storage/dacs_client/dist
+      artifact: dacs-build-linux-${{ parameters.architecture }}
+      targetPath: $(Pipeline.Workspace)/artifacts/build
 
   - bash: |
       set -euo pipefail
 
-      readonly archive="$(Pipeline.Workspace)/artifacts/build-tree/dacs-build-tree-linux-${{ parameters.architecture }}.tar"
+      readonly archive="$(Pipeline.Workspace)/artifacts/build/build-tree/dacs-build-tree-linux-${{ parameters.architecture }}.tar"
       test -f "$archive"
       tar -xf "$archive"
       test -d "bin/Release/${{ parameters.architecture }}"
@@ -96,6 +88,10 @@ steps:
   - ${{ if eq(parameters.restoreWheel, true) }}:
       - bash: |
           set -euo pipefail
-          test -n "$(find . -maxdepth 1 -name '*.whl' -print -quit)"
-        displayName: Verify linux/${{ parameters.architecture }} Python wheel
-        workingDirectory: $(Pipeline.Workspace)/s/dacs/src/subsystems/storage/dacs_client/dist
+
+          readonly wheel_source="$(Pipeline.Workspace)/artifacts/build/python-wheel"
+          readonly wheel_destination="$(Pipeline.Workspace)/s/dacs/src/subsystems/storage/dacs_client/dist"
+          test -n "$(find "$wheel_source" -maxdepth 1 -name '*.whl' -print -quit)"
+          mkdir -p "$wheel_destination"
+          cp "$wheel_source"/*.whl "$wheel_destination/"
+        displayName: Restore linux/${{ parameters.architecture }} Python wheel

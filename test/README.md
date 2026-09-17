@@ -231,6 +231,12 @@ Azure-backed storage suites after successful AMD64 and ARM64 builds:
 | Rust Azure Blob | `AzureTests_<arch>` serverless job | AMD64, ARM64 | `DACS_TEST_BLOB_PATH=<az-path> make test-rust-client-integration` |
 | InfiniBand | `InfiniBandTests` | AMD64 | `test_ib.sh Release` |
 
+Azure Pipelines runs the advanced cache suite as `cache` and `encryption`
+shards, and the specialized suite as `snapshot`, `eviction`, and `remote`
+shards. Set `DACS_TEST_GROUP` to one of those values to run a shard directly;
+the default `all` value preserves the complete local suite. Whenever
+`dacs-pullrequest` is queued, every shard runs for both AMD64 and ARM64.
+
 The official pipeline runs automatically on `main` and on its weekly Sunday
 schedule.
 It does not have an automatic PR trigger. Authorized internal users can

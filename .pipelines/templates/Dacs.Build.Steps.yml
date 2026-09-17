@@ -22,6 +22,8 @@ parameters:
   - name: pushNativeBuildImage
     type: boolean
     default: false
+  - name: buildCacheScope
+    type: string
 
 steps:
   - template: Dacs.Version.Steps.yml
@@ -112,6 +114,7 @@ steps:
 
       DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
       BUILD_ARCH="$architecture" \
+      BUILD_CACHE_SCOPE="${{ parameters.buildCacheScope }}" \
         ./.pipelines/scripts/build/rebuild-native-build-image.sh
 
       DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
@@ -129,21 +132,24 @@ steps:
       set -euo pipefail
 
       readonly architecture="${{ parameters.architecture }}"
-      readonly build_artifact_dir="$(Build.ArtifactStagingDirectory)/build-tree"
-      readonly wheel_artifact_dir="$(Build.ArtifactStagingDirectory)/python-wheel"
-      readonly crate_artifact_dir="$(Build.ArtifactStagingDirectory)/rust-crate"
+      readonly artifact_root="$(Build.ArtifactStagingDirectory)/build"
+      readonly build_artifact_dir="$artifact_root/build-tree"
+      readonly wheel_artifact_dir="$artifact_root/python-wheel"
+      readonly crate_artifact_dir="$artifact_root/rust-crate"
       readonly wheel_source="src/subsystems/storage/dacs_client/dist"
       readonly crate_source="src/subsystems/storage/rust/dacs_client/target/package"
 
       test -d bin
       test -d build
-      test -n "$(find build -name CTestTestfile.cmake -print -quit)"
       test -n "$(find "$wheel_source" -maxdepth 1 -name '*.whl' -print -quit)"
       test -n "$(find "$crate_source" -maxdepth 1 -name '*.crate' -print -quit)"
+      mapfile -d '' -t ctest_metadata < \
+        <(find build -name CTestTestfile.cmake -print0)
+      test "${#ctest_metadata[@]}" -gt 0
       mkdir -p "$build_artifact_dir" "$wheel_artifact_dir" "$crate_artifact_dir"
       tar -cf "$build_artifact_dir/dacs-build-tree-linux-${architecture}.tar" \
         bin \
-        $(find build -name CTestTestfile.cmake -print)
+        "${ctest_metadata[@]}"
       cp "$wheel_source"/*.whl "$wheel_artifact_dir/"
       cp "$crate_source"/*.crate "$crate_artifact_dir/"
     displayName: Package linux/${{ parameters.architecture }} build artifacts
@@ -153,6 +159,12 @@ steps:
       - bash: |
           set -euo pipefail
 
+          readonly architecture="${{ parameters.architecture }}"
+          readonly registry="${{ parameters.acrName }}.azurecr.io"
+          readonly git_sha="$(git rev-parse HEAD)"
+
           docker push \
-            "${{ parameters.acrName }}.azurecr.io/dacs/native-build:linux-${{ parameters.architecture }}"
+            "${registry}/dacs/native-build:git-${git_sha}-linux-${architecture}"
+          docker push \
+            "${registry}/dacs/native-build:linux-${architecture}"
         displayName: Push linux/${{ parameters.architecture }} native-build image

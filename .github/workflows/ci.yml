@@ -20,10 +20,8 @@ name: CI
 # iterated in the PR itself, and fork PRs get a read-only token with no secrets.
 #
 # It calls the reusable build workflow once, then fans out in parallel the
-# credential-free jobs that consume its artifacts (each `needs: build`, reusing
-# the build's artifacts via same-run download - no run-id or token needed). This
-# mirrors the ADO pipeline, where Build runs first and the downstream stages run
-# in parallel afterwards.
+# credential-free jobs that consume its artifacts. Every run executes the full
+# AMD64 and ARM64 build, scan, unit-test, and integration-test matrix.
 #
 # Only credential-free legs run here - each `needs: build` job below is
 # documented by its own comment, and those job definitions are the source of
@@ -76,11 +74,10 @@ jobs:
   # Vulnerability-scan the container images the build produced. Fans out into
   # one parallel job per component image (matrix) so the Trivy step is written
   # once instead of copy-pasted per image. Each job downloads only its own
-  # per-image dacs-image-<name>-<arch> artifact (docker load) instead of
-  # rebuilding it. fail-fast is off so one image's CVEs do not hide the others.
-  # This scan is report-only (exit-code 0): findings are uploaded as code-scanning
-  # alerts to triage over time and never fail the build. New vulnerable
-  # dependencies a PR adds are gated separately by the Dependency Review workflow.
+  # per-image dacs-image-<name>-<arch> artifact directly instead of rebuilding
+  # or loading it into Docker. fail-fast is off so one image's CVEs do not hide
+  # the others. The SARIF scan reports high and critical findings, then a second
+  # archive scan fails the job for fixable critical vulnerabilities.
   image-scan:
     name: Image vulnerability scan (${{ matrix.image }}, ${{ matrix.arch }})
     needs: build
@@ -118,15 +115,10 @@ jobs:
           name: dacs-image-${{ matrix.image }}-${{ matrix.arch }}
           path: /tmp
 
-      - name: Load image into Docker
-        env:
-          IMAGE_NAME: ${{ matrix.image }}
-        run: docker load -i "/tmp/dacs-image-${IMAGE_NAME}.tar"
-
       - name: Scan ${{ matrix.image }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
-          image-ref: '${{ matrix.image }}:local'
+          input: '/tmp/dacs-image-${{ matrix.image }}.tar'
           format: 'sarif'
           output: 'trivy-${{ matrix.image }}-${{ matrix.arch }}.sarif'
           exit-code: '0'
@@ -145,12 +137,14 @@ jobs:
       - name: Block fixable critical vulnerabilities in ${{ matrix.image }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
-          image-ref: '${{ matrix.image }}:local'
+          input: '/tmp/dacs-image-${{ matrix.image }}.tar'
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL'
+          skip-setup-trivy: true
+          cache: 'false'
 
   # CPU unit tests: native C++ (ctest), Go, and Rust. Reuses the compiled build
   # tree and restores the native-build toolchain image from the gha cache

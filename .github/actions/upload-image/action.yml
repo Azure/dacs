@@ -14,15 +14,14 @@
 
 name: Upload component image
 description: >-
-  Tags a locally built component image with the Git-derived container version,
-  saves both that tag and the local test tag to a tarball, and uploads it as the
-  dacs-image-<name>-<arch> artifact the test/scan jobs download.
+  Uploads the Docker archive produced directly by BuildKit as the
+  dacs-image-<name>-<arch> artifact consumed by test and scan jobs.
 
 inputs:
   name:
     description: >-
-      Component image name. Must match the local docker tag (<name>:local) and
-      is used as the dacs-image-<name>-<arch> artifact name.
+      Component image name used to locate dacs-image-<name>.tar and form the
+      dacs-image-<name>-<arch> artifact name.
     required: true
   arch:
     description: Target architecture suffix for the artifact name (e.g. amd64).
@@ -31,18 +30,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Save ${{ inputs.name }} image to a tarball
-      shell: bash
-      env:
-        IMAGE_NAME: ${{ inputs.name }}
-      run: |
-        version="$(./.pipelines/scripts/get-version.sh container)"
-        docker tag "${IMAGE_NAME}:local" "${IMAGE_NAME}:${version}"
-        docker save \
-          -o "${RUNNER_TEMP}/dacs-image-${IMAGE_NAME}.tar" \
-          "${IMAGE_NAME}:local" \
-          "${IMAGE_NAME}:${version}"
-
     - name: Upload ${{ inputs.name }} image
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
@@ -50,3 +37,4 @@ runs:
         path: ${{ runner.temp }}/dacs-image-${{ inputs.name }}.tar
         retention-days: 1
         if-no-files-found: error
+        compression-level: 0
