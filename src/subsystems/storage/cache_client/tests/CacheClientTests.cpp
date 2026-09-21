@@ -167,7 +167,7 @@ void CacheClientTests::InitializeClient(
      * impacts the execution time of every test in the suite.
      */
     client.Initialize(bIsDiscoveryEnabled ? nullptr : arrServers, /** arrServers*/
-                      nServers, /** nServers*/
+                      bIsDiscoveryEnabled ? 0 : nServers, /** nServers*/
                       nPort, /** nPort*/
                       enableIB, /** enableIB*/
                       enableCalculateChecksum, /** enableCalculateChecksum*/
@@ -436,7 +436,7 @@ TEST_P(CacheClientTests, Initialization)
     }
 }   
 //---------------------------------------------------------------------------------------------------------------------
-TEST_P(CacheClientTests, InitializeRejectsNonNullAuthCredentials)
+TEST(CacheClientPublicApiTests, InitializeRejectsNonNullAuthCredentials)
 {
     // Cache authentication has been removed. The public C API must reject any caller that
     // still supplies credentials rather than silently ignoring them.
@@ -454,7 +454,80 @@ TEST_P(CacheClientTests, InitializeRejectsNonNullAuthCredentials)
                    nullptr, /**strChecksumAlgorithm*/
                    &authCredentials, /**pAuthCredentials*/
                    false, /**bEnableConsistentHashing*/
-                   retryConfig));
+                   retryConfig,
+                   false, /**bEnableCacheServerDiscovery*/
+                   0, /**nCacheServerDiscoveryIntervalInSeconds*/
+                   nullptr /**strCacheServerDiscoveryEndpoint*/));
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST(CacheClientPublicApiTests, InitializeRejectsDiscoveryWithoutEndpoint)
+{
+    // Discovery cannot work without an endpoint to query. The failure must be loud: if Initialize
+    // substituted a placeholder it would return SUCCESS, discover nothing, and leave the caller
+    // believing the cache is healthy while every operation fails against an empty ring.
+    const char* arrServers[] = {"127.0.0.1"};
+    const CacheClientRetryConfig retryConfig{1, 0, 0};
+
+    const auto initializeWithEndpoint = [&](const char* strEndpoint) {
+        return Initialize(arrServers, /**arrServers*/
+                          1, /**nServers*/
+                          9065, /**nPort*/
+                          false, /**bEnableIB*/
+                          false, /**bEnableCalculateChecksum*/
+                          false, /**bEnableValidateChecksum*/
+                          nullptr, /**strChecksumAlgorithm*/
+                          nullptr, /**pAuthCredentials*/
+                          false, /**bEnableConsistentHashing*/
+                          retryConfig,
+                          true, /**bEnableCacheServerDiscovery*/
+                          30, /**nCacheServerDiscoveryIntervalInSeconds*/
+                          strEndpoint);
+    };
+
+    ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT, initializeWithEndpoint(nullptr));
+    ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT, initializeWithEndpoint(""));
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST(CacheClientPublicApiTests, InitializeRejectsZeroDiscoveryInterval)
+{
+    // A zero interval would leave the background refresher spinning without ever sleeping.
+    const char* arrServers[] = {"127.0.0.1"};
+    const CacheClientRetryConfig retryConfig{1, 0, 0};
+
+    ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT,
+        Initialize(arrServers, /**arrServers*/
+                   1, /**nServers*/
+                   9065, /**nPort*/
+                   false, /**bEnableIB*/
+                   false, /**bEnableCalculateChecksum*/
+                   false, /**bEnableValidateChecksum*/
+                   nullptr, /**strChecksumAlgorithm*/
+                   nullptr, /**pAuthCredentials*/
+                   false, /**bEnableConsistentHashing*/
+                   retryConfig,
+                   true, /**bEnableCacheServerDiscovery*/
+                   0, /**nCacheServerDiscoveryIntervalInSeconds*/
+                   "127.0.0.1" /**strCacheServerDiscoveryEndpoint*/));
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST(CacheClientPublicApiTests, InitializeRejectsNullServerListWithNonzeroCount)
+{
+    const CacheClientRetryConfig retryConfig{1, 0, 0};
+
+    ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT,
+        Initialize(nullptr, /**arrServers*/
+                   1, /**nServers*/
+                   9065, /**nPort*/
+                   false, /**bEnableIB*/
+                   false, /**bEnableCalculateChecksum*/
+                   false, /**bEnableValidateChecksum*/
+                   nullptr, /**strChecksumAlgorithm*/
+                   nullptr, /**pAuthCredentials*/
+                   false, /**bEnableConsistentHashing*/
+                   retryConfig,
+                   true, /**bEnableCacheServerDiscovery*/
+                   30, /**nCacheServerDiscoveryIntervalInSeconds*/
+                   "127.0.0.1" /**strCacheServerDiscoveryEndpoint*/));
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_P(CacheClientTests, DownloadNonExistent)

@@ -20,6 +20,12 @@
 #include "CacheClientImpl.h"
 #include "CacheClientLogger.h"
 //---------------------------------------------------------------------------------------------------------------------
+// The discovery endpoint reaches ConnectionManager as a `const std::string&` (see
+// ConnectionManager's constructor), so it must be given a valid pointer even when discovery is off
+// and the value is never read. This is that filler; it is only ever passed when
+// bCacheServerDiscoveryEnabled is false.
+static const char* const c_strUnusedDiscoveryEndpoint = "127.0.0.1";
+//---------------------------------------------------------------------------------------------------------------------
 static std::shared_ptr<CacheClientImpl> GetImplInstance()
 {
     static std::shared_ptr<CacheClientImpl> instance = std::make_shared<CacheClientImpl>();
@@ -27,22 +33,36 @@ static std::shared_ptr<CacheClientImpl> GetImplInstance()
 }
 //---------------------------------------------------------------------------------------------------------------------
 extern "C" CacheClientStatus Initialize(
-    /*[in]*/ const char* const* arrServers,
-    /*[in]*/ uint32_t nServers,
-    /*[in]*/ uint32_t nPort,
-    /*[in]*/ bool bEnableIB,
-    /*[in]*/ bool bEnableCalculateChecksum,
-    /*[in]*/ bool bEnableValidateChecksum,
-    /*[in]*/ const char* strChecksumAlgorithm,
-    /*[in]*/ const AuthCredentials* pAuthCredentials,
-    /*[in]*/ bool bEnableConsistentHashing,
-    /*[in]*/ CacheClientRetryConfig retryConfig)
+    /*[inopt]*/ const char* const* arrServers,
+    /*[in]   */ uint32_t nServers,
+    /*[in]   */ uint32_t nPort,
+    /*[in]   */ bool bEnableIB,
+    /*[in]   */ bool bEnableCalculateChecksum,
+    /*[in]   */ bool bEnableValidateChecksum,
+    /*[in]   */ const char* strChecksumAlgorithm,
+    /*[in]   */ const AuthCredentials* pAuthCredentials,
+    /*[in]   */ bool bEnableConsistentHashing,
+    /*[in]   */ CacheClientRetryConfig retryConfig,
+    /*[in]   */ bool bEnableCacheServerDiscovery,
+    /*[in]   */ uint32_t nCacheServerDiscoveryIntervalInSeconds,
+    /*[inopt]*/ const char* strCacheServerDiscoveryEndpoint)
 {
     // Cache authentication has been removed. Credentials are no longer supported; reject
     // any caller that still supplies them rather than silently ignoring a security setting.
     if (pAuthCredentials != nullptr)
     {
         LOG_ERROR("Initialize called with non-null AuthCredentials, but cache authentication is no longer supported");
+        return CacheClientStatus::INVALID_ARGUMENT;
+    }
+
+    // Discovery cannot work without an endpoint to query. Reject it here rather than substituting a
+    // placeholder: a placeholder would satisfy the equivalent check inside CacheClientImpl, so the
+    // caller would get SUCCESS, discover against the placeholder forever and never learn that the
+    // ring is empty. Every cache operation would then fail while the client still reports healthy.
+    if (bEnableCacheServerDiscovery &&
+        (strCacheServerDiscoveryEndpoint == nullptr || *strCacheServerDiscoveryEndpoint == '\0'))
+    {
+        LOG_ERROR("Initialize called with cache server discovery enabled but no discovery endpoint");
         return CacheClientStatus::INVALID_ARGUMENT;
     }
 
@@ -53,12 +73,17 @@ extern "C" CacheClientStatus Initialize(
                                          bEnableCalculateChecksum,
                                          bEnableValidateChecksum,
                                          strChecksumAlgorithm,
-                                         0,                             /* nConnectionPoolSize */
+                                         0,     /* nConnectionPoolSize */
                                          false, /* bUseLocalServer */
                                          true,  /* bReuseConnections */
-                                         false, /* bCacheServerDiscoveryEnabled */
-                                         300,   /* nCacheServerDiscoveryIntervalInSeconds */
-                                         "127.0.0.1", /* nCacheServerDiscoveryEndpoint */
+                                         bEnableCacheServerDiscovery,
+                                         nCacheServerDiscoveryIntervalInSeconds,
+                                         // The endpoint is only meaningful when discovery is on, and the
+                                         // guard above guarantees it is present in that case. When discovery
+                                         // is off the value is unused, so substitute a placeholder rather
+                                         // than construct a std::string from the NULL the caller may pass.
+                                         bEnableCacheServerDiscovery ? strCacheServerDiscoveryEndpoint
+                                                                     : c_strUnusedDiscoveryEndpoint,
                                          bEnableConsistentHashing,
                                          retryConfig);
 }

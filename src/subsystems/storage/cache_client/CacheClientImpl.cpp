@@ -86,6 +86,12 @@ CacheClientStatus CacheClientImpl::Initialize(
         return CacheClientStatus::INTERNAL_ERROR;
     }
 
+    if(arrServers == nullptr && nNumServers != 0)
+    {
+        LOG_ERROR("Null server list provided with nonzero server count");
+        return CacheClientStatus::INVALID_ARGUMENT;
+    }
+
     if(!bIsCacheServerDiscoveryEnabled && !bUseLocalServer && (arrServers == nullptr || nNumServers == 0))
     {
         LOG_ERROR("Invalid empty server list");
@@ -95,6 +101,13 @@ CacheClientStatus CacheClientImpl::Initialize(
     if(bIsCacheServerDiscoveryEnabled && (nCacheServerDiscoveryEndpoint == nullptr || strlen(nCacheServerDiscoveryEndpoint) == 0))
     {
         LOG_ERROR("Discovery enabled but no discovery endpoint provided");
+        return CacheClientStatus::INVALID_ARGUMENT;
+    }
+
+    // A zero interval would make the background refresher spin without ever sleeping.
+    if(bIsCacheServerDiscoveryEnabled && nCacheServerDiscoveryIntervalInSeconds == 0)
+    {
+        LOG_ERROR("Discovery enabled but discovery interval is 0");
         return CacheClientStatus::INVALID_ARGUMENT;
     }
 
@@ -145,18 +158,35 @@ CacheClientStatus CacheClientImpl::Initialize(
         LOG_INFO("Invalid checksum algorithm provided, using default {}", ChecksumFactory::GetAlgorithmName(m_checksumAlgorithm));
     }
     
-    m_spConnectionManager = std::make_unique<ConnectionManager>(nPort,
-                                                                bUseLocalServer,
-                                                                vecServers,
-                                                                m_nConnectionPoolSize,
-                                                                bReuseConnections,
-                                                                bEnableIB,
-                                                                bIsCacheServerDiscoveryEnabled,
-                                                                nCacheServerDiscoveryIntervalInSeconds,
-                                                                nCacheServerDiscoveryEndpoint,
-                                                                bEnableConsistentHashing,
-                                                                nSocketSndbufSize,
-                                                                nSocketRcvbufSize);
+    // ConnectionManager's constructor can throw (std::runtime_error from the hasher factory, or a
+    // bare `throw "No cache servers configured"`). Initialize is reached through an extern "C"
+    // boundary, so letting an exception escape here terminates the host process instead of
+    // surfacing a status the caller can act on.
+    try
+    {
+        m_spConnectionManager = std::make_unique<ConnectionManager>(nPort,
+                                                                    bUseLocalServer,
+                                                                    vecServers,
+                                                                    m_nConnectionPoolSize,
+                                                                    bReuseConnections,
+                                                                    bEnableIB,
+                                                                    bIsCacheServerDiscoveryEnabled,
+                                                                    nCacheServerDiscoveryIntervalInSeconds,
+                                                                    nCacheServerDiscoveryEndpoint,
+                                                                    bEnableConsistentHashing,
+                                                                    nSocketSndbufSize,
+                                                                    nSocketRcvbufSize);
+    }
+    catch(const std::exception& e)
+    {
+        LOG_ERROR("Failed to create the connection manager: {}", e.what());
+        return CacheClientStatus::INTERNAL_ERROR;
+    }
+    catch(...)
+    {
+        LOG_ERROR("Failed to create the connection manager due to an unknown error");
+        return CacheClientStatus::INTERNAL_ERROR;
+    }
     
     m_bInitialized = true;
     STORAGE_METRIC_INITIALIZE();
