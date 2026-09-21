@@ -125,6 +125,9 @@ fn test_initialize() {
             std::ptr::null(), // Cache authentication has been removed; pAuthCredentials must be null.
             enable_consistent_hashing,
             retry_config,
+            false,               // bEnableCacheServerDiscovery: this test uses the static server list.
+            300,                 // nCacheServerDiscoveryIntervalInSeconds: ignored while discovery is off.
+            std::ptr::null(),    // strCacheServerDiscoveryEndpoint: ignored while discovery is off.
         );
 
         assert!(status == 0, "Initialize failed")

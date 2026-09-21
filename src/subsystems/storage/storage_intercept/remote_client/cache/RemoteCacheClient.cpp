@@ -118,8 +118,11 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
         }
     }
 
+    const uint32_t nInitialServers = bIsCacheServerDiscoveryEnabled
+        ? 0
+        : static_cast<uint32_t>(vsServerNodes.size());
     auto cacheStatus = m_spCacheClientImpl->Initialize(arrServers,
-                                                       static_cast<uint32_t>(vsServerNodes.size()),
+                                                       nInitialServers,
                                                        serverPort,
                                                        bUseInfiniband,
                                                        bEnableCalculateChecksum,

@@ -37,7 +37,7 @@ typedef enum
     NOTFOUND_LOCKED,
     INVALID_ARGUMENT,
     // Deprecated: cache authentication has been removed. Retained (and never returned by the
-    // cache server) so that the numeric values of subsequent entries remain ABI-stable.
+    // cache server) so that the numeric values of subsequent entries do not shift.
     AUTH_FAILED,
     INTERNAL_ERROR,
     CHECKSUM_MISMATCH,
@@ -55,8 +55,9 @@ typedef struct
     uint32_t nKeyValuePairs;
 } Metadata;
 //---------------------------------------------------------------------------------------------------------------------
-// Deprecated: cache authentication has been removed. Retained only so that Initialize() keeps a
-// stable ABI; Initialize() requires this to be NULL and rejects non-null values.
+// Deprecated: cache authentication has been removed. Retained only so that the Initialize()
+// parameter list keeps its shape for existing source; Initialize() requires this to be NULL
+// and rejects non-null values.
 typedef struct
 {
     char* m_strAccountName;
@@ -86,11 +87,21 @@ typedef struct
 } CacheClientRetryConfig;
 //---------------------------------------------------------------------------------------------------------------------
 /**
- * Initialize cache client, setting up configurations parameters.
- * 
- * @param arrServers List of server hostnames like `cacheserver-0.cacheserver.default.svc.cluster.local`
+ * Initialize cache client, setting up configuration parameters and optional built-in cache-server discovery.
+ *
+ * The checksum algorithm accepts only "xxhash32" and "crc32" (case-insensitive). A null, empty, or unsupported
+ * value does not cause initialization to fail; the client silently defaults to "xxhash32". Applications that must
+ * reject unsupported algorithms should validate this argument before calling Initialize().
+ *
+ * The cache-server ring can be supplied in either of two ways. A static list in `arrServers` fixes the ring for
+ * the life of the process. Enabling discovery instead lets the client query a discovery service and refresh the
+ * ring on a background thread, which is what callers whose cache-server set changes at runtime need.
+ *
+ * @param arrServers List of server hostnames like `cacheserver-0.cacheserver.default.svc.cluster.local`.
+ *        When discovery is enabled this may be `NULL` with nServers 0. A `NULL` list with a non-zero nServers
+ *        is always invalid.
  * @param nServers Size of the list `arrServers`
- * @param port Port number of the cache-servers, must be between 1 and 65535
+ * @param nPort Port number of the cache-servers and of the discovery service, must be between 1 and 65535
  * @param bEnableIB Enable InfiniBand when connecting to the cache-servers
  * @param bEnableCalculateChecksum Enable checksum calculation when uploading data to the cache-servers, (would impact performance)
  * @param bEnableValidateChecksum Enable checksum validation when downloading data from the cache-servers, (would impact performance)
@@ -101,24 +112,43 @@ typedef struct
  * @param bEnableConsistentHashing Enable consistent hashing for server selection
  * @param retryConfig Retry configuration for transient cache failures. Retries are disabled if nMaxAttempts is 1.
  *        All values must be valid: nMaxAttempts >= 1, nBaseDelayMillis > 0, nMaxDelayMillis > 0, and nBaseDelayMillis <= nMaxDelayMillis.
- * 
- * @returns CacheClientStatus indicating the status of the upload operation
- * 1. SUCCESS - If the cache client is initialized successfully
+ * @param bEnableCacheServerDiscovery Enable the built-in discovery client and background hash-ring refresh thread.
+ * @param nCacheServerDiscoveryIntervalInSeconds Seconds between refreshes. Must be non-zero when discovery is
+ *        enabled; ignored otherwise.
+ * @param strCacheServerDiscoveryEndpoint Hostname or address of the discovery service. Required when discovery is
+ *        enabled and ignored otherwise.
+ *
+ * Initialization is one-shot: there is no Uninitialize(), and calling Initialize() again returns INTERNAL_ERROR
+ * without changing any state. Re-calling it is not a way to update the server list.
+ *
+ * The three discovery parameters were appended to this signature rather than exposed through a separate entry
+ * point, so callers built against an earlier header must be recompiled.
+ *
+ * Discovered server names are resolved with getaddrinfo() at connect time, so the process must run somewhere those
+ * names resolve. In Kubernetes that means in-cluster using the cluster DNS resolver.
+ *
+ * @returns CacheClientStatus indicating the initialization status:
+ * 1. SUCCESS - The cache client is initialized. With discovery enabled, this can be returned before the first
+ *    successful discovery response; cache operations fail until a refresh populates the ring.
  * 2. INVALID_ARGUMENT - If the input parameters are invalid or out of range, e.g., nPort is larger than 65535,
- *    any of the server names in arrServers is null or empty, or pAuthCredentials is non-null.
- * 3. INTERNAL_ERROR - If the cache client fails to initialize due to some internal error.
+ *    any of the server names in arrServers is null or empty, pAuthCredentials is non-null, or discovery is
+ *    enabled without an endpoint or with a zero refresh interval.
+ * 3. INTERNAL_ERROR - If the cache client is already initialized, or fails to initialize due to some internal error.
 */
 CacheClientStatus Initialize(
-    /*[in]*/ const char* const* arrServers,
-    /*[in]*/ uint32_t nServers,
-    /*[in]*/ uint32_t nPort,
-    /*[in]*/ bool bEnableIB,
-    /*[in]*/ bool bEnableCalculateChecksum,
-    /*[in]*/ bool bEnableValidateChecksum,
-    /*[in]*/ const char* strChecksumAlgorithm,
-    /*[in]*/ const AuthCredentials* pAuthCredentials,
-    /*[in]*/ bool bEnableConsistentHashing,
-    /*[in]*/ CacheClientRetryConfig retryConfig);
+    /*[inopt]*/ const char* const* arrServers,
+    /*[in]   */ uint32_t nServers,
+    /*[in]   */ uint32_t nPort,
+    /*[in]   */ bool bEnableIB,
+    /*[in]   */ bool bEnableCalculateChecksum,
+    /*[in]   */ bool bEnableValidateChecksum,
+    /*[in]   */ const char* strChecksumAlgorithm,
+    /*[in]   */ const AuthCredentials* pAuthCredentials,
+    /*[in]   */ bool bEnableConsistentHashing,
+    /*[in]   */ CacheClientRetryConfig retryConfig,
+    /*[in]   */ bool bEnableCacheServerDiscovery,
+    /*[in]   */ uint32_t nCacheServerDiscoveryIntervalInSeconds,
+    /*[inopt]*/ const char* strCacheServerDiscoveryEndpoint);
 //---------------------------------------------------------------------------------------------------------------------
 /**
  * Uploads nLength bytes of data from pBuffer to the cache server and associates it with the key strCacheKey.
