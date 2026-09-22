@@ -21,6 +21,7 @@
 #include "IBConstants.h"
 #include "Logger.h"
 
+#include <cerrno>
 #include <cstring>
 #include <fcntl.h>
 #include <sys/socket.h>
@@ -36,9 +37,13 @@ using namespace ibutils;
 // function in verbs.h that dispatches through qp->context->ops.post_send).
 namespace fake_ib_server {
 
-static int fake_post_send(struct ibv_qp*, struct ibv_send_wr*, struct ibv_send_wr**)
+static int post_send_result = 0;
+static uint64_t last_send_wr_id = 0;
+
+static int fake_post_send(struct ibv_qp*, struct ibv_send_wr* wr, struct ibv_send_wr**)
 {
-    return 0; // success — no real IB hardware
+    last_send_wr_id = wr->wr_id;
+    return post_send_result;
 }
 
 static int fake_post_recv(struct ibv_qp*, struct ibv_recv_wr*, struct ibv_recv_wr**)
@@ -53,6 +58,8 @@ void InitContext()
     memset(&fake_context, 0, sizeof(fake_context));
     fake_context.ops.post_send = fake_post_send;
     fake_context.ops.post_recv = fake_post_recv;
+    post_send_result = 0;
+    last_send_wr_id = 0;
 }
 
 } // namespace fake_ib_server
@@ -74,6 +81,9 @@ static shared_ibv_qp MakeDummyQp()
     qp->context = &fake_ib_server::fake_context; // ops table for inline ibv_post_send dispatch
     return shared_ibv_qp(qp, [](ibv_qp* p) { delete p; });
 }
+//---------------------------------------------------------------------------------------------------------------------
+// Tests that do not inspect SEND completion ownership use buffer index 0 explicitly.
+static constexpr uint64_t TEST_SEND_WR_ID = MakeIBSendWrId(0);
 //---------------------------------------------------------------------------------------------------------------------
 // Helper: create a temp file, return its fd. Caller owns the fd.
 static int CreateTempFile(const std::string& path)
@@ -267,7 +277,7 @@ TEST_F(IBConnectionRecvfileTest, HappyPath_WriteToFile)
     // Unfortunately IBConnection takes shared_ibv_qp (shared_ptr with custom deleter).
     // We'll create a dummy one.
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, static_cast<int>(dataSize));
+    IBConnection conn(dummyQp, m_buffer.data(), 0, static_cast<int>(dataSize), TEST_SEND_WR_ID);
 
     int fileFd = CreateTempFile(m_tempPath);
     bool result = conn.Recvfile(fileFd, dataSize);
@@ -295,7 +305,7 @@ TEST_F(IBConnectionRecvfileTest, HappyPath_LargeTransfer)
     }
 
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, static_cast<int>(dataSize));
+    IBConnection conn(dummyQp, m_buffer.data(), 0, static_cast<int>(dataSize), TEST_SEND_WR_ID);
 
     int fileFd = CreateTempFile(m_tempPath);
     bool result = conn.Recvfile(fileFd, dataSize);
@@ -319,7 +329,7 @@ TEST_F(IBConnectionRecvfileTest, FailsWhenBufferTooSmall)
     }
 
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, bufferDataSize);
+    IBConnection conn(dummyQp, m_buffer.data(), 0, bufferDataSize, TEST_SEND_WR_ID);
 
     int fileFd = CreateTempFile(m_tempPath);
     bool result = conn.Recvfile(fileFd, 200); // request more than available
@@ -332,7 +342,7 @@ TEST_F(IBConnectionRecvfileTest, FailsWhenBufferTooSmall)
 TEST_F(IBConnectionRecvfileTest, ZeroLength)
 {
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, 100);
+    IBConnection conn(dummyQp, m_buffer.data(), 0, 100, TEST_SEND_WR_ID);
 
     int fileFd = CreateTempFile(m_tempPath);
     bool result = conn.Recvfile(fileFd, 0);
@@ -365,7 +375,7 @@ TEST_F(IBConnectionReadTest, ReadExactBuffer)
     }
 
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, dataSize);
+    IBConnection conn(dummyQp, m_buffer.data(), 0, dataSize, TEST_SEND_WR_ID);
 
     char out[256];
     int n = conn.Read(out, dataSize);
@@ -386,7 +396,7 @@ TEST_F(IBConnectionReadTest, ReadBeyondBuffer_ReturnsZero)
     }
 
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, dataSize);
+    IBConnection conn(dummyQp, m_buffer.data(), 0, dataSize, TEST_SEND_WR_ID);
 
     // Read all data first
     char out[64];
@@ -408,7 +418,7 @@ TEST_F(IBConnectionReadTest, PartialReads)
     }
 
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, dataSize);
+    IBConnection conn(dummyQp, m_buffer.data(), 0, dataSize, TEST_SEND_WR_ID);
 
     // Read in chunks of 30
     char out[100];
@@ -447,7 +457,7 @@ TEST_F(IBConnectionReadTest, PartialReads)
 TEST_F(IBConnectionReadTest, ZeroBytesReceived_ReadReturnsZero)
 {
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, 0);
+    IBConnection conn(dummyQp, m_buffer.data(), 0, 0, TEST_SEND_WR_ID);
 
     char out[16];
     int n = conn.Read(out, 16);
@@ -462,6 +472,7 @@ class IBConnectionWriteTest : public ::testing::Test
 protected:
     void SetUp() override
     {
+        fake_ib_server::InitContext();
         m_buffer.resize(IB_BUFFER_SIZE, 0);
     }
 
@@ -472,7 +483,7 @@ protected:
 TEST_F(IBConnectionWriteTest, Write_DataIntegrity_BytesAtCorrectOffset)
 {
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, 0);
+    IBConnection conn(dummyQp, m_buffer.data(), 0, 0, TEST_SEND_WR_ID);
 
     const std::string data = "Hello, IB World!";
     int n = conn.Write(const_cast<char*>(data.data()), static_cast<int>(data.size()));
@@ -486,7 +497,7 @@ TEST_F(IBConnectionWriteTest, Write_DataIntegrity_BytesAtCorrectOffset)
 TEST_F(IBConnectionWriteTest, Write_MultipleWrites_DataAccumulatesCorrectly)
 {
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, 0);
+    IBConnection conn(dummyQp, m_buffer.data(), 0, 0, TEST_SEND_WR_ID);
 
     const std::string part1 = "HEADER:";
     const std::string part2 = "DATA:12345";
@@ -502,7 +513,7 @@ TEST_F(IBConnectionWriteTest, Write_MultipleWrites_DataAccumulatesCorrectly)
 TEST_F(IBConnectionWriteTest, Write_ExceedsBufferSize_ReturnsError)
 {
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, 0);
+    IBConnection conn(dummyQp, m_buffer.data(), 0, 0, TEST_SEND_WR_ID);
 
     // Fill to capacity, then try one more byte
     std::vector<char> fillData(IB_BUFFER_SIZE, 'X');
@@ -518,7 +529,7 @@ TEST_F(IBConnectionWriteTest, Write_ExceedsBufferSize_ReturnsError)
 TEST_F(IBConnectionWriteTest, Write_ZeroBytes_Succeeds)
 {
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, 0);
+    IBConnection conn(dummyQp, m_buffer.data(), 0, 0, TEST_SEND_WR_ID);
 
     char dummy = 'x';
     int n = conn.Write(&dummy, 0);
@@ -529,7 +540,7 @@ TEST_F(IBConnectionWriteTest, Write_ZeroBytes_Succeeds)
 TEST_F(IBConnectionWriteTest, Write_NegativeSize_ReturnsError)
 {
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, 0);
+    IBConnection conn(dummyQp, m_buffer.data(), 0, 0, TEST_SEND_WR_ID);
 
     char dummy = 'x';
     int n = conn.Write(&dummy, -1);
@@ -547,7 +558,7 @@ TEST_F(IBConnectionWriteTest, ReadAndWrite_UsesSameBuffer_NoOverlap)
     const std::string request = "GET /file.dat";
     memcpy(m_buffer.data(), request.data(), request.size());
 
-    IBConnection conn(dummyQp, m_buffer.data(), 0, static_cast<int>(request.size()));
+    IBConnection conn(dummyQp, m_buffer.data(), 0, static_cast<int>(request.size()), TEST_SEND_WR_ID);
 
     // Read the request
     char readBuf[64] = {};
@@ -612,7 +623,7 @@ TEST_F(IBConnectionSendfileTest, HappyPath_SmallFile)
     int fd = CreateFileWithContent(fileContent);
 
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, 0);
+    IBConnection conn(dummyQp, m_buffer.data(), 0, 0, TEST_SEND_WR_ID);
 
     // Write a header first (like the real protocol does)
     const std::string header = "response-header";
@@ -641,7 +652,7 @@ TEST_F(IBConnectionSendfileTest, Sendfile_WithOffset)
     int fd = CreateFileWithContent(fileContent);
 
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, 0);
+    IBConnection conn(dummyQp, m_buffer.data(), 0, 0, TEST_SEND_WR_ID);
 
     const uint64_t offset = 1024;
     const uint64_t length = 2048;
@@ -658,7 +669,7 @@ TEST_F(IBConnectionSendfileTest, Sendfile_WithOffset)
 TEST_F(IBConnectionSendfileTest, Sendfile_ExceedsBuffer_Fails)
 {
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, 0);
+    IBConnection conn(dummyQp, m_buffer.data(), 0, 0, TEST_SEND_WR_ID);
 
     // Request more than buffer can hold
     bool result = conn.Sendfile(-1, 0, IB_BUFFER_SIZE + 1);
@@ -718,7 +729,7 @@ TEST_F(IBClientServerDataFlowTest, UploadProtocol_HeaderPlusData_ParsedCorrectly
 
     // Create server IBConnection as if data arrived via RDMA
     auto dummyQp = MakeDummyQp();
-    IBConnection serverConn(dummyQp, m_serverBuffer.data(), 0, static_cast<int>(offset));
+    IBConnection serverConn(dummyQp, m_serverBuffer.data(), 0, static_cast<int>(offset), TEST_SEND_WR_ID);
 
     // --- Server-side parsing (mirrors HandleRequest.cpp) ---
 
@@ -782,7 +793,7 @@ TEST_F(IBClientServerDataFlowTest, UploadProtocol_LargeChunk_32MB)
     memcpy(m_serverBuffer.data() + 4 + protoSize, chunkData.data(), chunkSize);
 
     auto dummyQp = MakeDummyQp();
-    IBConnection serverConn(dummyQp, m_serverBuffer.data(), 0, static_cast<int>(totalWireSize));
+    IBConnection serverConn(dummyQp, m_serverBuffer.data(), 0, static_cast<int>(totalWireSize), TEST_SEND_WR_ID);
 
     // Parse
     char meta[4];
@@ -816,7 +827,7 @@ TEST_F(IBClientServerDataFlowTest, DownloadProtocol_ServerWriteThenSendfile)
 {
     // Simulate server building a download response: response header + file data
     auto dummyQp = MakeDummyQp();
-    IBConnection serverConn(dummyQp, m_serverBuffer.data(), 0, 0);
+    IBConnection serverConn(dummyQp, m_serverBuffer.data(), 0, 0, TEST_SEND_WR_ID);
 
     // Server writes response header
     const std::string responseHeader = "response:status=200,size=2048";
@@ -849,7 +860,7 @@ TEST_F(IBClientServerDataFlowTest, RecvfileToFile_DataMatchesOriginal)
     memcpy(m_serverBuffer.data() + headerSize, originalData.data(), fileSize);
 
     auto dummyQp = MakeDummyQp();
-    IBConnection serverConn(dummyQp, m_serverBuffer.data(), 0, static_cast<int>(headerSize + fileSize));
+    IBConnection serverConn(dummyQp, m_serverBuffer.data(), 0, static_cast<int>(headerSize + fileSize), TEST_SEND_WR_ID);
 
     // Skip header
     char headerBuf[100];
@@ -884,7 +895,7 @@ TEST_F(IBConnectionRecvfileTest, Recvfile_BadFileDescriptor_Fails)
     for (int i = 0; i < dataSize; i++) m_buffer[static_cast<size_t>(i)] = static_cast<char>(i);
 
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, dataSize);
+    IBConnection conn(dummyQp, m_buffer.data(), 0, dataSize, TEST_SEND_WR_ID);
 
     bool result = conn.Recvfile(-1, dataSize);
     EXPECT_FALSE(result);
@@ -894,7 +905,7 @@ TEST_F(IBConnectionSendfileTest, Sendfile_BadFileDescriptor_Fails)
 {
     // Read from an invalid fd should fail gracefully
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, 0);
+    IBConnection conn(dummyQp, m_buffer.data(), 0, 0, TEST_SEND_WR_ID);
 
     // Size is within buffer limit, but fd is invalid → read() fails
     bool result = conn.Sendfile(-1, 0, 1024);
@@ -904,22 +915,43 @@ TEST_F(IBConnectionSendfileTest, Sendfile_BadFileDescriptor_Fails)
 TEST_F(IBConnectionWriteTest, WriteFinal_HappyPath)
 {
     // WriteFinal calls Write + FinalizeWrite. Verify data is written correctly.
+    constexpr uint32_t bufferIndex = 7;
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, 0);
+    IBConnection conn(dummyQp, m_buffer.data(), 0, 0, MakeIBSendWrId(bufferIndex));
 
     const std::string data = "response-payload";
     int n = conn.WriteFinal(const_cast<char*>(data.data()), static_cast<int>(data.size()));
     EXPECT_EQ(static_cast<int>(data.size()), n);
+    EXPECT_TRUE(conn.WasResponseSendPosted());
+    EXPECT_TRUE(IsIBSendWrId(fake_ib_server::last_send_wr_id));
+    EXPECT_EQ(bufferIndex, GetIBBufferIndex(fake_ib_server::last_send_wr_id));
+    EXPECT_FALSE(IsIBSendWrId(MakeIBReceiveWrId(bufferIndex)));
+    EXPECT_EQ(bufferIndex, GetIBBufferIndex(MakeIBReceiveWrId(bufferIndex)));
+    EXPECT_TRUE(IsValidIBBufferIndex(bufferIndex));
+    EXPECT_FALSE(IsValidIBBufferIndex(MAX_RECEIVE_BUFFERS));
 
     // Verify buffer contents
     EXPECT_EQ(0, memcmp(m_buffer.data(), data.data(), data.size()));
+}
+
+TEST_F(IBConnectionWriteTest, WriteFinal_PostSendFailure_DoesNotClaimBufferOwnership)
+{
+    fake_ib_server::post_send_result = EIO;
+    auto dummyQp = MakeDummyQp();
+    IBConnection conn(dummyQp, m_buffer.data(), 0, 0, TEST_SEND_WR_ID);
+
+    const std::string data = "response-payload";
+    int n = conn.WriteFinal(const_cast<char*>(data.data()), static_cast<int>(data.size()));
+
+    EXPECT_EQ(-1, n);
+    EXPECT_FALSE(conn.WasResponseSendPosted());
 }
 
 TEST_F(IBConnectionWriteTest, WriteFinal_CalledTwice_SecondFails)
 {
     // FinalizeWrite sets m_sendAttempted, so a second WriteFinal must fail.
     auto dummyQp = MakeDummyQp();
-    IBConnection conn(dummyQp, m_buffer.data(), 0, 0);
+    IBConnection conn(dummyQp, m_buffer.data(), 0, 0, TEST_SEND_WR_ID);
 
     const std::string data1 = "first";
     int n1 = conn.WriteFinal(const_cast<char*>(data1.data()), static_cast<int>(data1.size()));

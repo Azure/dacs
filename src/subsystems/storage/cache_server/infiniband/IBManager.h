@@ -87,6 +87,9 @@ class IBManager
         // Returns the index into m_bufferPosted for a given buffer address
         int BufferIndex(/*[in]*/ uint64_t addr) const;
 
+        // Returns the registered buffer address for a buffer index
+        uint64_t BufferAddress(/*[in]*/ uint32_t bufferIndex) const;
+
     private:
 
         // Whether IB is enabled and active

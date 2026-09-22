@@ -20,9 +20,9 @@
 using namespace ibutils;
 using namespace std;
 //---------------------------------------------------------------------------------------------------------------------
-IBConnection::IBConnection(shared_ibv_qp qp, char* buffer, uint32_t mrKey, int bytesReceived)
+IBConnection::IBConnection(shared_ibv_qp qp, char* buffer, uint32_t mrKey, int bytesReceived, uint64_t sendWrId)
 : m_qp(qp), m_buffer(buffer), m_mrKey(mrKey), m_nDataReadFromRemote(bytesReceived),
-  m_readOffset(0), m_writeOffset(0), m_sendAttempted(false)
+    m_readOffset(0), m_writeOffset(0), m_sendAttempted(false), m_responseSendPosted(false), m_sendWrId(sendWrId)
 {
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -61,7 +61,7 @@ bool IBConnection::FinalizeWrite()
     sg.lkey	  = m_mrKey;
     
     struct ibv_send_wr wr{};
-    wr.wr_id      = (uint64_t)m_buffer;
+    wr.wr_id      = m_sendWrId;
     wr.sg_list    = &sg;
     wr.num_sge    = 1;
     wr.opcode     = IBV_WR_SEND;
@@ -74,8 +74,14 @@ bool IBConnection::FinalizeWrite()
         return false;
     }
 
+    m_responseSendPosted = true;
     LOG_DEBUG("Sent response on qp={}", GetId());
     return true;
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool IBConnection::WasResponseSendPosted() const
+{
+    return m_responseSendPosted;
 }
 //---------------------------------------------------------------------------------------------------------------------
 int IBConnection::Write(char* buffer, int size)

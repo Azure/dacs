@@ -276,20 +276,29 @@ void IBManager::IBListenerThread()
                 continue;
             }
 
+            const uint32_t bufferIndex = GetIBBufferIndex(wc.wr_id);
+            if (!IsValidIBBufferIndex(bufferIndex))
+            {
+                LOG_CRITICAL("Received completion with invalid buffer index={} wrId={} qp={}",
+                    bufferIndex, wc.wr_id, wc.qp_num);
+                continue;
+            }
+            const uint64_t bufferAddr = BufferAddress(bufferIndex);
+
             if (wc.status != IBV_WC_SUCCESS)
             {
+                const bool isSendCompletion = IsIBSendWrId(wc.wr_id);
                 LOG_WARN("Received work completion error={},{} addr={} qp={}",
-                    ibv_wc_status_str(wc.status), wc.vendor_err, wc.wr_id, wc.qp_num);
+                    ibv_wc_status_str(wc.status), wc.vendor_err, bufferAddr, wc.qp_num);
 
-                // For RECV errors the buffer was consumed from the SRQ — mark it available.
-                // For SEND errors the buffer was already marked available when the RECV WC arrived.
-                if (wc.opcode == IBV_WC_RECV)
+                // wc.opcode is not reliable for failed or flushed completions, so use the WR ID tag.
+                if (!isSendCompletion)
                 {
-                    MarkBufferRemovedFromSRQ(wc.wr_id);
+                    MarkBufferRemovedFromSRQ(bufferAddr);
                 }
 
                 // Reclaim the memory buffer
-                PostWrToSRQ(wc.wr_id);
+                PostWrToSRQ(bufferAddr);
 
                 // Peer death or QP error — move QP to error state and remove from manager
                 // to prevent QP table exhaustion (mlx5 device cap is 2^17 QPs).
@@ -312,8 +321,8 @@ void IBManager::IBListenerThread()
             if (wc.opcode == IBV_WC_SEND)
             {
                 // We can reclaim the buffer
-                LOG_DEBUG("Received send completion: qp={} addr={}", wc.qp_num, wc.wr_id);
-                PostWrToSRQ(wc.wr_id);
+                LOG_DEBUG("Received send completion: qp={} addr={}", wc.qp_num, bufferAddr);
+                PostWrToSRQ(bufferAddr);
                 continue;
             }
 
@@ -323,10 +332,13 @@ void IBManager::IBListenerThread()
                 continue;
             }
 
-            LOG_DEBUG("Received receive work request addr={} qp={}", wc.wr_id, wc.qp_num);
+            LOG_DEBUG("Received receive work request addr={} qp={}", bufferAddr, wc.qp_num);
 
             // Buffer consumed from SRQ — mark as available so it can be re-posted after processing.
-            MarkBufferRemovedFromSRQ(wc.wr_id);
+            MarkBufferRemovedFromSRQ(bufferAddr);
+
+            // Request processing uses the registered address after completion classification is finished.
+            wc.wr_id = bufferAddr;
 
             // Allocate handler to process this work request
             {
@@ -384,8 +396,19 @@ void IBManager::ProcessRequest(const ibv_wc& wc)
     Metrics::IncrementActiveConnections();
     auto start_time = std::chrono::steady_clock::now();
 
-    IBConnection ibConnection(
-        qp, (char*) wc.wr_id, m_ibDevice.mrBuffer->lkey, static_cast<int>(wc.byte_len));
+    const int bufferIndex = BufferIndex(wc.wr_id);
+    if (bufferIndex < 0 || !IsValidIBBufferIndex(static_cast<uint32_t>(bufferIndex)))
+    {
+        LOG_CRITICAL("Received request with invalid buffer address={} qp={}", wc.wr_id, wc.qp_num);
+        Metrics::DecrementActiveConnections();
+        return;
+    }
+
+    IBConnection ibConnection(qp,
+        reinterpret_cast<char*>(wc.wr_id),
+        m_ibDevice.mrBuffer->lkey,
+        static_cast<int>(wc.byte_len),
+        MakeIBSendWrId(static_cast<uint32_t>(bufferIndex)));
     Request::TypeCase eRequestType = Request::TypeCase::TYPE_NOT_SET;
     ResponseCode eResponseCode = ResponseCode::SUCCESS;
     std::size_t nFileSize = 0;
@@ -398,8 +421,11 @@ void IBManager::ProcessRequest(const ibv_wc& wc)
     {
         LOG_WARN("Failed to process request. qp={} addr={}", wc.qp_num, wc.wr_id);
 
-        // Reclaim the memory buffer
-        PostWrToSRQ(wc.wr_id);
+        // A successfully posted SEND owns the buffer until its success or flushed completion arrives.
+        if (!ibConnection.WasResponseSendPosted())
+        {
+            PostWrToSRQ(wc.wr_id);
+        }
 
         // Set this QP to error state to drain all pending work requests on this QP.
         // Otherwise there could be orphaned WRs in the send/receive queue potentially causing queue overruns.
@@ -425,9 +451,16 @@ void IBManager::ProcessRequest(const ibv_wc& wc)
 //---------------------------------------------------------------------------------------------------------------------
 void IBManager::PostWrToSRQ(uint64_t bufferAddr)
 {
+    const int bufferIndex = BufferIndex(bufferAddr);
+    if (bufferIndex < 0)
+    {
+        LOG_CRITICAL("Cannot post invalid buffer address={} to SRQ", bufferAddr);
+        return;
+    }
+
     // Guard against duplicate calls (e.g. ProcessRequest failure path racing with a SEND error WC).
     // exchange(true): if the buffer was already posted (true), skip; otherwise mark posted and proceed.
-    if (m_bufferPosted[BufferIndex(bufferAddr)].exchange(true))
+    if (m_bufferPosted[bufferIndex].exchange(true))
     {
         LOG_INFO("PostWrToSRQ: duplicate call for already-posted buffer addr={}", bufferAddr);
         return;
@@ -439,15 +472,15 @@ void IBManager::PostWrToSRQ(uint64_t bufferAddr)
     sg.lkey	  = m_ibDevice.mrBuffer->lkey;
 
     struct ibv_recv_wr wr{};
-    wr.wr_id      = bufferAddr;
+    wr.wr_id      = MakeIBReceiveWrId(static_cast<uint32_t>(bufferIndex));
     wr.sg_list    = &sg;
     wr.num_sge    = 1;
     struct ibv_recv_wr* bad_wr = nullptr;
     int rc = ibv_post_srq_recv(m_ibDevice.receiveSRQ.get(), &wr, &bad_wr);
     if (rc != 0)
     {
-        // TODO: This memory buffer is now lost, just logging for now to check if this ever happens
-        LOG_CRITICAL("ibv_post_srq_recv failed error={},{}", rc, strerror(errno));
+        m_bufferPosted[bufferIndex].store(false);
+        LOG_CRITICAL("ibv_post_srq_recv failed addr={} error={},{}", bufferAddr, rc, strerror(errno));
     }
     else
     {
@@ -457,12 +490,29 @@ void IBManager::PostWrToSRQ(uint64_t bufferAddr)
 //---------------------------------------------------------------------------------------------------------------------
 void IBManager::MarkBufferRemovedFromSRQ(uint64_t bufferAddr)
 {
-    m_bufferPosted[BufferIndex(bufferAddr)].store(false);
+    const int bufferIndex = BufferIndex(bufferAddr);
+    if (bufferIndex < 0)
+    {
+        LOG_CRITICAL("Cannot mark invalid buffer address={} as removed from SRQ", bufferAddr);
+        return;
+    }
+    m_bufferPosted[bufferIndex].store(false);
 }
 //---------------------------------------------------------------------------------------------------------------------
 int IBManager::BufferIndex(uint64_t addr) const
 {
     auto base = reinterpret_cast<uint64_t>(m_ibDevice.mrBufferBlock.get());
+    const uint64_t totalSize = static_cast<uint64_t>(MAX_RECEIVE_BUFFERS) * IB_BUFFER_SIZE;
+    if (addr < base || addr >= base + totalSize || (addr - base) % IB_BUFFER_SIZE != 0)
+    {
+        return -1;
+    }
     return static_cast<int>((addr - base) / IB_BUFFER_SIZE);
+}
+//---------------------------------------------------------------------------------------------------------------------
+uint64_t IBManager::BufferAddress(uint32_t bufferIndex) const
+{
+    auto base = reinterpret_cast<uint64_t>(m_ibDevice.mrBufferBlock.get());
+    return base + static_cast<uint64_t>(bufferIndex) * IB_BUFFER_SIZE;
 }
 //---------------------------------------------------------------------------------------------------------------------
