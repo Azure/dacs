@@ -170,13 +170,13 @@ LOCAL_CACHE_CONTROLLER_IMG ?= cache-controller
 LOCAL_CACHE_CONTROLLER_TAG ?= local
 
 # Remote chart settings (ACR) - cache-server (old controller)
-HELM_CHART_REPO ?= charts/cache-server
+HELM_CHART_REPO ?= helmchart/cache-server
 HELM_CHART_BASE_VERSION ?= $(shell grep '^version:' helm/cache-server/Chart.yaml | awk '{print $$2}')
 HELM_CHART_VERSION ?= $(HELM_CHART_BASE_VERSION)-$(BUILD_NUMBER)
 
 # Remote chart settings (ACR) - dacs (new controller)
 DACS_CACHE_CHART_PATH ?= src/subsystems/cache-controller/charts/dacs
-DACS_CACHE_CHART_REPO ?= charts/dacs
+DACS_CACHE_CHART_REPO ?= helmchart/dacs
 DACS_CACHE_CHART_BASE_VERSION ?= $(shell grep '^version:' $(DACS_CACHE_CHART_PATH)/Chart.yaml | awk '{print $$2}')
 DACS_CACHE_CHART_VERSION ?= $(DACS_CACHE_CHART_BASE_VERSION)-$(BUILD_NUMBER)
 DACS_CACHE_NAMESPACE ?= cache-server

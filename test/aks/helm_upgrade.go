@@ -35,7 +35,7 @@ const (
 	// helmUpgradeChartRepoPath mirrors DACS_CACHE_CHART_REPO in deploy.mk
 	// and is the path under HELM_UPGRADE_TARGET_REGISTRY where the chart is
 	// pushed.
-	helmUpgradeChartRepoPath = "charts/dacs"
+	helmUpgradeChartRepoPath = "helmchart/dacs"
 
 	// cacheServerImageRepoName is the repository segment of the cacheserver
 	// image as published into the target ACR. It must match the
