@@ -14,6 +14,7 @@
 
 #pragma once
 //---------------------------------------------------------------------------------------------------------------------
+#include "IBConstants.h"
 #include "IConnection.h"
 #include "IBUtils.h"
 #include <stdint.h>
@@ -22,7 +23,12 @@
 class IBConnection : public IConnection
 {
     public:
-        IBConnection(ibutils::shared_ibv_qp qp, char* buffer, uint32_t mrKey, int bytesReceived);
+        IBConnection(
+            ibutils::shared_ibv_qp qp,
+            char* buffer,
+            uint32_t mrKey,
+            int bytesReceived,
+            uint64_t sendWrId);
         ~IBConnection();
 
         int Read(
@@ -50,6 +56,8 @@ class IBConnection : public IConnection
             /*[in ]*/ int fileFd,
             /*[in ]*/ uint64_t totalLength
             );
+
+        bool WasResponseSendPosted() const;
 
         int GetId();
 
@@ -80,5 +88,11 @@ class IBConnection : public IConnection
 
         // Flag to ensure we attempt to send only once after all data is written into the buffer
         bool m_sendAttempted;
+
+        // Whether the response buffer was successfully handed to the QP send queue
+        bool m_responseSendPosted;
+
+        // Work request identifier encoding this buffer's index and SEND operation type
+        const uint64_t m_sendWrId;
 };
 //---------------------------------------------------------------------------------------------------------------------
