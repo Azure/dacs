@@ -36,7 +36,7 @@ fi
 REGISTRY="${DOCKER_REGISTRY:?DOCKER_REGISTRY is required}"
 
 # Chart repo
-CHART_REPO="oci://$REGISTRY/dacs/charts"
+CHART_REPO="oci://$REGISTRY/dacs/helmchart"
 
 # Create output directory
 mkdir -p "$OUTPUT_DIR"

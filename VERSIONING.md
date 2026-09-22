@@ -111,8 +111,8 @@ dacstest.azurecr.io/dacs/cache-controller:<derived-version>
 Development and prerelease Helm charts use the same repository layout:
 
 ```text
-oci://dacstest.azurecr.io/dacs/charts/dacs:<derived-version>
-oci://dacstest.azurecr.io/dacs/charts/dacs-prereq:<derived-version>
+oci://dacstest.azurecr.io/dacs/helmchart/dacs:<derived-version>
+oci://dacstest.azurecr.io/dacs/helmchart/dacs-prereq:<derived-version>
 ```
 
 The development registry mirrors the MCR path beneath the registry host.
@@ -130,8 +130,8 @@ mcr.microsoft.com/dacs/cache-controller:v0.1.0
 It also publishes these Helm charts:
 
 ```text
-oci://mcr.microsoft.com/dacs/charts/dacs:0.1.0
-oci://mcr.microsoft.com/dacs/charts/dacs-prereq:0.1.0
+oci://mcr.microsoft.com/dacs/helmchart/dacs:0.1.0
+oci://mcr.microsoft.com/dacs/helmchart/dacs-prereq:0.1.0
 ```
 
 The images support `linux/amd64` and `linux/arm64`. Release automation promotes
