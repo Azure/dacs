@@ -21,3 +21,20 @@ pipelines:
           lastModifiedDate: 2026-09-22
         spotbugs:
           lastModifiedDate: 2026-09-22
+  477026:
+    usedNonDefaultBranch: true
+    retail:
+      binary:
+        credscan:
+          lastModifiedDate: 2026-09-22
+        binskim:
+          lastModifiedDate: 2026-09-22
+      source:
+        credscan:
+          lastModifiedDate: 2026-09-22
+        policheck:
+          lastModifiedDate: 2026-09-22
+        eslint:
+          lastModifiedDate: 2026-09-22
+        armory:
+          lastModifiedDate: 2026-09-22
