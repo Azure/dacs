@@ -14,9 +14,68 @@
 
 #include "EncryptionUtilTest.h"
 #include "StorageInterceptLogger.h"
+#include <algorithm>
+#include <cstring>
+#include <limits>
 #include <memory>
+#include <vector>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
+//---------------------------------------------------------------------------------------------------------------------
+namespace
+{
+    class EncryptionTestConnection final : public IConnection
+    {
+        public:
+            explicit EncryptionTestConnection(vector<char> data)
+                : m_data(std::move(data))
+            {
+            }
+
+            int Send(const char*, uint64_t size) override
+            {
+                return static_cast<int>(size);
+            }
+
+            int SendAndFinalize(const char*, uint64_t size) override
+            {
+                return static_cast<int>(size);
+            }
+
+            int Receive(char* buffer, uint64_t size) override
+            {
+                const uint64_t remaining = m_data.size() - m_offset;
+                const uint64_t bytesToCopy = std::min(size, remaining);
+                if (bytesToCopy == 0)
+                {
+                    return 0;
+                }
+
+                std::memcpy(buffer, m_data.data() + m_offset, bytesToCopy);
+                m_offset += bytesToCopy;
+                return static_cast<int>(bytesToCopy);
+            }
+
+            int GetId() override
+            {
+                return 1;
+            }
+
+            bool IsValidConnection() override
+            {
+                return true;
+            }
+
+            void ResetConnection() override
+            {
+                m_offset = 0;
+            }
+
+        private:
+            vector<char> m_data;
+            uint64_t m_offset = 0;
+    };
+}
 //---------------------------------------------------------------------------------------------------------------------
 EncryptionUtilTest::EncryptionUtilTest()
     : TestBase()
@@ -39,6 +98,7 @@ TEST_F(EncryptionUtilTest, EncryptDecryptTest)
 
     // 12 bytes IV
     string iv = encUtil.GenerateIV();
+    ASSERT_EQ(static_cast<size_t>(12), iv.size());
 
     // mac tag should be 16 bytes
     string tag(16, '\0');
@@ -167,5 +227,148 @@ TEST_F(EncryptionUtilTest, EncryptDecryptTest)
     finalLen = encUtil.GcmDecrypt(largeEncBuffer.get(), encLen, tag, iv, largeDecBuffer.get());
     ASSERT_EQ(4*1024*1024 - 1, finalLen);
     AssertEqArray<unsigned char>(largeOrigBuffer.get(), largeDecBuffer.get(), finalLen);
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Regression test: GcmDecrypt must never leave unauthenticated plaintext behind in its output
+// buffer when tag verification fails. Prior to the fix, EVP_DecryptUpdate wrote plaintext into
+// the output buffer before EVP_DecryptFinal_ex verified the GCM tag, so a failed verification
+// still left recoverable plaintext bytes in the buffer.
+TEST_F(EncryptionUtilTest, DecryptFailureDoesNotLeakPlaintextTest)
+{
+    string encKey = "1234567890";
+    EncryptionUtil encUtil(true, encKey.c_str());
+
+    string iv = encUtil.GenerateIV();
+    string tag(16, '\0');
+
+    unsigned char origBuffer[100];
+    GetRandDataBuffer(origBuffer, 100);
+
+    unsigned char encBuffer[100 + 16];
+    int encLen = encUtil.GcmEncrypt(origBuffer, 100, iv, encBuffer, tag);
+    ASSERT_EQ(100, encLen);
+
+    const unsigned char sentinel = 0xCC;
+    unsigned char decBuffer[100];
+
+    // Tamper with the tag so verification fails after EVP_DecryptUpdate has already run.
+    string badTag = tag;
+    badTag[0] ^= 0xFF;
+
+    memset(decBuffer, sentinel, sizeof(decBuffer));
+    int finalLen = encUtil.GcmDecrypt(encBuffer, encLen, badTag, iv, decBuffer);
+    ASSERT_EQ(-1, finalLen);
+    // The buffer must be cleansed (zeroed), not left holding the sentinel pattern (untouched)
+    // nor the unauthenticated plaintext (leaked).
+    for (int i = 0; i < 100; i++)
+    {
+        ASSERT_EQ(0, decBuffer[i]) << "unauthenticated plaintext byte " << i << " was not cleansed";
+    }
+
+    // Tamper with the ciphertext itself so the recovered "plaintext" differs from the
+    // original but verification still fails - same requirement applies.
+    unsigned char badEncBuffer[100 + 16];
+    memcpy(badEncBuffer, encBuffer, static_cast<size_t>(encLen));
+    badEncBuffer[0] ^= 0xFF;
+
+    memset(decBuffer, sentinel, sizeof(decBuffer));
+    finalLen = encUtil.GcmDecrypt(badEncBuffer, encLen, tag, iv, decBuffer);
+    ASSERT_EQ(-1, finalLen);
+    for (int i = 0; i < 100; i++)
+    {
+        ASSERT_EQ(0, decBuffer[i]) << "unauthenticated plaintext byte " << i << " was not cleansed";
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(EncryptionUtilTest, DoDecryptFailureCleansesCallerBufferTest)
+{
+    string encKey = "1234567890";
+    EncryptionUtil encUtil(true, encKey.c_str());
+
+    string iv = encUtil.GenerateIV();
+    string tag(16, '\0');
+
+    unsigned char origBuffer[100];
+    GetRandDataBuffer(origBuffer, sizeof(origBuffer));
+
+    unsigned char encBuffer[100];
+    int encLen = encUtil.GcmEncrypt(
+        origBuffer, static_cast<int>(sizeof(origBuffer)), iv, encBuffer, tag);
+    ASSERT_EQ(static_cast<int>(sizeof(origBuffer)), encLen);
+
+    tag[0] ^= 0xFF;
+
+    cache::DownloadResponse response;
+    auto& metadata = *response.mutable_metadata();
+    metadata[EncryptionUtil::CACHE_META_ENCRYPTION_ENABLED] = "true";
+    metadata[EncryptionUtil::CACHE_META_ENCRYPTION_ORIG_LEN] = std::to_string(encLen);
+    metadata[EncryptionUtil::CACHE_META_ENCRYPTION_IV] = iv;
+    metadata[EncryptionUtil::CACHE_META_ENCRYPTION_TAG] = tag;
+
+    vector<char> encryptedData(encBuffer, encBuffer + encLen);
+    EncryptionTestConnection connection(std::move(encryptedData));
+
+    constexpr char sentinel = static_cast<char>(0xCC);
+    char callerBuffer[100];
+    std::memset(callerBuffer, sentinel, sizeof(callerBuffer));
+    uint64_t readLength = sizeof(callerBuffer);
+
+    ASSERT_FALSE(encUtil.DoDecrypt(response, &connection, callerBuffer, readLength));
+    ASSERT_TRUE(std::all_of(std::begin(callerBuffer), std::end(callerBuffer),
+        [](char value) { return value == 0; }));
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(EncryptionUtilTest, RejectsLengthsLargerThanOpenSslIntTest)
+{
+    string encKey = "1234567890";
+    EncryptionUtil encUtil(true, encKey.c_str());
+    const size_t oversizedLength = static_cast<size_t>(std::numeric_limits<int>::max()) + 1;
+
+    cache::UploadRequest uploadRequest;
+    char inputBuffer = 0;
+    unique_ptr<char[]> encryptedBuffer;
+    int64_t encryptedLength = 0;
+    ASSERT_FALSE(encUtil.DoEncrypt(
+        &uploadRequest, &inputBuffer, oversizedLength, encryptedBuffer, encryptedLength));
+
+    cache::DownloadResponse downloadResponse;
+    auto& metadata = *downloadResponse.mutable_metadata();
+    metadata[EncryptionUtil::CACHE_META_ENCRYPTION_ENABLED] = "true";
+    metadata[EncryptionUtil::CACHE_META_ENCRYPTION_ORIG_LEN] = std::to_string(oversizedLength);
+
+    EncryptionTestConnection connection(vector<char>{});
+    char outputBuffer = 0;
+    uint64_t readLength = oversizedLength;
+    ASSERT_FALSE(encUtil.DoDecrypt(downloadResponse, &connection, &outputBuffer, readLength));
+}
+//---------------------------------------------------------------------------------------------------------------------
+// Regression test: reject undersized tag/iv values up front rather than reading past the end
+// of their backing buffers.
+TEST_F(EncryptionUtilTest, DecryptRejectsUndersizedTagAndIvTest)
+{
+    string encKey = "1234567890";
+    EncryptionUtil encUtil(true, encKey.c_str());
+
+    string iv = encUtil.GenerateIV();
+    string tag(16, '\0');
+
+    unsigned char origBuffer[100];
+    GetRandDataBuffer(origBuffer, 100);
+
+    unsigned char encBuffer[100 + 16];
+    int encLen = encUtil.GcmEncrypt(origBuffer, 100, iv, encBuffer, tag);
+    ASSERT_EQ(100, encLen);
+
+    unsigned char decBuffer[100];
+
+    // Undersized tag (e.g. a truncated/corrupt metadata value from a malicious server).
+    string shortTag = tag.substr(0, 4);
+    int finalLen = encUtil.GcmDecrypt(encBuffer, encLen, shortTag, iv, decBuffer);
+    ASSERT_EQ(-1, finalLen);
+
+    // Undersized iv.
+    string shortIv = iv.substr(0, 4);
+    finalLen = encUtil.GcmDecrypt(encBuffer, encLen, tag, shortIv, decBuffer);
+    ASSERT_EQ(-1, finalLen);
 }
 //---------------------------------------------------------------------------------------------------------------------

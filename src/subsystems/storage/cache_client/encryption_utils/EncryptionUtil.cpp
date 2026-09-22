@@ -16,12 +16,19 @@
 #include "CommonLogger.h"
 #include "CacheUtils.h"
 #include <openssl/evp.h>
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/uuid_generators.hpp>
+#include <openssl/crypto.h>
+#include <openssl/rand.h>
+#include <cstring>
 #include <limits>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cache;
 using namespace std;
+//---------------------------------------------------------------------------------------------------------------------
+namespace
+{
+    constexpr int GCM_TAG_LEN = 16;
+    constexpr int GCM_IV_LEN = 12;
+}
 //---------------------------------------------------------------------------------------------------------------------
 EncryptionUtil::EncryptionUtil(bool encryptionEnabled, const char* encryptionKey)
 : m_encryptionEnabled(encryptionEnabled)
@@ -99,7 +106,7 @@ int EncryptionUtil::GcmEncrypt(unsigned char *plaintext, int plaintextLen,
     ciphertextLen += len;
 
     // Get the tag
-    if(1 != EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, (char*)tag.data()))
+    if(1 != EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, GCM_TAG_LEN, (char*)tag.data()))
     {
         LOG_ERROR("Failed to get the tag for authentication");
         EVP_CIPHER_CTX_free(ctx);
@@ -118,6 +125,20 @@ int EncryptionUtil::GcmDecrypt(unsigned char *ciphertext, int ciphertextLen,
     if (ciphertextLen <= 0)
     {
         LOG_ERROR("invalid buffer length: {}", ciphertextLen);
+        return -1;
+    }
+
+    // GCM_SET_TAG/DecryptInit_ex read a fixed number of bytes from tag/iv.data(). Reject
+    // undersized values up front so a malicious/corrupt server response can't trigger an
+    // out-of-bounds read of the std::string's backing buffer.
+    if (tag.size() != GCM_TAG_LEN)
+    {
+        LOG_ERROR("invalid GCM tag length: {}", tag.size());
+        return -1;
+    }
+    if (iv.size() != GCM_IV_LEN)
+    {
+        LOG_ERROR("invalid GCM iv length: {}", iv.size());
         return -1;
     }
 
@@ -146,16 +167,18 @@ int EncryptionUtil::GcmDecrypt(unsigned char *ciphertext, int ciphertextLen,
     {
         LOG_WARN("EVP_DecryptUpdate failed");
         EVP_CIPHER_CTX_free(ctx);
+        OPENSSL_cleanse(plaintext, static_cast<size_t>(ciphertextLen));
         return -1;
     }
 
     int plaintextLen = len;
 
     // Set expected tag value
-    if(!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, (unsigned char*)tag.data()))
+    if(!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, GCM_TAG_LEN, (unsigned char*)tag.data()))
     {
         LOG_ERROR("EVP_CIPHER_CTX_ctrl failed");
         EVP_CIPHER_CTX_free(ctx);
+        OPENSSL_cleanse(plaintext, static_cast<size_t>(ciphertextLen));
         return -1;
     }
 
@@ -173,18 +196,23 @@ int EncryptionUtil::GcmDecrypt(unsigned char *ciphertext, int ciphertextLen,
     }
     else
     {
-        // Verify failed
+        // EVP_DecryptUpdate may already have written unauthenticated plaintext, so cleanse
+        // the complete output before returning the authentication failure.
         LOG_WARN("Encrypted message verification failed");
+        OPENSSL_cleanse(plaintext, static_cast<size_t>(ciphertextLen));
         return -1;
     }
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::string EncryptionUtil::GenerateIV()
 {
-    // Generate random IV of 12 bytes (default length)
-    static thread_local boost::uuids::random_generator uuidGenerator;
-    boost::uuids::uuid uuid = uuidGenerator();
-    return std::string(uuid.begin(), uuid.begin() + 12);
+    std::string iv(GCM_IV_LEN, '\0');
+    if (RAND_bytes(reinterpret_cast<unsigned char*>(iv.data()), GCM_IV_LEN) != 1)
+    {
+        LOG_ERROR("Failed to generate random GCM IV");
+        return {};
+    }
+    return iv;
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool EncryptionUtil::DoEncrypt(UploadRequest* uploadRequest,
@@ -198,15 +226,20 @@ bool EncryptionUtil::DoEncrypt(UploadRequest* uploadRequest,
         return true;
     }
 
-    std::string iv = GenerateIV();
-    std::string tag(16, '\0');
-
-    if (inBufferLen > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+    if (inBufferLen == 0 || inBufferLen > static_cast<std::size_t>(std::numeric_limits<int>::max()))
     {
-        LOG_WARN_REQID("Encryption input exceeds the supported size", *uploadRequest);
+        LOG_WARN_REQID("Invalid encryption input length: {}", *uploadRequest, inBufferLen);
         return false;
     }
+
     const int inputLength = static_cast<int>(inBufferLen);
+
+    std::string iv = GenerateIV();
+    if (iv.size() != GCM_IV_LEN)
+    {
+        return false;
+    }
+    std::string tag(GCM_TAG_LEN, '\0');
 
     std::unique_ptr<char[]> buffer(new char[inBufferLen]);
     encLen = GcmEncrypt((unsigned char*)inBuffer, inputLength, iv, (unsigned char*)buffer.get(), tag);
@@ -254,9 +287,9 @@ bool EncryptionUtil::DoDecrypt(const DownloadResponse& response, IConnection* se
     }
 
     const uint64_t parsedOrigLen = std::strtoull(strLen->second.c_str(), nullptr, 0);
-    if (parsedOrigLen > static_cast<uint64_t>(std::numeric_limits<int>::max()))
+    if (parsedOrigLen == 0 || parsedOrigLen > static_cast<uint64_t>(std::numeric_limits<int>::max()))
     {
-        LOG_WARN("Encrypted message exceeds the supported size: {}", parsedOrigLen);
+        LOG_WARN("Invalid encrypted length: {}", parsedOrigLen);
         return false;
     }
     const int origLen = static_cast<int>(parsedOrigLen);
@@ -299,6 +332,7 @@ bool EncryptionUtil::DoDecrypt(const DownloadResponse& response, IConnection* se
     if (plainLen != origLen)
     {
         LOG_WARN("Decrypted len does not match original. orig: {}, dec: {}", origLen, plainLen);
+        OPENSSL_cleanse(buffer, static_cast<size_t>(origLen));
         return false;
     }
 

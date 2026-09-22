@@ -23,6 +23,10 @@ class EncryptionUtil
 {
     // Friends for testing
     FRIEND_TEST(EncryptionUtilTest, EncryptDecryptTest);
+    FRIEND_TEST(EncryptionUtilTest, DecryptFailureDoesNotLeakPlaintextTest);
+    FRIEND_TEST(EncryptionUtilTest, DoDecryptFailureCleansesCallerBufferTest);
+    FRIEND_TEST(EncryptionUtilTest, DecryptRejectsUndersizedTagAndIvTest);
+    FRIEND_TEST(EncryptionUtilTest, RejectsLengthsLargerThanOpenSslIntTest);
 
     public:
         EncryptionUtil(bool encryptionEnabled, const char* encryptionKey);
