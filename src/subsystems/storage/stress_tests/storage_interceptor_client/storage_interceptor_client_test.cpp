@@ -17,12 +17,16 @@
 #include <atomic>
 #include <boost/algorithm/string.hpp>
 #include <boost/program_options.hpp>
+#include <cerrno>
 #include <chrono>
+#include <fcntl.h>
 #include <iostream>
 #include <random>
+#include <sstream>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string>
+#include <sys/stat.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -265,37 +269,104 @@ void GenerateStorageInterceptorConfigFile(
     /*[in]*/ uint64_t)
 {
     std::string config_path = "/tmp/storageIntercept.config";
-    std::ofstream config_file(config_path);
-    if (config_file.is_open()) {
-        config_file << "storagePath " << strInterceptPath << "\n";
-        config_file << "type blob\n";
-        config_file << "azBlobDynamicAccount true\n";
-        config_file << "azBlobSASToken ${STORAGE_INTCPT_SAS_TOKEN}\n";
-        config_file << "enableLargePrefetch true\n";
-        config_file << "prefetchWindowSizeInMB 32\n";
-        config_file << "streamingChunkSize 33554432\n";
-        config_file << "maxConnsPerBlobClient 320\n";
-        config_file << "logRefreshIntervalInSeconds 300\n";
-        config_file << "prefetchCachePerFileSizeInMB 102500\n";
-        config_file << "prefetchCacheTotalSizeInMB 102500\n";
-        if (strCacheServerList != "" && CacheServerPort != 0) {
-            config_file << "cacheEnable true\n";
-            config_file << "cacheEnableRemote true\n";
-            config_file << "cacheIBEnabled " << (bIsIBEnabled ? "true" : "false") << "\n";
-            config_file << "cacheServerList " << strCacheServerList << "\n";
-            config_file << "cacheServerPort " << CacheServerPort << "\n";
-            config_file << "cacheMaxUploadBufferSizePerProcessGB 200\n";
-            config_file << "cacheNumUploadThreadsPerProcess 10\n";
-            config_file << "attributesCacheEnable true\n";
-            config_file << "attributesCacheUseRemoteServer true\n";
-            LOG_DEBUG("Configured cache related configurations in {}", config_path);
-        } else {
-            LOG_WARN("CACHE_SERVER_LIST or CACHE_SERVER_PORT environment variable is not set, working in Remote Blob mode only.");
-        }
-    } else {
-        LOG_ERROR("Failed to open config file: {}", config_path);
+    int fd = open(
+        config_path.c_str(),
+        O_CREAT | O_EXCL | O_NOFOLLOW | O_WRONLY | O_CLOEXEC | O_NONBLOCK,
+        0600);
+    const bool created = fd >= 0;
+    if (fd < 0 && errno == EEXIST)
+    {
+        fd = open(
+            config_path.c_str(),
+            O_NOFOLLOW | O_WRONLY | O_CLOEXEC | O_NONBLOCK);
     }
-    config_file.close();
+    if (fd < 0)
+    {
+        LOG_ERROR("Failed to open config file {}: {}", config_path, errno);
+        return;
+    }
+
+    struct stat config_stat;
+    if (fstat(fd, &config_stat) != 0 ||
+        !S_ISREG(config_stat.st_mode))
+    {
+        LOG_ERROR("Refusing untrusted config file: {}", config_path);
+        close(fd);
+        if (created)
+        {
+            unlink(config_path.c_str());
+        }
+        return;
+    }
+
+    if (ftruncate(fd, 0) != 0)
+    {
+        LOG_ERROR("Failed to truncate config file {}: {}", config_path, errno);
+        close(fd);
+        if (created)
+        {
+            unlink(config_path.c_str());
+        }
+        return;
+    }
+
+    std::ostringstream config_file;
+    config_file << "storagePath " << strInterceptPath << "\n";
+    config_file << "type blob\n";
+    config_file << "azBlobDynamicAccount true\n";
+    config_file << "azBlobSASToken ${STORAGE_INTCPT_SAS_TOKEN}\n";
+    config_file << "enableLargePrefetch true\n";
+    config_file << "prefetchWindowSizeInMB 32\n";
+    config_file << "streamingChunkSize 33554432\n";
+    config_file << "maxConnsPerBlobClient 320\n";
+    config_file << "logRefreshIntervalInSeconds 300\n";
+    config_file << "prefetchCachePerFileSizeInMB 102500\n";
+    config_file << "prefetchCacheTotalSizeInMB 102500\n";
+    if (strCacheServerList != "" && CacheServerPort != 0)
+    {
+        config_file << "cacheEnable true\n";
+        config_file << "cacheEnableRemote true\n";
+        config_file << "cacheIBEnabled " << (bIsIBEnabled ? "true" : "false") << "\n";
+        config_file << "cacheServerList " << strCacheServerList << "\n";
+        config_file << "cacheServerPort " << CacheServerPort << "\n";
+        config_file << "cacheMaxUploadBufferSizePerProcessGB 200\n";
+        config_file << "cacheNumUploadThreadsPerProcess 10\n";
+        config_file << "attributesCacheEnable true\n";
+        config_file << "attributesCacheUseRemoteServer true\n";
+        LOG_DEBUG("Configured cache related configurations in {}", config_path);
+    }
+    else
+    {
+        LOG_WARN("CACHE_SERVER_LIST or CACHE_SERVER_PORT environment variable is not set, working in Remote Blob mode only.");
+    }
+
+    const std::string contents = config_file.str();
+    size_t offset = 0;
+    while (offset < contents.size())
+    {
+        const ssize_t bytes_written = write(fd, contents.data() + offset, contents.size() - offset);
+        if (bytes_written < 0 && errno == EINTR)
+        {
+            continue;
+        }
+        if (bytes_written <= 0)
+        {
+            LOG_ERROR("Failed to write config file {}: {}", config_path, errno);
+            close(fd);
+            if (created)
+            {
+                unlink(config_path.c_str());
+            }
+            return;
+        }
+        offset += static_cast<size_t>(bytes_written);
+    }
+
+    if (close(fd) != 0)
+    {
+        LOG_ERROR("Failed to close config file {}: {}", config_path, errno);
+        return;
+    }
     LOG_INFO("Storage Interceptor config file generated at: {}", config_path);
 }
 

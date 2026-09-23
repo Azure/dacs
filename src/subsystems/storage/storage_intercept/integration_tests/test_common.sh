@@ -91,6 +91,7 @@ fi
 # 1.7 Storage Interceptor Library Path Configuration
 STORAGE_INTERCEPTOR="${REPOSITORY_ROOT}/bin/${BUILD_CONFIGURATION}/${BUILD_ARCH}/native-storage/storage/libStorageIntercept.so"
 STORAGE_INTERCEPT_CONFIG_FILE_PATH=/tmp/storageIntercept.config
+umask 077
 
 # 1.7 Export Environment Variables for Test Framework
 export STORAGE_INTERCEPT_USE_EXISTING_CONFIG=true

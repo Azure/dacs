@@ -25,6 +25,7 @@ read_shard() to write this file.
 """
 
 import os
+import stat
 import sys
 
 sys.path.insert(0, "/app")
@@ -48,8 +49,22 @@ def setup_config(config):
     cred = DefaultAzureCredential()
     token = cred.get_token("https://storage.azure.com/.default")
 
-    with open(config_path, "w") as f:
-        f.write(f"storagePath /mnt/dacs_cache\n")
+    create_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_NONBLOCK
+    try:
+        fd = os.open(config_path, create_flags, 0o600)
+    except FileExistsError:
+        fd = os.open(config_path, os.O_WRONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ValueError(f"Config path is not a regular file: {config_path}")
+        os.ftruncate(fd, 0)
+    except Exception:
+        os.close(fd)
+        raise
+
+    with os.fdopen(fd, "w") as f:
+        f.write("storagePath /mnt/dacs_cache\n")
         f.write(f"type blob\n")
         f.write(f"azBlobStorageAccountName {account}\n")
         f.write(f"azBlobStorageEndpoint https://{account}.blob.core.windows.net\n")

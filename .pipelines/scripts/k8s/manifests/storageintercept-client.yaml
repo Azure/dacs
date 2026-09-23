@@ -57,6 +57,7 @@ spec:
         args: 
           - |
             # Copy config to expected location
+            umask 077
             cp /config/storageIntercept.config /tmp/storageIntercept.config
             
             # Set LD_PRELOAD to use storage intercept library

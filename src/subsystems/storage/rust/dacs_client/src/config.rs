@@ -13,9 +13,9 @@
 // limitations under the License.
 
 use std::env;
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
@@ -110,15 +110,50 @@ impl ClientConfig {
             .config_dir
             .join(format!("storageIntercept.{}.config", std::process::id()));
 
-        let mut options = OpenOptions::new();
-        options.create(true).truncate(true).write(true);
-        #[cfg(unix)]
-        options.mode(0o600);
-
-        let mut file = options.open(&config_path)?;
+        let mut file = Self::open_config_file(&config_path)?;
         self.write_config(&mut file)?;
         env::set_var("STORAGE_INTERCEPT_CONFIG_FILEPATH", &config_path);
         Ok(config_path)
+    }
+
+    #[cfg(unix)]
+    fn open_config_file(config_path: &Path) -> io::Result<File> {
+        let mut create_options = OpenOptions::new();
+        create_options
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+
+        let file = match create_options.open(config_path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                let mut existing_options = OpenOptions::new();
+                existing_options
+                    .write(true)
+                    .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+                existing_options.open(config_path)?
+            }
+            Err(error) => return Err(error),
+        };
+
+        if !file.metadata()?.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "config path is not a regular file",
+            ));
+        }
+
+        file.set_len(0)?;
+        Ok(file)
+    }
+
+    #[cfg(not(unix))]
+    fn open_config_file(_config_path: &Path) -> io::Result<File> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "dacs-client supports Unix platforms only",
+        ))
     }
 
     fn write_config(&self, file: &mut impl Write) -> io::Result<()> {
