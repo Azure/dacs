@@ -68,6 +68,7 @@ int main()
                            strCacheServerHostName.c_str(), /*nCacheServerDiscoveryEndpoint*/
                            false,   /*bEnableConsistentHashing*/
                            retryConfig,
+                           CHECKSUM_METADATA_OPTIONAL,
                            0        /*nMaxBufferSizeBytes*/);
 
     std::string strFileName = "liveness_probe_" + cacheutils::GetCorrelationId();

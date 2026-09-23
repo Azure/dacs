@@ -51,6 +51,7 @@ CacheClientImpl::CacheClientImpl()
 , m_bEnableIB(false)
 , m_bEnableCalculateChecksum(true)
 , m_bEnableValidateChecksum(false)
+, m_checksumMetadataPolicy(CHECKSUM_METADATA_OPTIONAL)
 , m_checksumAlgorithm(DEFAULT_CHECKSUM_ALGORITHM)
 , m_nConnectionPoolSize(0)
 , m_nMaxBufferSizeBytes(0)
@@ -74,6 +75,7 @@ CacheClientStatus CacheClientImpl::Initialize(
     /*[in]*/ const char* nCacheServerDiscoveryEndpoint,
     /*[in]*/ const bool bEnableConsistentHashing,
     /*[in]*/ CacheClientRetryConfig retryConfig,
+    /*[in]*/ ChecksumMetadataPolicy checksumMetadataPolicy,
     /*[inopt]*/ std::size_t nMaxBufferSizeBytes,
     /*[inopt]*/ const int nSocketSndbufSize,
     /*[inopt]*/ const int nSocketRcvbufSize)
@@ -117,6 +119,15 @@ CacheClientStatus CacheClientImpl::Initialize(
         return CacheClientStatus::INVALID_ARGUMENT;
     }
 
+    if(checksumMetadataPolicy != CHECKSUM_METADATA_OPTIONAL &&
+       checksumMetadataPolicy != CHECKSUM_METADATA_REQUIRED)
+    {
+        LOG_WARN(
+            "Unknown checksum metadata policy {}; defaulting to optional",
+            static_cast<int>(checksumMetadataPolicy));
+        checksumMetadataPolicy = CHECKSUM_METADATA_OPTIONAL;
+    }
+
     std::vector<std::string> vecServers;
     if(arrServers != nullptr)
     {
@@ -143,6 +154,7 @@ CacheClientStatus CacheClientImpl::Initialize(
     m_nConnectionPoolSize = nConnectionPoolSize == 0 ? nDefaultConnectionPoolSize : nConnectionPoolSize;
     m_bEnableCalculateChecksum = bEnableCalculateChecksum;
     m_bEnableValidateChecksum = bEnableValidateChecksum;
+    m_checksumMetadataPolicy = checksumMetadataPolicy;
 
     if (!cacheclientretry::ValidateRetryConfig(retryConfig))
     {
@@ -305,7 +317,7 @@ CacheClientStatus CacheClientImpl::Upload(
             }
         }
 
-        if (m_bEnableCalculateChecksum && nBufferLength > 0)
+        if(m_bEnableCalculateChecksum)
         {
             auto checksumCalculator = ChecksumFactory::GetChecksumStrategyInstance(m_checksumAlgorithm);   
             if(checksumCalculator == nullptr)
@@ -316,7 +328,9 @@ CacheClientStatus CacheClientImpl::Upload(
                     static_cast<int>(m_checksumAlgorithm));
                 return CacheClientStatus::INTERNAL_ERROR;
             }
-            uint32_t calculatedChecksum = checksumCalculator->CalculateChecksum(pBuffer, nBufferLength);  
+            const char emptyBuffer = '\0';
+            const void* checksumBuffer = nBufferLength == 0 ? &emptyBuffer : pBuffer;
+            uint32_t calculatedChecksum = checksumCalculator->CalculateChecksum(checksumBuffer, nBufferLength);
             std::string bufferChecksum = std::to_string(calculatedChecksum);
             fileMetadata[(char*)CACHE_META_CHUNK_CHECKSUM_KEY] = bufferChecksum;
             fileMetadata[(char*)CACHE_META_CHECKSUM_ALGORITHM_KEY] = std::to_string(static_cast<int>(m_checksumAlgorithm));
@@ -681,7 +695,10 @@ CacheClientStatus CacheClientImpl::Download(
                         {
                             throw std::invalid_argument("Unsupported checksum algorithm");
                         }
-                        uint32_t calculatedChecksum = checksumCalculator->CalculateChecksum(pOutBuffer, actualReadLen);             
+                        const char emptyBuffer = '\0';
+                        const void* checksumBuffer = actualReadLen == 0 ? &emptyBuffer : pOutBuffer;
+                        uint32_t calculatedChecksum =
+                            checksumCalculator->CalculateChecksum(checksumBuffer, actualReadLen);
                         
                         uint64_t checksumValue = std::stoull(checksumIter->second);
                         if(checksumValue > UINT32_MAX)
@@ -727,6 +744,15 @@ CacheClientStatus CacheClientImpl::Download(
                 }
                 else
                 {
+                    if(m_checksumMetadataPolicy == CHECKSUM_METADATA_REQUIRED)
+                    {
+                        LOG_ERROR_CACHECLIENT_EXTENDED(
+                            "Checksum validation failed because algorithm metadata is missing",
+                            *downloadRequest);
+                        cacheClientStatus = CacheClientStatus::CHECKSUM_MISMATCH;
+                        m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
+                        return cacheClientStatus;
+                    }
                     LOG_WARN_CACHECLIENT_EXTENDED(
                         "Checksum validation skipped because algorithm metadata is missing",
                         *downloadRequest);
@@ -735,6 +761,15 @@ CacheClientStatus CacheClientImpl::Download(
             }
             else
             {
+                if(m_checksumMetadataPolicy == CHECKSUM_METADATA_REQUIRED)
+                {
+                    LOG_ERROR_CACHECLIENT_EXTENDED(
+                        "Checksum validation failed because checksum metadata is missing",
+                        *downloadRequest);
+                    cacheClientStatus = CacheClientStatus::CHECKSUM_MISMATCH;
+                    m_spConnectionManager->ReleaseConnection(hostname, std::move(serverConnection), true);
+                    return cacheClientStatus;
+                }
                 LOG_WARN_CACHECLIENT_EXTENDED(
                     "Checksum validation skipped because checksum metadata is missing",
                     *downloadRequest);

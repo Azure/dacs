@@ -82,6 +82,7 @@ class StorageInterceptConfig
         bool IsCacheValidateChecksumEnabled();
         bool IsSubChunkDisabledForChecksumValidation();
         std::string GetCacheChecksumAlgorithm();
+        std::string GetCacheChecksumMetadataPolicy();
         uint32_t GetCacheRetryMaxAttempts();
         uint64_t GetCacheRetryBaseDelayMillis();
         uint64_t GetCacheRetryMaxDelayMillis();

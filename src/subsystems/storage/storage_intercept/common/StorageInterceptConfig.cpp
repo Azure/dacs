@@ -786,6 +786,14 @@ std::string StorageInterceptConfig::GetCacheChecksumAlgorithm()
         StorageInterceptConstants::ConfigDefaultCacheChecksumAlgorithm);
 }
 //---------------------------------------------------------------------------------------------------------------------
+std::string StorageInterceptConfig::GetCacheChecksumMetadataPolicy()
+{
+    return StorageInterceptConfig::GetOptionalConfigStr(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameCacheChecksumMetadataPolicy,
+        StorageInterceptConstants::ConfigDefaultCacheChecksumMetadataPolicy);
+}
+//---------------------------------------------------------------------------------------------------------------------
 uint32_t StorageInterceptConfig::GetCacheRetryMaxAttempts()
 {
     return StorageInterceptConfig::GetOptionalConfigUint32(

@@ -45,7 +45,8 @@ extern "C" CacheClientStatus Initialize(
     /*[in]   */ CacheClientRetryConfig retryConfig,
     /*[in]   */ bool bEnableCacheServerDiscovery,
     /*[in]   */ uint32_t nCacheServerDiscoveryIntervalInSeconds,
-    /*[inopt]*/ const char* strCacheServerDiscoveryEndpoint)
+    /*[inopt]*/ const char* strCacheServerDiscoveryEndpoint,
+    /*[in]   */ ChecksumMetadataPolicy checksumMetadataPolicy)
 {
     // Cache authentication has been removed. Credentials are no longer supported; reject
     // any caller that still supplies them rather than silently ignoring a security setting.
@@ -85,7 +86,8 @@ extern "C" CacheClientStatus Initialize(
                                          bEnableCacheServerDiscovery ? strCacheServerDiscoveryEndpoint
                                                                      : c_strUnusedDiscoveryEndpoint,
                                          bEnableConsistentHashing,
-                                         retryConfig);
+                                         retryConfig,
+                                         checksumMetadataPolicy);
 }
 //---------------------------------------------------------------------------------------------------------------------
 extern "C" CacheClientStatus Upload(

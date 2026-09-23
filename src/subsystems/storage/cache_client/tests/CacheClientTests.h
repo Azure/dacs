@@ -31,7 +31,8 @@ class CacheClientTests : public ::testing::TestWithParam<bool>
       bool bEnableCalculateChecksum = false,
       bool bEnableValidateChecksum = false,
       const char* strChecksumAlgorithm = nullptr,
-      bool bEnableConsistentHashing = false);
+      bool bEnableConsistentHashing = false,
+      ChecksumMetadataPolicy checksumMetadataPolicy = CHECKSUM_METADATA_OPTIONAL);
 
     // Discovery test helper methods
     bool WaitForServerCount(int expectedCount, int timeoutSeconds = 10) const;
@@ -46,5 +47,6 @@ class CacheClientTests : public ::testing::TestWithParam<bool>
 
     CacheClientImpl m_cacheClientImpl;
     CacheClientImpl m_cacheClientImplCRC;
+    CacheClientImpl m_cacheClientImplCRCMetadataRequired;
 };
 //---------------------------------------------------------------------------------------------------------------------

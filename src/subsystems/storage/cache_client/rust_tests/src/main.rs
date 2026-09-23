@@ -128,6 +128,7 @@ fn test_initialize() {
             false,               // bEnableCacheServerDiscovery: this test uses the static server list.
             300,                 // nCacheServerDiscoveryIntervalInSeconds: ignored while discovery is off.
             std::ptr::null(),    // strCacheServerDiscoveryEndpoint: ignored while discovery is off.
+            ChecksumMetadataPolicy_CHECKSUM_METADATA_OPTIONAL,
         );
 
         assert!(status == 0, "Initialize failed")

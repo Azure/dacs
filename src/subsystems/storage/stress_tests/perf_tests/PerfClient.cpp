@@ -760,6 +760,7 @@ int PerfClient(int argc, char *argv[])
                                                      strDiscoveryEndpoint.c_str(), /*nCacheServerDiscoveryEndpoint*/
                                                      false,                        /*bEnableConsistentHashing*/
                                                      retryConfig,
+                                                     CHECKSUM_METADATA_OPTIONAL,
                                                      nChunkSizeBytes);              /*nMaxBufferSizeBytes*/
 
     if (initStatus != CacheClientStatus::SUCCESS)

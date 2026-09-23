@@ -144,7 +144,8 @@ void CacheClientTests::InitializeClient(
     bool bEnableCalculateChecksum,
     bool bEnableValidateChecksum,
     const char* strChecksumAlgorithm,
-    bool bEnableConsistentHashing)
+    bool bEnableConsistentHashing,
+    ChecksumMetadataPolicy checksumMetadataPolicy)
 {
     static uint32_t nPort = static_cast<uint32_t>(std::stoul(getenv("CACHE_SERVER_PORT")));
 
@@ -180,7 +181,8 @@ void CacheClientTests::InitializeClient(
                       2, /** nCacheServerDiscoveryIntervalInSeconds*/
                       arrServers[0], /** nCacheServerDiscoveryEndpoint*/
                       bEnableConsistentHashing, /** bEnableConsistentHashing*/
-                      retryConfig
+                      retryConfig,
+                      checksumMetadataPolicy
                     );
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -211,7 +213,19 @@ void CacheClientTests::SetUp()
     if(!m_cacheClientImplCRC.IsInitialized())
     {
         InitializeClient(m_cacheClientImplCRC, bIsDiscoveryEnabled, true, true);
-    }   
+    }
+
+    if(!m_cacheClientImplCRCMetadataRequired.IsInitialized())
+    {
+        InitializeClient(
+            m_cacheClientImplCRCMetadataRequired,
+            bIsDiscoveryEnabled,
+            true,
+            true,
+            nullptr,
+            false,
+            CHECKSUM_METADATA_REQUIRED);
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 void CacheClientTests::TearDown()
@@ -457,7 +471,8 @@ TEST(CacheClientPublicApiTests, InitializeRejectsNonNullAuthCredentials)
                    retryConfig,
                    false, /**bEnableCacheServerDiscovery*/
                    0, /**nCacheServerDiscoveryIntervalInSeconds*/
-                   nullptr /**strCacheServerDiscoveryEndpoint*/));
+                   nullptr, /**strCacheServerDiscoveryEndpoint*/
+                   CHECKSUM_METADATA_OPTIONAL));
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST(CacheClientPublicApiTests, InitializeRejectsDiscoveryWithoutEndpoint)
@@ -481,7 +496,8 @@ TEST(CacheClientPublicApiTests, InitializeRejectsDiscoveryWithoutEndpoint)
                           retryConfig,
                           true, /**bEnableCacheServerDiscovery*/
                           30, /**nCacheServerDiscoveryIntervalInSeconds*/
-                          strEndpoint);
+                          strEndpoint,
+                          CHECKSUM_METADATA_OPTIONAL);
     };
 
     ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT, initializeWithEndpoint(nullptr));
@@ -507,7 +523,8 @@ TEST(CacheClientPublicApiTests, InitializeRejectsZeroDiscoveryInterval)
                    retryConfig,
                    true, /**bEnableCacheServerDiscovery*/
                    0, /**nCacheServerDiscoveryIntervalInSeconds*/
-                   "127.0.0.1" /**strCacheServerDiscoveryEndpoint*/));
+                   "127.0.0.1", /**strCacheServerDiscoveryEndpoint*/
+                   CHECKSUM_METADATA_OPTIONAL));
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST(CacheClientPublicApiTests, InitializeRejectsNullServerListWithNonzeroCount)
@@ -527,7 +544,8 @@ TEST(CacheClientPublicApiTests, InitializeRejectsNullServerListWithNonzeroCount)
                    retryConfig,
                    true, /**bEnableCacheServerDiscovery*/
                    30, /**nCacheServerDiscoveryIntervalInSeconds*/
-                   "127.0.0.1" /**strCacheServerDiscoveryEndpoint*/));
+                   "127.0.0.1", /**strCacheServerDiscoveryEndpoint*/
+                   CHECKSUM_METADATA_OPTIONAL));
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_P(CacheClientTests, DownloadNonExistent)
@@ -761,6 +779,94 @@ TEST_P(CacheClientTests, ChecksumValidationSkippedWhenMissingMetadata)
 
     free((void*)pBuffer);
     free((void*)pBuffer2);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, RequiredChecksumMetadataRejectsMissingMetadata)
+{
+    string filename = GetCorrelationId();
+    uint64_t nLength = 1024;
+    const void* pBuffer = GetRandomBuffer(nLength);
+
+    auto status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    void* pBuffer2 = malloc(nLength);
+    uint64_t readLength = nLength;
+    status = m_cacheClientImplCRCMetadataRequired.Download(filename.c_str(), pBuffer2, &readLength, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::CHECKSUM_MISMATCH, status);
+
+    free((void*)pBuffer);
+    free(pBuffer2);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, RequiredChecksumMetadataRejectsMissingAlgorithmMetadata)
+{
+    string filename = GetCorrelationId();
+    uint64_t nLength = 1024;
+    const void* pBuffer = GetRandomBuffer(nLength);
+
+    KeyValuePair kvPair;
+    kvPair.strKey = (char*)"CHUNK_CHECKSUM";
+    kvPair.strValue = (char*)"123456789";
+    Metadata metadata;
+    metadata.arrKeyValuePairs = &kvPair;
+    metadata.nKeyValuePairs = 1;
+
+    auto status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, &metadata, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    void* pBuffer2 = malloc(nLength);
+    uint64_t readLength = nLength;
+    status = m_cacheClientImplCRCMetadataRequired.Download(filename.c_str(), pBuffer2, &readLength, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::CHECKSUM_MISMATCH, status);
+
+    free((void*)pBuffer);
+    free(pBuffer2);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, RequiredChecksumMetadataAcceptsZeroLengthEntry)
+{
+    string filename = GetCorrelationId();
+
+    auto status = m_cacheClientImplCRC.Upload(filename.c_str(), nullptr, 0, 0, nullptr, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    uint64_t readLength = 0;
+    status =
+        m_cacheClientImplCRCMetadataRequired.Download(filename.c_str(), nullptr, &readLength, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+    ASSERT_EQ(readLength, 0U);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, UnknownChecksumMetadataPolicyDefaultsToOptional)
+{
+    string filename = GetCorrelationId();
+    uint64_t nLength = 1024;
+    const void* pBuffer = GetRandomBuffer(nLength);
+
+    auto status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    CacheClientImpl cacheClientWithUnknownPolicy;
+    InitializeClient(
+        cacheClientWithUnknownPolicy,
+        GetParam(),
+        false,
+        true,
+        nullptr,
+        false,
+        static_cast<ChecksumMetadataPolicy>(99));
+    ASSERT_TRUE(cacheClientWithUnknownPolicy.IsInitialized());
+
+    void* pBuffer2 = malloc(nLength);
+    uint64_t readLength = nLength;
+    status = cacheClientWithUnknownPolicy.Download(filename.c_str(), pBuffer2, &readLength, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+    ASSERT_EQ(readLength, nLength);
+    ASSERT_EQ(memcmp(pBuffer, pBuffer2, nLength), 0);
+
+    free((void*)pBuffer);
+    free(pBuffer2);
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_P(CacheClientTests, DownloadPartialFileWithChecksumEnabled)
