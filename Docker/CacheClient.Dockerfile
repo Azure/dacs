@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Build blobfuse2 with the dist_cache component from a pinned public commit.
-FROM mcr.microsoft.com/oss/go/microsoft/golang:1.26@sha256:5ef73864bf3795d1a5514e59b388028ad80190d7ba48f62f872328db9689e38d AS blobfuse2-builder
+FROM mcr.microsoft.com/oss/go/microsoft/golang:1.26@sha256:60b5397919c9852f0df6faf0f9d073c8c7d2042439922dfa5c56dad61965644a AS blobfuse2-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git ca-certificates libfuse3-dev pkg-config build-essential && \
     rm -rf /var/lib/apt/lists/*
