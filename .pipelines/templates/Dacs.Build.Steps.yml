@@ -126,6 +126,9 @@ steps:
 
       DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
         make rust-package BUILD_TYPE=Release BUILD_ARCH="$architecture"
+
+      DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
+        make aks-test-binary BUILD_TYPE=Release BUILD_ARCH="$architecture"
     displayName: Compile linux/${{ parameters.architecture }} and package clients
     workingDirectory: $(Pipeline.Workspace)/s/dacs
 

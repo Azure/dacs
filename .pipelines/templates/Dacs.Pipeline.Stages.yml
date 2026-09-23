@@ -200,6 +200,18 @@ stages:
             inputs:
               helmVersionToInstall: 3.21.3
           - template: /.pipelines/templates/Dacs.Version.Steps.yml@self
+          - task: DownloadPipelineArtifact@2
+            displayName: Download linux/amd64 build artifacts
+            inputs:
+              buildType: current
+              artifact: dacs-build-linux-amd64
+              targetPath: $(Pipeline.Workspace)/feed-artifacts/amd64
+          - task: DownloadPipelineArtifact@2
+            displayName: Download linux/arm64 build artifacts
+            inputs:
+              buildType: current
+              artifact: dacs-build-linux-arm64
+              targetPath: $(Pipeline.Workspace)/feed-artifacts/arm64
           - bash: |
               set -euo pipefail
               helm version
@@ -214,10 +226,19 @@ stages:
               readonly release_artifacts="$(Build.ArtifactStagingDirectory)/release"
               readonly helm_artifacts="$release_artifacts/helm-charts"
               readonly release_metadata="$release_artifacts/release-metadata"
+              readonly package_artifacts="$release_artifacts/packages"
               readonly source_version="$(./.pipelines/scripts/get-version.sh source)"
               readonly container_version="$(finalTag)"
+              readonly python_version="$(./.pipelines/scripts/get-version.sh python)"
+              readonly rust_version="$(./.pipelines/scripts/get-version.sh rust)"
+              readonly universal_version="$(./.pipelines/scripts/get-version.sh universal)"
               readonly git_commit="$(git rev-parse HEAD)"
               mkdir -p "$helm_artifacts" "$release_metadata"
+
+              ./.pipelines/scripts/build/prepare-package-artifacts.sh \
+                "$(Pipeline.Workspace)/feed-artifacts/amd64" \
+                "$(Pipeline.Workspace)/feed-artifacts/arm64" \
+                "$package_artifacts"
 
               cp dist/*.tgz "$helm_artifacts/"
               cp helm-chart.txt "$helm_artifacts/"
@@ -238,8 +259,21 @@ stages:
               cp helm-chart.txt "$release_metadata/"
 
               printf '%s\n' \
+                "SOURCE_VERSION=$source_version" \
                 "CONTAINER_VERSION=$container_version" \
+                "PYTHON_PACKAGE_NAME=dacs-client" \
+                "PYTHON_PACKAGE_VERSION=$python_version" \
+                "RUST_PACKAGE_NAME=dacs-rust-client" \
+                "RUST_PACKAGE_VERSION=$rust_version" \
+                "UNIVERSAL_PACKAGE_VERSION=$universal_version" \
+                "STORAGE_AMD64_PACKAGE_NAME=dacs-storage-amd64" \
+                "STORAGE_ARM64_PACKAGE_NAME=dacs-storage-arm64" \
+                "CACHE_CLIENT_AMD64_PACKAGE_NAME=dacs-storage-cache-client-amd64" \
+                "CACHE_CLIENT_ARM64_PACKAGE_NAME=dacs-storage-cache-client-arm64" \
+                "AKS_TEST_AMD64_PACKAGE_NAME=dacs-aks-tests-amd64" \
+                "AKS_TEST_ARM64_PACKAGE_NAME=dacs-aks-tests-arm64" \
                 "GIT_COMMIT=$git_commit" \
+                "SOURCE_BUILD_ID=$(Build.BuildId)" \
                 "IMAGE_REGISTRY=$registry/dacs" \
                 > "$release_metadata/release.env"
             displayName: Package versioned artifacts

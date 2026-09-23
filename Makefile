@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-.PHONY: help build clean test pytest test-go test-native test-rust-client test-rust-client-integration rust-package images python-package storage-intercept-client helm-build helm-login helm-push deploy undeploy
+.PHONY: help build clean test pytest test-go test-native test-rust-client test-rust-client-integration rust-package aks-test-binary images python-package storage-intercept-client helm-build helm-login helm-push deploy undeploy
 
 # Include modular makefiles
 include deploy/deploy.mk
@@ -31,6 +31,7 @@ help:
 	@echo "  make test-rust-client              	- Run Rust client unit tests"
 	@echo "  make test-rust-client-integration  	- Run Rust client integration tests"
 	@echo "  make rust-package                  	- Build architecture-specific Rust client crate"
+	@echo "  make aks-test-binary               	- Build the standalone AKS Ginkgo test binary"
 	@echo "  make images                        	- Build Docker images"
 	@echo ""
 	@echo "Cluster Provisioning:"

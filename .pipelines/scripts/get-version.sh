@@ -109,6 +109,11 @@ to_python_version() {
     return 1
 }
 
+to_universal_version() {
+    local version="${1#v}"
+    echo "${version/+/.g}"
+}
+
 main() {
     local source_version
     source_version="$(derive_source_version)"
@@ -126,11 +131,16 @@ main() {
         python)
             to_python_version "${source_version}"
             ;;
+        universal)
+            to_universal_version "${source_version}"
+            ;;
         *)
-            echo "Usage: $0 {source|container|helm|rust|python}" >&2
+            echo "Usage: $0 {source|container|helm|rust|python|universal}" >&2
             return 2
             ;;
     esac
 }
 
-main
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main
+fi

@@ -39,6 +39,24 @@ assert_version() {
     fi
 }
 
+assert_universal_conversion() {
+    local expected="$1"
+    local source_version="$2"
+    local actual
+
+    actual="$(bash -c '
+        helper="$1"
+        source_version="$2"
+        shift 2
+        source "${helper}"
+        to_universal_version "${source_version}"
+    ' _ "${VERSION_HELPER}" "${source_version}")"
+    if [[ "${actual}" != "${expected}" ]]; then
+        echo "Expected universal version '${expected}', got '${actual}'." >&2
+        return 1
+    fi
+}
+
 TEST_REPOSITORY="$(mktemp -d)"
 git -C "${TEST_REPOSITORY}" init --quiet
 git -C "${TEST_REPOSITORY}" config user.email "test@example.com"
@@ -57,7 +75,27 @@ assert_version "v0.1.0-alpha.0.2_${sha}" container
 assert_version "0.1.0-alpha.0.2+${sha}" helm
 assert_version "0.1.0-alpha.0.2+${sha}" rust
 assert_version "0.1.0a0.dev2+${sha}" python
+assert_version "0.1.0-alpha.0.2.g${sha}" universal
+assert_universal_conversion \
+    "0.1.0-alpha.0.2.g01234567890123" \
+    "v0.1.0-alpha.0.2+01234567890123"
 
 git -C "${TEST_REPOSITORY}" tag v0.1.0
 assert_version "v0.1.0" source
 assert_version "0.1.0" python
+assert_version "0.1.0" universal
+
+git -C "${TEST_REPOSITORY}" tag --delete v0.1.0 >/dev/null
+git -C "${TEST_REPOSITORY}" tag v0.2.0-rc.1
+assert_version "v0.2.0-rc.1" source
+assert_version "0.2.0rc1" python
+assert_version "0.2.0-rc.1" universal
+
+touch "${TEST_REPOSITORY}/third"
+git -C "${TEST_REPOSITORY}" add third
+git -C "${TEST_REPOSITORY}" commit --quiet -m "third"
+dev_sha="$(git -C "${TEST_REPOSITORY}" rev-parse --short=14 HEAD)"
+readonly dev_sha
+assert_version "v0.2.0-rc.1.1+${dev_sha}" source
+assert_version "0.2.0rc1.dev1+${dev_sha}" python
+assert_version "0.2.0-rc.1.1.g${dev_sha}" universal
