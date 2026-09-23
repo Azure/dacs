@@ -89,6 +89,23 @@ make undeploy
 make unprovision
 ```
 
+### Standalone AKS Test Binary
+
+Build the architecture-specific Ginkgo test executable with:
+
+```sh
+make aks-test-binary BUILD_ARCH=amd64
+```
+
+The output is written to:
+
+```text
+bin/Release/<architecture>/aks-tests/dacs-aks-tests
+```
+
+The executable is self-contained, but AKS tests still require a valid
+kubeconfig and the external `az`, `helm`, and `kubectl` commands.
+
 ## Support Bundle
 
 `make get-support-bundle` collects diagnostic information from the cluster.

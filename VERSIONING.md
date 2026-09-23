@@ -70,10 +70,13 @@ the source without affecting version precedence.
 | Helm `appVersion` | `v0.1.0` | `v0.1.0-rc.1` | `v0.2.0-alpha.0.6+a1b2c3d4e5f6a7` |
 | Python package | `0.1.0` | `0.1.0rc1` | `0.2.0a0.dev6+a1b2c3d4e5f6a7` |
 | Rust package | `0.1.0` | `0.1.0-rc.1` | `0.2.0-alpha.0.6+a1b2c3d4e5f6a7` |
+| Azure Universal Package | `0.1.0` | `0.1.0-rc.1` | `0.2.0-alpha.0.6.ga1b2c3d4e5f6a7` |
 
 OCI tags do not allow `+`, so container tags replace it with `_`. Helm performs
 the same conversion when storing chart versions in an OCI registry. Python
-uses the equivalent PEP 440 syntax.
+uses the equivalent PEP 440 syntax. Azure Universal Package versions preserve
+the development commit by replacing `+` with `.g`, which keeps the SHA in an
+alphanumeric prerelease identifier.
 
 ## Select a release line
 
@@ -138,9 +141,21 @@ The images support `linux/amd64` and `linux/arm64`. Release automation promotes
 the validated image digests from the development registry instead of
 rebuilding them.
 
-Python wheels and Rust crate packages remain pipeline artifacts. They contain
-the derived package version but are not uploaded to PyPI or crates.io. The
-Python distribution name is always `dacs-client`.
+Official builds retain validated native packages, architecture-specific AKS
+Ginkgo test binaries, Python wheels, and a unified Rust package source bundle
+as pipeline artifacts. The Python distribution name is `dacs-client`; the
+Cargo package name is `dacs-rust-client`.
+
+Architecture-specific Azure Universal Package names are:
+
+```text
+dacs-storage-amd64
+dacs-storage-arm64
+dacs-storage-cache-client-amd64
+dacs-storage-cache-client-arm64
+dacs-aks-tests-amd64
+dacs-aks-tests-arm64
+```
 
 ## Release process
 
@@ -150,7 +165,8 @@ Python distribution name is always `dacs-client`.
 4. Advance the release with `alpha`, `beta`, and `rc` tags as needed.
 5. Create the stable tag on the approved commit.
 6. Promote the validated image digests and chart packages without rebuilding.
-7. Retain the Python wheel and Rust crate package as pipeline artifacts.
+7. Retain the native packages, AKS Ginkgo test binaries, Python wheels, and
+   unified Rust package source bundle as pipeline artifacts.
 8. Record the source tag, commit, coordinates, and digests in release metadata.
 
 All artifacts in a release derive from the same Git tag and commit. Release

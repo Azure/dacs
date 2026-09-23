@@ -40,6 +40,7 @@ NO_COLOR ?= false
 FOCUS ?=
 TEST_FILTER ?=
 TEST_TIMEOUT ?= 120m
+AKS_TEST_BINARY ?= bin/$(BUILD_TYPE)/$(BUILD_ARCH)/aks-tests/dacs-aks-tests
 
 # Ginkgo binary
 # NOTE: Version is also in the CI setup script - keep in sync
@@ -82,6 +83,20 @@ EXTRA_TEST_ARGS ?=
 .PHONY: test-e2e
 test-e2e: ginkgo kubectl mpi-operator ## Run tests against cluster. Use TEST_FILTER to filter by label.
 	$(call run_e2e_tests,$(COMPUTED_LABEL_FILTER),./test/perf ./test/e2e ./test/aks)
+
+.PHONY: aks-test-binary
+aks-test-binary: ## Build the standalone AKS Ginkgo test binary.
+	@if [ "$(USE_CONTAINER)" = "1" ]; then \
+		BUILD_ARCH=$(BUILD_ARCH) \
+		BUILD_TYPE=$(BUILD_TYPE) \
+		AKS_TEST_BINARY_OUTPUT="$(AKS_TEST_BINARY)" \
+		./bldenv.sh ./.pipelines/scripts/build/build-aks-test-binary.sh; \
+	else \
+		BUILD_ARCH=$(BUILD_ARCH) \
+		BUILD_TYPE=$(BUILD_TYPE) \
+		AKS_TEST_BINARY_OUTPUT="$(AKS_TEST_BINARY)" \
+		./.pipelines/scripts/build/build-aks-test-binary.sh; \
+	fi
 
 define run_e2e_tests
 GIT_COMMIT=$(GIT_COMMIT) GIT_BRANCH=$(GIT_BRANCH) PATH=$(LOCALBIN):$$PATH $(GINKGO) -v -r --timeout="$(TEST_TIMEOUT)" $(if $(1),--label-filter="$(1)",) --focus="$(FOCUS)" --no-color="$(NO_COLOR)" $(2) -- \
