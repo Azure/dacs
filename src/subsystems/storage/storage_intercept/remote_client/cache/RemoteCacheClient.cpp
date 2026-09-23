@@ -50,6 +50,19 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
     bool bEnableCalculateChecksum = StorageInterceptConfig::GetInstance().IsCacheCalculateChecksumEnabled();
     bool bEnableValidateChecksum = StorageInterceptConfig::GetInstance().IsCacheValidateChecksumEnabled();
     const std::string strChecksumAlgorithm = StorageInterceptConfig::GetInstance().GetCacheChecksumAlgorithm();
+    const std::string strChecksumMetadataPolicy =
+        StorageInterceptConfig::GetInstance().GetCacheChecksumMetadataPolicy();
+    ChecksumMetadataPolicy checksumMetadataPolicy = CHECKSUM_METADATA_OPTIONAL;
+    if(boost::iequals(strChecksumMetadataPolicy, "required"))
+    {
+        checksumMetadataPolicy = CHECKSUM_METADATA_REQUIRED;
+    }
+    else
+    {
+        STORAGE_ASSERT(
+            boost::iequals(strChecksumMetadataPolicy, "optional"),
+            "cacheChecksumMetadataPolicy must be either 'optional' or 'required'");
+    }
     uint32_t nRetryMaxAttempts = StorageInterceptConfig::GetInstance().GetCacheRetryMaxAttempts();
     uint64_t nRetryBaseDelayMillis = StorageInterceptConfig::GetInstance().GetCacheRetryBaseDelayMillis();
     uint64_t nRetryMaxDelayMillis = StorageInterceptConfig::GetInstance().GetCacheRetryMaxDelayMillis();
@@ -136,6 +149,7 @@ RemoteCacheClient::RemoteCacheClient(/*[in] */ std::size_t nMaxBufferSize)
                                                        nDiscoveryEndpoint.c_str(),
                                                        bEnableConsistentHashing,
                                                        retryConfig,
+                                                       checksumMetadataPolicy,
                                                        nMaxBufferSize,
                                                        nSocketSndbufSize,
                                                        nSocketRcvbufSize);

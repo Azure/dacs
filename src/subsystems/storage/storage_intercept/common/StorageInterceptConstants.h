@@ -74,6 +74,8 @@ namespace StorageInterceptConstants
     const char* const ConfigNameSubChunkDisabledForChecksumValidation = "subChunkDisabledForChecksumValidation";
     const char* const ConfigNameCacheChecksumAlgorithm = "cacheChecksumAlgorithm";
     const char* const ConfigDefaultCacheChecksumAlgorithm = "xxhash32";
+    const char* const ConfigNameCacheChecksumMetadataPolicy = "cacheChecksumMetadataPolicy";
+    const char* const ConfigDefaultCacheChecksumMetadataPolicy = "optional";
     const char* const ConfigNameCacheServerDiscoveryEnabled = "cacheServerDiscoveryEnabled";
     const char* const ConfigNameCacheServerDiscoveryIntervalInSeconds = "cacheServerDiscoveryIntervalInSeconds";
     const char* const ConfigNameCacheServerDiscoveryEndpoint = "cacheServerDiscoveryEndpoint";

@@ -48,6 +48,7 @@ class CacheClientImpl
         /*[in]*/ const char* nCacheServerDiscoveryEndpoint,
         /*[in]*/ const bool bEnableConsistentHashing,
         /*[in]*/ CacheClientRetryConfig retryConfig,
+        /*[in]*/ ChecksumMetadataPolicy checksumMetadataPolicy = CHECKSUM_METADATA_OPTIONAL,
         /*[inopt]*/ const std::size_t nMaxBufferSizeBytes = MAX_BUFFER_SIZE_BYTES,
         /*[inopt]*/ const int nSocketSndbufSize = DEFAULT_SOCKET_BUF_SIZE,
         /*[inopt]*/ const int nSocketRcvbufSize = DEFAULT_SOCKET_BUF_SIZE);
@@ -96,6 +97,7 @@ class CacheClientImpl
     bool m_bEnableIB;
     bool m_bEnableCalculateChecksum;
     bool m_bEnableValidateChecksum;
+    ChecksumMetadataPolicy m_checksumMetadataPolicy;
     ChecksumAlgorithm m_checksumAlgorithm;
     uint32_t m_nConnectionPoolSize;
     CacheClientRetryConfig m_retryConfig;

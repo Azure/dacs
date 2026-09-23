@@ -43,6 +43,16 @@ typedef enum
     CHECKSUM_MISMATCH,
 } CacheClientStatus;
 //---------------------------------------------------------------------------------------------------------------------
+typedef enum
+{
+    // Preserve compatibility with cache entries written before checksum metadata was enabled.
+    // Missing checksum or algorithm metadata skips validation and the download succeeds.
+    CHECKSUM_METADATA_OPTIONAL,
+    // A full download cannot establish integrity without both checksum and algorithm metadata.
+    // Missing or empty integrity metadata is reported as CHECKSUM_MISMATCH.
+    CHECKSUM_METADATA_REQUIRED,
+} ChecksumMetadataPolicy;
+//---------------------------------------------------------------------------------------------------------------------
 typedef struct
 {
     char* strKey;
@@ -117,6 +127,11 @@ typedef struct
  *        enabled; ignored otherwise.
  * @param strCacheServerDiscoveryEndpoint Hostname or address of the discovery service. Required when discovery is
  *        enabled and ignored otherwise.
+ * @param checksumMetadataPolicy Controls missing checksum metadata behavior for full downloads when
+ *        bEnableValidateChecksum is true. CHECKSUM_METADATA_OPTIONAL preserves existing behavior by accepting
+ *        entries without checksum or algorithm metadata. CHECKSUM_METADATA_REQUIRED returns CHECKSUM_MISMATCH
+ *        when either field is missing or empty. Any other value defaults to CHECKSUM_METADATA_OPTIONAL.
+ *        Partial downloads are not checksum validated.
  *
  * Initialization is one-shot: there is no Uninitialize(), and calling Initialize() again returns INTERNAL_ERROR
  * without changing any state. Re-calling it is not a way to update the server list.
@@ -148,7 +163,8 @@ CacheClientStatus Initialize(
     /*[in]   */ CacheClientRetryConfig retryConfig,
     /*[in]   */ bool bEnableCacheServerDiscovery,
     /*[in]   */ uint32_t nCacheServerDiscoveryIntervalInSeconds,
-    /*[inopt]*/ const char* strCacheServerDiscoveryEndpoint);
+    /*[inopt]*/ const char* strCacheServerDiscoveryEndpoint,
+    /*[in]   */ ChecksumMetadataPolicy checksumMetadataPolicy);
 //---------------------------------------------------------------------------------------------------------------------
 /**
  * Uploads nLength bytes of data from pBuffer to the cache server and associates it with the key strCacheKey.
