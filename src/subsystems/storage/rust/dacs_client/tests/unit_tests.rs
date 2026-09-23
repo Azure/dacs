@@ -102,6 +102,8 @@ fn config_defaults_and_builder() {
 
 #[test]
 fn config_initialize_writes_correct_file() {
+    use std::os::unix::fs::PermissionsExt;
+
     let dir = std::env::temp_dir().join(format!("dacs_test_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = ClientConfig::new()
@@ -114,6 +116,74 @@ fn config_initialize_writes_correct_file() {
     assert!(c.contains("type blob"));
     assert!(c.contains("azBlobDynamicAccount true"));
     assert!(c.contains("enableWrite false"));
+    assert_eq!(
+        std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn config_initialize_replaces_existing_regular_file() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("dacs_replace_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let config = ClientConfig::new().with_config_dir(&dir);
+
+    let path = config.initialize().unwrap();
+    std::fs::write(&path, "stale config").unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+    assert_eq!(config.initialize().unwrap(), path);
+    let contents = std::fs::read_to_string(&path).unwrap();
+    assert!(contents.contains("storagePath /mnt/dacs_cache"));
+    assert!(!contents.contains("stale config"));
+    assert_eq!(
+        std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o644
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn config_initialize_rejects_symlink() {
+    let dir = std::env::temp_dir().join(format!("dacs_symlink_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let config_path = dir.join(format!("storageIntercept.{}.config", std::process::id()));
+    let target_path = dir.join("target");
+    std::fs::write(&target_path, "target must remain unchanged").unwrap();
+    std::os::unix::fs::symlink(&target_path, &config_path).unwrap();
+
+    let result = ClientConfig::new().with_config_dir(&dir).initialize();
+    assert!(result.is_err());
+    assert_eq!(
+        std::fs::read_to_string(&target_path).unwrap(),
+        "target must remain unchanged"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn config_initialize_rejects_fifo() {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let dir = std::env::temp_dir().join(format!("dacs_fifo_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let config_path = dir.join(format!("storageIntercept.{}.config", std::process::id()));
+    let config_path_c = CString::new(config_path.as_os_str().as_bytes()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(config_path_c.as_ptr(), 0o600) }, 0);
+
+    let result = ClientConfig::new().with_config_dir(&dir).initialize();
+    assert!(result.is_err());
+
     std::fs::remove_dir_all(&dir).ok();
 }
 

@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <sys/stat.h>
 #include <unordered_map>
 #include <unistd.h>
 
@@ -130,6 +131,52 @@ TEST_F(ConfigTest, FopenFailureReturnsFalse)
     // Use an invalid path that fopen cannot write to
     bool ok = generate_si_config("/nonexistent_dir/impossible_path.config");
     EXPECT_FALSE(ok);
+}
+
+TEST_F(ConfigTest, ExistingRegularConfigIsReplaced)
+{
+    FILE* existing = fopen(config_path_.c_str(), "w");
+    ASSERT_NE(existing, nullptr);
+    ASSERT_GT(fputs("stale config\n", existing), 0);
+    ASSERT_EQ(fclose(existing), 0);
+    ASSERT_EQ(chmod(config_path_.c_str(), 0644), 0);
+
+    ASSERT_TRUE(generate_si_config(config_path_.c_str()));
+    auto kv = read_config();
+    EXPECT_EQ(kv["azBlobUseAzureIdentitySDK"], "true");
+    EXPECT_FALSE(has_key(kv, "stale"));
+}
+
+TEST_F(ConfigTest, NewConfigIsOwnerOnly)
+{
+    ASSERT_TRUE(generate_si_config(config_path_.c_str()));
+
+    struct stat configStat{};
+    ASSERT_EQ(stat(config_path_.c_str(), &configStat), 0);
+    EXPECT_EQ(
+        configStat.st_mode & static_cast<mode_t>(0777),
+        static_cast<mode_t>(0600));
+}
+
+TEST_F(ConfigTest, ExistingSymlinkIsRejected)
+{
+    const std::string targetPath = config_path_ + ".target";
+    FILE* target = fopen(targetPath.c_str(), "w");
+    ASSERT_NE(target, nullptr);
+    ASSERT_GT(fputs("target must remain unchanged\n", target), 0);
+    ASSERT_EQ(fclose(target), 0);
+    ASSERT_EQ(symlink(targetPath.c_str(), config_path_.c_str()), 0);
+
+    EXPECT_FALSE(generate_si_config(config_path_.c_str()));
+
+    target = fopen(targetPath.c_str(), "r");
+    ASSERT_NE(target, nullptr);
+    char contents[64] = {};
+    ASSERT_NE(fgets(contents, sizeof(contents), target), nullptr);
+    ASSERT_EQ(fclose(target), 0);
+    EXPECT_STREQ(contents, "target must remain unchanged\n");
+
+    unlink(targetPath.c_str());
 }
 
 // --- Auth: no credentials ---

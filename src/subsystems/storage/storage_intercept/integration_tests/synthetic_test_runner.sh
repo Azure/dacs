@@ -15,6 +15,7 @@
 
 BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
 DACS_AZURE_STORAGE_ACCOUNT="${DACS_AZURE_STORAGE_ACCOUNT:-dacstest}"
+umask 077
 
 # This script is an integration test to intercept the I/O related system calls
 # made from a test client via LD_PRELOAD and process the request from files present

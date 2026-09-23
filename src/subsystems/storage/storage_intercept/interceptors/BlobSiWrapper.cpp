@@ -36,6 +36,7 @@
 #include <fcntl.h>
 #include <limits>
 #include <string>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -95,24 +96,54 @@ bool generate_si_config(const char* config_path)
 {
     using namespace StorageInterceptConstants;
 
-    // Secure file creation: exclusive, restrictive permissions (contains auth tokens)
-    int fd = open(config_path, O_CREAT | O_EXCL | O_RDWR, 0600);
-    if (fd < 0)
+    int fd = open(
+        config_path,
+        O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC | O_RDWR,
+        0600);
+    const bool created = fd >= 0;
+    if (fd < 0 && errno == EEXIST)
     {
-        // If file already exists, truncate and rewrite (same-process retry)
-        fd = open(config_path, O_CREAT | O_TRUNC | O_RDWR, 0600);
+        fd = open(config_path, O_NOFOLLOW | O_CLOEXEC | O_RDWR);
     }
     if (fd < 0)
     {
         LOG_ERROR("blob_read: failed to create SI config at {}: {}", config_path, strerror(errno));
         return false;
     }
+
+    struct stat config_stat;
+    if (fstat(fd, &config_stat) != 0 ||
+        !S_ISREG(config_stat.st_mode))
+    {
+        LOG_ERROR("blob_read: refusing untrusted SI config at {}", config_path);
+        close(fd);
+        if (created)
+        {
+            unlink(config_path);
+        }
+        return false;
+    }
+
+    if (ftruncate(fd, 0) != 0)
+    {
+        LOG_ERROR("blob_read: failed to prepare SI config at {}: {}", config_path, strerror(errno));
+        close(fd);
+        if (created)
+        {
+            unlink(config_path);
+        }
+        return false;
+    }
+
     FILE* f = fdopen(fd, "w+");
     if (!f)
     {
         LOG_ERROR("blob_read: fdopen failed for SI config at {}", config_path);
         close(fd);
-        unlink(config_path);
+        if (created)
+        {
+            unlink(config_path);
+        }
         return false;
     }
 
@@ -288,8 +319,9 @@ static void init_si_config()
         return;
     }
 
-    // Skip if default config file already exists (e.g., written by pipeline/orchestrator)
-    if (access(DefaultConfigFilePath, F_OK) == 0)
+    struct stat default_config_stat;
+    if (lstat(DefaultConfigFilePath, &default_config_stat) == 0 &&
+        S_ISREG(default_config_stat.st_mode))
     {
         LOG_INFO("blob_read: default SI config exists at {}, skipping auto-init",
                      DefaultConfigFilePath);

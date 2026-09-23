@@ -16,7 +16,10 @@
 """Tests for _initialize_dacs_client_config() SAS token handling."""
 
 import os
+import stat
+
 import py_dacs_client
+import pytest
 from py_dacs_client import dacs_utils
 
 # To run the test: 
@@ -56,6 +59,53 @@ class TestInitializeDACSClientConfigSASToken:
         # The SAS token line should contain the stripped value with no \r
         assert f"azBlobSASToken {dummy_sas}\n" in config_contents
         assert "\r" not in config_contents
+
+    def test_config_is_owner_only_before_token_write(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("USE_SAS_TOKEN", "true")
+        monkeypatch.setenv("STORAGE_INTCPT_SAS_TOKEN", "secret-token")
+
+        dacs_utils._initialize_dacs_client_config(
+            intercept_path="/mnt/data",
+            config_dir=str(tmp_path),
+        )
+
+        config_path = os.environ["STORAGE_INTERCEPT_CONFIG_FILEPATH"]
+        assert stat.S_IMODE(os.stat(config_path).st_mode) == 0o600
+        with open(config_path) as config_file:
+            assert "azBlobSASToken secret-token\n" in config_file.read()
+
+    def test_existing_file_permissions_are_preserved(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("USE_SAS_TOKEN", "true")
+        monkeypatch.setenv("STORAGE_INTCPT_SAS_TOKEN", "secret-token")
+
+        config_path = tmp_path / f"storageIntercept.{os.getpid()}.config"
+        config_path.write_text("existing contents\n")
+        config_path.chmod(0o644)
+
+        dacs_utils._initialize_dacs_client_config(
+            intercept_path="/mnt/data",
+            config_dir=str(tmp_path),
+        )
+
+        assert "azBlobSASToken secret-token\n" in config_path.read_text()
+        assert stat.S_IMODE(config_path.stat().st_mode) == 0o644
+
+    def test_existing_symlink_is_rejected(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("USE_SAS_TOKEN", "true")
+        monkeypatch.setenv("STORAGE_INTCPT_SAS_TOKEN", "secret-token")
+
+        config_path = tmp_path / f"storageIntercept.{os.getpid()}.config"
+        target_path = tmp_path / "target"
+        target_path.write_text("target must remain unchanged\n")
+        config_path.symlink_to(target_path)
+
+        with pytest.raises(OSError):
+            dacs_utils._initialize_dacs_client_config(
+                intercept_path="/mnt/data",
+                config_dir=str(tmp_path),
+            )
+
+        assert target_path.read_text() == "target must remain unchanged\n"
 
     def test_shared_write_mode_configures_core_client(self, monkeypatch, tmp_path):
         monkeypatch.delenv("USE_SAS_TOKEN", raising=False)

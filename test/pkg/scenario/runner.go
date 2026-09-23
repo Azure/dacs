@@ -197,10 +197,25 @@ func (r *ModelLoadingRunner) buildJob(ctx context.Context, jobName string) (*bat
 `, r.Config.CacheDiscoveryURL)
 		}
 		preCommand = fmt.Sprintf(`python3 -c "
+import os
+import stat
 from azure.identity import DefaultAzureCredential
 cred = DefaultAzureCredential()
 token = cred.get_token('https://storage.azure.com/.default')
-with open('/tmp/storageIntercept.config', 'w') as f:
+config_path = '/tmp/storageIntercept.config'
+create_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_NONBLOCK
+try:
+    fd = os.open(config_path, create_flags, 0o600)
+except FileExistsError:
+    fd = os.open(config_path, os.O_WRONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+try:
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        raise ValueError('Config path is not a regular file: ' + config_path)
+    os.ftruncate(fd, 0)
+except Exception:
+    os.close(fd)
+    raise
+with os.fdopen(fd, 'w') as f:
     f.write('storagePath /mnt/dacs_cache\n')
     f.write('type blob\n')
     f.write('azBlobStorageAccountName %s\n')

@@ -32,6 +32,7 @@ import ctypes
 import logging
 import os
 import platform
+import stat
 import sys
 import threading
 from ctypes import CDLL, c_char, c_size_t, c_ssize_t, c_void_p
@@ -407,18 +408,22 @@ def _initialize_dacs_client_config(
     if os.path.exists(config_path):
         logger.warning(f"Config file {config_path} already exists, overwriting!!!")
 
-    # Create the config file with owner-only (0600) permissions. It can contain
-    # secrets (SAS token, access token, MSI secret), so it must not be readable
-    # by other users on the host. Avoid following symlinks and apply permissions
-    # to the opened file descriptor (not by path).
-    if os.path.lexists(config_path) and os.path.islink(config_path):
-        raise RuntimeError(f"Refusing to write config to symlink path: {config_path}")
+    create_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_NONBLOCK
+    try:
+        fd = os.open(config_path, create_flags, 0o600)
+    except FileExistsError:
+        fd = os.open(config_path, os.O_WRONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ValueError(f"Config path is not a regular file: {config_path}")
+        os.ftruncate(fd, 0)
+        config_file = os.fdopen(fd, "w")
+        fd = -1
+    finally:
+        if fd >= 0:
+            os.close(fd)
 
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-    flags |= getattr(os, "O_NOFOLLOW", 0)
-    fd = os.open(config_path, flags, 0o600)
-    os.fchmod(fd, 0o600)
-    with os.fdopen(fd, "w") as config_file:
+    with config_file:
         config_file.write(f"storagePath {intercept_path}\n")
         config_file.write("type blob\n")
         config_file.write("azBlobDynamicAccount true\n")

@@ -39,10 +39,6 @@ void StorageInterceptConfig::LoadConfig()
 {
     // There should be no logging from this function to prevent deadlock with LFS interceptor.
 
-    const mode_t CONFIG_FILE_OPEN_MODE=0777;
-    // Use version 0 for __xstat64 system call to ensure cross-platform compatibility
-    const int XSTAT_VERSION=0;
-
     std::string strConfigFilePath = StorageInterceptConstants::DefaultConfigFilePath;
     const char* configFilePath = std::getenv(StorageInterceptConstants::ConfigFilePathEnv);
     if (configFilePath != nullptr && configFilePath[0] != '\0')
@@ -50,28 +46,33 @@ void StorageInterceptConfig::LoadConfig()
         strConfigFilePath = configFilePath;
     }
 
-    struct stat64 stBuf;
-    if (StorageLibcApiWrapper::xstat64(
-        XSTAT_VERSION,
-        strConfigFilePath.c_str(),
-        &stBuf) != 0)
-    {
-        throw "Error getting stat for config file";
-    }
-
     int nConfigFileHandle = StorageLibcApiWrapper::open(
             strConfigFilePath.c_str(),
-            O_RDONLY,
-            CONFIG_FILE_OPEN_MODE);
+            O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK,
+            0);
 
     if (nConfigFileHandle < 0)
     {
         throw "Error opening config file";
     }
 
+    struct stat64 stBuf;
+    if (StorageLibcApiWrapper::fstat64(nConfigFileHandle, &stBuf) != 0)
+    {
+        StorageLibcApiWrapper::close(nConfigFileHandle);
+        throw "Error getting stat for config file";
+    }
+
+    if (!S_ISREG(stBuf.st_mode))
+    {
+        StorageLibcApiWrapper::close(nConfigFileHandle);
+        throw "Config file is not a regular file";
+    }
+
     if (stBuf.st_size < 0 ||
         static_cast<uintmax_t>(stBuf.st_size) > std::numeric_limits<size_t>::max())
     {
+        StorageLibcApiWrapper::close(nConfigFileHandle);
         throw "Invalid config file size";
     }
     size_t nConfigFileSize = static_cast<size_t>(stBuf.st_size);
@@ -80,6 +81,7 @@ void StorageInterceptConfig::LoadConfig()
     ssize_t firstRead = StorageLibcApiWrapper::read(nConfigFileHandle, &strConfig[0], nConfigFileSize);
     if (firstRead < 0)
     {
+        StorageLibcApiWrapper::close(nConfigFileHandle);
         throw "Error occurred while reading config file";
     }
     size_t nConfigBytesRead = static_cast<size_t>(firstRead);
@@ -94,6 +96,7 @@ void StorageInterceptConfig::LoadConfig()
                 nConfigFileSize - nConfigBytesRead);
         if (nConfigBytesReadNow < 0)
         {
+            StorageLibcApiWrapper::close(nConfigFileHandle);
             throw "Error occurred while reading config file";
         }
         else if(nConfigBytesReadNow == 0)
