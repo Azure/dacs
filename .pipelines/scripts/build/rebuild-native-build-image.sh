@@ -26,6 +26,7 @@ source "$SCRIPT_DIR/build-cache.sh"
 
 BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
 REGISTRY="${DOCKER_REGISTRY:?DOCKER_REGISTRY is required}"
+BUILD_NUMBER="${BUILD_NUMBER:-$("$REPOSITORY_ROOT/.pipelines/scripts/get-version.sh" container)}"
 BUILDKIT_IMAGE="${BUILDKIT_IMAGE:-mcr.microsoft.com/oss/v2/moby/buildkit:v0.31.0@sha256:fe54b035f7e18247c19d74adfaae42f62f44dca1fd00ae35b795a662a6126d67}"
 BUILD_CACHE_SCOPE="$(resolve_build_cache_scope "${BUILD_CACHE_SCOPE:-main}")"
 USE_AZURE_CFS="${USE_AZURE_CFS:-false}"
@@ -38,7 +39,7 @@ fi
 IMAGE_NAME="dacs/native-build"
 ROLLING_IMAGE="${REGISTRY}/${IMAGE_NAME}:linux-${BUILD_ARCH}"
 GIT_SHA="$(git -C "$REPOSITORY_ROOT" rev-parse HEAD)"
-IMMUTABLE_IMAGE="${REGISTRY}/${IMAGE_NAME}:git-${GIT_SHA}-linux-${BUILD_ARCH}"
+IMMUTABLE_IMAGE="${REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}-linux-${BUILD_ARCH}"
 CACHE_IMAGE="${REGISTRY}/${IMAGE_NAME}:buildcache-${BUILD_CACHE_SCOPE}-linux-${BUILD_ARCH}"
 MAIN_CACHE_IMAGE="${REGISTRY}/${IMAGE_NAME}:buildcache-main-linux-${BUILD_ARCH}"
 LEGACY_CACHE_IMAGE="${REGISTRY}/${IMAGE_NAME}:buildcache-linux-${BUILD_ARCH}"
@@ -46,7 +47,7 @@ LEGACY_CACHE_IMAGE="${REGISTRY}/${IMAGE_NAME}:buildcache-linux-${BUILD_ARCH}"
 echo "Checking for existing native-build image: ${IMMUTABLE_IMAGE}"
 if docker pull "$IMMUTABLE_IMAGE"; then
     docker tag "$IMMUTABLE_IMAGE" "$ROLLING_IMAGE"
-    echo "Using existing native-build image for commit ${GIT_SHA}"
+    echo "Using existing native-build image for version ${BUILD_NUMBER}"
     exit 0
 fi
 

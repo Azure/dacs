@@ -29,8 +29,6 @@ steps:
       fetchDepth: 0
       persistCredentials: true
 
-  - template: Dacs.Version.Steps.yml
-
   - bash: |
       set -euo pipefail
 

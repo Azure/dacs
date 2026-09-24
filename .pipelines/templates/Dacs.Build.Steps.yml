@@ -113,6 +113,7 @@ steps:
       export CARGO_CACHE_DIR="$(Pipeline.Workspace)/.cache/dacs-cargo"
 
       DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
+      BUILD_NUMBER="$(finalTag)" \
       BUILD_ARCH="$architecture" \
       BUILD_CACHE_SCOPE="${{ parameters.buildCacheScope }}" \
         ./.pipelines/scripts/build/rebuild-native-build-image.sh
@@ -155,16 +156,23 @@ steps:
     displayName: Package linux/${{ parameters.architecture }} build artifacts
     workingDirectory: $(Pipeline.Workspace)/s/dacs
 
+  - bash: |
+      set -euo pipefail
+
+      readonly architecture="${{ parameters.architecture }}"
+      readonly registry="${{ parameters.acrName }}.azurecr.io"
+
+      docker push \
+        "${registry}/dacs/native-build:$(finalTag)-linux-${architecture}"
+    displayName: Push immutable linux/${{ parameters.architecture }} native-build image
+
   - ${{ if eq(parameters.pushNativeBuildImage, true) }}:
       - bash: |
           set -euo pipefail
 
           readonly architecture="${{ parameters.architecture }}"
           readonly registry="${{ parameters.acrName }}.azurecr.io"
-          readonly git_sha="$(git rev-parse HEAD)"
 
           docker push \
-            "${registry}/dacs/native-build:git-${git_sha}-linux-${architecture}"
-          docker push \
             "${registry}/dacs/native-build:linux-${architecture}"
-        displayName: Push linux/${{ parameters.architecture }} native-build image
+        displayName: Push rolling linux/${{ parameters.architecture }} native-build image

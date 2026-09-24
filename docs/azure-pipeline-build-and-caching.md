@@ -25,8 +25,9 @@ Both Azure Pipeline entry points use
 - `.pipelines/dacs-official.yml` runs for `main` and scheduled official builds.
 - `.pipelines/dacs-pullrequest.yml` runs pull request validation.
 
-The official pipeline enables native-build image publication. Pull request
-validation leaves it disabled.
+Every architecture build publishes its versioned native-build image for
+downstream test jobs. The official pipeline additionally enables rolling-tag
+publication; pull request validation leaves rolling-tag publication disabled.
 
 ```text
                          dacs-official or dacs-pullrequest
@@ -41,8 +42,9 @@ validation leaves it disabled.
         Build Python wheel                    Build Python wheel
         Build Rust crate                      Build Rust crate
         Package build artifacts               Package build artifacts
-        Official: push exact + rolling tags   Official: push exact + rolling tags
-        native-build:git-<sha>-linux-amd64     native-build:git-<sha>-linux-arm64
+        Push exact version tag                Push exact version tag
+        Official: push rolling tag            Official: push rolling tag
+        native-build:<version>-linux-amd64     native-build:<version>-linux-arm64
         native-build:linux-amd64               native-build:linux-arm64
                     |                                   |
           +---------+---------+               +---------+---------+
@@ -62,9 +64,11 @@ validation leaves it disabled.
                         Write release metadata
 ```
 
-Official architecture jobs push their rolling native-build tag after
-compilation and package creation. The tags are not gated on later test,
-application-image promotion, or Helm publication steps.
+Every architecture job pushes its immutable versioned native-build tag
+after compilation and package creation. Downstream Azure test jobs select that
+exact image. Official architecture jobs also push the rolling native-build tag.
+These pushes are not gated on later test, application-image promotion, or Helm
+publication steps.
 
 ## Native-build image lifecycle
 
@@ -78,7 +82,7 @@ Each architecture build calls:
 .pipelines/scripts/build/rebuild-native-build-image.sh
 ```
 
-The script first tries to pull the commit-addressed native-build image. When
+The script first tries to pull the versioned native-build image. When
 that image exists, it retags the image locally and skips BuildKit. Otherwise,
 BuildKit evaluates the current Dockerfile and build context.
 
@@ -103,8 +107,9 @@ dacstest.azurecr.io/dacs/native-build:linux-amd64
 dacstest.azurecr.io/dacs/native-build:linux-arm64
 ```
 
-These local tags are used for compilation. They are not automatically pushed
-just because the image was built.
+These local tags are used for compilation. After compilation, every pipeline
+build pushes the versioned tag. Official builds also push the rolling
+tag.
 
 The builder image is pulled from Microsoft Container Registry instead of
 Docker Hub. This keeps Azure builds independent of Docker Hub availability and
@@ -144,19 +149,24 @@ while unrelated earlier layers can still be restored.
 
 ## Native-build image tags
 
-After each official architecture job compiles the source and creates its build
-artifacts, it directly pushes a commit-addressed image and the rolling tag:
+After each architecture job compiles the source and creates its build
+artifacts, it pushes a versioned image:
 
 ```text
-dacstest.azurecr.io/dacs/native-build:git-<commit>-linux-amd64
-dacstest.azurecr.io/dacs/native-build:git-<commit>-linux-arm64
+dacstest.azurecr.io/dacs/native-build:<version>-linux-amd64
+dacstest.azurecr.io/dacs/native-build:<version>-linux-arm64
+```
+
+Official architecture jobs additionally push the rolling tags:
+
+```text
 dacstest.azurecr.io/dacs/native-build:linux-amd64
 dacstest.azurecr.io/dacs/native-build:linux-arm64
 ```
 
 There is no candidate or promotion phase. A later test or publication failure
-does not roll back the native-build tag. Pull request builds never push these
-rolling tags.
+does not roll back either tag. Pull request builds push only their immutable
+versioned tags and never update rolling tags.
 
 ## Compiler and package caches
 
@@ -259,7 +269,7 @@ Registry objects serve different purposes:
 | --- | --- | --- |
 | `buildcache-main-linux-<arch>` | Yes | Official native and C++ application BuildKit layer caches |
 | `buildcache-pr-<id>-linux-<arch>` | Yes | Pull-request-specific BuildKit layer caches |
-| `dacs/native-build:git-<commit>-linux-<arch>` | No | Exact native toolchain image for repeated builds |
+| `dacs/native-build:<version>-linux-<arch>` | No | Exact native toolchain image for compilation and downstream tests |
 | `dacs/native-build:linux-<arch>` | Yes | Rolling toolchain image used by local builds |
 | `candidate-<build-id>-linux-<arch>` | No | Build-specific application image awaiting promotion |
 | Application image version tags | No | Release and deployment inputs |
@@ -292,11 +302,13 @@ pushNativeBuildImages: true
 ```
 
 That enables direct rolling-tag pushes from the architecture build jobs. The
-pull request pipeline uses the default `false` value.
+pull request pipeline uses the default `false` value, but still publishes the
+immutable versioned tags required by its downstream test jobs.
 
 ## Relationship to local builds
 
-`make build` uses `bldenv.sh`, which looks for the rolling architecture tag:
+`make build` uses `bldenv.sh`, which looks for the rolling architecture tag by
+default:
 
 ```text
 dacstest.azurecr.io/dacs/native-build:linux-<host architecture>
@@ -304,6 +316,10 @@ dacstest.azurecr.io/dacs/native-build:linux-<host architecture>
 
 If the image is not already local, `bldenv.sh` tries to pull it. If the pull is
 unavailable, it builds `src/images/native-build/Dockerfile` locally.
+
+Azure test jobs set `NATIVE_BUILD_IMAGE_TAG` to the versioned tag
+published by their corresponding architecture build stage. This prevents a
+test job on another agent from using a stale rolling image.
 
 `make images` builds the application images locally with normal Docker layer
 caching. The Azure Pipeline explicitly enables registry-backed caching for the
@@ -327,7 +343,7 @@ Building native-build image for linux/<architecture>
 ```
 
 Inspect the following BuildKit output to see which Dockerfile layers were
-restored or rebuilt. If the exact commit-addressed image already exists, the
+restored or rebuilt. If the exact versioned image already exists, the
 job instead reports that it is using the existing native-build image and skips
 BuildKit.
 
@@ -345,7 +361,7 @@ expected when BuildKit has verified that the inputs are unchanged.
 Check that:
 
 1. The corresponding official architecture build job succeeded.
-2. The `Push linux/<architecture> native-build image` step ran.
+2. The `Push rolling linux/<architecture> native-build image` step ran.
 3. The rolling tag was pushed to the `dacs/native-build` repository.
 
 Later test or publication stages do not control this push.
@@ -353,7 +369,7 @@ Later test or publication stages do not control this push.
 ### A cache reference is unavailable
 
 BuildKit treats a missing cache as a cold build. Verify ACR authentication and
-write permission if cache export fails. A missing commit-addressed image is
+write permission if cache export fails. A missing versioned image is
 also expected for a new commit; the script then evaluates the current inputs
 with BuildKit.
 
