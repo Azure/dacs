@@ -19,6 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 readonly SCRIPT="${SCRIPT_DIR}/../build/rebuild-native-build-image.sh"
 readonly TEST_SHA="0123456789abcdef0123456789abcdef01234567"
+readonly TEST_VERSION="v1.2.3"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/../build/build-cache.sh"
 TEST_DIR=""
@@ -75,6 +76,7 @@ fi
 PATH="$TEST_DIR/bin:$PATH" \
 TEST_DOCKER_LOG="$TEST_DIR/docker.log" \
 DOCKER_REGISTRY="example.azurecr.io" \
+BUILD_NUMBER="$TEST_VERSION" \
 BUILD_ARCH="amd64" \
 BUILD_CACHE_SCOPE="pr" \
 SYSTEM_PULLREQUEST_PULLREQUESTID="68" \
@@ -89,21 +91,22 @@ assert_log_contains \
 assert_log_contains \
     "--cache-to type=registry,ref=example.azurecr.io/dacs/native-build:buildcache-pr-68-linux-amd64,mode=min"
 assert_log_contains \
-    "-t example.azurecr.io/dacs/native-build:git-${TEST_SHA}-linux-amd64"
+    "-t example.azurecr.io/dacs/native-build:${TEST_VERSION}-linux-amd64"
 
 : >"$TEST_DIR/docker.log"
 PATH="$TEST_DIR/bin:$PATH" \
 TEST_DOCKER_LOG="$TEST_DIR/docker.log" \
 TEST_DOCKER_PULL_RESULT="0" \
 DOCKER_REGISTRY="example.azurecr.io" \
+BUILD_NUMBER="$TEST_VERSION" \
 BUILD_ARCH="arm64" \
 BUILD_CACHE_SCOPE="main" \
     "$SCRIPT"
 
 assert_log_contains \
-    "pull example.azurecr.io/dacs/native-build:git-${TEST_SHA}-linux-arm64"
+    "pull example.azurecr.io/dacs/native-build:${TEST_VERSION}-linux-arm64"
 assert_log_contains \
-    "tag example.azurecr.io/dacs/native-build:git-${TEST_SHA}-linux-arm64 example.azurecr.io/dacs/native-build:linux-arm64"
+    "tag example.azurecr.io/dacs/native-build:${TEST_VERSION}-linux-arm64 example.azurecr.io/dacs/native-build:linux-arm64"
 if grep -F -- "buildx build" "$TEST_DIR/docker.log" >/dev/null; then
-    fail "BuildKit ran even though the commit-addressed image existed."
+    fail "BuildKit ran even though the versioned image existed."
 fi

@@ -26,6 +26,13 @@ steps:
     fetchTags: true
     persistCredentials: ${{ parameters.persistCredentials }}
 
+  - template: Dacs.Version.Steps.yml
+
+  - bash: |
+      set -euo pipefail
+      echo "##vso[task.setvariable variable=NATIVE_BUILD_IMAGE_TAG]$(finalTag)-linux-${{ parameters.architecture }}"
+    displayName: Select linux/${{ parameters.architecture }} native-build image
+
   - task: DownloadPipelineArtifact@2
     displayName: Download linux/${{ parameters.architecture }} build artifacts
     inputs:

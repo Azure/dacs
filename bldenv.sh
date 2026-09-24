@@ -101,7 +101,8 @@ HOST_ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 echo "Detected host architecture: $(uname -m) -> $HOST_ARCH"
 
 DOCKER_REGISTRY="${DOCKER_REGISTRY:-dacstest.azurecr.io}"
-ACR_IMAGE="${DOCKER_REGISTRY%/}/dacs/native-build:linux-${HOST_ARCH}"
+NATIVE_BUILD_IMAGE_TAG="${NATIVE_BUILD_IMAGE_TAG:-linux-${HOST_ARCH}}"
+ACR_IMAGE="${DOCKER_REGISTRY%/}/dacs/native-build:${NATIVE_BUILD_IMAGE_TAG}"
 
 # Try to use ACR image first, fallback to local build if not available
 nativeBuildImage="$ACR_IMAGE"
