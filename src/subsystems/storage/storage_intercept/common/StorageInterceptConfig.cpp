@@ -1009,7 +1009,7 @@ bool StorageInterceptConfig::GetRemoteBlobUseSdkClient(const std::string& mountN
         m_ConfigProps,
         mountName,
         StorageInterceptConstants::ConfigNameRemoteBlobUseSdkClient,
-        false);
+        true);
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetRemoteBlobChecksumEnabled(const std::string& mountName)
