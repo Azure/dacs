@@ -89,7 +89,7 @@ to_python_version() {
         prerelease="${BASH_REMATCH[2]}"
         [[ "${prerelease}" == "alpha" ]] && prerelease="a"
         [[ "${prerelease}" == "beta" ]] && prerelease="b"
-        echo "${BASH_REMATCH[1]}${prerelease}${BASH_REMATCH[3]}.dev${BASH_REMATCH[4]}+${BASH_REMATCH[5]}"
+        echo "${BASH_REMATCH[1]}${prerelease}${BASH_REMATCH[3]}.dev${BASH_REMATCH[4]}"
         return
     fi
 
@@ -125,8 +125,11 @@ main() {
         container)
             echo "${source_version//+/_}"
             ;;
-        helm | rust)
+        helm)
             echo "${source_version#v}"
+            ;;
+        rust)
+            to_universal_version "${source_version}"
             ;;
         python)
             to_python_version "${source_version}"
