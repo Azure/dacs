@@ -28,7 +28,7 @@ std::shared_ptr<IRemoteClient> RemoteClientProvider::GetRemoteClient(const std::
 
     if (remoteStoreType == StorageInterceptConstants::ConfigValRemoteTypeBlob)
     {
-        // Use the azure-sdk-for-cpp client when remoteBlobUseSdkClient is set; else legacy cpplite.
+        // Use the azure-sdk-for-cpp client by default, fallback to legacy cpplite if remoteBlobUseSdkClient is false.
         if (StorageInterceptConfig::GetInstance().GetRemoteBlobUseSdkClient(mountName))
         {
             LOG_INFO("Using SdkBlobClient (azure-sdk-for-cpp) for mountName={}", mountName);

@@ -193,7 +193,7 @@ cacheSocketRcvbufSize [SO_RCVBUF size in bytes for cache client sockets. default
 blobRetryMaxAttempts [Total number of attempts for retryable blob operations. Set to 1 to disable retries (single attempt). default - 10]
 blobRetryBaseDelaySeconds [Base delay in seconds for exponential backoff between blob retries. default - 1]
 blobRetryMaxDelaySeconds [Maximum delay in seconds between blob retries. default - 128]
-remoteBlobUseSdkClient [true or false - Use the azure-sdk-for-cpp remote blob client instead of the legacy cpplite client. default - false]
+remoteBlobUseSdkClient [true or false - Use the azure-sdk-for-cpp remote blob client instead of the legacy cpplite client. default - true]
 remoteBlobChecksumEnabled [true or false - With the SDK client, request Azure Storage CRC64 validation on blob downloads (data-integrity check). default - true]
 remoteBlobUploadChecksumEnabled [true or false - With the SDK client, calculate and send CRC64 for Azure Storage validation on staged block uploads. default - true]
 remoteBlobChecksumRetryMaxAttempts [Max download attempts on a CRC64 mismatch before failing; transient in-transit corruption self-heals on re-download. Only applies when remoteBlobChecksumEnabled. default - 3]
