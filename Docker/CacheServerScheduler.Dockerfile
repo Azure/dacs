@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Build the cacheserver-scheduler binary
-FROM mcr.microsoft.com/oss/go/microsoft/golang:1.26@sha256:60b5397919c9852f0df6faf0f9d073c8c7d2042439922dfa5c56dad61965644a AS builder
+FROM mcr.microsoft.com/oss/go/microsoft/golang:1.26@sha256:ece502dc873c17e7ba99f8524b55754adb7f14b24a2a247130649b2cb1c985c3 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
