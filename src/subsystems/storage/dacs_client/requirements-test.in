@@ -2,7 +2,7 @@ azure-identity>=1.12
 azure-storage-blob
 blobfile
 pip
-pyjwt[crypto]==2.14.0
+pyjwt[crypto]==2.15.0
 pytest
 pytest-asyncio
 pytest-timeout
