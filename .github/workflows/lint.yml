@@ -54,6 +54,9 @@ jobs:
       - name: Test release publication coordinates
         run: ./.pipelines/scripts/tests/test-release-publication.sh
 
+      - name: Test non-interactive build fallback
+        run: ./.pipelines/scripts/tests/test-bldenv-noninteractive.sh
+
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:

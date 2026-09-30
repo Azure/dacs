@@ -110,7 +110,7 @@ echo "Attempting to use ACR image: $nativeBuildImage"
 
 if ! docker image inspect "$nativeBuildImage" >/dev/null 2>&1; then
     echo "ACR image not found locally. Attempting to pull from registry..."
-    if docker pull "$nativeBuildImage" 2>/dev/null; then
+    if docker pull "$nativeBuildImage" </dev/null >/dev/null 2>&1; then
         echo "Successfully pulled ACR image: $nativeBuildImage"
     else
         echo "Failed to pull from ACR. Building image locally..."
