@@ -3,4 +3,5 @@ azure-storage-blob
 blobfile
 boostedblob
 mpi4py
+pyjwt[crypto]==2.15.0
 pytest
