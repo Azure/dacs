@@ -302,6 +302,7 @@ stages:
               azureSubscription: ${{ parameters.azureServiceConnection }}
               scriptType: bash
               scriptLocation: inlineScript
+              workingDirectory: $(Pipeline.Workspace)/s/dacs
               inlineScript: |
                 set -euo pipefail
 
@@ -331,6 +332,9 @@ stages:
                 done
 
                 az acr login --name "${{ parameters.acrName }}"
+                DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io" \
+                BUILD_NUMBER="$(finalTag)" \
+                  ./.pipelines/scripts/publish/verify-release-images.sh
                 for chart in "${charts[@]}"; do
                   helm push "$chart" "$CHART_REPO"
                 done

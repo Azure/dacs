@@ -53,9 +53,13 @@ CONTROLLER ?= old
 
 # Image settings
 DOCKER_REGISTRY ?= dacstest.azurecr.io
+VERSION_HELPER ?= ./.pipelines/scripts/get-version.sh
+CONTAINER_VERSION ?= $(shell $(VERSION_HELPER) container)
+CHART_VERSION ?= $(shell $(VERSION_HELPER) helm)
 COMMIT_HASH ?= $(shell git describe --always --dirty)
-BUILD_NUMBER ?= latest
-BASE_REPO ?= $(DOCKER_REGISTRY)
+BUILD_NUMBER ?= $(CONTAINER_VERSION)
+IMAGE_REGISTRY ?= $(patsubst %/,%,$(DOCKER_REGISTRY))/dacs
+BASE_REPO ?= $(IMAGE_REGISTRY)
 CACHE_SERVER_IMG ?= $(BASE_REPO)/cache-server
 SCHEDULER_IMG ?= $(BASE_REPO)/cacheserver-scheduler
 CACHE_CONTROLLER_IMG ?= $(BASE_REPO)/cache-controller
@@ -170,15 +174,13 @@ LOCAL_CACHE_CONTROLLER_IMG ?= cache-controller
 LOCAL_CACHE_CONTROLLER_TAG ?= local
 
 # Remote chart settings (ACR) - cache-server (old controller)
-HELM_CHART_REPO ?= helmchart/cache-server
-HELM_CHART_BASE_VERSION ?= $(shell grep '^version:' helm/cache-server/Chart.yaml | awk '{print $$2}')
-HELM_CHART_VERSION ?= $(HELM_CHART_BASE_VERSION)-$(BUILD_NUMBER)
+HELM_CHART_REPO ?= dacs/helmchart/cache-server
+HELM_CHART_VERSION ?= $(CHART_VERSION)
 
 # Remote chart settings (ACR) - dacs (new controller)
 DACS_CACHE_CHART_PATH ?= src/subsystems/cache-controller/charts/dacs
-DACS_CACHE_CHART_REPO ?= helmchart/dacs
-DACS_CACHE_CHART_BASE_VERSION ?= $(shell grep '^version:' $(DACS_CACHE_CHART_PATH)/Chart.yaml | awk '{print $$2}')
-DACS_CACHE_CHART_VERSION ?= $(DACS_CACHE_CHART_BASE_VERSION)-$(BUILD_NUMBER)
+DACS_CACHE_CHART_REPO ?= dacs/helmchart/dacs
+DACS_CACHE_CHART_VERSION ?= $(CHART_VERSION)
 DACS_CACHE_NAMESPACE ?= cache-server
 
 define helm_install

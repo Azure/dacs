@@ -75,11 +75,11 @@ make provision TARGET=aks AKS_LOCATION=uksouth
 # Attach ACR (in Azure Portal or CLI)
 az aks update -g $AKS_RESOURCE_GROUP -n ${AKS_RESOURCE_GROUP}-cluster --attach-acr myacr
 
-# Build and publish images
-DOCKER_REGISTRY=myacr.azurecr.io BUILD_NUMBER=v1.0.0 make images publish-images
+# Build and publish versioned images and Helm charts
+DOCKER_REGISTRY=myacr.azurecr.io make images publish-images helm-push
 
 # Install helm charts (prereq for NVMe RAID setup, then cache-server)
-DOCKER_REGISTRY=myacr.azurecr.io BUILD_NUMBER=v1.0.0 make deploy
+DOCKER_REGISTRY=myacr.azurecr.io make deploy
 
 # Run e2e tests (auto-detects AKS, runs all tests)
 make test-e2e

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-.PHONY: help build clean test pytest test-go test-native test-rust-client test-rust-client-integration rust-package aks-test-binary images python-package storage-intercept-client helm-build helm-login helm-push deploy undeploy
+.PHONY: help build clean test pytest test-go test-native test-rust-client test-rust-client-integration rust-package aks-test-binary images publish-images python-package storage-intercept-client helm-build helm-login helm-push deploy undeploy
 
 # Include modular makefiles
 include deploy/deploy.mk
@@ -33,6 +33,7 @@ help:
 	@echo "  make rust-package                  	- Build architecture-specific Rust client crate"
 	@echo "  make aks-test-binary               	- Build the standalone AKS Ginkgo test binary"
 	@echo "  make images                        	- Build Docker images"
+	@echo "  make publish-images                	- Publish versioned images under <registry>/dacs"
 	@echo ""
 	@echo "Cluster Provisioning:"
 	@echo "  make provision TARGET=<aks|minikube> 	- Create AKS cluster or Minikube"
@@ -41,6 +42,7 @@ help:
 	@echo "Helm Deployment:"
 	@echo "  make deploy                        	- Deploy cache-server helm chart (default: CONTROLLER=old)"
 	@echo "  make deploy CONTROLLER=new         	- Deploy dacs helm chart (new controller)"
+	@echo "  make helm-push                     	- Publish versioned charts after verifying images"
 	@echo "  make undeploy                      	- Uninstall deployed helm charts"
 	@echo ""
 	@echo "E2E Testing:"
@@ -166,9 +168,15 @@ python-package:
 # Standalone local publication target. CI build pipelines do not invoke it.
 publish-images:
 	@echo "Publishing Docker images..."
-	@./.pipelines/scripts/publish/publish-images.sh
+	@DOCKER_REGISTRY="$(IMAGE_REGISTRY)" \
+		BUILD_NUMBER="$(BUILD_NUMBER)" \
+		BUILD_ARCH="$(BUILD_ARCH)" \
+		./.pipelines/scripts/publish/publish-images.sh
 	@echo "Creating manifest for local arch..."
-	@BUILD_ARCHS="$$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')" ./.pipelines/scripts/publish/publish-multiplatform-manifests.sh
+	@DOCKER_REGISTRY="$(IMAGE_REGISTRY)" \
+		BUILD_NUMBER="$(BUILD_NUMBER)" \
+		BUILD_ARCHS="$(BUILD_ARCH)" \
+		./.pipelines/scripts/publish/publish-multiplatform-manifests.sh
 
 storage-intercept-client:
 	@./.pipelines/scripts/k8s/run-storageintercept-client.sh

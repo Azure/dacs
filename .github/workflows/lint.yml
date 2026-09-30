@@ -51,6 +51,9 @@ jobs:
       - name: Test release package assembly
         run: ./.pipelines/scripts/tests/test-prepare-package-artifacts.sh
 
+      - name: Test release publication coordinates
+        run: ./.pipelines/scripts/tests/test-release-publication.sh
+
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:

@@ -50,6 +50,12 @@ elif [[ "$#" -ne 0 ]]; then
     exit 2
 fi
 
+if [[ "$PUSH_CHARTS" == "true" ]]; then
+    DOCKER_REGISTRY="$REGISTRY" \
+    BUILD_NUMBER="$CONTAINER_VERSION" \
+        "$SCRIPT_DIR/verify-release-images.sh"
+fi
+
 # Function to package and optionally push a chart.
 # Args: CHART_DIR CHART_NAME
 package_chart() (
