@@ -67,17 +67,19 @@ the source without affecting version precedence.
 | Source version | `v0.1.0` | `v0.1.0-rc.1` | `v0.2.0-alpha.0.6+a1b2c3d4e5f6a7` |
 | Container tag | `v0.1.0` | `v0.1.0-rc.1` | `v0.2.0-alpha.0.6_a1b2c3d4e5f6a7` |
 | Helm `version` | `0.1.0` | `0.1.0-rc.1` | `0.2.0-alpha.0.6+a1b2c3d4e5f6a7` |
-| Helm `appVersion` | `v0.1.0` | `v0.1.0-rc.1` | `v0.2.0-alpha.0.6+a1b2c3d4e5f6a7` |
+| Helm `appVersion` | `v0.1.0` | `v0.1.0-rc.1` | `v0.2.0-alpha.0.6_a1b2c3d4e5f6a7` |
 | Python package | `0.1.0` | `0.1.0rc1` | `0.2.0a0.dev6` |
 | Rust package | `0.1.0` | `0.1.0-rc.1` | `0.2.0-alpha.0.6.ga1b2c3d4e5f6a7` |
 | Azure Universal Package | `0.1.0` | `0.1.0-rc.1` | `0.2.0-alpha.0.6.ga1b2c3d4e5f6a7` |
 
-OCI tags do not allow `+`, so container tags replace it with `_`. Helm performs
-the same conversion when storing chart versions in an OCI registry. Python
-uses the equivalent PEP 440 development-release syntax without a local version
-identifier; the source commit remains in release provenance metadata. Rust and
-Azure Universal Package versions preserve the development commit by replacing
-`+` with `.g`, which keeps the SHA in an alphanumeric prerelease identifier.
+OCI tags do not allow `+`, so container tags and Helm `appVersion` replace it
+with `_`. The Helm chart `version` remains valid SemVer with `+`; Helm performs
+the same conversion only when storing that chart version as an OCI tag.
+Kubernetes labels also replace `+` with `_`. Python uses the equivalent PEP
+440 development-release syntax without a local version identifier; the source
+commit remains in release provenance metadata. Rust and Azure Universal
+Package versions preserve the development commit by replacing `+` with `.g`,
+which keeps the SHA in an alphanumeric prerelease identifier.
 
 ## Select a release line
 

@@ -68,10 +68,11 @@ To install Helm, please follow the official [Helm installation guide](https://he
 ## Install DACS
 
 Use the same release version for the prerequisite and DACS charts. The DACS
-chart's `appVersion` identifies the matching image tag. If you override image
-settings, keep `dacstest.azurecr.io/cache-controller`,
-`dacstest.azurecr.io/cache-server`, and
-`dacstest.azurecr.io/cache-test-client` on that matching version.
+chart's `appVersion` identifies the matching container-safe image tag. If you
+override image settings, keep
+`dacstest.azurecr.io/dacs/cache-controller`,
+`dacstest.azurecr.io/dacs/cache-server`, and
+`dacstest.azurecr.io/dacs/cache-test-client` on that matching version.
 
 ### Step 1: Install NVMe RAID Prerequisites (Required)
 
@@ -97,6 +98,10 @@ When installed, a DaemonSet will automatically:
 > [!NOTE]
 > The RAID setup is idempotent. If a RAID array already exists, the script
 > will detect it and skip creation.
+>
+> The init container requests 512 MiB of memory and has a 2 GiB limit. The
+> higher limit accommodates Azure Linux package metadata refreshes while the
+> storage utilities are installed.
 
 ### Step 2: Install DACS Cache Controller
 
@@ -214,11 +219,14 @@ and [values.yaml](src/subsystems/cache-controller/charts/dacs/values.yaml).
 For complex configurations, create a `values.yaml` file:
 
 ```yaml
+global:
+  registry: dacstest.azurecr.io
+
 manager:
   image:
-    repository: dacstest.azurecr.io/cache-controller
+    repository: dacs/cache-controller
   cacheServerImage:
-    repository: dacstest.azurecr.io/cache-server
+    repository: dacs/cache-server
 
 cache:
   enabled: true

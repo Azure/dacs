@@ -48,6 +48,9 @@ jobs:
       - name: Test version derivation
         run: ./.pipelines/scripts/tests/test-get-version.sh
 
+      - name: Test Helm chart publication
+        run: ./.pipelines/scripts/tests/test-helm-publication.sh
+
       - name: Test release package assembly
         run: ./.pipelines/scripts/tests/test-prepare-package-artifacts.sh
 
