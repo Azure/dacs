@@ -50,7 +50,7 @@ nvmeRaidSetup:
       memory: 512Mi
     limits:
       cpu: "1"
-      memory: 512Mi
+      memory: 2Gi
 
 # Pause container settings
 pauseContainer:

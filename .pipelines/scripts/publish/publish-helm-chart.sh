@@ -18,7 +18,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-OUTPUT_DIR="$REPOSITORY_ROOT/dist"
+OUTPUT_DIR="${DACS_HELM_OUTPUT_DIR:-$REPOSITORY_ROOT/dist}"
+METADATA_FILE="${DACS_HELM_METADATA_FILE:-$REPOSITORY_ROOT/helm-chart.txt}"
 VERSION_HELPER="$REPOSITORY_ROOT/.pipelines/scripts/get-version.sh"
 SOURCE_VERSION="$("$VERSION_HELPER" source)"
 CONTAINER_VERSION="$("$VERSION_HELPER" container)"
@@ -71,7 +72,7 @@ name: $CHART_NAME
 description: $CHART_DESCRIPTION
 type: application
 version: $CHART_VERSION
-appVersion: "$SOURCE_VERSION"
+appVersion: "$CONTAINER_VERSION"
 EOF
 
     # Update values.yaml with the build registry and image versions.
@@ -96,7 +97,7 @@ EOF
     # Package the chart (empty tag in values.yaml defaults to appVersion)
     helm package "$CHART_STAGE" -d "$OUTPUT_DIR" \
         --version "$CHART_VERSION" \
-        --app-version "$SOURCE_VERSION"
+        --app-version "$CONTAINER_VERSION"
 
     echo "  Built: $CHART_PACKAGE"
 
@@ -122,7 +123,7 @@ package_chart "$REPOSITORY_ROOT/helm/cache-server" "cache-server"
 # Build and push dacs chart
 package_chart "$REPOSITORY_ROOT/src/subsystems/cache-controller/charts/dacs" "dacs"
 
-cat > "$REPOSITORY_ROOT/helm-chart.txt" << EOF
+cat > "$METADATA_FILE" << EOF
 CACHE_SERVER_CHART_VERSION=$CHART_VERSION
 CACHE_SERVER_PREREQ_CHART_VERSION=$CHART_VERSION
 CACHE_CONTROLLER_CHART_VERSION=$CHART_VERSION
@@ -133,5 +134,5 @@ EOF
 echo ""
 echo "=========================================="
 echo "All charts built successfully!"
-echo "Coordinates saved to helm-chart.txt"
+echo "Coordinates saved to $METADATA_FILE"
 echo "=========================================="

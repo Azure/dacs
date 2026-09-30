@@ -54,10 +54,14 @@ make helm-prereq-install
 | `nvmeRaidSetup.image.repository` | Init container image | `mcr.microsoft.com/azurelinux/base/core` |
 | `nvmeRaidSetup.image.tag` | Init container image tag | `3.0` |
 | `nvmeRaidSetup.resources.limits.cpu` | CPU limit for init container | `1` |
-| `nvmeRaidSetup.resources.limits.memory` | Memory limit for init container | `512Mi` |
+| `nvmeRaidSetup.resources.limits.memory` | Memory limit for init container | `2Gi` |
 | `pauseContainer.image.repository` | Pause container image | `mcr.microsoft.com/azurelinux/base/core` |
 | `pauseContainer.resources.limits.cpu` | CPU limit for pause container | `10m` |
 | `pauseContainer.resources.limits.memory` | Memory limit for pause container | `16Mi` |
+
+The init container keeps a 512 MiB memory request but uses a 2 GiB limit.
+Azure Linux package metadata refreshes can exceed 512 MiB while `mdadm` and
+the filesystem tools are installed.
 
 ## How It Works
 
