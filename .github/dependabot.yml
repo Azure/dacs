@@ -83,6 +83,10 @@ updates:
       include: "scope"
     cooldown:
       default-days: 7
+    ignore:
+      - dependency-name: h5py
+        versions:
+          - "3.16.0"
 
   - package-ecosystem: pre-commit
     directory: /
