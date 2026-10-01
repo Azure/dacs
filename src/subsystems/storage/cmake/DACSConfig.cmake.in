@@ -35,8 +35,11 @@ if("Static" IN_LIST DACS_FIND_COMPONENTS)
             INTERFACE_INCLUDE_DIRECTORIES
                 "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_INCLUDEDIR@/dacs/cache_client"
             INTERFACE_LINK_LIBRARIES
-                "CURL::libcurl;OpenSSL::Crypto;Threads::Threads;${CMAKE_DL_LIBS};${DACS_UUID_LIBRARY};${DACS_JSONCPP_LIBRARY};${DACS_XXHASH_LIBRARY}")
+                "opentelemetry-cpp::metrics;opentelemetry-cpp::otlp_http_metric_exporter;CURL::libcurl;OpenSSL::Crypto;Threads::Threads;${CMAKE_DL_LIBS};${DACS_UUID_LIBRARY};${DACS_JSONCPP_LIBRARY};${DACS_XXHASH_LIBRARY}")
     endif()
+
+    # Found last: its generated config overwrites PACKAGE_PREFIX_DIR.
+    find_dependency(opentelemetry-cpp CONFIG REQUIRED)
 
     set(DACS_Static_FOUND TRUE)
 endif()

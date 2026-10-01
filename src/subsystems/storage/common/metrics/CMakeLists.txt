@@ -26,15 +26,17 @@ target_link_libraries(StorageMetrics
     opentelemetry-cpp::metrics
     opentelemetry-cpp::otlp_http_metric_exporter)
 
-enable_testing()
-add_executable(StorageMetricsTests tests/StorageMetricsTests.cpp)
-add_dependencies(StorageMetricsTests StorageMetrics)
-target_link_libraries(StorageMetricsTests
-    StorageMetrics
-    diagnostics
-    pthread
-    ${GTEST_LIBRARY}
-    ${GTEST_MAIN_LIBRARY}
-)
+if(DACS_BUILD_TESTS)
+    enable_testing()
+    add_executable(StorageMetricsTests tests/StorageMetricsTests.cpp)
+    add_dependencies(StorageMetricsTests StorageMetrics)
+    target_link_libraries(StorageMetricsTests
+        StorageMetrics
+        diagnostics
+        pthread
+        ${GTEST_LIBRARY}
+        ${GTEST_MAIN_LIBRARY}
+    )
 
-add_test(NAME StorageMetricsTests COMMAND StorageMetricsTests)
+    add_test(NAME StorageMetricsTests COMMAND StorageMetricsTests)
+endif()
