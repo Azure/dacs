@@ -33,7 +33,7 @@ inline uint32_t JumpConsistentHash(uint64_t nKey, uint32_t nBuckets)
     {
         b = j;
         nKey = nKey * 2862933555777941757ULL + 1;
-        j = static_cast<int64_t>((b + 1) * (static_cast<double>(1LL << 31) / static_cast<double>((nKey >> 33) + 1)));
+        j = static_cast<int64_t>(static_cast<double>(b + 1) * (static_cast<double>(1LL << 31) / static_cast<double>((nKey >> 33) + 1)));
     }
     return static_cast<uint32_t>(b);
 }

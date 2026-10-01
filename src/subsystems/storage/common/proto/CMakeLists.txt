@@ -41,7 +41,12 @@ add_library(staticprotobuf STATIC IMPORTED)
 
 add_library(CacheProto STATIC ${CMAKE_CURRENT_LIST_DIR}/compiled/cache.pb.cc)
 
-target_include_directories(CacheProto
+# protoc 3.0 output is third-party code and does not satisfy the project's
+# conversion warnings, so treat it like a system dependency.
+target_compile_options(CacheProto PRIVATE -Wno-conversion -Wno-sign-conversion
+    $<$<CXX_COMPILER_ID:Clang>:-Wno-shorten-64-to-32>)
+
+target_include_directories(CacheProto SYSTEM
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/compiled>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/dacs/proto>)

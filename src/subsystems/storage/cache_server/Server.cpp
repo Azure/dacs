@@ -472,7 +472,6 @@ int main(int argc, char *argv[])
              nLocatorNumNodes,
              strLocatorIndexBackend.empty() ? "flatmap" : strLocatorIndexBackend);
 
-    std::thread* snapshotThread = nullptr;
     if (SnapshotManager::GetInstance().IsSnapshotEnabled())
     {
         auto snapshot = SnapshotManager::GetInstance().LoadSnapshotOnStartup();

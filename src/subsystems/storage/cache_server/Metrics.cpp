@@ -317,7 +317,7 @@ void Metrics::SetLocatorEntryCount(std::size_t nCount)
     {
         return;
     }
-    MetricsStore::s_instance.m_pLocatorEntryCount->Set(nCount);
+    MetricsStore::s_instance.m_pLocatorEntryCount->Set(static_cast<double>(nCount));
 }
 //---------------------------------------------------------------------------------------------------------------------
 void Metrics::SetLocatorReplicaCount(std::size_t nCount)
@@ -326,6 +326,6 @@ void Metrics::SetLocatorReplicaCount(std::size_t nCount)
     {
         return;
     }
-    MetricsStore::s_instance.m_pLocatorReplicaCount->Set(nCount);
+    MetricsStore::s_instance.m_pLocatorReplicaCount->Set(static_cast<double>(nCount));
 }
 //---------------------------------------------------------------------------------------------------------------------

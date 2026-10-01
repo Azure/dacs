@@ -143,7 +143,7 @@ bool HandleLocatorPrefixLookup(IConnection& clientConnection,
     // The request carries storage_key() strings in chain order, along with the storage_key of
     // the parent of the first block (empty when the chain roots at the caller).
     std::vector<std::string> vStorageKeys;
-    vStorageKeys.reserve(request.keys_size());
+    vStorageKeys.reserve(static_cast<std::size_t>(request.keys_size()));
     for (const auto& strKey : request.keys())
     {
         vStorageKeys.push_back(strKey);
