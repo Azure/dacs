@@ -45,6 +45,8 @@ add_dependencies(CacheServerUtils
     CacheProto
 )
 
+target_link_libraries(CacheServerUtils PUBLIC CacheProto)
+
 file(GLOB CACHE_SERVER_SOURCES *cpp ./operations/*cpp ./utils/*cpp ./state/*cpp ./infiniband/*cpp
     ./snapshot/*cpp ./snapshot/proto/*cc ${DACS_SOURCE_ROOT}/src/subsystems/storage/common/*cpp)
 

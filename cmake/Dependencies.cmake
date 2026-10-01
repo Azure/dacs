@@ -14,13 +14,17 @@
 
 include(FetchContent)
 
+# The native-build image installs prebuilt dependencies under this prefix.
+if(DEFINED ENV{CMAKE_DEP_INSTALL_DIR})
+    list(APPEND CMAKE_PREFIX_PATH "$ENV{CMAKE_DEP_INSTALL_DIR}")
+endif()
+
 find_package(Boost REQUIRED)
 find_package(CURL REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(Protobuf CONFIG REQUIRED)
 find_package(Threads REQUIRED)
-find_package(opentelemetry-cpp CONFIG REQUIRED
-    HINTS "$ENV{CMAKE_DEP_INSTALL_DIR}")
+find_package(opentelemetry-cpp CONFIG REQUIRED)
 
 include_directories(${Boost_INCLUDE_DIRS})
 
@@ -60,8 +64,8 @@ dacs_import_library(ibverbs
 if(NOT TARGET fmt::fmt)
     FetchContent_Declare(
         fmt
-        URL https://github.com/fmtlib/fmt/releases/download/7.1.0/fmt-7.1.0.zip
-        URL_HASH SHA256=308af4e36ee3ab527b51014a2a5d862682c84f5d16f7a597aea34c84853cbcb0)
+        URL https://github.com/fmtlib/fmt/releases/download/8.1.1/fmt-8.1.1.zip
+        URL_HASH SHA256=23778bad8edba12d76e4075da06db591f3b0e3c6c04928ced4a7282ca3400e5d)
     set(FMT_DOC OFF CACHE BOOL "" FORCE)
     set(FMT_TEST OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(fmt)
@@ -114,6 +118,7 @@ endif()
 if(DACS_BUILD_CACHE_SERVER)
     set(ENABLE_PUSH OFF CACHE BOOL "" FORCE)
     set(ENABLE_COMPRESSION OFF CACHE BOOL "" FORCE)
+    set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
     FetchContent_Declare(
         prometheus_cpp
         URL https://github.com/jupp0r/prometheus-cpp/releases/download/v1.3.0/prometheus-cpp-with-submodules.tar.gz

@@ -27,19 +27,19 @@
 #include <map>
 #include <list>
 #include <queue>
-#include <gtest/gtest.h>
+#include "TestFriend.h"
 //---------------------------------------------------------------------------------------------------------------------
 class CacheManagerTest;
 //---------------------------------------------------------------------------------------------------------------------
 class CacheManager
 {
     // Friends for testing
-    FRIEND_TEST(CacheManagerTest, TakeAndLoadSnapshot);
-    FRIEND_TEST(CacheManagerTest, RembemberPendingGroupIdDeletionAfterSnapshotLoad);
-    FRIEND_TEST(CacheManagerTest, TestParseTimeIntervalString);
-    FRIEND_TEST(CacheManagerTest, CleanupWorkerStartsWithConfiguredInterval);
-    FRIEND_TEST(CacheManagerTest, TestEviction);
-    FRIEND_TEST(CacheManagerTest, TestDynamicEviction);
+    DACS_FRIEND_TEST(CacheManagerTest, TakeAndLoadSnapshot);
+    DACS_FRIEND_TEST(CacheManagerTest, RembemberPendingGroupIdDeletionAfterSnapshotLoad);
+    DACS_FRIEND_TEST(CacheManagerTest, TestParseTimeIntervalString);
+    DACS_FRIEND_TEST(CacheManagerTest, CleanupWorkerStartsWithConfiguredInterval);
+    DACS_FRIEND_TEST(CacheManagerTest, TestEviction);
+    DACS_FRIEND_TEST(CacheManagerTest, TestDynamicEviction);
 
     public:
         static CacheManager& GetInstance();

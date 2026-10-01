@@ -28,7 +28,7 @@
 #include <jsoncpp/json/json.h>
 #include <azure/identity.hpp>
 #ifdef STORAGE_INTERCEPT_UT
-#include <gtest/gtest.h>
+#include "TestFriend.h"
 #endif
 
 enum class TokenFetchMode
@@ -116,8 +116,8 @@ private:
     static constexpr long CONNECTION_TIMEOUT_SECONDS = 30L;   // 30 seconds connection timeout
 
 #ifdef STORAGE_INTERCEPT_UT
-    FRIEND_TEST(BlobAuthTokenProviderTest, TestDetectTokenFetchModeWorkloadIdentity);
-    FRIEND_TEST(BlobAuthTokenProviderTest, TestDetectTokenFetchModeMSI);
-    FRIEND_TEST(BlobAuthTokenProviderTest, TestDetectTokenFetchModeAzureIdentitySDK);
+    DACS_FRIEND_TEST(BlobAuthTokenProviderTest, TestDetectTokenFetchModeWorkloadIdentity);
+    DACS_FRIEND_TEST(BlobAuthTokenProviderTest, TestDetectTokenFetchModeMSI);
+    DACS_FRIEND_TEST(BlobAuthTokenProviderTest, TestDetectTokenFetchModeAzureIdentitySDK);
 #endif
 };

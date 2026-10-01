@@ -17,21 +17,21 @@
 #include "snapshot.pb.h"
 #include <string>
 #include <memory>
-#include <gtest/gtest.h>
+#include "TestFriend.h"
 //---------------------------------------------------------------------------------------------------------------------
 class SnapshotManagerTest;
 //---------------------------------------------------------------------------------------------------------------------
 class SnapshotManager
 {
     // Friends for testing
-    FRIEND_TEST(SnapshotManagerTest, SaveAndLoadSnapshot);
-    FRIEND_TEST(SnapshotManagerTest, LoadMissingSnapshot);
-    FRIEND_TEST(SnapshotManagerTest, LoadDifferentVersionSnapshot);
-    FRIEND_TEST(SnapshotManagerTest, LoadDifferentHostnameSnapshot);
-    FRIEND_TEST(SnapshotManagerTest, LoadExpiredSnapshot);
-    FRIEND_TEST(SnapshotManagerTest, DISABLED_CrashWhileTakingSnapshot);
-    FRIEND_TEST(SnapshotManagerTest, ReadCorruptedSnapshot);
-    FRIEND_TEST(SnapshotManagerTest, HandleLargeSnapshotFile);
+    DACS_FRIEND_TEST(SnapshotManagerTest, SaveAndLoadSnapshot);
+    DACS_FRIEND_TEST(SnapshotManagerTest, LoadMissingSnapshot);
+    DACS_FRIEND_TEST(SnapshotManagerTest, LoadDifferentVersionSnapshot);
+    DACS_FRIEND_TEST(SnapshotManagerTest, LoadDifferentHostnameSnapshot);
+    DACS_FRIEND_TEST(SnapshotManagerTest, LoadExpiredSnapshot);
+    DACS_FRIEND_TEST(SnapshotManagerTest, DISABLED_CrashWhileTakingSnapshot);
+    DACS_FRIEND_TEST(SnapshotManagerTest, ReadCorruptedSnapshot);
+    DACS_FRIEND_TEST(SnapshotManagerTest, HandleLargeSnapshotFile);
 
     public:
         static SnapshotManager& GetInstance();
