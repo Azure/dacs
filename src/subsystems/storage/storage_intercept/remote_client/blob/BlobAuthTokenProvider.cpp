@@ -745,7 +745,7 @@ bool BlobAuthTokenProvider::IsRetryableError(CURLcode curlCode, long statusCode)
     if (curlCode == CURLE_OK)
     {
         // Check HTTP status codes
-        return (statusCode >= 500 || statusCode == 429);
+        return statusCode >= 500 || statusCode == 429 || statusCode == 410;
     }
     
     // Check CURL errors

@@ -176,6 +176,19 @@ TEST_F(BlobAuthTokenProviderTest, TestRetryLogic)
     ASSERT_FALSE(token1.empty()) << "Failed to fetch access token from MSI endpoint";
 }
 //---------------------------------------------------------------------------------------------------------------------
+// Token endpoints retry HTTP 410 responses.
+TEST_F(BlobAuthTokenProviderTest, TestRetriesHttp410)
+{
+    MockBlobAuthTokenProvider mockProvider;
+    std::string mountPath = "msi-410";
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSIEndpoint).c_str(), "http://mock-msi-endpoint");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobMSISecret).c_str(), "mock-secret");
+    OverrideConfig((mountPath + StorageInterceptConstants::ConfigNameAzBlobIdentityClientId).c_str(), "mock-client-id-http-410");
+
+    std::string token = mockProvider.GetAccessToken(mountPath);
+    ASSERT_FALSE(token.empty()) << "Failed to fetch access token after transient MSI HTTP 410";
+}
+//---------------------------------------------------------------------------------------------------------------------
 // test to check thread safety of the token update process
 TEST_F(BlobAuthTokenProviderTest, TestThreadSafety)
 {
