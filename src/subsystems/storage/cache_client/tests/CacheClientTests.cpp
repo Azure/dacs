@@ -343,7 +343,7 @@ TEST_P(CacheClientTests, UploadDuplicateFiles)
 //---------------------------------------------------------------------------------------------------------------------
 TEST_P(CacheClientTests, UploadLargeFiles)
 {
-    uint64_t nLength = 256 * 1024 * 1024;
+    uint64_t nLength = MAX_BUFFER_SIZE_BYTES + 1;
     const char* pBuffer = GetRandomBuffer(nLength);
 
     auto status = m_cacheClientImpl.Upload(GetCorrelationId().c_str(), pBuffer, nLength, 0, nullptr, nullptr, nullptr);

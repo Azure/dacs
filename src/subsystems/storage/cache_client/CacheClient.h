@@ -190,7 +190,7 @@ CacheClientStatus Initialize(
  * 
  * @param strCacheKey Key to be used to store the data, max supported length is 127 characters
  * @param pBuffer Pointer to the data to be uploaded
- * @param nLength Size of the data in bytes, which can be at most 134217728 (128MB)
+ * @param nLength Size of the data in bytes, which can be at most MAX_BUFFER_SIZE_BYTES (256MiB)
  * @param nExpirySeconds Number of seconds after which strCacheKey and its associated data shall be cleaned up from the
  *        cache server. Set the value to `0` to indicate that the key shall never expire
  * @param strGroupId Group ID of strCacheKey. Set the value to `NULL` to indicate that the data does not belong to any
@@ -203,7 +203,7 @@ CacheClientStatus Initialize(
  * 1. SUCCESS -- The data and metadata was successfully uploaded to the cache server
  * 2. KEY_EXISTS -- The key strCacheKey already exists in the cache server. The data and metadata was not uploaded to
  *    the cache server
- * 3. INVALID_ARGUMENT -- If the input parameters are invalid or out of range, e.g., nLength > 134217728 (128MB)
+ * 3. INVALID_ARGUMENT -- If the input parameters are invalid or out of range, e.g., nLength > MAX_BUFFER_SIZE_BYTES (256MiB)
  * 4. INTERNAL_ERROR -- The data and metadata could not be uploaded to the cache server due to an internal error
 */
 CacheClientStatus Upload(
