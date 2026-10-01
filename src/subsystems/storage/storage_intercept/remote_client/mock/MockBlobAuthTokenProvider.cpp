@@ -50,6 +50,23 @@ CURLcode MockBlobAuthTokenProvider::PerformCurlRequest(CURL* curl) {
         }
     }
 
+    if (clientId == "mock-client-id-http-410") {
+        if (attemptCount == 0) {
+            attemptCount++;
+            return CURLE_OPERATION_TIMEDOUT;
+        } else if (attemptCount == 1) {
+            void* writeData = nullptr;
+            curl_easy_getinfo(curl, CURLINFO_PRIVATE, &writeData);
+            std::string* out = static_cast<std::string*>(writeData);
+            if (out) {
+                *out = R"({"Code":"ResourceNotAvailable","Message":"The resource requested is no longer available. Please refresh your cache."})";
+            }
+            SetStatusCode(410L);
+            attemptCount++;
+            return CURLE_OK;
+        }
+    }
+
     std::string response;
     thread_local std::mt19937 rng(std::random_device{}());
     std::uniform_int_distribution<int> dist(0, 9999);
