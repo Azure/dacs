@@ -91,7 +91,7 @@ build_cpp_image() {
     shift 3
     local build_args=("$@")
     local build_command=(docker build)
-    local build_options=(--pull)
+    local build_options=(--pull --no-cache-filter runtime)
 
     if [[ "$ENABLE_REGISTRY_BUILD_CACHE" == "true" ]]; then
         local cache_image="${REGISTRY}/${name}:buildcache-${BUILD_CACHE_SCOPE}-linux-${BUILD_ARCH}"

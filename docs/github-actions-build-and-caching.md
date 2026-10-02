@@ -192,6 +192,10 @@ The operating-system packages and runtime dependencies are part of those
 Dockerfiles instead of separate DACS base images. Each image uses its own
 architecture-specific GitHub Actions BuildKit cache scope.
 
+The workflow uses Docker's `no-cache-filters: runtime` option. This refreshes
+Ubuntu packages on every image build while preserving reusable layers from
+other stages, including the CacheClient blobfuse2 builder.
+
 Public base images use readable tags pinned to SHA-256 manifest digests. The
 digest guarantees that a build uses the reviewed image contents even if the
 upstream tag is moved. Dependabot proposes reviewed updates when a newer digest

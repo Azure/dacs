@@ -296,6 +296,7 @@ jobs:
         with:
           context: Docker
           file: Docker/${{ matrix.image.file }}
+          no-cache-filters: runtime
           tags: |
             ${{ matrix.image.name }}:local
             ${{ matrix.image.name }}:${{ steps.image.outputs.version }}
