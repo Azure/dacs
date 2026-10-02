@@ -30,6 +30,7 @@ add_library(CacheClientSharedLib SHARED
     CacheClient.cpp
     CacheClientImpl.cpp
     utils/CacheClientRetry.cpp
+    $<TARGET_OBJECTS:StorageLibcDirectWrapper>
 )
 
 add_library(CacheClientLib STATIC
@@ -49,7 +50,7 @@ set(CommonLinks StorageLibcDlsymWrapper
     pthread
     xxhash)
 
-add_dependencies(CacheClientSharedLib ${CommonDeps})
+add_dependencies(CacheClientSharedLib ${CommonDeps} StorageLibcDirectWrapper)
 add_dependencies(CacheClientLib ${CommonDeps})
 
 target_include_directories(CacheClientSharedLib
