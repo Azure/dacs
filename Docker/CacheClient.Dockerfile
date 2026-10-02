@@ -26,7 +26,7 @@ RUN git init /src/blobfuse2 && \
 WORKDIR /src/blobfuse2
 RUN CGO_ENABLED=1 GOTOOLCHAIN=local go build -o /out/blobfuse2
 
-FROM mcr.microsoft.com/mirror/docker/library/ubuntu:22.04@sha256:104ae83764a5119017b8e8d6218fa0832b09df65aae7d5a6de29a85d813da2fb
+FROM mcr.microsoft.com/mirror/docker/library/ubuntu:22.04@sha256:104ae83764a5119017b8e8d6218fa0832b09df65aae7d5a6de29a85d813da2fb AS runtime
 
 ARG UBUNTU_ARCHIVE_MIRROR=""
 ARG MICROSOFT_REPO_FINGERPRINT=BC528686B50D79E339D3721CEB3E94ADBE1229CF

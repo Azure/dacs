@@ -213,6 +213,11 @@ That retains the final-stage cache needed for repeated builds without storing
 unused intermediate records. The multi-stage CacheClient image keeps
 `mode=max` so dependency and builder stages remain reusable.
 
+Both official and pull request image stages use Docker's
+`--no-cache-filter runtime` option. This refreshes Ubuntu packages on every
+image build while preserving reusable layers from other stages, including the
+CacheClient blobfuse2 builder.
+
 Public base images use readable tags pinned to SHA-256 manifest digests. The
 digest guarantees that a build uses the reviewed image contents even if the
 upstream tag is moved. Dependabot proposes reviewed updates when a newer digest
