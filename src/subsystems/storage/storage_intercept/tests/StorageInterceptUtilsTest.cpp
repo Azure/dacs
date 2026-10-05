@@ -187,6 +187,10 @@ TEST_F(StorageInterceptUtilsTest, IsAllowedEndpointHostSuffixMatchTest)
     // The suffix alone is not a host: a non-empty label must precede it.
     EXPECT_FALSE(StorageInterceptUtils::IsAllowedEndpointHost(".blob.core.windows.net", suffixes));
     EXPECT_FALSE(StorageInterceptUtils::IsAllowedEndpointHost("blob.core.windows.net", suffixes));
+    EXPECT_FALSE(StorageInterceptUtils::IsAllowedEndpointHost("acct..blob.core.windows.net", suffixes));
+    EXPECT_FALSE(StorageInterceptUtils::IsAllowedEndpointHost(".acct.blob.core.windows.net", suffixes));
+    EXPECT_FALSE(StorageInterceptUtils::IsAllowedEndpointHost("acct.blob.core.windows.net.", suffixes));
+    EXPECT_FALSE(StorageInterceptUtils::IsAllowedEndpointHost("acct.blob..example.test", {".blob..example.test"}));
 
     // A shorter host can never match a longer suffix.
     EXPECT_FALSE(StorageInterceptUtils::IsAllowedEndpointHost("windows.net", suffixes));

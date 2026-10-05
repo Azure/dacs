@@ -16,6 +16,7 @@
 #include "StorageInterceptLogger.h"
 #include "StorageInterceptConstants.h"
 #include "StorageInterceptConfig.h"
+#include "RemoteClientException.h"
 #include <cstring>
 #include <cstdlib>
 #include <boost/uuid/uuid.hpp>
@@ -218,7 +219,7 @@ bool StorageInterceptUtils::IsAllowedEndpointHost(
     const std::string& host,
     const std::vector<std::string>& allowedSuffixes)
 {
-    if (host.empty())
+    if (host.empty() || host.front() == '.' || host.back() == '.' || host.find("..") != std::string::npos)
     {
         return false;
     }
@@ -345,6 +346,15 @@ bool StorageInterceptUtils::IsAllowedBlobHost(const std::string& host)
     }
 
     return IsAllowedEndpointHost(host, allowedSuffixes);
+}
+//---------------------------------------------------------------------------------------------------------------------
+void StorageInterceptUtils::ValidateBlobHost(const std::string& host)
+{
+    if (!IsAllowedBlobHost(host))
+    {
+        LOG_ERROR("Rejecting blob request for disallowed account host: {}", host);
+        throw RemoteClientException("SecurityError: Blob account host is not a permitted Azure endpoint: " + host);
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptUtils::IsAllowedAuthorityUrl(const std::string& url)

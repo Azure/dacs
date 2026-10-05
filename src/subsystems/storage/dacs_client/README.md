@@ -102,6 +102,27 @@ DACSCacheClient(executor=None, write_mode=None)
 > - `https://account.blob.core.windows.net/container/path` (HTTPS form)
 >
 > All formats are normalized to the long `az://` form internally.
+> Python normalizes HTTPS to `az://` and preserves complete hostnames without
+> checking endpoint suffixes. Both native Blob backends enforce one shared
+> Blob-host policy before constructing or reusing a dynamic-account service client:
+> `.blob.core.windows.net`, `.blob.core.usgovcloudapi.net`,
+> `.blob.core.chinacloudapi.cn`, `.blob.core.cloudapi.de`,
+> `.blob.core.microsoft.scloud`, and `.blob.core.eaglex.ic.gov`.
+> `AZURE_BLOB_ENDPOINT_SUFFIX` adds an operator-approved suffix, with or without
+> its leading dot. Set it before using the client; it is trusted endpoint
+> configuration, not a value to take from an untrusted request.
+> Host matching is case-insensitive, requires a nonempty prefix before the suffix,
+> and rejects empty hostname labels, URL credentials, ports, and suffix lookalikes.
+> Normalization preserves the supplied hostname and path. Short-form
+> `az://account/...` still defaults to public Azure, even when a custom suffix is
+> configured; use a complete endpoint for sovereign/custom clouds.
+> Unknown or malformed full hostnames are rejected when the native Blob client
+> is reached, not by normalization. Cache hits may not reach that validation.
+> Scheme and basic path-shape checks still prevent an empty or relative-directory
+> authority from escaping the interception mount.
+> Endpoint recognition does not configure sovereign-cloud authentication, imply
+> live qualification of each cloud, or change the independent path
+> parsing/dispatch of the blobfile and boostedblob adapters.
 
 #### DACSCacheFileHandle
 

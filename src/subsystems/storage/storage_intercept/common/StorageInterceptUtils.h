@@ -62,7 +62,7 @@ class StorageInterceptUtils
         /**
          * Return true if host is a syntactically safe hostname whose value ends with one of
          * allowedSuffixes (case-insensitive). Only unreserved hostname characters are accepted,
-         * so a path, userinfo, port, or whitespace embedded in host causes rejection. Used to
+         * so empty labels, a path, userinfo, port, or whitespace cause rejection. Used to
          * stop credentials being attached to an attacker-chosen host (SSRF).
          */
         static bool IsAllowedEndpointHost(
@@ -87,6 +87,9 @@ class StorageInterceptUtils
          * suffixes plus the operator-configured AZURE_BLOB_ENDPOINT_SUFFIX, if set.
          */
         static bool IsAllowedBlobHost(/*[in]*/ const std::string& host);
+
+        // Reject a request-derived Blob host before constructing or reusing a credentialed client.
+        static void ValidateBlobHost(const std::string& host);
 
         /**
          * Return true if url is an https Azure AD authority endpoint (public or sovereign cloud).
