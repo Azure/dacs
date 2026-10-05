@@ -39,6 +39,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 class BlobClient : public IRemoteClient
 {
+    friend class BlobEndpointValidationTest;
     // TODO: move to the newer official sdk -> https://azure.github.io/azure-sdk-for-cpp/
 
     typedef azure::storage_lite::blob_client azBlobClient_t;

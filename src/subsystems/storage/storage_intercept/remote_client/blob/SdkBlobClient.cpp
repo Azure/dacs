@@ -272,6 +272,7 @@ std::shared_ptr<Blobs::BlobServiceClient> SdkBlobClient::GetServiceClient(const 
     }
 
     const std::string accountHostname = StorageInterceptUtils::GetFirstComponentFromPath(remotePath);
+    StorageInterceptUtils::ValidateBlobHost(accountHostname);
 
     std::lock_guard<std::mutex> lock(m_lockServiceClients);
     auto it = m_mapServiceClients.find(accountHostname);

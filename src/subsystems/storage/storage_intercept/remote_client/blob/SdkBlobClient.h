@@ -41,6 +41,7 @@ class SdkBlobClient : public IRemoteClient
 {
     // Test-only access to the private path/block-id/checksum helpers.
     friend class SdkBlobClientTest;
+    friend class BlobEndpointValidationTest;
 
     typedef Azure::Storage::Blobs::BlobServiceClient   azBlobServiceClient_t;
     typedef Azure::Storage::Blobs::BlobContainerClient azBlobContainerClient_t;

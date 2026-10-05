@@ -833,14 +833,7 @@ std::shared_ptr<azure::storage_lite::blob_client> BlobClient::GetBlobClient(/*[i
     // Dynamic account, return the blob client corresponding to the accountHostName in remotePath
     const std::string accountHostname = StorageInterceptUtils::GetFirstComponentFromPath(remotePath);
 
-    // The account host is derived from a per-request path. Reject any host that is not a known
-    // Azure Blob endpoint so the storage credential is never sent to an attacker-chosen host.
-    if (!StorageInterceptUtils::IsAllowedBlobHost(accountHostname))
-    {
-        LOG_ERROR("Rejecting blob request for disallowed account host: {}", accountHostname);
-        throw RemoteClientException(
-            "SecurityError: Blob account host is not a permitted Azure endpoint: " + accountHostname);
-    }
+    StorageInterceptUtils::ValidateBlobHost(accountHostname);
 
     std::lock_guard<std::mutex> lock(m_lockBlobClients);
 
