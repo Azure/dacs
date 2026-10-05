@@ -64,40 +64,27 @@ def normalize_azure_path(path: str) -> str:
     - az://account/container/blob (short form - native blobfile/boostedblob format)
     - az://account.blob.core.windows.net/container/blob (long form - DACS internal format)
     - https://account.blob.core.windows.net/container/blob (https form - native blobfile format)
+    Full hostnames are preserved. Endpoint validation belongs to the native
+    Blob clients, not this normalization function.
     
     Returns the internal DACS format:
-    - az://account.blob.core.windows.net/container/blob
+    - az://account.<blob endpoint suffix>/container/blob
+    Short forms continue to default to the global Azure endpoint.
     
-    This ensures API parity with native blobfile/boostedblob - users can use the same
-    paths without modification when switching between native and DACS APIs.
+    Independent blobfile/boostedblob adapter parsing is not changed here.
     """
-    if path.startswith("https://"):
-        # https://account.blob.core.windows.net/container/blob
-        # -> az://account.blob.core.windows.net/container/blob
-        parts = path[len("https://"):].split("/", 1)
-        host = parts[0]
-        rest = parts[1] if len(parts) > 1 else ""
-        if not host.endswith(".blob.core.windows.net"):
-            raise ValueError(f"Invalid https Azure path: {path}. Expected format: https://account.blob.core.windows.net/container/blob")
+    scheme, separator, remainder = path.partition("://")
+    if not separator or scheme not in ("https", "az"):
+        raise ValueError(f"Invalid URL '{path}'; expected 'https' or 'az' scheme")
+    host, _, rest = remainder.partition("/")
+    # The authority must remain a relative component of the interception path.
+    if host in ("", ".", ".."):
+        raise ValueError(f"Invalid URL '{path}'; expected an account or hostname")
+    if scheme == "https":
         return f"az://{host}/{rest}"
-    
-    if path.startswith("az://"):
-        # Check if it's already in long form (has .blob.core.windows.net)
-        path_without_prefix = path[len("az://"):]
-        parts = path_without_prefix.split("/", 1)
-        first_part = parts[0]
-        rest = parts[1] if len(parts) > 1 else ""
-        
-        if first_part.endswith(".blob.core.windows.net"):
-            # Already in long form: az://account.blob.core.windows.net/container/blob
-            return path
-        else:
-            # Short form: az://account/container/blob
-            # -> az://account.blob.core.windows.net/container/blob
-            account = first_part
-            return f"az://{account}.blob.core.windows.net/{rest}"
-    
-    raise ValueError(f"Invalid URL '{path}'; expected 'https' or 'az' scheme")
+    if "." not in host:
+        return f"az://{host}.blob.core.windows.net/{rest}"
+    return path
 
 
 # Internal helper functions to handle errno properly
@@ -267,7 +254,7 @@ def _dacs_get_intercept_file_path(intercept_base_path: str, blob_path: str) -> s
     #       <intercept_base_path>/<account>.blob.core.windows.net/<container>/<blob>
     # normalized_path is of the form az://<account>.blob.core.windows.net/<container>/<blob>
     # so we need to remove the az:// prefix and replace it with intercept_base_path
-    intercept_file_path = normalized_path.replace("az://", "")
+    intercept_file_path = normalized_path[len("az://"):]
     return os.path.join(intercept_base_path, intercept_file_path)
 
 
