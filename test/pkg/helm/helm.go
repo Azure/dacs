@@ -16,6 +16,7 @@
 package helm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -115,9 +116,13 @@ func RollbackToPrevious(ctx context.Context, release, namespace string, log logr
 	return duration, nil
 }
 
-// Upgrade upgrades a Helm release and returns the wall-clock duration.
+// Upgrade applies the target CRDs, then upgrades a Helm release and returns the Helm command duration.
 // If version is non-empty, --version is passed to helm (required for OCI chart refs).
-func Upgrade(ctx context.Context, release, namespace, chartRef, version string, log logr.Logger) (time.Duration, error) {
+// Explicit key=value settings override the baseline's reused image coordinates.
+func Upgrade(ctx context.Context, release, namespace, chartRef, version string, log logr.Logger, values ...string) (time.Duration, error) {
+	if err := upgradeCRDs(ctx, chartRef, version, log); err != nil {
+		return 0, err
+	}
 	log.Info("upgrading helm release", "release", release, "namespace", namespace, "chartRef", chartRef, "version", version)
 	start := time.Now()
 	args := []string{
@@ -131,6 +136,9 @@ func Upgrade(ctx context.Context, release, namespace, chartRef, version string, 
 	if version != "" {
 		args = append(args, "--version", version)
 	}
+	for _, value := range values {
+		args = append(args, "--set", value)
+	}
 	cmd := exec.CommandContext(ctx, "helm", args...)
 	output, err := utils.Run(cmd)
 	duration := time.Since(start)
@@ -139,6 +147,39 @@ func Upgrade(ctx context.Context, release, namespace, chartRef, version string, 
 	}
 	log.Info("helm upgrade completed", "release", release, "namespace", namespace, "duration", duration.Seconds())
 	return duration, nil
+}
+
+func upgradeCRDs(ctx context.Context, chartRef, version string, log logr.Logger) error {
+	// Helm installs crds/ on first install, but does not upgrade existing CRDs.
+	args := []string{"show", "crds", chartRef}
+	if version != "" {
+		args = append(args, "--version", version)
+	}
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, "helm", args...)
+	cmd.Stderr = &stderr
+	crds, err := utils.RunOutput(cmd)
+	if err != nil {
+		return fmt.Errorf("failed to read CRDs from chart %s: %s: %w", chartRef, strings.TrimSpace(stderr.String()), err)
+	}
+	if strings.TrimSpace(crds) == "" {
+		log.Info("target Helm chart contains no CRDs", "chartRef", chartRef, "version", version)
+		return nil
+	}
+
+	log.Info("updating CRDs from target Helm chart", "chartRef", chartRef, "version", version)
+	for _, args := range [][]string{
+		{"apply", "-f", "-"},
+		{"wait", "--for=condition=Established", "--timeout=60s", "-f", "-"},
+	} {
+		cmd := exec.CommandContext(ctx, "kubectl", args...)
+		cmd.Stdin = strings.NewReader(crds)
+		output, err := utils.Run(cmd)
+		if err != nil {
+			return fmt.Errorf("failed to %s CRDs from chart %s: %s: %w", args[0], chartRef, strings.TrimSpace(output), err)
+		}
+	}
+	return nil
 }
 
 // GetValues returns a release's effective values (chart defaults merged with
