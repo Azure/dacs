@@ -180,7 +180,7 @@ cacheIBEnabled [true or false - Use infiniband for cache client-server communica
 cacheCalculateChecksumEnabled [true or false - Enable checksum calculation for chunks before uploading them to cache server, default - true]
 cacheValidateChecksumEnabled [true or false - Enable checksum validation for chunks downloaded from cache server, default - true]
 subChunkDisabledForChecksumValidation [true or false - Disable subchunk reads when checksum validation is enabled so that all reads use checksum validation, default - false]
-cacheChecksumAlgorithm ["xxhash32", "crc32" - Algorithm to use for checksum calculation. default - xxhash32]
+cacheChecksumAlgorithm ["xxhash32", "crc32", "crc64" - Algorithm to use for checksum calculation. crc64 uses Azure SDK CRC64. default - xxhash32]
 cacheChecksumMetadataPolicy ["optional" or "required" - Missing checksum metadata is accepted when optional and reported as CHECKSUM_MISMATCH when required. default - optional]
 cacheRetryMaxAttempts [Total number of attempts for retryable cache operations. Set to 1 to disable retries (single attempt). default - 1]
 cacheRetryBaseDelayMillis [Base delay in milliseconds for exponential backoff between retries. Required when cacheRetryMaxAttempts > 1. default - 100]

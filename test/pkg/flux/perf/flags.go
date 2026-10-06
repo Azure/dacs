@@ -37,7 +37,7 @@ type Options struct {
 	CacheServerCount int
 	// NumThreads is the number of threads for perf client
 	NumThreads int
-	// ChecksumAlgorithm is the checksum algorithm (xxhash32 or crc32)
+	// ChecksumAlgorithm is the checksum algorithm (xxhash32, crc32, or crc64)
 	ChecksumAlgorithm string
 
 	// StorageContainer is the name of the Azure Storage Container
@@ -78,7 +78,7 @@ func AddFlags(fs *flag.FlagSet, opts *Options) error {
 	fs.IntVar(&opts.DataSizeGiB, "data-size-gib", 1, "Data size in GiB for perf tests")
 	fs.IntVar(&opts.CacheServerCount, "cache-server-count", 1, "Number of cache servers to use")
 	fs.IntVar(&opts.NumThreads, "num-threads", 1, "Number of threads for perf client")
-	fs.StringVar(&opts.ChecksumAlgorithm, "checksum-algorithm", "xxhash32", "Checksum algorithm (xxhash32 or crc32)")
+	fs.StringVar(&opts.ChecksumAlgorithm, "checksum-algorithm", "xxhash32", "Checksum algorithm (xxhash32, crc32, or crc64)")
 
 	// DACS client specific flags
 	fs.StringVar(&opts.StorageContainer, "storage-container", "test-data", "Azure Storage Container name")
