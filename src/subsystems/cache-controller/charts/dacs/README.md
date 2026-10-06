@@ -89,13 +89,20 @@ CRDs are always installed (required for controller to function).
 
 ## Upgrade
 
+Helm does not upgrade existing CRDs. Apply the target chart's CRDs first.
+
 ```bash
+set -euo pipefail
+kubectl apply -f ./charts/dacs/crds
+kubectl wait --for=condition=Established --timeout=60s -f ./charts/dacs/crds
+
 helm upgrade dacs ./charts/dacs \
   --namespace dacs-system \
   --set manager.image.tag=local
 ```
 
 **Note:** The controller pod will be recreated during upgrade. Existing Cache CRs are not affected.
+Rollback retains the updated CRDs; verify compatibility with the previous controller.
 
 ## Uninstall
 

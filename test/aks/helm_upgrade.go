@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -50,6 +51,19 @@ func testClusterHelmUpgrade(tc *testContext) {
 		Expect(registry).NotTo(BeEmpty(), "HELM_UPGRADE_TARGET_REGISTRY must be set")
 		Expect(version).NotTo(BeEmpty(), "HELM_UPGRADE_TARGET_VERSION must be set")
 		chartRef := fmt.Sprintf("oci://%s/%s", registry, helmUpgradeChartRepoPath)
+		var values []string
+		targetImage := os.Getenv("HELM_UPGRADE_TARGET_IMAGE")
+		if targetImage != "" {
+			imageTag, found := strings.CutPrefix(targetImage, registry+"/cache-server:")
+			Expect(found && imageTag != "").To(BeTrue(), "target image %s must use registry %s and an explicit tag", targetImage, registry)
+			values = []string{
+				"global.registry=",
+				"manager.image.repository=" + registry + "/cache-controller",
+				"manager.image.tag=" + imageTag,
+				"manager.cacheServerImage.repository=" + registry + "/cache-server",
+				"manager.cacheServerImage.tag=" + imageTag,
+			}
+		}
 		helmUpgradeNamespace := common.GetNamespace()
 
 		preUpgradeReleaseInfo := helmhelpers.GetReleaseInfo(ctx, helmUpgradeNamespace, helmUpgradeRelease)
@@ -60,15 +74,20 @@ func testClusterHelmUpgrade(tc *testContext) {
 		log.Info("resolved helm upgrade target", "chartRef", chartRef, "version", version, "registry", registry, "preUpgradeImage", preUpgradeImage)
 
 		By(fmt.Sprintf("performing helm upgrade to %s version=%q", chartRef, version))
-		upgradeDuration, err := helmhelpers.Upgrade(ctx, helmUpgradeRelease, helmUpgradeNamespace, chartRef, version, log)
+		upgradeDuration, err := helmhelpers.Upgrade(ctx, helmUpgradeRelease, helmUpgradeNamespace, chartRef, version, log, values...)
 		Expect(err).NotTo(HaveOccurred(), "failed to upgrade helm release %s/%s to %s %s", helmUpgradeNamespace, helmUpgradeRelease, chartRef, version)
 		log.Info("helm upgrade completed", "release", helmUpgradeRelease, "namespace", helmUpgradeNamespace, "helmUpgradeDuration", upgradeDuration.Seconds())
 		emitOperationMetric(ctx, kusto.ResilienceOperationResult{Operation: opHelmUpgrade, Details: kusto.UpgradeOperationDetails{TargetVersion: version}}, upgradeDuration)
 
 		postUpgradeReleaseInfo := helmhelpers.GetReleaseInfo(ctx, helmUpgradeNamespace, helmUpgradeRelease)
 		Expect(postUpgradeReleaseInfo.AppVersion).NotTo(Or(BeEmpty(), Equal("<unknown>")), "post-upgrade helm release %s/%s has no usable AppVersion: %q", helmUpgradeNamespace, helmUpgradeRelease, postUpgradeReleaseInfo.AppVersion)
-		postUpgradeImage, err := resolveCacheServerImage(ctx, helmUpgradeNamespace, helmUpgradeRelease, postUpgradeReleaseInfo.AppVersion)
-		Expect(err).NotTo(HaveOccurred(), "failed to resolve post-upgrade cacheserver image")
+		postUpgradeImage := targetImage
+		if postUpgradeImage == "" {
+			var err error
+			postUpgradeImage, err = resolveCacheServerImage(ctx, helmUpgradeNamespace, helmUpgradeRelease, postUpgradeReleaseInfo.AppVersion)
+			Expect(err).NotTo(HaveOccurred(), "failed to resolve post-upgrade cacheserver image")
+		}
+		Expect(postUpgradeReleaseInfo.ChartVersion).To(Equal("dacs-"+version), "the exact target chart must be installed")
 		log.Info("resolved expected post-upgrade cacheserver image", "image", postUpgradeImage)
 
 		By("waiting for application health and cacheserver image rollout after upgrade")
