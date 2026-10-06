@@ -25,6 +25,7 @@ enum class ChecksumAlgorithm : uint8_t
 {
     XXHASH32 = 0,
     CRC32 = 1,
+    CRC64 = 2,
     INVALID = 255
 };
 // Factory class for creating checksum strategies

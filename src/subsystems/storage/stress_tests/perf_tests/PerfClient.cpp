@@ -498,7 +498,7 @@ po::variables_map parse_perf_args(/*[in]*/ int argc, /*[in]*/ char* argv[])
             ("discovery-endpoint", po::value<std::string>()->default_value("cacheserver-discovery"), "Discovery endpoint hostname (default: cacheserver-discovery)")
             ("enable-calculate-checksum", po::value<bool>()->default_value(false), "Enable checksum calculation on upload")
             ("enable-validate-checksum", po::value<bool>()->default_value(false), "Enable checksum validation on download")
-            ("checksum-algorithm", po::value<std::string>()->default_value("xxhash32"), "Checksum algorithm to use ('xxhash32' or 'crc32')")
+            ("checksum-algorithm", po::value<std::string>()->default_value("xxhash32"), "Checksum algorithm to use ('xxhash32', 'crc32', or 'crc64')")
             ("connection-pool-size", po::value<uint32_t>(), "Connection pool size (default: num-threads * num-servers; required when discovery is enabled)");
         po::variables_map vm;
         po::store(po::command_line_parser(argc, argv).options(description).allow_unregistered().run(), vm);

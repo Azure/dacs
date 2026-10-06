@@ -832,4 +832,5 @@ __run__test__last_access_time_distribution__
 
 source "${SCRIPT_DIR}/local_checksum_perf_test.sh"
 __run_local_checksum_perf_test__ xxhash32
+__run_local_checksum_perf_test__ crc64
 echo "All Storage interception integration tests completed successfully!"

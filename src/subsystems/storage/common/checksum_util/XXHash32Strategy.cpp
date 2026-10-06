@@ -24,7 +24,7 @@ XXHash32Strategy& XXHash32Strategy::GetInstance()
     return s_instance;
 }
 
-uint32_t XXHash32Strategy::CalculateChecksum(const void* pBuffer, size_t nBufferLength)
+uint64_t XXHash32Strategy::CalculateChecksum(const void* pBuffer, size_t nBufferLength)
 {
     return XXH32(pBuffer, nBufferLength, 0);
 }

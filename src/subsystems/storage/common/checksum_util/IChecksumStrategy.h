@@ -24,7 +24,7 @@ class IChecksumStrategy
 {
 public:
     virtual ~IChecksumStrategy() = default;
-    virtual uint32_t CalculateChecksum(const void* pBuffer, size_t nBufferLength) = 0;
+    virtual uint64_t CalculateChecksum(const void* pBuffer, size_t nBufferLength) = 0;
 };
 
 //---------------------------------------------------------------------------------------------------------------------

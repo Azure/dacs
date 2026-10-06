@@ -17,6 +17,7 @@
 #include "ChecksumFactory.h"
 #include "XXHash32Strategy.h"
 #include "CRC32Strategy.h"
+#include "CRC64Strategy.h"
 #include "CommonLogger.h"
 #include <algorithm>
 #include <cctype>
@@ -35,6 +36,11 @@ IChecksumStrategy* ChecksumFactory::GetChecksumStrategyInstance(ChecksumAlgorith
         {
             LOG_DEBUG("Using CRC32 checksum calculator");
             return &CRC32Strategy::GetInstance();
+        }
+        case ChecksumAlgorithm::CRC64:
+        {
+            LOG_DEBUG("Using Azure SDK CRC64 checksum calculator");
+            return &CRC64Strategy::GetInstance();
         }
         default:
         {
@@ -67,6 +73,10 @@ ChecksumAlgorithm ChecksumFactory::ParseAlgorithm(std::string_view algorithmStr)
     {
         return ChecksumAlgorithm::CRC32;
     }
+    else if (equalsIgnoreCase("crc64"))
+    {
+        return ChecksumAlgorithm::CRC64;
+    }
     else
     {
         LOG_WARN("Unknown checksum algorithm '{}', returning INVALID", algorithmStr);
@@ -82,6 +92,8 @@ std::string ChecksumFactory::GetAlgorithmName(ChecksumAlgorithm algorithm)
             return "xxhash32";
         case ChecksumAlgorithm::CRC32:
             return "crc32";
+        case ChecksumAlgorithm::CRC64:
+            return "crc64";
         case ChecksumAlgorithm::INVALID:
         default:
             return "invalid";

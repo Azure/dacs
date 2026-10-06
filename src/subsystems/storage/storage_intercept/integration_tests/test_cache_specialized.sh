@@ -79,6 +79,13 @@ fi
 # SECTION: REMOTE CACHE TESTS
 #===============================================================================
 
+if [[ "$TEST_GROUP" == "all" ]]; then
+  echo "Running checksum tests"
+  source "${SCRIPT_DIR}/local_checksum_perf_test.sh"
+  __run_local_checksum_perf_test__ crc64
+  echo -e "Checksum tests passed\n\n"
+fi
+
 if [[ "$TEST_GROUP" == "all" || "$TEST_GROUP" == "remote" ]]; then
 export CACHESERVER_HOSTNAME="testhost"
 export CACHESERVER_SNAPSHOT_INTERVAL="1"
