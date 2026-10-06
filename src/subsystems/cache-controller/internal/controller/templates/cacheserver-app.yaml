@@ -44,6 +44,9 @@ spec:
 {{- end }}
     spec:
       terminationGracePeriodSeconds: 10
+{{- with .Tolerations }}
+      tolerations: {{ toJSON . }}
+{{- end }}
 {{- if ne .UseEphemeralStorage true }}
       schedulerName: cache-controller
 {{- end }}

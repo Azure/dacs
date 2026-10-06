@@ -9,6 +9,7 @@ Copyright (c) Microsoft Corporation. All rights reserved.
 package v1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
@@ -85,6 +86,13 @@ func (in *CacheSpec) DeepCopyInto(out *CacheSpec) {
 		in, out := &in.NodeSelectorValue, &out.NodeSelectorValue
 		*out = new(string)
 		**out = **in
+	}
+	if in.Tolerations != nil {
+		in, out := &in.Tolerations, &out.Tolerations
+		*out = make([]corev1.Toleration, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
 	}
 	if in.CpuLimit != nil {
 		in, out := &in.CpuLimit, &out.CpuLimit
