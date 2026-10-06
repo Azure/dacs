@@ -9,7 +9,15 @@ and behavior may change between minor releases until DACS reaches `v1.0.0`.
 
 ## Version source
 
-Build automation derives the version from the nearest reachable Git tag:
+For tag-triggered builds, automation uses the exact triggering tag from Azure
+DevOps `Build.SourceBranch` (`BUILD_SOURCEBRANCH` in Bash) or GitHub
+`GITHUB_REF`. The tag must have a supported version format, be fetched locally,
+and point to the checked-out commit. Invalid, missing, or mismatched tags fail
+the build instead of falling back to another version. This also handles an RC
+tag and a stable tag pointing to the same commit.
+
+Branch, pull request, and local builds derive the version from the nearest
+reachable Git tag:
 
 ```bash
 git describe --tags --match='v*' --abbrev=14 HEAD
@@ -140,9 +148,13 @@ oci://mcr.microsoft.com/dacs/helmchart/dacs:0.1.0
 oci://mcr.microsoft.com/dacs/helmchart/dacs-prereq:0.1.0
 ```
 
-The images support `linux/amd64` and `linux/arm64`. Release automation promotes
-the validated image digests from the development registry instead of
-rebuilding them.
+The images support `linux/amd64` and `linux/arm64`. Version Git tags trigger
+`dacs-official`, and the exact Git tag is used as the container version.
+Public release automation loads the retained image archives from that official
+build and publishes them without rebuilding. Helm packages are prepared from
+the retained charts with their image references changed to the public registry.
+Image archives are retained for every official build, including branch, tag,
+and scheduled builds, but not for pull request builds.
 
 Official builds retain validated native packages, architecture-specific AKS
 Ginkgo test binaries, Python wheels, and a unified Rust package source bundle

@@ -22,7 +22,8 @@ For the GitHub Actions implementation of the same build, see
 Both Azure Pipeline entry points use
 `.pipelines/templates/Dacs.Pipeline.Stages.yml`:
 
-- `.pipelines/dacs-official.yml` runs for `main` and scheduled official builds.
+- `.pipelines/dacs-official.yml` runs for `main`, `v*` Git tags, and scheduled
+  official builds.
 - `.pipelines/dacs-pullrequest.yml` runs pull request validation.
 
 The [AKS integration pipeline](../.pipelines/dacs-integration.yml) tests
@@ -73,6 +74,14 @@ after compilation and package creation. Downstream Azure test jobs select that
 exact image. Official architecture jobs also push the rolling native-build tag.
 These pushes are not gated on later test, application-image promotion, or Helm
 publication steps.
+
+For a Git tag build, version resolution uses the exact triggering tag from
+`Build.SourceBranch` (`BUILD_SOURCEBRANCH` in Bash), not whichever tag
+`git describe` selects. The tag must have a supported version format and point
+to the checked-out commit. Build containers receive the same ref so Python and
+Rust packages use that version too. After both architectures and their tests
+succeed, the Package stage promotes the candidate images to
+architecture-specific tags and a multi-platform tag using that exact Git tag.
 
 ## Native-build image lifecycle
 
@@ -248,15 +257,19 @@ Pipeline artifacts move outputs between jobs without rebuilding them:
 | Artifact | Producer | Consumers |
 | --- | --- | --- |
 | `dacs-build-linux-<arch>` | Architecture build job | Tests, C++ image jobs, and package consumers |
+| `dacs-images-linux-<arch>` | Application image job (official builds only) | Package job |
 | `dacs-release` | `Package` | Build record and release consumers |
 
 The architecture artifact contains `build-tree/`, `python-wheel/`, and
 `rust-crate/` subdirectories. Publishing one output avoids repeating 1ES
 binary analysis, SBOM generation, and artifact publication for three separate
-outputs. The release artifact similarly contains `helm-charts/` and
-`release-metadata/` under one output.
+outputs. The release artifact contains `helm-charts/`, `packages/`, and
+`release-metadata/` under one output. Official builds additionally
+include architecture-specific image archives under `images/`.
 
-Application image jobs do not create pipeline artifacts. Each architecture
+Every official build archives application images for protected public
+publication, including branch, tag, and scheduled builds. PR builds skip
+archive creation, upload, download, and assembly. Each architecture still
 pushes the four local images directly to build-specific candidate tags:
 
 ```text
@@ -265,12 +278,11 @@ pushes the four local images directly to build-specific candidate tags:
 ```
 
 After both image stages and both Azure test stages succeed, the `Package` job
-promotes those ACR manifests to immutable
-architecture tags and creates the multi-platform tags. Promotion is
-registry-side, so the pipeline does not transport approximately 1 GB of Docker
-tarballs through the artifact service or run `docker load` before publication.
-The same job packages, validates, and publishes Helm charts, removing the
-separate publication stage and its agent allocation delay.
+promotes candidate manifests to versioned architecture and multi-platform tags
+and publishes Helm charts. On official builds it also downloads both
+architecture archives, verifies their `SHA256SUMS`, and retains them in
+`dacs-release` for protected public publication. Development registry promotion
+remains registry-side and does not load the archives.
 
 Registry objects serve different purposes:
 

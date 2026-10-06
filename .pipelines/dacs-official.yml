@@ -17,6 +17,9 @@ trigger:
   branches:
     include:
       - main
+  tags:
+    include:
+      - v*
 pr: none
 
 schedules:
@@ -72,4 +75,5 @@ extends:
           azureServiceConnection: ${{ parameters.azureServiceConnection }}
           azureStorageBlobPath: ${{ parameters.azureStorageBlobPath }}
           pushNativeBuildImages: true
+          retainImageArchives: true
           buildCacheScope: main

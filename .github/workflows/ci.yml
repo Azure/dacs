@@ -14,10 +14,11 @@
 
 name: CI
 
-# Entry-point CI workflow. Runs on every push to main and on pull requests
-# (including from forks). Because it is a `pull_request` workflow - not
-# `workflow_run` - the PR's own copy of this file runs, so CI changes can be
-# iterated in the PR itself, and fork PRs get a read-only token with no secrets.
+# Entry-point CI workflow. Runs on every push to main, version tags, and pull
+# requests (including from forks). Because it is a `pull_request` workflow -
+# not `workflow_run` - the PR's own copy of this file runs, so CI changes can
+# be iterated in the PR itself, and fork PRs get a read-only token with no
+# secrets.
 #
 # It calls the reusable build workflow once, then fans out in parallel the
 # credential-free jobs that consume its artifacts. Every run executes the full
@@ -37,6 +38,7 @@ concurrency:
 on:
   push:
     branches: [main]
+    tags: ['v*']
     # Documentation-only changes are covered by the separate lint and security
     # workflows and do not need the full build and test matrix.
     paths-ignore:
@@ -147,9 +149,8 @@ jobs:
           cache: 'false'
 
   # CPU unit tests: native C++ (ctest), Go, and Rust. Reuses the compiled build
-  # tree and restores the native-build toolchain image from the gha cache
-  # populated by the build job, so no source is recompiled (ctest just runs the
-  # prebuilt binaries).
+  # tree and native-build toolchain image produced by the build job, so no
+  # source is recompiled (ctest just runs the prebuilt binaries).
   unit-test:
     name: CPU unit tests (native + Go + Rust, ${{ matrix.arch }})
     needs: build
@@ -189,6 +190,7 @@ jobs:
           native-build-image-artifact: dacs-native-build-image-${{ matrix.arch }}
 
       - name: Cache Cargo dependencies and build outputs
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -197,6 +199,7 @@ jobs:
           key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/subsystems/storage/rust/dacs_client/Cargo.lock') }}
           restore-keys: |
             cargo-${{ runner.os }}-${{ runner.arch }}-
+          lookup-only: ${{ startsWith(github.ref, 'refs/tags/') }}
 
       - name: Run unit tests (native + Go + Rust)
         run: make test
@@ -249,6 +252,7 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: test/go.mod
+          cache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           cache-dependency-path: |
             test/go.sum
             src/subsystems/cache-controller/go.sum

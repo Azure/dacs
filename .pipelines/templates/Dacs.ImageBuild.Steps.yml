@@ -21,6 +21,9 @@ parameters:
     type: string
   - name: buildCacheScope
     type: string
+  - name: retainImageArchives
+    type: boolean
+    default: false
 
 steps:
   - template: Dacs.RestoreBuild.Steps.yml
@@ -77,6 +80,18 @@ steps:
         make images
     displayName: Build linux/${{ parameters.architecture }} images
     workingDirectory: $(Pipeline.Workspace)/s/dacs
+
+  - ${{ if parameters.retainImageArchives }}:
+      - bash: |
+          set -euo pipefail
+
+          DOCKER_REGISTRY="${{ parameters.acrName }}.azurecr.io/dacs" \
+          BUILD_NUMBER="$(finalTag)" \
+          BUILD_ARCH="${{ parameters.architecture }}" \
+          OUTPUT_DIR="$(Build.ArtifactStagingDirectory)/images" \
+            ./.pipelines/scripts/publish/save-image-tarballs.sh
+        displayName: Archive linux/${{ parameters.architecture }} images
+        workingDirectory: $(Pipeline.Workspace)/s/dacs
 
   - bash: |
       set -euo pipefail
