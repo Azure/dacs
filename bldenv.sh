@@ -191,6 +191,8 @@ docker run \
     --env AZURE_BLOB_PATH \
     --env BUILD_ARCH \
     --env BUILD_TYPE \
+    --env BUILD_SOURCEBRANCH \
+    --env GITHUB_REF \
     --env AKS_TEST_BINARY_OUTPUT \
     --env DACS_AZURE_STORAGE_ACCOUNT \
     --env DACS_AZURE_STORAGE_CONTAINER \

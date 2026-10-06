@@ -20,6 +20,8 @@ readonly SCRIPT_DIR
 readonly VERSION_HELPER="${SCRIPT_DIR}/../get-version.sh"
 TEST_REPOSITORY=""
 
+unset BUILD_SOURCEBRANCH GITHUB_REF
+
 cleanup() {
     if [[ -n "${TEST_REPOSITORY}" ]]; then
         rm -rf -- "${TEST_REPOSITORY}"
@@ -31,10 +33,26 @@ assert_version() {
     local expected="$1"
     local format="$2"
     local actual
+    shift 2
 
-    actual="$(DACS_REPOSITORY_ROOT="${TEST_REPOSITORY}" "${VERSION_HELPER}" "${format}")"
+    actual="$(env DACS_REPOSITORY_ROOT="${TEST_REPOSITORY}" "$@" "${VERSION_HELPER}" "${format}")"
     if [[ "${actual}" != "${expected}" ]]; then
         echo "Expected ${format} version '${expected}', got '${actual}'." >&2
+        return 1
+    fi
+}
+
+assert_version_failure() {
+    local expected="$1"
+    local actual
+    shift
+
+    if actual="$(env DACS_REPOSITORY_ROOT="${TEST_REPOSITORY}" "$@" "${VERSION_HELPER}" source 2>&1)"; then
+        echo "Expected version derivation to fail for '$*', got '${actual}'." >&2
+        return 1
+    fi
+    if [[ "${actual}" != *"${expected}"* ]]; then
+        echo "Expected error containing '${expected}', got '${actual}'." >&2
         return 1
     fi
 }
@@ -82,6 +100,7 @@ assert_universal_conversion \
 
 git -C "${TEST_REPOSITORY}" tag v0.1.0
 assert_version "v0.1.0" source
+assert_version "v0.1.0" container
 assert_version "0.1.0" python
 assert_version "0.1.0" rust
 assert_version "0.1.0" universal
@@ -102,3 +121,30 @@ assert_version "v0.2.0-rc.1.1+${dev_sha}" source
 assert_version "0.2.0rc1.dev1" python
 assert_version "0.2.0-rc.1.1.g${dev_sha}" rust
 assert_version "0.2.0-rc.1.1.g${dev_sha}" universal
+
+# git describe prefers the annotated RC over the lightweight stable tag.
+git -C "${TEST_REPOSITORY}" tag -a v0.2.0-rc.2 -m "Release candidate"
+git -C "${TEST_REPOSITORY}" tag v0.2.0
+assert_version "v0.2.0-rc.2" source
+
+for provider in BUILD_SOURCEBRANCH GITHUB_REF; do
+    for format in source container; do
+        assert_version "v0.2.0" "${format}" "${provider}=refs/tags/v0.2.0"
+        assert_version "v0.2.0-rc.2" "${format}" "${provider}=refs/tags/v0.2.0-rc.2"
+    done
+    for format in helm rust universal; do
+        assert_version "0.2.0" "${format}" "${provider}=refs/tags/v0.2.0"
+        assert_version "0.2.0-rc.2" "${format}" "${provider}=refs/tags/v0.2.0-rc.2"
+    done
+    assert_version "0.2.0" python "${provider}=refs/tags/v0.2.0"
+    assert_version "0.2.0rc2" python "${provider}=refs/tags/v0.2.0-rc.2"
+
+    assert_version "v0.2.0-rc.2" source "${provider}=refs/heads/main"
+    assert_version "v0.2.0-rc.2" source "${provider}=refs/pull/123/merge"
+    assert_version_failure "not checked-out HEAD" "${provider}=refs/tags/v0.2.0-rc.1"
+    assert_version_failure "missing or does not resolve to a commit" "${provider}=refs/tags/v9.9.9"
+
+    for tag in v01.2.3 v1.02.3 v1.2.03 v1.2.3-rc.01 v1.2.3-preview.1 v1.2.3+metadata; do
+        assert_version_failure "not a supported DACS version" "${provider}=refs/tags/${tag}"
+    done
+done

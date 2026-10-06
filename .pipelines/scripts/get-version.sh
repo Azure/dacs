@@ -32,11 +32,39 @@ valid_core() {
     valid_number "$1" && valid_number "$2" && valid_number "$3"
 }
 
+valid_release_tag() {
+    [[ "$1" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)(-(alpha|beta|rc)\.([0-9]+))?$ ]] &&
+        valid_core "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" &&
+        { [[ -z "${BASH_REMATCH[6]:-}" ]] || valid_number "${BASH_REMATCH[6]}"; }
+}
+
 derive_source_version() {
     local commit_count
     local description
     local reachable_tags
     local sha
+    local source_ref="${BUILD_SOURCEBRANCH:-${GITHUB_REF:-}}"
+    local source_tag
+    local tag_commit
+
+    if [[ "${source_ref}" == refs/tags/* ]]; then
+        source_tag="${source_ref#refs/tags/}"
+        if ! valid_release_tag "${source_tag}"; then
+            echo "Triggering tag '${source_tag}' is not a supported DACS version. Expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-{alpha|beta|rc}.NUMBER." >&2
+            return 1
+        fi
+        if ! tag_commit="$(git_repository rev-parse --verify "${source_ref}^{commit}")"; then
+            echo "Triggering tag '${source_tag}' is missing or does not resolve to a commit. Fetch the triggering tag before building." >&2
+            return 1
+        fi
+        sha="$(git_repository rev-parse --verify HEAD)" || return
+        if [[ "${tag_commit}" != "${sha}" ]]; then
+            echo "Triggering tag '${source_tag}' points to '${tag_commit}', not checked-out HEAD '${sha}'." >&2
+            return 1
+        fi
+        echo "${source_tag}"
+        return
+    fi
 
     if ! description="$(git_repository describe \
         --tags --match='v*' --abbrev=14 HEAD 2>&1)"; then
@@ -57,9 +85,7 @@ derive_source_version() {
         return 1
     fi
 
-    if [[ "${description}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)(-(alpha|beta|rc)\.([0-9]+))?$ ]] &&
-        valid_core "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" &&
-        { [[ -z "${BASH_REMATCH[6]:-}" ]] || valid_number "${BASH_REMATCH[6]}"; }; then
+    if valid_release_tag "${description}"; then
         echo "${description}"
         return
     fi
@@ -116,7 +142,7 @@ to_universal_version() {
 
 main() {
     local source_version
-    source_version="$(derive_source_version)"
+    source_version="$(derive_source_version)" || return
 
     case "${FORMAT}" in
         source)

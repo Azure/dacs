@@ -32,6 +32,10 @@ parameters:
   - name: buildCacheScope
     displayName: Registry BuildKit cache scope
     type: string
+  - name: retainImageArchives
+    displayName: Retain images for protected public publication
+    type: boolean
+    default: false
 
 stages:
   - stage: Build_amd64
@@ -100,6 +104,12 @@ stages:
       - job: Images_amd64
         displayName: Build linux/amd64 images
         timeoutInMinutes: 120
+        ${{ if parameters.retainImageArchives }}:
+          templateContext:
+            outputs:
+              - output: pipelineArtifact
+                path: $(Build.ArtifactStagingDirectory)/images
+                artifact: dacs-images-linux-amd64
         steps:
           - template: /.pipelines/templates/Dacs.ImageBuild.Steps.yml@self
             parameters:
@@ -107,6 +117,7 @@ stages:
               acrName: ${{ parameters.acrName }}
               azureServiceConnection: ${{ parameters.azureServiceConnection }}
               buildCacheScope: ${{ parameters.buildCacheScope }}
+              retainImageArchives: ${{ parameters.retainImageArchives }}
 
   - stage: Images_arm64
     displayName: Build linux/arm64 images
@@ -120,6 +131,12 @@ stages:
       - job: Images_arm64
         displayName: Build linux/arm64 images
         timeoutInMinutes: 120
+        ${{ if parameters.retainImageArchives }}:
+          templateContext:
+            outputs:
+              - output: pipelineArtifact
+                path: $(Build.ArtifactStagingDirectory)/images
+                artifact: dacs-images-linux-arm64
         steps:
           - template: /.pipelines/templates/Dacs.ImageBuild.Steps.yml@self
             parameters:
@@ -127,6 +144,7 @@ stages:
               acrName: ${{ parameters.acrName }}
               azureServiceConnection: ${{ parameters.azureServiceConnection }}
               buildCacheScope: ${{ parameters.buildCacheScope }}
+              retainImageArchives: ${{ parameters.retainImageArchives }}
 
   - stage: AzureTests_amd64
     displayName: Azure-backed tests linux/amd64
@@ -212,6 +230,33 @@ stages:
               buildType: current
               artifact: dacs-build-linux-arm64
               targetPath: $(Pipeline.Workspace)/feed-artifacts/arm64
+          - ${{ if parameters.retainImageArchives }}:
+              - task: DownloadPipelineArtifact@2
+                displayName: Download linux/amd64 image archives
+                inputs:
+                  buildType: current
+                  artifact: dacs-images-linux-amd64
+                  targetPath: $(Pipeline.Workspace)/image-artifacts/amd64
+              - task: DownloadPipelineArtifact@2
+                displayName: Download linux/arm64 image archives
+                inputs:
+                  buildType: current
+                  artifact: dacs-images-linux-arm64
+                  targetPath: $(Pipeline.Workspace)/image-artifacts/arm64
+              - bash: |
+                  set -euo pipefail
+
+                  readonly image_artifacts="$(Build.ArtifactStagingDirectory)/release/images"
+                  mkdir -p "$image_artifacts"
+                  for architecture in amd64 arm64; do
+                    source="$(Pipeline.Workspace)/image-artifacts/$architecture"
+                    (
+                      cd "$source"
+                      sha256sum -c SHA256SUMS
+                    )
+                    cp -a "$source" "$image_artifacts/$architecture"
+                  done
+                displayName: Retain verified image archives
           - bash: |
               set -euo pipefail
               helm version

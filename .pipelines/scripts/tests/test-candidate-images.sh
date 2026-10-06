@@ -19,6 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 readonly PUSH_SCRIPT="${SCRIPT_DIR}/../publish/push-candidate-images.sh"
 readonly PROMOTE_SCRIPT="${SCRIPT_DIR}/../publish/promote-candidate-images.sh"
+readonly SAVE_SCRIPT="${SCRIPT_DIR}/../publish/save-image-tarballs.sh"
 TEST_DIR=""
 
 cleanup() {
@@ -47,6 +48,15 @@ set -euo pipefail
 printf '%s\n' "$*" >>"${TEST_DOCKER_LOG:?}"
 if [[ "$*" == *"imagetools inspect example.azurecr.io/dacs/native-build:v1.2.3-linux-"* ]]; then
     exit 1
+fi
+if [[ "$1" == "image" && "$2" == "inspect" && "$3" == "${TEST_MISSING_IMAGE:-}" ]]; then
+    exit 1
+fi
+if [[ "$1" == "save" ]]; then
+    if [[ "${TEST_SAVE_FAILURE:-false}" == "true" ]]; then
+        exit 1
+    fi
+    printf '%s\n' "$2"
 fi
 EOF
 chmod +x "$TEST_DIR/bin/docker"
@@ -99,3 +109,57 @@ if PATH="$TEST_DIR/bin:$PATH" \
         "$PROMOTE_SCRIPT" >/dev/null 2>&1; then
     fail "Expected an unsupported promotion architecture to fail"
 fi
+
+for architecture in amd64 arm64; do
+    : >"$TEST_DIR/docker.log"
+    PATH="$TEST_DIR/bin:$PATH" \
+    TEST_DOCKER_LOG="$TEST_DIR/docker.log" \
+    DOCKER_REGISTRY="example.azurecr.io/dacs" \
+    BUILD_NUMBER="v1.2.3" \
+    BUILD_ARCH="$architecture" \
+    OUTPUT_DIR="$TEST_DIR/images/$architecture" \
+        "$SAVE_SCRIPT"
+
+    [[ "$(find "$TEST_DIR/images/$architecture" -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 4 ]] ||
+        fail "Expected four image archives for $architecture"
+    [[ "$(wc -l < "$TEST_DIR/images/$architecture/SHA256SUMS")" -eq 4 ]] ||
+        fail "Expected four image checksums for $architecture"
+    (
+        cd "$TEST_DIR/images/$architecture"
+        sha256sum -c SHA256SUMS
+    )
+    for image in cache-server cache-test-client cacheserver-scheduler cache-controller; do
+        ref="example.azurecr.io/dacs/$image:v1.2.3-linux-$architecture"
+        assert_log_contains "tag $image:local $ref"
+        assert_log_contains "save $ref"
+        archive="$TEST_DIR/images/$architecture/$image-v1.2.3-linux-$architecture.tar.gz"
+        [[ "$(gzip -cd "$archive")" == "$ref" ]] ||
+            fail "Expected archive $archive to contain the saved image $ref"
+    done
+done
+
+if PATH="$TEST_DIR/bin:$PATH" \
+    TEST_DOCKER_LOG="$TEST_DIR/docker.log" \
+    TEST_MISSING_IMAGE="cache-server:local" \
+    DOCKER_REGISTRY="example.azurecr.io/dacs" \
+    BUILD_NUMBER="v1.2.3" \
+    BUILD_ARCH="amd64" \
+    OUTPUT_DIR="$TEST_DIR/missing-image" \
+        "$SAVE_SCRIPT" >"$TEST_DIR/missing-image.log" 2>&1; then
+    fail "Expected a missing local image to fail"
+fi
+grep -F "Local image 'cache-server:local' not found" "$TEST_DIR/missing-image.log" >/dev/null ||
+    fail "Expected an explicit missing-image error"
+
+if PATH="$TEST_DIR/bin:$PATH" \
+    TEST_DOCKER_LOG="$TEST_DIR/docker.log" \
+    TEST_SAVE_FAILURE=true \
+    DOCKER_REGISTRY="example.azurecr.io/dacs" \
+    BUILD_NUMBER="v1.2.3" \
+    BUILD_ARCH="amd64" \
+    OUTPUT_DIR="$TEST_DIR/failed-save" \
+        "$SAVE_SCRIPT" >"$TEST_DIR/failed-save.log" 2>&1; then
+    fail "Expected a failed Docker save to fail archive production"
+fi
+[[ ! -s "$TEST_DIR/failed-save/SHA256SUMS" ]] ||
+    fail "Expected no checksums to be published for a failed Docker save"
