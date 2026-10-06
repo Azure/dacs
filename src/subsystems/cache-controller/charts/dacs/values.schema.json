@@ -104,6 +104,44 @@
           "minimum": 4,
           "maximum": 128
         },
+        "tolerations": {
+          "type": "array",
+          "description": "CacheServer pod tolerations, independent of manager.tolerations; requires cache.enabled.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "key": { "type": "string" },
+              "operator": { "type": "string", "enum": ["", "Equal", "Exists"] },
+              "value": { "type": "string" },
+              "effect": { "type": "string", "enum": ["", "NoSchedule", "PreferNoSchedule", "NoExecute"] },
+              "tolerationSeconds": { "type": "integer" }
+            },
+            "allOf": [
+              {
+                "if": { "properties": { "key": { "const": "" } } },
+                "then": {
+                  "required": ["operator"],
+                  "properties": { "operator": { "const": "Exists" } }
+                }
+              },
+              {
+                "if": {
+                  "required": ["operator"],
+                  "properties": { "operator": { "const": "Exists" } }
+                },
+                "then": { "properties": { "value": { "const": "" } } }
+              },
+              {
+                "if": { "required": ["tolerationSeconds"] },
+                "then": {
+                  "required": ["effect"],
+                  "properties": { "effect": { "const": "NoExecute" } }
+                }
+              }
+            ]
+          }
+        },
         "port": {
           "type": "integer",
           "minimum": 1,
