@@ -40,6 +40,17 @@ using namespace cacheutils;
 //---------------------------------------------------------------------------------------------------------------------
 namespace
 {
+TEST(ChecksumFactoryTests, SupportsAzureSdkCrc64)
+{
+    EXPECT_EQ(ChecksumAlgorithm::CRC64, ChecksumFactory::ParseAlgorithm("crc64"));
+    EXPECT_EQ(ChecksumAlgorithm::CRC64, ChecksumFactory::ParseAlgorithm("CRC64"));
+    EXPECT_EQ("crc64", ChecksumFactory::GetAlgorithmName(ChecksumAlgorithm::CRC64));
+
+    auto* checksumStrategy = ChecksumFactory::GetChecksumStrategyInstance(ChecksumAlgorithm::CRC64);
+    ASSERT_NE(nullptr, checksumStrategy);
+    EXPECT_EQ(0xc7a37fbfa4d9d80eULL, checksumStrategy->CalculateChecksum("Hello Azure!", 12));
+}
+
 // Helper function to encode a filename into a hexadecimal string representation.
 // We use it to find the disk path where cacheserver has stored the cache file.
 std::string EncodeCacheFilename(const std::string& filename)
@@ -941,7 +952,7 @@ TEST_P(CacheClientTests, ChecksumValidationDetectsBitFlipCorruptionXXH32)
 
     // Calculate the checksum of the original (uncorrupted) data
     IChecksumStrategy* checksumStrategy = ChecksumFactory::GetChecksumStrategyInstance(ChecksumAlgorithm::XXHASH32);
-    uint32_t originalChecksum = checksumStrategy->CalculateChecksum(pBuffer, nLength);
+    uint64_t originalChecksum = checksumStrategy->CalculateChecksum(pBuffer, nLength);
 
     // Now simulate a bit flip: corrupt one bit in the data
     size_t corruptPosition = nLength / 2;
@@ -984,7 +995,7 @@ TEST_P(CacheClientTests, ChecksumValidationWithCRC32Algorithm)
 
     // Calculate expected CRC32 checksum
     IChecksumStrategy* checksumCalculator = ChecksumFactory::GetChecksumStrategyInstance(ChecksumAlgorithm::CRC32);
-    uint32_t expectedChecksum = checksumCalculator->CalculateChecksum(pBuffer, nLength);
+    uint64_t expectedChecksum = checksumCalculator->CalculateChecksum(pBuffer, nLength);
 
     // Create metadata with CRC32 checksum and algorithm
     const std::string checksumValue = std::to_string(expectedChecksum);
@@ -1013,6 +1024,52 @@ TEST_P(CacheClientTests, ChecksumValidationWithCRC32Algorithm)
     free(pBuffer2);
 }
 //---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, ChecksumValidationWithCRC64Algorithm)
+{
+    string filename = GetCorrelationId();
+    const char pBuffer[] = "Hello Azure!";
+    uint64_t nLength = sizeof(pBuffer) - 1;
+
+    IChecksumStrategy* checksumCalculator =
+        ChecksumFactory::GetChecksumStrategyInstance(ChecksumAlgorithm::CRC64);
+    uint64_t expectedChecksum = checksumCalculator->CalculateChecksum(pBuffer, nLength);
+    ASSERT_GT(expectedChecksum, UINT32_MAX);
+
+    const std::string checksumValue = std::to_string(expectedChecksum);
+    const std::string algoValue = std::to_string(static_cast<int>(ChecksumAlgorithm::CRC64));
+    KeyValuePair kvPairs[2];
+    kvPairs[0].strKey = (char*)"CHUNK_CHECKSUM";
+    kvPairs[0].strValue = (char*)checksumValue.c_str();
+    kvPairs[1].strKey = (char*)"CHECKSUM_ALGORITHM";
+    kvPairs[1].strValue = (char*)algoValue.c_str();
+    Metadata metadata;
+    metadata.arrKeyValuePairs = kvPairs;
+    metadata.nKeyValuePairs = 2;
+
+    auto status = m_cacheClientImpl.Upload(filename.c_str(), pBuffer, nLength, 0, nullptr, &metadata, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    char pBuffer2[sizeof(pBuffer)] = {};
+    uint64_t readLength = nLength;
+    status = m_cacheClientImplCRC.Download(filename.c_str(), pBuffer2, &readLength, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+    ASSERT_EQ(readLength, nLength);
+    ASSERT_EQ(memcmp(pBuffer, pBuffer2, nLength), 0);
+
+    const std::string mismatchedFilename = GetCorrelationId();
+    const std::string incorrectChecksumValue = std::to_string(expectedChecksum ^ 1ULL);
+    kvPairs[0].strValue = (char*)incorrectChecksumValue.c_str();
+
+    status =
+        m_cacheClientImpl.Upload(mismatchedFilename.c_str(), pBuffer, nLength, 0, nullptr, &metadata, nullptr);
+    ASSERT_EQ(CacheClientStatus::SUCCESS, status);
+
+    readLength = nLength;
+    status = m_cacheClientImplCRC.Download(
+        mismatchedFilename.c_str(), pBuffer2, &readLength, nullptr, nullptr);
+    ASSERT_EQ(CacheClientStatus::CHECKSUM_MISMATCH, status);
+}
+//---------------------------------------------------------------------------------------------------------------------
 TEST_P(CacheClientTests, ChecksumValidationDetectsAlgorithmMismatch)
 {
     string filename = GetCorrelationId();
@@ -1021,7 +1078,7 @@ TEST_P(CacheClientTests, ChecksumValidationDetectsAlgorithmMismatch)
 
     // Calculate checksum with CRC32 but store metadata claiming it's xxhash32
     IChecksumStrategy* checksumStrategy = ChecksumFactory::GetChecksumStrategyInstance(ChecksumAlgorithm::CRC32);
-    uint32_t crc32Checksum = checksumStrategy->CalculateChecksum(pBuffer, nLength);
+    uint64_t crc32Checksum = checksumStrategy->CalculateChecksum(pBuffer, nLength);
 
     const std::string checksumValue = std::to_string(crc32Checksum);
     const std::string algoValue = std::to_string(static_cast<int>(ChecksumAlgorithm::XXHASH32));

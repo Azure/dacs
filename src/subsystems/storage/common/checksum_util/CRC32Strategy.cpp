@@ -24,7 +24,7 @@ CRC32Strategy& CRC32Strategy::GetInstance()
     return s_instance;
 }
 
-uint32_t CRC32Strategy::CalculateChecksum(const void* pBuffer, size_t nBufferLength)
+uint64_t CRC32Strategy::CalculateChecksum(const void* pBuffer, size_t nBufferLength)
 {
     boost::crc_32_type crc32;
     crc32.process_bytes(pBuffer, nBufferLength);

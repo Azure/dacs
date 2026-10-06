@@ -25,7 +25,7 @@ class XXHash32Strategy : public IChecksumStrategy
 public:
     static XXHash32Strategy& GetInstance();
     
-    uint32_t CalculateChecksum(const void* pBuffer, size_t nBufferLength) override;
+    uint64_t CalculateChecksum(const void* pBuffer, size_t nBufferLength) override;
 
 private:
     XXHash32Strategy() = default;
