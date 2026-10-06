@@ -408,24 +408,28 @@ func TestContinousStuckPod(t *testing.T) {
 	assert.Equal(t, len(schedulerInstructions), 0)
 
 	for podStuckCount := 1; podStuckCount <= 3; podStuckCount++ {
-		// Mark pod-1 in Terminating state, and reprocess. We shouldn't get any schedule instructions yet
+		// Mark pod-1 in Terminating state, and reprocess. We shouldn't get any schedule instructions yet.
+		// State changes within the same unhealthy episode should not reset its start time.
 		pods[1].State = PodStatusTerminating
 		schedulerInstructions = getSchedulerInstructions(pods, nodes)
-		assert.Equal(t, len(schedulerInstructions), 0)
+		if podStuckCount == 1 {
+			assert.Equal(t, len(schedulerInstructions), 0)
 
-		// Update the firstHitTime for pod-1 Unknown state to be 10 minutes ago, and reprocess.
-		// We should get delete instruction for stuck pod-1
-		podState := tracker.State.PodMap["cachens"]["cacheserver-1"]
-		podState.FirstHitTimestamp = time.Now().Add(-10 * time.Minute)
-		tracker.State.PodMap["cachens"]["cacheserver-1"] = podState
-		schedulerInstructions = getSchedulerInstructions(pods, nodes)
+			// Backdate UnhealthySinceOnCurrentNode to simulate a pod that has remained unhealthy across state changes
+			// for 10 minutes. We should get a delete instruction for stuck pod-1.
+			podState := tracker.State.PodMap["cachens"]["cacheserver-1"]
+			podState.UnhealthySinceOnCurrentNode = time.Now().Add(-10 * time.Minute)
+			tracker.State.PodMap["cachens"]["cacheserver-1"] = podState
+			schedulerInstructions = getSchedulerInstructions(pods, nodes)
+		}
 		assert.Equal(t, len(schedulerInstructions), 1)
 		assertPodDeleted(
 			t, schedulerInstructions, "cachens", "cacheserver-1",
 			"Pod cacheserver-1(cachens) is stuck on node node-1 in Terminating state for more than 5m0s")
 
-		// Mark pod-1 as pending, and reprocess.
-		// Pod-1 should get rescheduled on "node-1" first 2 times, and then on "node-3" the 3rd time
+		// Mark pod-1 as Pending, and reprocess.
+		// Pod-1 should get rescheduled on node-1 for the first 2 stuck events,
+		// and then on node-3 after node-1 reaches the stuck event threshold.
 		pods[1].markPodAsPending()
 		schedulerInstructions = getSchedulerInstructions(pods, nodes)
 		assert.Equal(t, len(schedulerInstructions), 1)
@@ -436,7 +440,9 @@ func TestContinousStuckPod(t *testing.T) {
 			expectedReason = "Scheduling pod on healthy node"
 		}
 		assertPodScheduledToNode(t, schedulerInstructions, "cachens", "cacheserver-1", expectedDestinationNode, expectedReason)
-		// Mark pod-1 as running, and reprocess. We should not get any schedule instructions
+
+		// Mark pod-1 as Running, and reprocess. We should not get any schedule instructions.
+		// This brief Running period should not clear the unhealthy episode or node's stuck events.
 		pods[1].markPodAsRunning(expectedDestinationNode)
 		schedulerInstructions = getSchedulerInstructions(pods, nodes)
 		assert.Equal(t, len(schedulerInstructions), 0)
@@ -487,6 +493,7 @@ func TestTransientStuckPod(t *testing.T) {
 		// We should get delete instruction for stuck pod-1
 		podState := tracker.State.PodMap["cachens"]["cacheserver-1"]
 		podState.FirstHitTimestamp = time.Now().Add(-10 * time.Minute)
+		podState.UnhealthySinceOnCurrentNode = time.Now().Add(-10 * time.Minute)
 		tracker.State.PodMap["cachens"]["cacheserver-1"] = podState
 		schedulerInstructions = getSchedulerInstructions(pods, nodes)
 		assert.Equal(t, len(schedulerInstructions), 1)
@@ -518,6 +525,144 @@ func TestTransientStuckPod(t *testing.T) {
 
 		trackerNode1Info = tracker.State.CurrentNodes["node-1"]
 		assert.Equal(t, getRecentPodStuckEventCount(&trackerNode1Info), 0)
+	}
+}
+
+func TestGetPodUnhealthyStartTime(t *testing.T) {
+	resetTracker()
+
+	currentTime := time.Now()
+	unhealthyStartTime := currentTime.Add(-10 * time.Minute)
+	failedPod := CreateMockPod("cachens", 1, "node-1", PodStatusFailed, true)
+	runningPod := CreateMockPod("cachens", 1, "node-1", PodStatusRunning, true)
+	succeededPod := CreateMockPod("cachens", 1, "node-1", PodStatusSucceeded, true)
+
+	tests := []struct {
+		name             string
+		previousPodState trackerPodInfo
+		currentPod       Pod
+		expected         time.Time
+	}{
+		{
+			name:       "new unhealthy pod starts an unhealthy period",
+			currentPod: failedPod,
+			expected:   currentTime,
+		},
+		{
+			name:       "Succeeded pod starts an unhealthy period",
+			currentPod: succeededPod,
+			expected:   currentTime,
+		},
+		{
+			name: "unhealthy state change on the same node keeps the start time",
+			previousPodState: trackerPodInfo{
+				NodeName:                    "node-1",
+				State:                       PodStatusPending,
+				UnhealthySinceOnCurrentNode: unhealthyStartTime,
+			},
+			currentPod: failedPod,
+			expected:   unhealthyStartTime,
+		},
+		{
+			name: "brief Running period keeps the start time",
+			previousPodState: trackerPodInfo{
+				NodeName:                    "node-1",
+				State:                       PodStatusRunning,
+				FirstHitTimestamp:           currentTime,
+				UnhealthySinceOnCurrentNode: unhealthyStartTime,
+			},
+			currentPod: failedPod,
+			expected:   unhealthyStartTime,
+		},
+		{
+			name: "stable Running period starts a new unhealthy period",
+			previousPodState: trackerPodInfo{
+				NodeName:                    "node-1",
+				State:                       PodStatusRunning,
+				FirstHitTimestamp:           unhealthyStartTime,
+				UnhealthySinceOnCurrentNode: unhealthyStartTime,
+			},
+			currentPod: failedPod,
+			expected:   currentTime,
+		},
+		{
+			name: "moving to another node starts a new unhealthy period",
+			previousPodState: trackerPodInfo{
+				NodeName:                    "node-2",
+				State:                       PodStatusPending,
+				UnhealthySinceOnCurrentNode: unhealthyStartTime,
+			},
+			currentPod: failedPod,
+			expected:   currentTime,
+		},
+		{
+			name:       "new Running pod has no unhealthy period",
+			currentPod: runningPod,
+			expected:   time.Time{},
+		},
+		{
+			name: "stable Running pod clears the unhealthy period",
+			previousPodState: trackerPodInfo{
+				NodeName:                    "node-1",
+				State:                       PodStatusRunning,
+				FirstHitTimestamp:           unhealthyStartTime,
+				UnhealthySinceOnCurrentNode: unhealthyStartTime,
+			},
+			currentPod: runningPod,
+			expected:   time.Time{},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			actual := tracker.getPodUnhealthyStartTime(test.previousPodState, test.currentPod, currentTime)
+			assert.Equal(t, actual, test.expected)
+		})
+	}
+}
+
+func TestPodStateFlappingMovesAwayFromBadNode(t *testing.T) {
+	resetTracker()
+
+	nodes := CreateMockGpuNodeList(4)
+	pods := []Pod{
+		CreateMockPod("cachens", 0, "node-0", PodStatusRunning, true),
+		CreateMockPod("cachens", 1, "node-1", PodStatusRunning, true),
+		CreateMockPod("cachens", 2, "node-2", PodStatusRunning, true),
+	}
+	assert.Equal(t, len(getSchedulerInstructions(pods, nodes)), 0)
+
+	pods[1].State = PodStatusPending
+	assert.Equal(t, len(getSchedulerInstructions(pods, nodes)), 0)
+
+	podState := tracker.State.PodMap["cachens"]["cacheserver-1"]
+	podState.UnhealthySinceOnCurrentNode = time.Now().Add(-10 * time.Minute)
+	tracker.State.PodMap["cachens"]["cacheserver-1"] = podState
+
+	for attempt := 1; attempt <= SuccessivePodStuckEventThreshold; attempt++ {
+		for _, state := range []PodStatus{PodStatusFailed, PodStatusTerminating, PodStatusFailed} {
+			pods[1].State = state
+			instructions := getSchedulerInstructions(pods, nodes)
+			assert.Equal(t, len(instructions), 1)
+			assertPodDeleted(t, instructions, "cachens", "cacheserver-1",
+				"Pod cacheserver-1(cachens) is stuck on node node-1 in "+string(state)+" state for more than 5m0s")
+		}
+
+		nodeInfo := tracker.State.CurrentNodes["node-1"]
+		assert.Equal(t, getRecentPodStuckEventCount(&nodeInfo), attempt)
+
+		pods[1].markPodAsPending()
+		instructions := getSchedulerInstructions(pods, nodes)
+		assert.Equal(t, len(instructions), 1)
+
+		expectedNode := "node-1"
+		expectedReason := "Rescheduling pod on the node it was previously running on"
+		if attempt == SuccessivePodStuckEventThreshold {
+			expectedNode = "node-3"
+			expectedReason = "Scheduling pod on healthy node"
+		}
+		assertPodScheduledToNode(t, instructions, "cachens", "cacheserver-1", expectedNode, expectedReason)
+		pods[1].markPodAsRunning(expectedNode)
 	}
 }
 
