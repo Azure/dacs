@@ -111,7 +111,8 @@ manager:
   # Node selector for pod scheduling
   nodeSelector: {}
 
-  # Pod tolerations. Defaults to tolerating the CriticalAddonsOnly taint.
+  # Controller pod tolerations only; CacheServer pods use cache.tolerations.
+  # Defaults to tolerating the CriticalAddonsOnly taint.
   tolerations:
     - key: CriticalAddonsOnly
       operator: Exists
@@ -192,6 +193,14 @@ cache:
   enabled: false  # Set to true to deploy a sample Cache instance with the chart 
   name: cache-sample
   namespace: ""  # Namespace for Cache CR (empty = Release.Namespace)
+
+  # CacheServer pod tolerations, written to Cache.spec.tolerations when enabled.
+  # For externally managed Cache resources, set spec.tolerations on the CR.
+  tolerations: []
+  # - key: sku
+  #   operator: Equal
+  #   value: gpu
+  #   effect: NoSchedule
   
   # Scaling configuration (use either static or dynamic, not both).
   # If `dynamic` is set, it takes precedence over the default `static` below,

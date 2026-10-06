@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
 
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
@@ -27,6 +28,7 @@ type renderValues struct {
 	NodeSelectorValue            []string
 	Image                        string
 	ImagePullPolicy              string
+	Tolerations                  []corev1.Toleration
 	ServerThreads                int32
 	Port                         int
 	MetricsPort                  int

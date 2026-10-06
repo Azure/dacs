@@ -53,6 +53,10 @@ spec:
   {{- with .Values.cache.nodeSelectorValue }}
   nodeSelectorValue: {{ . | quote }}
   {{- end }}
+  {{- with .Values.cache.tolerations }}
+  tolerations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   {{- if ne .Values.cache.cpuLimit nil }}
   cpuLimit: {{ .Values.cache.cpuLimit }}
   {{- end }}
