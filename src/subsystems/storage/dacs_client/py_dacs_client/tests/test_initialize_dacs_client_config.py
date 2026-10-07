@@ -17,6 +17,7 @@
 
 import os
 import stat
+from concurrent.futures import ThreadPoolExecutor
 
 import py_dacs_client
 import pytest
@@ -25,6 +26,106 @@ from py_dacs_client import dacs_utils
 # To run the test: 
 # cd <workspace>/DACS/src/subsystems/storage/dacs_client
 # python3 -m pytest py_dacs_client/tests/test_initialize_dacs_client_config.py -v --noconftest
+
+@pytest.fixture(autouse=True)
+def isolated_config_environment(monkeypatch):
+    # setenv first so teardown restores the original state even if the code under test sets it.
+    monkeypatch.setenv("STORAGE_INTERCEPT_CONFIG_FILEPATH", "")
+    monkeypatch.delenv("STORAGE_INTERCEPT_CONFIG_FILEPATH")
+    monkeypatch.setattr(dacs_utils, "_generated_config_path", None)
+
+
+def test_generated_config_is_rewritten_on_repeated_initialization(tmp_path):
+    dacs_utils._initialize_dacs_client_config(intercept_path="/mnt/first", config_dir=str(tmp_path))
+    config_path = os.environ["STORAGE_INTERCEPT_CONFIG_FILEPATH"]
+
+    dacs_utils._initialize_dacs_client_config(intercept_path="/mnt/second", config_dir=str(tmp_path))
+
+    assert os.environ["STORAGE_INTERCEPT_CONFIG_FILEPATH"] == config_path
+    with open(config_path) as config_file:
+        contents = config_file.read()
+    assert "storagePath /mnt/second\n" in contents
+    assert "/mnt/first" not in contents
+
+
+def test_native_auto_generated_config_is_rewritten(monkeypatch, tmp_path):
+    # BlobSiWrapper's dlopen constructor writes this same per-PID path and exports it.
+    native_config = tmp_path / f"storageIntercept.{os.getpid()}.config"
+    native_config.write_text("storagePath /mnt/native-default\n")
+    monkeypatch.setenv("STORAGE_INTERCEPT_CONFIG_FILEPATH", str(native_config))
+
+    dacs_utils._initialize_dacs_client_config(intercept_path="/mnt/dacs_cache", config_dir=str(tmp_path))
+
+    assert os.environ["STORAGE_INTERCEPT_CONFIG_FILEPATH"] == str(native_config)
+    contents = native_config.read_text()
+    assert "storagePath /mnt/dacs_cache\n" in contents
+    assert "/mnt/native-default" not in contents
+
+
+def test_supplied_config_must_be_a_regular_file(monkeypatch, tmp_path):
+    config_dir = tmp_path / "a-directory"
+    config_dir.mkdir()
+    monkeypatch.setenv("STORAGE_INTERCEPT_CONFIG_FILEPATH", str(config_dir))
+
+    with pytest.raises(FileNotFoundError):
+        dacs_utils._initialize_dacs_client_config(config_dir=str(tmp_path / "generated"))
+
+    assert os.environ["STORAGE_INTERCEPT_CONFIG_FILEPATH"] == str(config_dir)
+    assert not (tmp_path / "generated").exists()
+
+
+def test_supplied_config_is_preserved_on_repeated_and_parallel_initialization(monkeypatch, tmp_path):
+    config_path = tmp_path / "si_blob.config"
+    contents = (
+        "multiMountEnabled true\nmountName0 lance\nmountName1 blobfile\n"
+        "lancestoragePath /mnt/dacs\nblobfilestoragePath /mnt/dacs_cache\n"
+    )
+    config_path.write_text(contents)
+    original_stat = config_path.stat()
+    monkeypatch.setenv("STORAGE_INTERCEPT_CONFIG_FILEPATH", str(config_path))
+    generated_dir = tmp_path / "must-not-be-created"
+
+    def initialize(intercept_path):
+        dacs_utils._initialize_dacs_client_config(
+            intercept_path=intercept_path,
+            write_mode=py_dacs_client.WriteMode.WRITE_SYNC,
+            config_dir=str(generated_dir),
+        )
+        assert os.environ["STORAGE_INTERCEPT_CONFIG_FILEPATH"] == str(config_path)
+
+    initialize("/mnt/dacs_cache")
+    initialize("/mnt/dacs_cache")
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(initialize, ["/mnt/dacs", "/mnt/dacs_cache"] * 16))
+
+    assert config_path.read_text() == contents
+    assert config_path.stat().st_mtime_ns == original_stat.st_mtime_ns
+    assert not generated_dir.exists()
+
+
+def test_skipping_config_creation_is_logged(monkeypatch, tmp_path, caplog):
+    config_path = tmp_path / "si_blob.config"
+    config_path.write_text("multiMountEnabled true\n")
+    monkeypatch.setenv("STORAGE_INTERCEPT_CONFIG_FILEPATH", str(config_path))
+    # The client logger does not propagate, so attach caplog's handler directly.
+    monkeypatch.setattr(dacs_utils.logger, "handlers", [caplog.handler])
+
+    dacs_utils._initialize_dacs_client_config(config_dir=str(tmp_path / "generated"))
+
+    assert f"Using existing storage-intercept config {config_path}" in caplog.text
+    assert "skipping config creation" in caplog.text
+
+
+def test_missing_supplied_config_is_not_replaced(monkeypatch, tmp_path):
+    config_path = tmp_path / "missing.config"
+    monkeypatch.setenv("STORAGE_INTERCEPT_CONFIG_FILEPATH", str(config_path))
+
+    with pytest.raises(FileNotFoundError):
+        dacs_utils._initialize_dacs_client_config(config_dir=str(tmp_path / "generated"))
+
+    assert os.environ["STORAGE_INTERCEPT_CONFIG_FILEPATH"] == str(config_path)
+    assert list(tmp_path.iterdir()) == []
+
 
 class TestInitializeDACSClientConfigSASToken:
     """Verify that SAS tokens with trailing \\r are stripped before being written to the config file."""

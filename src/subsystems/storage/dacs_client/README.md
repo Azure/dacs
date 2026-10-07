@@ -138,6 +138,17 @@ Supports both sync (`open_sync`/`close_sync`/`read_sync`/`write_sync`) and async
 
 ---
 
+### Storage-Intercept Configuration
+
+A nonempty `STORAGE_INTERCEPT_CONFIG_FILEPATH` selects an existing caller-owned
+regular file. Client initialization preserves that file and its environment
+setting; the file controls all settings, including write and consistent modes.
+A missing file or directory path raises `FileNotFoundError`.
+
+Without a caller-owned configuration, the client writes its per-process
+`storageIntercept.<pid>.config` file. Repeated initialization rewrites that
+generated configuration so the latest client arguments apply.
+
 ### DACSBlobfileAdapter (blobfile-compatible, sync)
 
 A synchronous, blobfile-compatible adapter that wraps `DACSCacheClient`. Use this as a drop-in replacement for blobfile in read/write scenarios. Also available as the `BlobFile` alias.
