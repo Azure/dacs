@@ -25,6 +25,10 @@ Both Azure Pipeline entry points use
 - `.pipelines/dacs-official.yml` runs for `main` and scheduled official builds.
 - `.pipelines/dacs-pullrequest.yml` runs pull request validation.
 
+The [AKS integration pipeline](../.pipelines/dacs-integration.yml) tests
+published releases without rebuilding them. See
+[integration testing](../test/README.md#azure-pipeline-dacs-integration).
+
 Every architecture build publishes its versioned native-build image for
 downstream test jobs. The official pipeline additionally enables rolling-tag
 publication; pull request validation leaves rolling-tag publication disabled.

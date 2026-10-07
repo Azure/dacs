@@ -40,6 +40,7 @@ NO_COLOR ?= false
 FOCUS ?=
 TEST_FILTER ?=
 TEST_TIMEOUT ?= 120m
+TEST_PACKAGES ?= ./test/perf ./test/e2e ./test/aks
 AKS_TEST_BINARY ?= bin/$(BUILD_TYPE)/$(BUILD_ARCH)/aks-tests/dacs-aks-tests
 
 # Ginkgo binary
@@ -82,7 +83,7 @@ EXTRA_TEST_ARGS ?=
 
 .PHONY: test-e2e
 test-e2e: ginkgo kubectl mpi-operator ## Run tests against cluster. Use TEST_FILTER to filter by label.
-	$(call run_e2e_tests,$(COMPUTED_LABEL_FILTER),./test/perf ./test/e2e ./test/aks)
+	$(call run_e2e_tests,$(COMPUTED_LABEL_FILTER),$(TEST_PACKAGES))
 
 .PHONY: aks-test-binary
 aks-test-binary: ## Build the standalone AKS Ginkgo test binary.

@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -39,8 +40,7 @@ const (
 	aksManagedClusterTag = "aks-managed-cluster-name"
 )
 
-// ManagedClusterInfo holds the name and resource group of a managed AKS cluster
-// discovered from Azure resource tags.
+// ManagedClusterInfo holds the name and resource group of a managed AKS cluster.
 type ManagedClusterInfo struct {
 	Name          string
 	ResourceGroup string
@@ -71,9 +71,20 @@ func getSegmentAfterKey(providerID, key string) (string, error) {
 	return "", fmt.Errorf("could not find %q in providerID %s", key, providerID)
 }
 
-// GetManagedClusterInfo discovers the AKS managed cluster name and resource
-// group by querying Azure tags on the node resource group.
+// GetManagedClusterInfo uses explicit metadata when AKS_CLUSTER_NAME is set,
+// requiring AKS_RESOURCE_GROUP too. Otherwise it discovers the cluster from
+// node resource group tags.
 func GetManagedClusterInfo(ctx context.Context, subscription, nodeResourceGroup string, log logr.Logger) (ManagedClusterInfo, error) {
+	clusterName, hasClusterName := os.LookupEnv("AKS_CLUSTER_NAME")
+	resourceGroup := os.Getenv("AKS_RESOURCE_GROUP")
+	if hasClusterName {
+		if strings.TrimSpace(clusterName) == "" || strings.TrimSpace(resourceGroup) == "" {
+			return ManagedClusterInfo{}, errors.New("AKS_CLUSTER_NAME and AKS_RESOURCE_GROUP must both be nonempty when AKS_CLUSTER_NAME is set")
+		}
+		log.Info("Using explicit managed cluster", "name", clusterName, "resourceGroup", resourceGroup)
+		return ManagedClusterInfo{Name: clusterName, ResourceGroup: resourceGroup}, nil
+	}
+
 	cmd := exec.CommandContext(ctx,
 		"az", "group", "show",
 		"--subscription", subscription,
@@ -95,7 +106,7 @@ func GetManagedClusterInfo(ctx context.Context, subscription, nodeResourceGroup 
 	if !ok || clusterName == "" {
 		return ManagedClusterInfo{}, fmt.Errorf("tag %q not found on resource group %s", aksManagedClusterTag, nodeResourceGroup)
 	}
-	resourceGroup, ok := tags[aksManagedRgTag]
+	resourceGroup, ok = tags[aksManagedRgTag]
 	if !ok || resourceGroup == "" {
 		return ManagedClusterInfo{}, fmt.Errorf("tag %q not found on resource group %s", aksManagedRgTag, nodeResourceGroup)
 	}

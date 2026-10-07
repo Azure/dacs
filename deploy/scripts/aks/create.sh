@@ -23,22 +23,27 @@ usage() {
     echo "  --location        AKS location"
     echo "  --template        AKS template name"
     echo "  --is-test         (Optional) Flag to indicate if the deployment is a test (default: false)"
+    echo "  --resource-prefix (Optional) Unique integration suite/run prefix in the existing dacs-integration resource group"
     echo "  --what-if         (Optional) Flag to indicate if the deployment should run in 'what-if' mode (default: false)"
     echo ""
     echo "Environment variables:"
     echo "  DOCKER_REGISTRY   (Optional) Docker registry to attach to AKS (default: dacstest.azurecr.io)"
+    echo "  AKS_PARAMETER_FILE (Optional) Deployment parameter file instead of the named template"
     exit 1
 }
 
 # Parse command-line arguments
 IS_TEST=false
 WHAT_IF=false
+RESOURCE_PREFIX=""
+readonly INTEGRATION_PREFIX_PATTERN='^aks-[a-z0-9]+(-[a-z0-9]+)*-[0-9]+-[0-9]+-[0-9]+$'
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --resource-group) AKS_RESOURCE_GROUP="$2"; shift ;;
         --location) AKS_LOCATION="$2"; shift ;;
         --template) AKS_TEMPLATE="$2"; shift ;;
         --is-test) IS_TEST="$2"; shift ;;
+        --resource-prefix) RESOURCE_PREFIX="$2"; shift ;;
         --what-if) WHAT_IF=true ;;
         *) usage ;;
     esac
@@ -61,14 +66,47 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+PARAM_FILE="${AKS_PARAMETER_FILE:-$DEPLOY_DIR/parameters/$AKS_TEMPLATE.json}"
 
-if [[ "$WHAT_IF" == "true" ]]; then
+if [[ "$AKS_RESOURCE_GROUP" == dacs-integration && -z "$RESOURCE_PREFIX" ]]; then
+    echo "Shared resource group dacs-integration requires --resource-prefix; subscription deployment is not allowed." >&2
+    exit 1
+fi
+
+if [[ -n "$RESOURCE_PREFIX" ]]; then
+    if [[ "$AKS_RESOURCE_GROUP" != dacs-integration || "$IS_TEST" != true ||
+          ! "$RESOURCE_PREFIX" =~ $INTEGRATION_PREFIX_PATTERN ]]; then
+        echo "Integration provisioning requires dacs-integration, --is-test true, and an aks-<suite>-<build>-<stage-attempt>-<job-attempt> prefix." >&2
+        exit 1
+    fi
+    PURPOSE="$(az group show --name "$AKS_RESOURCE_GROUP" --query tags.purpose --output tsv)"
+    if [[ "$PURPOSE" != dacs-integration ]]; then
+        echo "Resource group $AKS_RESOURCE_GROUP must have purpose=dacs-integration; it will not be created or retagged." >&2
+        exit 1
+    fi
+    INTEGRATION_PARAMETERS="$(mktemp)"
+    trap 'rm -f "$INTEGRATION_PARAMETERS"' EXIT
+    jq '.parameters |= with_entries(select(.key == "agentCount" or .key == "agentVMSize" or .key == "osSKU" or .key == "zones"))' \
+        "$PARAM_FILE" > "$INTEGRATION_PARAMETERS"
+    if [[ "$WHAT_IF" == true ]]; then
+        az deployment group what-if \
+            --resource-group "$AKS_RESOURCE_GROUP" --name "$RESOURCE_PREFIX-deployment" \
+            --template-file "$DEPLOY_DIR/template/integration.bicep" \
+            --parameters "$INTEGRATION_PARAMETERS" resourcePrefix="$RESOURCE_PREFIX" location="$AKS_LOCATION"
+        exit 0
+    fi
+    az deployment group create \
+        --resource-group "$AKS_RESOURCE_GROUP" --name "$RESOURCE_PREFIX-deployment" \
+        --template-file "$DEPLOY_DIR/template/integration.bicep" \
+        --parameters "$INTEGRATION_PARAMETERS" resourcePrefix="$RESOURCE_PREFIX" location="$AKS_LOCATION" \
+        --output none
+elif [[ "$WHAT_IF" == "true" ]]; then
     # Run a what-if deployment and extract node configuration
     WHAT_IF_OUTPUT=$(az deployment sub what-if \
         --name "$AKS_RESOURCE_GROUP-deployment" \
         --location "$AKS_LOCATION" \
         --template-file "$DEPLOY_DIR/template/main.bicep" \
-        --parameters "$DEPLOY_DIR/parameters/$AKS_TEMPLATE.json" \
+        --parameters "$PARAM_FILE" \
         --parameters resourceGroupName="$AKS_RESOURCE_GROUP" \
         --parameters isTest="$IS_TEST" \
         --no-pretty-print | \
@@ -90,10 +128,7 @@ if [[ "$WHAT_IF" == "true" ]]; then
     ')
     echo "Requirements: $WHAT_IF_OUTPUT"
     exit 0
-fi
-
-# Check if the AKS cluster already exists
-if az aks show --resource-group "$AKS_RESOURCE_GROUP" --name "$AKS_RESOURCE_GROUP-cluster" > /dev/null 2>&1; then
+elif az aks show --resource-group "$AKS_RESOURCE_GROUP" --name "$AKS_RESOURCE_GROUP-cluster" > /dev/null 2>&1; then
     echo "AKS cluster already exists in resource group $AKS_RESOURCE_GROUP"
 else
     # Create the AKS cluster using Bicep template
@@ -101,7 +136,7 @@ else
         --name "$AKS_RESOURCE_GROUP-deployment" \
         --location "$AKS_LOCATION" \
         --template-file "$DEPLOY_DIR/template/main.bicep" \
-        --parameters "$DEPLOY_DIR/parameters/$AKS_TEMPLATE.json" \
+        --parameters "$PARAM_FILE" \
         --parameters resourceGroupName="$AKS_RESOURCE_GROUP" \
         --parameters isTest="$IS_TEST" \
         --what-if \
@@ -111,13 +146,25 @@ else
         --name "$AKS_RESOURCE_GROUP-deployment" \
         --location "$AKS_LOCATION" \
         --template-file "$DEPLOY_DIR/template/main.bicep" \
-        --parameters "$DEPLOY_DIR/parameters/$AKS_TEMPLATE.json" \
+        --parameters "$PARAM_FILE" \
         --parameters resourceGroupName="$AKS_RESOURCE_GROUP" \
         --parameters isTest="$IS_TEST" \
         --verbose
 fi
 
-# Attach ACR to the AKS cluster for pulling images (only if using Azure Container Registry)
+RESOURCE_PREFIX="${RESOURCE_PREFIX:-$AKS_RESOURCE_GROUP}"
+CLUSTER="$(az aks show --resource-group "$AKS_RESOURCE_GROUP" --name "$RESOURCE_PREFIX-cluster" --output json)"
+CONTROL_PLANE_ID="$(jq -er '.identity.principalId' <<< "$CLUSTER")"
+VNET_ID="$(az network vnet show --resource-group "$AKS_RESOURCE_GROUP" --name "$RESOURCE_PREFIX-vnet" --query id --output tsv)"
+echo "Granting AKS control-plane access to $VNET_ID..."
+az role assignment create \
+    --assignee-object-id "$CONTROL_PLANE_ID" \
+    --assignee-principal-type ServicePrincipal \
+    --role "Network Contributor" \
+    --scope "${VNET_ID:?}" \
+    --output none
+
+# Grant image pulls to the kubelet without using --attach-acr, which does not support ABAC.
 # Use DOCKER_REGISTRY env var if set and ends with azurecr.io, otherwise use default
 DEFAULT_ACR="dacs"
 if [[ -z "${DOCKER_REGISTRY:-}" || "$DOCKER_REGISTRY" == *".azurecr.io" ]]; then
@@ -127,16 +174,25 @@ if [[ -z "${DOCKER_REGISTRY:-}" || "$DOCKER_REGISTRY" == *".azurecr.io" ]]; then
         ACR_NAME="$DEFAULT_ACR"
     fi
 
-    echo "Attaching ACR $ACR_NAME to AKS cluster..."
-    if ! az aks update \
-        --resource-group "$AKS_RESOURCE_GROUP" \
-        --name "$AKS_RESOURCE_GROUP-cluster" \
-        --attach-acr "$ACR_NAME" \
-        --verbose 2>&1; then
-        echo "Warning: Failed to attach ACR $ACR_NAME. You may need to manually configure image pull access."
-        echo "  Option 1: az aks update -g $AKS_RESOURCE_GROUP -n $AKS_RESOURCE_GROUP-cluster --attach-acr <your-acr>"
-        echo "  Option 2: Create an image pull secret for the cache-server namespace"
-    fi
+    ACR="$(az acr show --name "$ACR_NAME" --output json)"
+    ACR_ID="$(jq -er '.id' <<< "$ACR")"
+    ACR_MODE="$(jq -er '.roleAssignmentMode' <<< "$ACR")"
+    case "$ACR_MODE" in
+        AbacRepositoryPermissions) ACR_PULL_ROLE="Container Registry Repository Reader" ;;
+        LegacyRegistryPermissions) ACR_PULL_ROLE="AcrPull" ;;
+        *)
+            echo "Unsupported ACR role assignment mode: $ACR_MODE" >&2
+            exit 1
+            ;;
+    esac
+    KUBELET_ID="$(jq -er '.identityProfile.kubeletidentity.objectId' <<< "$CLUSTER")"
+    echo "Granting $ACR_PULL_ROLE on $ACR_NAME to the AKS kubelet..."
+    az role assignment create \
+        --assignee-object-id "$KUBELET_ID" \
+        --assignee-principal-type ServicePrincipal \
+        --role "$ACR_PULL_ROLE" \
+        --scope "$ACR_ID" \
+        --output none
 else
     echo "Skipping ACR attach (DOCKER_REGISTRY=$DOCKER_REGISTRY is not an Azure Container Registry)"
 fi
@@ -144,12 +200,11 @@ fi
 # Get AKS cluster credentials
 az aks get-credentials \
     --resource-group "$AKS_RESOURCE_GROUP" \
-    --name "$AKS_RESOURCE_GROUP-cluster" \
+    --name "$RESOURCE_PREFIX-cluster" \
     --overwrite-existing
 
 # Apply custom Prometheus scrape settings if monitoring is enabled
-PARAM_FILE="$DEPLOY_DIR/parameters/$AKS_TEMPLATE.json"
-if jq -e '.parameters.azureMonitorWorkspaceId.value // empty' "$PARAM_FILE" > /dev/null 2>&1; then
+if [[ "$AKS_RESOURCE_GROUP" != dacs-integration ]] && jq -e '.parameters.azureMonitorWorkspaceId.value // empty' "$PARAM_FILE" > /dev/null 2>&1; then
     echo "Applying ama-metrics settings ConfigMap..."
     kubectl apply -f "$DEPLOY_DIR/ama-metrics-settings-configmap.yaml"
 fi

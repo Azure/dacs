@@ -48,6 +48,8 @@ make unprovision
 | `AKS_TEMPLATE` | The template to use (parameter file name) | `nvme` |
 | `AKS_RESOURCE_GROUP` | The name of the resource group | `${USER}-cache-${AKS_TEMPLATE}-${AKS_LOCATION}` |
 | `AKS_IS_TEST` | Mark cluster as test (for cleanup policies) | `false` |
+| `AKS_PARAMETER_FILE` | Optional parameter file override for the AKS creation script | Named template file |
+| `AKS_RESOURCE_PREFIX` | Integration-only `aks-<suite>-<build>-<stage-attempt>-<job-attempt>` prefix; requires the existing `dacs-integration` RG and `AKS_IS_TEST=true` | Empty (local subscription deployment) |
 
 ### Templates
 

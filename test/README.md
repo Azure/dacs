@@ -41,10 +41,40 @@ The test framework will:
 |----------|---------|-------------|
 | `FOCUS` | - | Run only tests matching the pattern |
 | `LABEL_FILTER` | - | Additional label filter (combined with auto-detected filter) |
-| `TEST_TIMEOUT` | `60m` | Set test timeout |
+| `TEST_TIMEOUT` | `120m` | Set test timeout |
 | `NO_COLOR` | `false` | Disable colored output |
 
 ## Workflows
+
+### Azure Pipeline: dacs-integration
+
+[dacs-integration](../.pipelines/dacs-integration.yml) runs on `main` every day
+at 06:00 and 18:00 UTC. It runs performance, AKS upgrade, AKS scale, and Helm
+upgrade stages in parallel.
+
+To run it on demand:
+
+1. Queue `dacs-integration` and select `dacsOfficial` or `dacsPullRequest`.
+2. Under **Resources**, select the producer run to test.
+3. Leave `cacheServerBuildId` at `latest` to use that run's
+   `dacs-release` artifact, or enter an exact published version.
+
+The default region is `australiaeast`. Test jobs have a 120-minute limit.
+Cleanup runs separately and preserves the shared resource group.
+
+If cleanup does not run, copy the prefix from **Publish Resource Prefix** and
+run:
+
+```bash
+make aks-clean \
+  AKS_RESOURCE_GROUP=dacs-integration \
+  AKS_RESOURCE_PREFIX=<prefix>
+```
+
+For failures, select a producer run with a complete `dacs-release` artifact,
+check both regional SKU restrictions and quota, and inspect the suite log and
+support bundle. Do not bypass cleanup ownership checks or delete the shared
+resource group.
 
 ### Minikube Workflow (Local Development)
 
