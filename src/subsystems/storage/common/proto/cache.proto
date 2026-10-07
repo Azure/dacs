@@ -308,6 +308,7 @@ message LocatorRegisterResponse
         INTERNAL_ERROR = 1;
     }
     Result result = 1;
+    string requestId = 2;   // Echoed on every response, including errors.
 }
 //---------------------------------------------------------------------------------------------------------------------
 message LocatorLookupRequest
@@ -326,6 +327,7 @@ message LocatorLookupResponse
     }
     Result result = 1;
     repeated LocatorContentReplica replicas = 2;
+    string requestId = 3;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message LocatorRefreshRequest
@@ -345,6 +347,7 @@ message LocatorRefreshResponse
         INTERNAL_ERROR = 2;
     }
     Result result = 1;
+    string requestId = 2;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message LocatorUnregisterRequest
@@ -363,6 +366,7 @@ message LocatorUnregisterResponse
         INTERNAL_ERROR = 2;
     }
     Result result = 1;
+    string requestId = 2;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message LocatorPrefixLookupRequest
@@ -385,6 +389,7 @@ message LocatorPrefixLookupResponse
     // first block that is missing or expired. matched[i] corresponds to keys[i].
     uint32 matched_count = 2;
     repeated LocatorPrefixEntry matched = 3;   // one entry per matched block, in chain order
+    string requestId = 4;
 }
 //---------------------------------------------------------------------------------------------------------------------
 // A single resolved block in a prefix-lookup response.
@@ -440,6 +445,7 @@ message LocatorRegisterChainResponse
         INTERNAL_ERROR = 1;
     }
     Result result = 1;
+    string requestId = 2;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message Request

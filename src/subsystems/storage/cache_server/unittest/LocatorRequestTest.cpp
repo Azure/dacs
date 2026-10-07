@@ -133,6 +133,86 @@ class LocatorRequestTest : public ::testing::Test
     }
 };
 
+TEST_F(LocatorRequestTest, EveryHandlerEchoesTheRequestId)
+{
+    UseRadixBackend();
+    for (const std::string id : {"request-1", "request-2", ""})
+    {
+        SCOPED_TRACE(id);
+        const std::string key = "correlation-" + id;
+        LocatorRegisterRequest reg;
+        reg.set_requestid(id);
+        reg.set_key(key);
+        *reg.mutable_replica() = MakeReplica(1, 100);
+        CapturingConnection registerConn;
+        ASSERT_TRUE(HandleLocatorRegister(registerConn, reg));
+        LocatorRegisterResponse registered;
+        ASSERT_TRUE(registerConn.DecodeResponse(registered));
+        EXPECT_EQ(registered.requestid(), id);
+        EXPECT_EQ(registered.result(), LocatorRegisterResponse::SUCCESS);
+
+        LocatorRegisterChainRequest chain;
+        chain.set_requestid(id);
+        CapturingConnection chainConn;
+        ASSERT_TRUE(HandleLocatorRegisterChain(chainConn, chain));
+        LocatorRegisterChainResponse chained;
+        ASSERT_TRUE(chainConn.DecodeResponse(chained));
+        EXPECT_EQ(chained.requestid(), id);
+        EXPECT_EQ(chained.result(), LocatorRegisterChainResponse::SUCCESS);
+
+        for (bool present : {true, false})
+        {
+            SCOPED_TRACE(present);
+            const std::string lookupKey = present ? key : key + "-missing";
+            LocatorLookupRequest lookup;
+            lookup.set_requestid(id);
+            lookup.set_key(lookupKey);
+            CapturingConnection lookupConn;
+            ASSERT_TRUE(HandleLocatorLookup(lookupConn, lookup));
+            LocatorLookupResponse found;
+            ASSERT_TRUE(lookupConn.DecodeResponse(found));
+            EXPECT_EQ(found.requestid(), id);
+            EXPECT_EQ(found.result(), present ? LocatorLookupResponse::SUCCESS
+                                             : LocatorLookupResponse::NOT_FOUND);
+
+            LocatorPrefixLookupRequest prefix;
+            prefix.set_requestid(id);
+            prefix.add_keys(lookupKey);
+            CapturingConnection prefixConn;
+            ASSERT_TRUE(HandleLocatorPrefixLookup(prefixConn, prefix));
+            LocatorPrefixLookupResponse matched;
+            ASSERT_TRUE(prefixConn.DecodeResponse(matched));
+            EXPECT_EQ(matched.requestid(), id);
+            EXPECT_EQ(matched.matched_count(), present ? 1u : 0u);
+
+            LocatorRefreshRequest refresh;
+            refresh.set_requestid(id);
+            refresh.set_key(lookupKey);
+            refresh.set_nodeid(1);
+            refresh.set_newexpiresat(EpochNowMs() + 120'000);
+            CapturingConnection refreshConn;
+            ASSERT_TRUE(HandleLocatorRefresh(refreshConn, refresh));
+            LocatorRefreshResponse refreshed;
+            ASSERT_TRUE(refreshConn.DecodeResponse(refreshed));
+            EXPECT_EQ(refreshed.requestid(), id);
+            EXPECT_EQ(refreshed.result(), present ? LocatorRefreshResponse::SUCCESS
+                                                 : LocatorRefreshResponse::NOT_FOUND);
+
+            LocatorUnregisterRequest unregister;
+            unregister.set_requestid(id);
+            unregister.set_key(lookupKey);
+            unregister.set_nodeid(1);
+            CapturingConnection unregisterConn;
+            ASSERT_TRUE(HandleLocatorUnregister(unregisterConn, unregister));
+            LocatorUnregisterResponse removed;
+            ASSERT_TRUE(unregisterConn.DecodeResponse(removed));
+            EXPECT_EQ(removed.requestid(), id);
+            EXPECT_EQ(removed.result(), present ? LocatorUnregisterResponse::SUCCESS
+                                               : LocatorUnregisterResponse::NOT_FOUND);
+        }
+    }
+}
+
 //---------------------------------------------------------------------------------------------------------------------
 // Single registration forwards the new parentHash/rootHash fields into the locator entry.
 TEST_F(LocatorRequestTest, RegisterForwardsParentAndRoot)
