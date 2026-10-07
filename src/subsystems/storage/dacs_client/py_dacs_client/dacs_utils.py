@@ -374,6 +374,10 @@ async def async_parallel_ordered_result(coro_fn, items, max_concurrent: int):
         yield await task
 
 
+# Config path this module last generated; distinguishes it from a caller-owned config.
+_generated_config_path: Optional[str] = None
+
+
 def _initialize_dacs_client_config(
     intercept_path: str = None,
     write_mode: Optional[WriteMode] = None,
@@ -383,6 +387,12 @@ def _initialize_dacs_client_config(
     """Internal API: Initialize DACS client configuration.
 
     This is an internal function and should only be called from within the library.
+    A non-empty STORAGE_INTERCEPT_CONFIG_FILEPATH other than the client-generated
+    per-PID config selects a caller-owned config: it must be an existing regular
+    file and is never rewritten, nor is the environment reassigned. That file owns
+    all settings, including write mode and consistent mode. The per-PID config,
+    whether written by this function or by the native BlobSiWrapper constructor,
+    is rewritten on every call, so later arguments still apply.
 
     Args:
         intercept_path: Path to the intercept mount point
@@ -390,19 +400,33 @@ def _initialize_dacs_client_config(
         consistent_mode: Enable consistent mode (overwrite support).
         config_dir: Directory for config file (default: /tmp). Useful for testing.
     """
+    global _generated_config_path
+
+    if not config_dir:
+        raise ValueError("config_dir must be a non-empty path")
 
     # Use process-specific config path to avoid race conditions in multi-process scenarios
     # The native library reads STORAGE_INTERCEPT_CONFIG_FILEPATH env var to find the config file
-    if not config_dir:
-        raise ValueError("config_dir must be a non-empty path")
+    config_path = os.path.join(config_dir, f"storageIntercept.{os.getpid()}.config")
+
+    existing_config = os.environ.get("STORAGE_INTERCEPT_CONFIG_FILEPATH")
+    if existing_config and existing_config not in (config_path, _generated_config_path):
+        if not os.path.isfile(existing_config):
+            raise FileNotFoundError(
+                f"STORAGE_INTERCEPT_CONFIG_FILEPATH must point at an existing regular file: {existing_config}"
+            )
+        logger.info(
+            "Using existing storage-intercept config %s; skipping config creation",
+            existing_config,
+        )
+        return
 
     os.makedirs(config_dir, exist_ok=True)
     if not os.path.isdir(config_dir):
         raise NotADirectoryError(f"config_dir is not a directory: {config_dir}")
 
-    pid = os.getpid()
-    config_path = os.path.join(config_dir, f"storageIntercept.{pid}.config")
     os.environ["STORAGE_INTERCEPT_CONFIG_FILEPATH"] = config_path
+    _generated_config_path = config_path
 
     # Check if config file already exists and warn before overwriting
     if os.path.exists(config_path):
