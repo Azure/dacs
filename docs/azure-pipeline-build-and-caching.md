@@ -25,6 +25,15 @@ Both Azure Pipeline entry points use
 - `.pipelines/dacs-official.yml` runs for `main` and scheduled official builds.
 - `.pipelines/dacs-pullrequest.yml` runs pull request validation.
 
+The separate [AKS integration pipeline](../.pipelines/dacs-integration.yml)
+consumes published releases without rebuilding them. It runs twice daily against the
+latest successful official build or on demand against a selected `dacs-official`
+or `dacs-pullrequest` run. Image and chart versions come from that run's release
+metadata, independently of the integration checkout branch.
+See [integration setup and permissions](../test/README.md#azure-pipeline-dacs-integration)
+for its parallel suites, pinned official baseline, and permanent `dacs-integration`
+resource group with RG-scoped provisioning permissions.
+
 Every architecture build publishes its versioned native-build image for
 downstream test jobs. The official pipeline additionally enables rolling-tag
 publication; pull request validation leaves rolling-tag publication disabled.

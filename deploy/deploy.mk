@@ -47,6 +47,7 @@ AKS_TEMPLATE ?= nvme
 AKS_LOCATION ?= eastus
 AKS_RESOURCE_GROUP ?= $(USER)-cache-$(AKS_TEMPLATE)-$(AKS_LOCATION)
 AKS_IS_TEST ?= false
+AKS_RESOURCE_PREFIX ?=
 
 # Controller mode: old (cache-server helm chart) or new (dacs helm chart)
 CONTROLLER ?= old
@@ -125,19 +126,19 @@ aks: bicep ## Create an AKS cluster with NVMe nodes using Bicep.
 	@if [ ! -f deploy/parameters/$(AKS_TEMPLATE).json ]; then echo "deploy/parameters/$(AKS_TEMPLATE).json does not exist" && exit 1; fi
 	@if [ -z "$(AKS_RESOURCE_GROUP)" ]; then echo "AKS_RESOURCE_GROUP is not set"; exit 1; fi
 	@if [ -z "$(AKS_LOCATION)" ]; then echo "AKS_LOCATION is not set"; exit 1; fi
-	./deploy/scripts/aks/create.sh --resource-group $(AKS_RESOURCE_GROUP) --location $(AKS_LOCATION) --template $(AKS_TEMPLATE) --is-test $(AKS_IS_TEST)
+	./deploy/scripts/aks/create.sh --resource-group $(AKS_RESOURCE_GROUP) --location $(AKS_LOCATION) --template $(AKS_TEMPLATE) --is-test $(AKS_IS_TEST) $(if $(AKS_RESOURCE_PREFIX),--resource-prefix "$(AKS_RESOURCE_PREFIX)",)
 
 .PHONY: aks-cluster-requirements
 aks-cluster-requirements: bicep ## Print the requirements for the AKS cluster (what-if).
 	@if [ ! -f deploy/parameters/$(AKS_TEMPLATE).json ]; then echo "deploy/parameters/$(AKS_TEMPLATE).json does not exist" && exit 1; fi
 	@if [ -z "$(AKS_RESOURCE_GROUP)" ]; then echo "AKS_RESOURCE_GROUP is not set"; exit 1; fi
 	@if [ -z "$(AKS_LOCATION)" ]; then echo "AKS_LOCATION is not set"; exit 1; fi
-	@./deploy/scripts/aks/create.sh --resource-group $(AKS_RESOURCE_GROUP) --location $(AKS_LOCATION) --template $(AKS_TEMPLATE) --is-test $(AKS_IS_TEST) --what-if
+	@./deploy/scripts/aks/create.sh --resource-group $(AKS_RESOURCE_GROUP) --location $(AKS_LOCATION) --template $(AKS_TEMPLATE) --is-test $(AKS_IS_TEST) $(if $(AKS_RESOURCE_PREFIX),--resource-prefix "$(AKS_RESOURCE_PREFIX)",) --what-if
 
 .PHONY: aks-clean
 aks-clean: ## Delete the AKS cluster.
 	@if [ -z "$(AKS_RESOURCE_GROUP)" ]; then echo "AKS_RESOURCE_GROUP is not set"; exit 1; fi
-	./deploy/scripts/aks/clean.sh --resource-group $(AKS_RESOURCE_GROUP)
+	./deploy/scripts/aks/clean.sh --resource-group $(AKS_RESOURCE_GROUP) $(if $(AKS_RESOURCE_PREFIX),--resource-prefix "$(AKS_RESOURCE_PREFIX)",)
 
 ##@ Minikube (Local Development)
 

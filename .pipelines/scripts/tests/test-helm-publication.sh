@@ -67,6 +67,44 @@ rendered_dacs="$(helm template test-release "${dacs_package}")"
 grep -Fq "example.azurecr.io/dacs/cache-controller:${container_version}" <<<"${rendered_dacs}"
 grep -Fq "example.azurecr.io/dacs/cache-server:${container_version}" <<<"${rendered_dacs}"
 
+integration_values="${REPOSITORY_ROOT}/src/subsystems/cache-controller/charts/dacs"
+for replicas in 2 5; do
+    rendered_dacs="$(helm template dacs "${dacs_package}" --namespace cache-server \
+        --values "${integration_values}/aks-int-static-values.yaml" \
+        --set cache.enabled=true --set "cache.scaling.static.numServers=${replicas}")"
+    grep -Fq 'name: cache-sample' <<<"${rendered_dacs}"
+    grep -Fq "numServers: ${replicas}" <<<"${rendered_dacs}"
+    grep -Fq "example.azurecr.io/dacs/cache-controller:${container_version}" <<<"${rendered_dacs}"
+    grep -Fq "example.azurecr.io/dacs/cache-server:${container_version}" <<<"${rendered_dacs}"
+done
+
+rendered_dacs="$(helm template dacs "${dacs_package}" --namespace cache-server \
+    --values "${integration_values}/perf-values.yaml" \
+    --set cache.enabled=true --set cache.scaling.static.numServers=5 \
+    --set global.registry= \
+    --set manager.image.repository=example.azurecr.io/dacs/cache-controller \
+    --set manager.cacheServerImage.repository=example.azurecr.io/dacs/cache-server)"
+grep -Fq -- '--feature-gates=UseZeroCopy=true' <<<"${rendered_dacs}"
+grep -Eq '^kind: Cache$' <<<"${rendered_dacs}"
+grep -Fq 'numServers: 5' <<<"${rendered_dacs}"
+grep -Fq "example.azurecr.io/dacs/cache-controller:${container_version}" <<<"${rendered_dacs}"
+grep -Fq "example.azurecr.io/dacs/cache-server:${container_version}" <<<"${rendered_dacs}"
+
+rendered_legacy="$(helm template cache-server "${OUTPUT_DIR}/cache-server-${chart_version}.tgz" \
+    --namespace cache-server --values "${REPOSITORY_ROOT}/helm/cache-server/perf-values.yaml" \
+    --set cacheServer.numServers=5)"
+grep -Fq 'replicas: 5' <<<"${rendered_legacy}"
+grep -Fq "example.azurecr.io/dacs/cache-server:${container_version}" <<<"${rendered_legacy}"
+grep -Fq "example.azurecr.io/dacs/cacheserver-scheduler:${container_version}" <<<"${rendered_legacy}"
+
+rendered_dacs="$(helm template dacs "${dacs_package}" --namespace cache-server \
+    --values "${integration_values}/aks-int-dynamic-values.yaml" --set cache.enabled=true)"
+grep -Fq 'percentageOfNodesToUse: 100' <<<"${rendered_dacs}"
+if grep -Fq 'numServers:' <<<"${rendered_dacs}"; then
+    echo "AKS resilience tests must render dynamic scaling without static replicas" >&2
+    exit 1
+fi
+
 grep -Fq "CACHE_CONTROLLER_CHART_VERSION=${chart_version}" "${METADATA_FILE}"
 grep -Fq "APP_VERSION=$("${REPOSITORY_ROOT}/.pipelines/scripts/get-version.sh" source)" "${METADATA_FILE}"
 

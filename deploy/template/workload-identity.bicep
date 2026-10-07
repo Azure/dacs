@@ -27,6 +27,12 @@ param serviceAccountName string = 'perf-client-sa'
 @description('The name of the storage account to grant access to')
 param storageAccountName string
 
+@description('Location of the workload identity.')
+param location string = resourceGroup().location
+
+@description('Additional resource ownership tags.')
+param tags object = {}
+
 // Reference the existing AKS cluster
 resource aksCluster 'Microsoft.ContainerService/managedClusters@2024-01-01' existing = {
   name: aksClusterName
@@ -40,12 +46,12 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' existing 
 // Create a user-assigned managed identity for the workload
 resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: managedIdentityName
-  location: resourceGroup().location
-  tags: {
+  location: location
+  tags: union(tags, {
     purpose: 'workload-identity'
     aksCluster: aksClusterName
     managedBy: 'cache-server-infra'
-  }
+  })
 }
 
 // Create the federated identity credential to link Kubernetes ServiceAccount to Azure identity

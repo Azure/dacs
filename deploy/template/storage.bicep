@@ -28,6 +28,12 @@ param aksResourceGroup string = resourceGroup().name
 @description('The ID of the AKS subnet to allow access from.')
 param aksSubnetId string
 
+@description('Location of the storage account.')
+param location string = resourceGroup().location
+
+@description('Additional resource ownership tags.')
+param tags object = {}
+
 var blobDataContributorRoleDefinitionId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   'ba92f5b4-2d11-453d-a403-e96b0029c9fe' // Storage Blob Data Contributor role Id
@@ -35,11 +41,11 @@ var blobDataContributorRoleDefinitionId = subscriptionResourceId(
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   name: storageAccountName
-  location: resourceGroup().location
-  tags: {
+  location: location
+  tags: union(tags, {
     purpose: 'dacs-test'
     managedBy: 'cache-server-infra'
-  }
+  })
   sku: {
     name: 'Standard_LRS'
   }
