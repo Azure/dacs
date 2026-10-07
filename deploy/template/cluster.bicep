@@ -12,6 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+@description('Prefix for cluster, VNet, and managed node resource group names.')
+param resourcePrefix string = resourceGroup().name
+
+@description('Location of the cluster and VNet.')
+param location string = resourceGroup().location
+
+@description('Additional resource ownership tags.')
+param tags object = {}
+
 @description('The number of nodes for the nodepool.')
 @minValue(1)
 param agentCount int = 3
@@ -42,6 +51,12 @@ param logAnalyticsWorkspaceId string = ''
 @description('The location of the Log Analytics workspace.')
 param logAnalyticsWorkspaceLocation string = ''
 
+@description('The resource ID of the Log Analytics workspace for Microsoft Defender. If provided, Defender is enabled during cluster creation.')
+param defenderLogAnalyticsWorkspaceId string = ''
+
+@description('Deploy the Azure Security Linux Agent extension. Disable when Azure Policy manages the extension.')
+param deployAzureSecurityLinuxAgent bool = true
+
 @description('The resource ID of the Azure Monitor workspace for Prometheus metrics. If provided, Managed Prometheus is enabled.')
 param azureMonitorWorkspaceId string = ''
 
@@ -50,6 +65,7 @@ param azureMonitorWorkspaceLocation string = ''
 
 // Monitoring is implied by providing the resource IDs
 var enableContainerInsights = logAnalyticsWorkspaceId != ''
+var enableDefender = defenderLogAnalyticsWorkspaceId != ''
 var enablePrometheus = azureMonitorWorkspaceId != ''
 
 // Single NVMe pool that runs both system and cache-server pods
@@ -67,17 +83,16 @@ var nvmePool = {
   vnetSubnetID: vnet.properties.subnets[0].id
   nodeLabels: {
     'dacs.azure.com/processing-unit': 'cpu'
-    'dacs.azure.com/processing-unit': 'system'
   }
 }
 
 // Virtual network for AKS with storage service endpoint
 resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = {
-  name: '${resourceGroup().name}-vnet'
-  location: resourceGroup().location
-  tags: {
+  name: '${resourcePrefix}-vnet'
+  location: location
+  tags: union(tags, {
     managedBy: 'cache-server-infra'
-  }
+  })
   properties: {
     addressSpace: {
       addressPrefixes: [
@@ -101,11 +116,11 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = {
 }
 
 resource aks 'Microsoft.ContainerService/managedClusters@2024-01-01' = {
-  name: '${resourceGroup().name}-cluster'
-  location: resourceGroup().location
-  tags: {
+  name: '${resourcePrefix}-cluster'
+  location: location
+  tags: union(tags, {
     managedBy: 'cache-server-infra'
-  }
+  })
   sku: {
     name: 'Base'
     tier: 'Standard'
@@ -114,18 +129,25 @@ resource aks 'Microsoft.ContainerService/managedClusters@2024-01-01' = {
     type: 'SystemAssigned'
   }
   properties: {
-    nodeResourceGroup: '${resourceGroup().name}-node-rg'
-    dnsPrefix: '${resourceGroup().name}-dns'
+    nodeResourceGroup: '${resourcePrefix}-node-rg'
+    dnsPrefix: '${resourcePrefix}-dns'
     // Enable OIDC issuer for workload identity
     oidcIssuerProfile: {
       enabled: true
     }
     // Enable workload identity
-    securityProfile: {
+    securityProfile: union({
       workloadIdentity: {
         enabled: true
       }
-    }
+    }, enableDefender ? {
+      defender: {
+        logAnalyticsWorkspaceResourceId: defenderLogAnalyticsWorkspaceId
+        securityMonitoring: {
+          enabled: true
+        }
+      }
+    } : {})
     addonProfiles: enableContainerInsights ? {
       omsagent: {
         enabled: true
@@ -162,7 +184,7 @@ resource aks 'Microsoft.ContainerService/managedClusters@2024-01-01' = {
 }
 
 // Azure Security Linux Agent extension for Defender for Containers
-resource azureSecurityLinuxAgent 'Microsoft.KubernetesConfiguration/extensions@2023-05-01' = {
+resource azureSecurityLinuxAgent 'Microsoft.KubernetesConfiguration/extensions@2023-05-01' = if (deployAzureSecurityLinuxAgent) {
   name: 'azuresecuritylinuxagent'
   scope: aks
   properties: {

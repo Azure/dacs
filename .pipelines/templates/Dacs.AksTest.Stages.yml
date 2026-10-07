@@ -1,0 +1,318 @@
+# Copyright (c) Microsoft Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+parameters:
+  - name: testFilter
+    type: string
+  - name: testPackage
+    type: string
+  - name: stageName
+    type: string
+  - name: stageDisplayName
+    type: string
+  - name: location
+    type: string
+    default: eastus2
+  - name: aksTemplate
+    type: string
+    default: nvme-l8
+  - name: cacheServerBuildId
+    type: string
+    default: latest
+  - name: buildPipeline
+    type: string
+    default: dacsOfficial
+    values:
+      - dacsOfficial
+      - dacsPullRequest
+  - name: dockerRegistry
+    type: string
+    default: dacstest.azurecr.io
+  - name: azureServiceConnection
+    type: string
+  - name: helmChart
+    type: string
+    default: dacs
+    values:
+      - dacs
+      - cache-server
+  - name: helmArgs
+    type: string
+    default: ''
+  - name: resourcePrefix
+    type: string
+    default: aks-resilience
+  - name: testOutputFile
+    type: string
+    default: test.xml
+  - name: extraTestEnv
+    type: string
+    default: ''
+  - name: extraTestArgs
+    type: string
+    default: ''
+  - name: condition
+    type: string
+    default: ''
+  - name: dependsOn
+    type: object
+    default: []
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: ${{ parameters.stageDisplayName }}
+    dependsOn: ${{ parameters.dependsOn }}
+    ${{ if ne(parameters.condition, '') }}:
+      condition: ${{ parameters.condition }}
+    jobs:
+      - job: test
+        timeoutInMinutes: 120
+        variables:
+          outputDirectory: $(Build.ArtifactStagingDirectory)/${{ parameters.stageName }}
+          resourceGroup: dacs-integration
+          resourcePrefix: ${{ parameters.resourcePrefix }}-$(Build.BuildId)-$(System.StageAttempt)-$(System.JobAttempt)
+          AZURE_STORAGE_AUTH_MODE: login
+        templateContext:
+          outputs:
+            - output: pipelineArtifact
+              path: $(Build.ArtifactStagingDirectory)/${{ parameters.stageName }}
+              artifact: ${{ parameters.stageName }}
+              condition: always()
+        steps:
+          - checkout: self
+            fetchDepth: 0
+            fetchTags: true
+          - bash: |
+              set -euo pipefail
+              echo "##vso[task.setvariable variable=value;isOutput=true]$(resourcePrefix)"
+            name: publishResourcePrefix
+            displayName: Publish Resource Prefix
+          - download: ${{ parameters.buildPipeline }}
+            artifact: dacs-release
+            condition: and(succeeded(), eq('${{ parameters.cacheServerBuildId }}', 'latest'))
+          - bash: |
+              set -euo pipefail
+              if [[ "$BUILD_ID" == latest ]]; then
+                  # shellcheck disable=SC1091
+                  source "$SELECTED_RELEASE/release-metadata/release.env"
+                  # shellcheck disable=SC1091
+                  source "$SELECTED_RELEASE/release-metadata/helm-chart.txt"
+                  BUILD_ID="${CONTAINER_VERSION:?}"
+                  CHART_VERSION="${CACHE_CONTROLLER_CHART_VERSION:?}"
+                  if [[ "$IMAGE_REGISTRY" != "$DOCKER_REGISTRY/dacs" ]]; then
+                      echo "Selected release does not belong to $DOCKER_REGISTRY/dacs" >&2
+                      exit 1
+                  fi
+                  echo "Selected image source commit: $GIT_COMMIT"
+              else
+                  CHART_VERSION="${BUILD_ID#v}"
+                  CHART_VERSION="${CHART_VERSION/_/+}"
+              fi
+              echo "Using Cache Server Build: $BUILD_ID"
+              echo "##vso[task.setvariable variable=cacheServerBuildNumber]$BUILD_ID"
+              echo "##vso[task.setvariable variable=cacheServerChartVersion]$CHART_VERSION"
+            displayName: Resolve Cache Server Build Number
+            env:
+              BUILD_ID: ${{ parameters.cacheServerBuildId }}
+              DOCKER_REGISTRY: ${{ parameters.dockerRegistry }}
+              SELECTED_RELEASE: $(Pipeline.Workspace)/${{ parameters.buildPipeline }}/dacs-release
+
+          - bash: |
+              echo "Cache Server Build Number: $(cacheServerBuildNumber)"
+              echo "Docker Registry: ${{ parameters.dockerRegistry }}"
+              echo "AKS Template: ${{ parameters.aksTemplate }}"
+              echo "Location: ${{ parameters.location }}"
+              echo "Test Filter: ${{ parameters.testFilter }}"
+            displayName: Print Build Configuration
+
+          - task: GoTool@0
+            displayName: Install Go toolchain
+            inputs:
+              version: 1.26.0
+          - bash: |
+              set -euo pipefail
+              make kubectl
+              echo "##vso[task.prependpath]$(Build.SourcesDirectory)/.local/bin"
+            displayName: Install kubectl
+          - task: HelmInstaller@1
+            displayName: Install Helm v3
+            inputs:
+              helmVersionToInstall: 3.18.6
+
+          - task: AzureCLI@2
+            displayName: Create AKS Cluster
+            inputs:
+              azureSubscription: ${{ parameters.azureServiceConnection }}
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                echo "Creating AKS cluster..."
+                make provision TARGET=aks \
+                    AKS_TEMPLATE="$AKS_TEMPLATE" AKS_LOCATION="$AKS_LOCATION" \
+                    AKS_RESOURCE_GROUP="$RESOURCE_GROUP" AKS_IS_TEST=true \
+                    AKS_RESOURCE_PREFIX="$RESOURCE_PREFIX"
+                OUTPUTS="$(az deployment group show --resource-group "$RESOURCE_GROUP" \
+                    --name "$RESOURCE_PREFIX-deployment" --query properties.outputs --output json)"
+                STORAGE_ACCOUNT="$(jq -er '.storageAccountName.value' <<< "$OUTPUTS")"
+                WORKLOAD_IDENTITY_CLIENT_ID="$(jq -er '.workloadIdentityClientId.value' <<< "$OUTPUTS")"
+                echo "##vso[task.setvariable variable=integrationStorageAccount]$STORAGE_ACCOUNT"
+                echo "##vso[task.setvariable variable=integrationWorkloadIdentityClientId]$WORKLOAD_IDENTITY_CLIENT_ID"
+            env:
+              DOCKER_REGISTRY: ${{ parameters.dockerRegistry }}
+              AKS_TEMPLATE: ${{ parameters.aksTemplate }}
+              AKS_LOCATION: ${{ parameters.location }}
+              RESOURCE_GROUP: $(resourceGroup)
+              RESOURCE_PREFIX: $(resourcePrefix)
+
+          - task: AzureCLI@2
+            displayName: Deploy Cache Server Prerequisites
+            inputs:
+              azureSubscription: ${{ parameters.azureServiceConnection }}
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                echo "Deploying cache-server prerequisites..."
+                make helm-prereq-install
+
+          - task: AzureCLI@2
+            displayName: Deploy Cache Server
+            inputs:
+              azureSubscription: ${{ parameters.azureServiceConnection }}
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                echo "Deploying with chart=${{ parameters.helmChart }}, build=$(cacheServerBuildNumber)..."
+                if [[ "${{ parameters.helmChart }}" == dacs ]]; then
+                    make helm-dacs-install \
+                        DOCKER_REGISTRY="$DOCKER_REGISTRY" BUILD_NUMBER="$(cacheServerBuildNumber)" \
+                        DACS_CACHE_CHART_REPO=dacs/helmchart/dacs \
+                        DACS_CACHE_CHART_VERSION="$(cacheServerChartVersion)" \
+                        HELM_ARGS="--set global.registry= --set manager.image.repository=$DOCKER_REGISTRY/dacs/cache-controller --set manager.cacheServerImage.repository=$DOCKER_REGISTRY/dacs/cache-server $EXTRA_HELM_ARGS"
+                    echo "Waiting for all Cache CRs to be ready..."
+                    kubectl wait --for=condition=Ready caches.storage.azure.com --all --all-namespaces --timeout=10m
+                else
+                    make helm-install \
+                        DOCKER_REGISTRY="$DOCKER_REGISTRY" BASE_REPO="$DOCKER_REGISTRY/dacs" \
+                        BUILD_NUMBER="$(cacheServerBuildNumber)" \
+                        HELM_CHART_REPO=dacs/helmchart/cache-server \
+                        HELM_CHART_VERSION="$(cacheServerChartVersion)" \
+                        HELM_ARGS="$EXTRA_HELM_ARGS"
+                fi
+            env:
+              DOCKER_REGISTRY: ${{ parameters.dockerRegistry }}
+              EXTRA_HELM_ARGS: ${{ parameters.helmArgs }}
+
+          - task: AzureCLI@2
+            displayName: Run Test (${{ parameters.testFilter }})
+            inputs:
+              azureSubscription: ${{ parameters.azureServiceConnection }}
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                echo "Running test: ${{ parameters.testFilter }}"
+                export DOCKER_REGISTRY="$REGISTRY_HOST/dacs"
+                export BUILD_NUMBER="$(cacheServerBuildNumber)"
+                export BUILD_DEFINITION_NAME="$(Build.DefinitionName)"
+                export BUILD_NUM="$(Build.BuildNumber)"
+                export GIT_BRANCH="$(Build.SourceBranchName)"
+                # export SEND_METRICS=true
+                ${{ parameters.extraTestEnv }}
+                make test-e2e \
+                    TEST_PACKAGES="${{ parameters.testPackage }}" \
+                    TEST_FILTER="${{ parameters.testFilter }}" \
+                    TEST_OUTPUT="${{ parameters.testOutputFile }}" \
+                    SUPPORT_BUNDLE_OUTPUT_DIR="support-bundles/${{ parameters.stageName }}" \
+                    EXTRA_TEST_ARGS="${{ parameters.extraTestArgs }}"
+            env:
+              REGISTRY_HOST: ${{ parameters.dockerRegistry }}
+              AKS_RESOURCE_GROUP: $(resourceGroup)
+              AKS_CLUSTER_NAME: $(resourcePrefix)-cluster
+              STORAGE_ACCOUNT: $(integrationStorageAccount)
+              WORKLOAD_IDENTITY_CLIENT_ID: $(integrationWorkloadIdentityClientId)
+
+          - bash: |
+              set -euo pipefail
+              mkdir -p "$OUTPUT_DIRECTORY"
+              if [[ -f diagnostic-links.md ]]; then
+                  echo "===== diagnostic-links.md ====="
+                  cat diagnostic-links.md
+                  echo "===== end diagnostic-links.md ====="
+              else
+                  echo "diagnostic-links.md not found in $(pwd)"
+              fi
+            displayName: Publish Diagnostic Links
+            condition: always()
+            env:
+              OUTPUT_DIRECTORY: $(outputDirectory)
+
+          - task: CopyFiles@2
+            displayName: Copy Diagnostic Links to Output
+            condition: always()
+            inputs:
+              sourceFolder: $(Build.SourcesDirectory)
+              contents: diagnostic-links.md
+              targetFolder: $(outputDirectory)/diagnostic-links/${{ parameters.stageName }}
+
+          - task: PublishTestResults@2
+            displayName: Publish Test Results
+            condition: always()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: ${{ parameters.testOutputFile }}
+              searchFolder: $(Build.SourcesDirectory)
+              failTaskOnFailedTests: true
+              testRunTitle: ${{ parameters.stageDisplayName }}
+
+          - task: CopyFiles@2
+            displayName: Copy Support Bundle to Output
+            condition: always()
+            inputs:
+              sourceFolder: $(Build.SourcesDirectory)
+              contents: 'support-bundles/**'
+              targetFolder: $(outputDirectory)
+
+      - job: cleanup
+        displayName: Cleanup AKS Resources
+        dependsOn: test
+        condition: always()
+        timeoutInMinutes: 90
+        cancelTimeoutInMinutes: 30
+        variables:
+          resourceGroup: dacs-integration
+          resourcePrefix: $[ dependencies.test.outputs['publishResourcePrefix.value'] ]
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - task: AzureCLI@2
+            displayName: Delete AKS Resources
+            inputs:
+              azureSubscription: ${{ parameters.azureServiceConnection }}
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                if [[ -z "${RESOURCE_PREFIX:-}" ]]; then
+                    echo "The test job did not publish a resource prefix; no resources were created."
+                    exit 0
+                fi
+                echo "Deleting resources for $RESOURCE_PREFIX; preserving $RESOURCE_GROUP..."
+                make aks-clean AKS_RESOURCE_GROUP="$RESOURCE_GROUP" AKS_RESOURCE_PREFIX="$RESOURCE_PREFIX"
+            env:
+              RESOURCE_GROUP: $(resourceGroup)
+              RESOURCE_PREFIX: $(resourcePrefix)
+              DOCKER_REGISTRY: ${{ parameters.dockerRegistry }}
