@@ -44,9 +44,9 @@ TEST_PACKAGES ?= ./test/perf ./test/e2e ./test/aks
 AKS_TEST_BINARY ?= bin/$(BUILD_TYPE)/$(BUILD_ARCH)/aks-tests/dacs-aks-tests
 
 # Ginkgo binary
-# NOTE: Version is also in the CI setup script - keep in sync
-GINKGO_VERSION ?= v2.27.3
-GINKGO ?= $(shell command -v ginkgo 2>/dev/null || echo $(LOCALBIN)/ginkgo)
+GINKGO_MODULE := github.com/onsi/ginkgo/v2
+GINKGO_VERSION ?= $(shell cd test && GOWORK=off go list -mod=readonly -m -f '{{.Version}}' $(GINKGO_MODULE))
+GINKGO ?= $(LOCALBIN)/ginkgo
 
 # Kubectl binary (downloads latest stable version)
 KUBECTL ?= $(shell command -v kubectl 2>/dev/null || echo $(LOCALBIN)/kubectl)
@@ -117,11 +117,18 @@ mpi-operator: $(KUBECTL)
 	fi
 
 .PHONY: ginkgo
-ginkgo: $(GINKGO) ## Download ginkgo locally if necessary.
-$(GINKGO): $(LOCALBIN)
-	@[ -f "$(GINKGO)" ] || { \
-	GOBIN=$(LOCALBIN) go install github.com/onsi/ginkgo/v2/ginkgo@$(GINKGO_VERSION); \
-	}
+ginkgo: $(LOCALBIN) ## Download the Ginkgo version required by test/go.mod.
+	@required_version="$(GINKGO_VERSION)"; \
+	if [ -z "$$required_version" ]; then \
+		echo "Failed to derive the Ginkgo version from test/go.mod." >&2; \
+		exit 1; \
+	fi; \
+	installed_version="$$(go version -m "$(GINKGO)" 2>/dev/null | \
+		awk '$$1 == "mod" && $$2 == "$(GINKGO_MODULE)" { print $$3 }')"; \
+	if [ "$$installed_version" != "$$required_version" ]; then \
+		echo "Installing Ginkgo $$required_version..."; \
+		GOBIN="$(dir $(GINKGO))" go install "$(GINKGO_MODULE)/ginkgo@$$required_version"; \
+	fi
 
 .PHONY: kubectl
 kubectl: $(KUBECTL) ## Download kubectl locally if necessary.
