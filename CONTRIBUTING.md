@@ -16,6 +16,7 @@ or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any addi
 
 ## Before contributing
 
+- See [MAINTAINERS.md](MAINTAINERS.md) for the project's maintainers.
 - Search the [existing issues](../../issues) before opening a new one.
 - Use the appropriate issue form for bugs, feature requests, or questions.
 - Review [SECURITY.md](SECURITY.md) before reporting a security vulnerability.

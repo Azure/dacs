@@ -81,6 +81,7 @@ See [Architecture](docs/architecture.md) for the detailed request flow.
 
 | Goal or component | Documentation |
 | --- | --- |
+| Find the project maintainers | [Maintainers](MAINTAINERS.md) |
 | Evaluate DACS on AKS | [Get running in 10 minutes](docs/quickstart.md) |
 | Understand the system architecture | [Architecture](docs/architecture.md) |
 | Understand the security model and trust boundary | [Security model](docs/security-model.md) |
