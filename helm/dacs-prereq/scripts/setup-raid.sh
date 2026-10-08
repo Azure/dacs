@@ -14,13 +14,15 @@
 # limitations under the License.
 
 # Prepares local NVMe data disks for use as a DACS cache directory.
-# Executed via nsenter in the host namespace (see daemonset.yaml).
+# Uses container tools with host devices and explicit host mount operations.
 
 set -euo pipefail
 
 readonly RAID_NAME="dacs"
 readonly FS_LABEL="dacs"
+readonly HOST_ROOT="/proc/1/root"
 MOUNT_POINT="${MOUNT_POINT:-/var/lib/ssd/cacheserver}"
+readonly NODE_HOSTNAME="${NODE_NAME:-$(uname -n 2>/dev/null || echo '<unknown>')}"
 
 log() {
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"
@@ -28,7 +30,7 @@ log() {
 
 dump_diag() {
   log "----- DEBUG (begin) -----"
-  echo "hostname=$(hostname 2>/dev/null || echo '<unknown>')"
+  echo "hostname=${NODE_HOSTNAME}"
   lsblk -o NAME,TYPE,SIZE,FSTYPE,LABEL,MOUNTPOINT 2>/dev/null || true
   echo ""
   cat /proc/mdstat 2>/dev/null || true
@@ -39,56 +41,53 @@ dump_diag() {
 
 persist_config() {
   # Write mdadm.conf and fstab entries for reboot persistence.
-  mkdir -p /etc/mdadm
-  mdadm --detail --scan 2>/dev/null | tee /etc/mdadm/mdadm.conf >/dev/null || true
-  if grep -q "^LABEL=${FS_LABEL}[[:space:]]" /etc/fstab 2>/dev/null; then
+  mkdir -p "${HOST_ROOT}/etc/mdadm"
+  mdadm --detail --scan 2>/dev/null | tee "${HOST_ROOT}/etc/mdadm/mdadm.conf" >/dev/null || true
+  if grep -q "^LABEL=${FS_LABEL}[[:space:]]" "${HOST_ROOT}/etc/fstab" 2>/dev/null; then
     # Ensure existing entry includes noatime (older entries may not).
-    if ! grep "^LABEL=${FS_LABEL}[[:space:]]" /etc/fstab | grep -q "noatime"; then
-      sed -i "/^LABEL=${FS_LABEL}[[:space:]]/s/defaults/defaults,noatime/" /etc/fstab
+    if ! grep "^LABEL=${FS_LABEL}[[:space:]]" "${HOST_ROOT}/etc/fstab" | grep -q "noatime"; then
+      sed -i "/^LABEL=${FS_LABEL}[[:space:]]/s/defaults/defaults,noatime/" "${HOST_ROOT}/etc/fstab"
     fi
   else
-    echo "LABEL=${FS_LABEL} ${MOUNT_POINT} ext4 defaults,noatime,nofail 0 2" >> /etc/fstab
+    echo "LABEL=${FS_LABEL} ${MOUNT_POINT} ext4 defaults,noatime,nofail 0 2" >> "${HOST_ROOT}/etc/fstab"
   fi
-  if command -v update-initramfs &>/dev/null; then
-    update-initramfs -u
-  fi
+  nsenter -t 1 -m --root --wdns=/ -- /bin/sh -c \
+    'if command -v update-initramfs >/dev/null 2>&1; then update-initramfs -u; fi'
 }
 
-log "========== NVMe setup starting on $(hostname 2>/dev/null || echo '<unknown>') =========="
+log "========== NVMe setup starting on ${NODE_HOSTNAME} =========="
 
 # --- Fast path: already mounted ------------------------------------------------
-if mountpoint -q "${MOUNT_POINT}" 2>/dev/null; then
+if findmnt --task 1 --mountpoint "${MOUNT_POINT}" -n &>/dev/null; then
   log "${MOUNT_POINT} already mounted. Nothing to do."
   exit 0
 fi
 
-# --- Install mdadm if needed ---------------------------------------------------
-if ! command -v mdadm &>/dev/null; then
-  log "mdadm not found, installing..."
-  if command -v tdnf &>/dev/null; then
-    tdnf install -y mdadm e2fsprogs
-  elif command -v apt-get &>/dev/null; then
-    export DEBIAN_FRONTEND=noninteractive
-    if ! { apt-get update >/dev/null && apt-get install -y mdadm e2fsprogs; }; then
-      log "ERROR: Failed to install packages via apt-get"
-      exit 1
-    fi
-  else
-    log "ERROR: No supported package manager found."
+# --- Require tools from the cache-setup image ---------------------------------
+for tool in mdadm mkfs.ext4 blkid findmnt mount; do
+  if ! command -v "$tool" &>/dev/null; then
+    log "ERROR: Required tool ${tool} is missing from the cache-setup image."
     exit 1
   fi
-fi
+done
 
-mkdir -p "${MOUNT_POINT}"
+mkdir -p "${HOST_ROOT}${MOUNT_POINT}"
 
 # --- Try to reassemble existing RAID arrays ------------------------------------
-mdadm --assemble --scan 2>/dev/null || true
+MDADM_CONFIG=()
+for config in /etc/mdadm.conf /etc/mdadm/mdadm.conf; do
+  if [[ -f "${HOST_ROOT}${config}" ]]; then
+    MDADM_CONFIG=(--config="${HOST_ROOT}${config}")
+    break
+  fi
+done
+mdadm --assemble --scan "${MDADM_CONFIG[@]}" 2>/dev/null || true
 
 # --- Check for existing filesystem with our label (covers RAID and single-disk)
 LABELED_DEV=$(blkid -L "${FS_LABEL}" 2>/dev/null || true)
 if [[ -n "${LABELED_DEV}" ]]; then
   log "Found existing filesystem labeled '${FS_LABEL}' on ${LABELED_DEV}"
-  mount -o noatime "${LABELED_DEV}" "${MOUNT_POINT}"
+  mount --namespace 1 -o noatime "${LABELED_DEV}" "${MOUNT_POINT}"
   persist_config
   log "Mounted ${LABELED_DEV}. Done."
   exit 0
@@ -106,7 +105,7 @@ for device in ${ALL_NVME_DEVICES}; do
     continue
   fi
   # Skip mounted devices (catches root/OS disk)
-  if findmnt -S "$device" -n &>/dev/null; then
+  if findmnt --task 1 -S "$device" -n &>/dev/null; then
     continue
   fi
   # Skip devices with existing signatures
@@ -132,7 +131,7 @@ if [[ ${#UNUSED_DEVICES[@]} -eq 1 ]]; then
     dump_diag
     exit 1
   fi
-  mount -o noatime "${DEVICE}" "${MOUNT_POINT}"
+  mount --namespace 1 -o noatime "${DEVICE}" "${MOUNT_POINT}"
   persist_config
   log "Single-disk setup complete."
   exit 0
@@ -167,8 +166,8 @@ if ! mkfs.ext4 -F -L "${FS_LABEL}" "${RAID_DEVICE}"; then
   exit 1
 fi
 
-mount -o noatime "${RAID_DEVICE}" "${MOUNT_POINT}"
-chmod 0777 "${MOUNT_POINT}"
+mount --namespace 1 -o noatime "${RAID_DEVICE}" "${MOUNT_POINT}"
+chmod 0777 "${HOST_ROOT}${MOUNT_POINT}"
 persist_config
 
 log "RAID0 setup complete."
