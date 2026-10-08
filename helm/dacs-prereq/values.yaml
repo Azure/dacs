@@ -41,8 +41,8 @@ updateStrategy:
 # nvme-raid-setup init container settings
 nvmeRaidSetup:
   image:
-    repository: mcr.microsoft.com/azurelinux/base/core
-    tag: "3.0"
+    repository: cache-setup
+    tag: "" # Defaults to the chart appVersion.
     pullPolicy: IfNotPresent
   resources:
     requests:
@@ -65,4 +65,3 @@ pauseContainer:
     limits:
       cpu: 10m
       memory: 16Mi
-

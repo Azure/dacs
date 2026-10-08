@@ -46,14 +46,13 @@ spec:
       serviceAccountName: {{ .Values.name }}
       initContainers:
         - name: nvme-raid-setup
-          # The init container image must provide a package manager for
-          # installing mdadm and related tools.  The default AzureLinux
-          # image uses tdnf; setup-raid.sh falls back to apt-get for
-          # Ubuntu-based images.
-          image: "{{ .Values.nvmeRaidSetup.image.repository }}:{{ .Values.nvmeRaidSetup.image.tag }}"
+          image: "{{ .Values.nvmeRaidSetup.image.repository }}:{{ .Values.nvmeRaidSetup.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.nvmeRaidSetup.image.pullPolicy }}
           securityContext:
             privileged: true
+          volumeMounts:
+            - name: host-dev
+              mountPath: /dev
           env:
             - name: MOUNT_POINT
               value: "{{ .Values.mountPoint }}"
@@ -75,16 +74,9 @@ spec:
             - |
               set -e
               
-              # Install required packages
-              tdnf install -y util-linux
-              
-              # Execute setup script in host namespace via nsenter.
-              # The single-quoted heredoc delimiter ('SETUP_SCRIPT') prevents
-              # the outer shell from expanding variables.  However, nsenter
-              # preserves the calling process environment (env is per-process,
-              # not per-namespace), so the MOUNT_POINT variable set above is
-              # available inside the nsenter'd shell.
-              if ! nsenter -t 1 -m -u -i -n -p -- /bin/bash -s <<'SETUP_SCRIPT'
+              # Keep the image's tools and use the node hostname for mdadm.
+              # setup-raid.sh targets the host mount namespace explicitly.
+              if ! nsenter -t 1 -u -- /bin/bash -s <<'SETUP_SCRIPT'
               export MOUNT_POINT="${MOUNT_POINT}"
               {{ .Files.Get "scripts/setup-raid.sh" | nindent 14 }}
               SETUP_SCRIPT
@@ -130,4 +122,8 @@ spec:
             - infinity
           resources:
             {{- toYaml .Values.pauseContainer.resources | nindent 12 }}
-
+      volumes:
+        - name: host-dev
+          hostPath:
+            path: /dev
+            type: Directory
