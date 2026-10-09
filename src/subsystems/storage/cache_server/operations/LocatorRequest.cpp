@@ -41,6 +41,7 @@ bool HandleLocatorRegister(IConnection& clientConnection, const LocatorRegisterR
 {
     const std::string& requestId = request.requestid();
     LocatorRegisterResponse response;
+    response.set_requestid(requestId);
 
     LOG_DEBUG_REQID_STR("LocatorRegister key={} node={}", requestId, request.key(), request.replica().nodeid());
 
@@ -60,6 +61,7 @@ bool HandleLocatorLookup(IConnection& clientConnection, const LocatorLookupReque
 {
     const std::string& requestId = request.requestid();
     LocatorLookupResponse response;
+    response.set_requestid(requestId);
 
     LOG_DEBUG_REQID_STR("LocatorLookup key={}", requestId, request.key());
 
@@ -92,6 +94,7 @@ bool HandleLocatorRefresh(IConnection& clientConnection, const LocatorRefreshReq
 {
     const std::string& requestId = request.requestid();
     LocatorRefreshResponse response;
+    response.set_requestid(requestId);
 
     LOG_DEBUG_REQID_STR("LocatorRefresh key={} node={}", requestId, request.key(), request.nodeid());
 
@@ -114,6 +117,7 @@ bool HandleLocatorUnregister(IConnection& clientConnection, const LocatorUnregis
 {
     const std::string& requestId = request.requestid();
     LocatorUnregisterResponse response;
+    response.set_requestid(requestId);
 
     LOG_DEBUG_REQID_STR("LocatorUnregister key={} node={}", requestId, request.key(), request.nodeid());
 
@@ -137,6 +141,7 @@ bool HandleLocatorPrefixLookup(IConnection& clientConnection,
 {
     const std::string& requestId = request.requestid();
     LocatorPrefixLookupResponse response;
+    response.set_requestid(requestId);
 
     LOG_DEBUG_REQID_STR("LocatorPrefixLookup keys_size={}", requestId, request.keys_size());
 
@@ -190,6 +195,7 @@ bool HandleLocatorRegisterChain(IConnection& clientConnection,
 {
     const std::string& requestId = request.requestid();
     LocatorRegisterChainResponse response;
+    response.set_requestid(requestId);
 
     LOG_DEBUG_REQID_STR("LocatorRegisterChain entries_size={}", requestId, request.entries_size());
 
