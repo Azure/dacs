@@ -25,8 +25,8 @@ if [[ -f "$CONFIG_FILE" ]]; then
     echo "Loaded config from: $CONFIG_FILE"
 fi
 
-# Configure minikube to use /mnt if available (CI environments have limited root disk)
-if [ -d "/mnt" ] && [ "$(df /mnt 2>/dev/null | tail -1 | awk '{print $4}')" -gt 104857600 ]; then
+# Use /mnt when MINIKUBE_HOME is unset (CI environments have limited root disk).
+if [ -z "${MINIKUBE_HOME:-}" ] && [ -d "/mnt" ] && [ "$(df /mnt 2>/dev/null | tail -1 | awk '{print $4}')" -gt 104857600 ]; then
     export MINIKUBE_HOME="/mnt/minikube"
     sudo mkdir -p "$MINIKUBE_HOME"
     sudo chown -R $(whoami):$(whoami) "$MINIKUBE_HOME"

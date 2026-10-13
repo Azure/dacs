@@ -25,8 +25,8 @@ if [[ -f "$CONFIG_FILE" ]]; then
     echo "Loaded config from: $CONFIG_FILE"
 fi
 
-# Use /mnt for minikube if available
-if [ -d "/mnt/minikube" ]; then
+# Use /mnt when MINIKUBE_HOME is unset.
+if [ -z "${MINIKUBE_HOME:-}" ] && [ -d "/mnt/minikube" ]; then
     export MINIKUBE_HOME="/mnt/minikube"
 fi
 
@@ -38,7 +38,7 @@ if ! minikube delete --profile "$CLUSTER_NAME"; then
 fi
 
 # Clean up Minikube and kubelet data on /mnt even when cluster deletion failed.
-if [ -d "/mnt/minikube" ]; then
+if [ "${MINIKUBE_HOME:-}" = "/mnt/minikube" ] && [ -d "/mnt/minikube" ]; then
     echo "Cleaning up /mnt/minikube..."
     sudo rm -rf /mnt/minikube
 fi
