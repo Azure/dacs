@@ -167,6 +167,21 @@ CacheClientStatus Initialize(
     /*[in]   */ ChecksumMetadataPolicy checksumMetadataPolicy);
 //---------------------------------------------------------------------------------------------------------------------
 /**
+ * Copies an atomic snapshot of the cache-server ring into a packed sequence of null-terminated
+ * hostnames, followed by an additional null terminator.
+ *
+ * Call with strServers set to NULL to query the required buffer size. If the supplied buffer is
+ * too small, INVALID_ARGUMENT is returned and nLength is updated with the required size so callers
+ * can retry if the ring grew between calls.
+ *
+ * @param strServers Output buffer, or NULL to query the required size
+ * @param nLength Input buffer size and output number of bytes written or required
+ */
+CacheClientStatus GetCacheServerHostnames(
+    /*[outopt]*/ char* strServers,
+    /*[inout] */ uint64_t* nLength);
+//---------------------------------------------------------------------------------------------------------------------
+/**
  * Uploads nLength bytes of data from pBuffer to the cache server and associates it with the key strCacheKey.
  * The buffer size can be at most 128MB. Consumer of this API needs to divide the data into 128MB chunks and call
  * this API for each chunk separately.

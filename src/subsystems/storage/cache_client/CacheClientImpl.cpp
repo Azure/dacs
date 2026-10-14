@@ -26,6 +26,9 @@
 #include <boost/crc.hpp>
 #include <boost/algorithm/string.hpp>
 
+#include <cstring>
+#include <limits>
+
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cacheutils;
 using namespace cache;
@@ -57,6 +60,50 @@ CacheClientImpl::CacheClientImpl()
 , m_nMaxBufferSizeBytes(0)
 {
     LOG_INFO("CacheClientImpl constructor called");
+}
+//---------------------------------------------------------------------------------------------------------------------
+CacheClientStatus CacheClientImpl::GetCacheServerHostnames(char* strServers, uint64_t* nLength) const
+{
+    if (nLength == nullptr)
+    {
+        return CacheClientStatus::INVALID_ARGUMENT;
+    }
+    if (!m_bInitialized || !m_spConnectionManager)
+    {
+        return CacheClientStatus::INTERNAL_ERROR;
+    }
+
+    const std::vector<std::string> servers = m_spConnectionManager->GetAllCacheServerHostnames();
+    uint64_t requiredLength = 1;
+    for (const auto& server : servers)
+    {
+        if (server.size() >= std::numeric_limits<uint64_t>::max() - requiredLength)
+        {
+            return CacheClientStatus::INTERNAL_ERROR;
+        }
+        requiredLength += static_cast<uint64_t>(server.size()) + 1;
+    }
+
+    if (strServers == nullptr)
+    {
+        *nLength = requiredLength;
+        return CacheClientStatus::SUCCESS;
+    }
+    if (*nLength < requiredLength)
+    {
+        *nLength = requiredLength;
+        return CacheClientStatus::INVALID_ARGUMENT;
+    }
+
+    char* cursor = strServers;
+    for (const auto& server : servers)
+    {
+        std::memcpy(cursor, server.c_str(), server.size() + 1);
+        cursor += server.size() + 1;
+    }
+    *cursor = '\0';
+    *nLength = requiredLength;
+    return CacheClientStatus::SUCCESS;
 }
 //---------------------------------------------------------------------------------------------------------------------
 CacheClientStatus CacheClientImpl::Initialize(

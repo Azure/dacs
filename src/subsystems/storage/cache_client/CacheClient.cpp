@@ -14,6 +14,7 @@
 
 #include "CacheClient.h"
 
+#include <exception>
 #include <memory>
 #include <stdint.h>
 
@@ -88,6 +89,28 @@ extern "C" CacheClientStatus Initialize(
                                          bEnableConsistentHashing,
                                          retryConfig,
                                          checksumMetadataPolicy);
+}
+//---------------------------------------------------------------------------------------------------------------------
+extern "C" CacheClientStatus GetCacheServerHostnames(
+    /*[outopt]*/ char* strServers,
+    /*[inout] */ uint64_t* nLength)
+{
+    // The impl copies hostnames into STL containers, which can throw (for example std::bad_alloc). An
+    // exception must not cross this extern "C" boundary, where it would terminate the host process.
+    try
+    {
+        return GetImplInstance()->GetCacheServerHostnames(strServers, nLength);
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("GetCacheServerHostnames failed with exception: {}", e.what());
+        return CacheClientStatus::INTERNAL_ERROR;
+    }
+    catch (...)
+    {
+        LOG_ERROR("GetCacheServerHostnames failed with an unknown exception");
+        return CacheClientStatus::INTERNAL_ERROR;
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 extern "C" CacheClientStatus Upload(
