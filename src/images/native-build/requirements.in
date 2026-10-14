@@ -6,4 +6,4 @@ pyjwt[crypto]==2.15.1
 pytest
 pytest-timeout
 setuptools
-tomli==2.4.1
+tomli==2.5.0
