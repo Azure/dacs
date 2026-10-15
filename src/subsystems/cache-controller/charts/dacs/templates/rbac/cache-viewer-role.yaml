@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-{{- if .Values.rbacHelpers.enable }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
     labels:
         app.kubernetes.io/managed-by: {{ .Release.Service }}
         app.kubernetes.io/name: dacs
+        rbac.authorization.k8s.io/aggregate-to-view: "true"
     name: dacs-viewer-role
 rules:
     - apiGroups:
@@ -35,4 +35,3 @@ rules:
         - caches/status
       verbs:
         - get
-{{- end }}
