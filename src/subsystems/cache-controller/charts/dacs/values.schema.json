@@ -208,7 +208,7 @@
       "properties": {
         "enable": {
           "type": "boolean",
-          "description": "Install convenience admin/editor/viewer roles for CRDs"
+          "description": "Install convenience admin/editor roles for CRDs"
         }
       }
     },

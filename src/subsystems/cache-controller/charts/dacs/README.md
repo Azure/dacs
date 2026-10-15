@@ -130,7 +130,10 @@ automatically; follow the [upgrade procedure](#upgrade) using
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `rbacHelpers.enable` | Install admin/editor/viewer roles | `false` |
+| `rbacHelpers.enable` | Install optional admin/editor roles | `false` |
+
+The Cache viewer role is always installed. Its read permissions are aggregated
+into the standard Kubernetes `view` role.
 
 ### CRD Configuration
 
