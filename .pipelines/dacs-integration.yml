@@ -234,6 +234,22 @@ extends:
 
       - template: /.pipelines/templates/Dacs.AksTest.Stages.yml@self
         parameters:
+          stageName: AksNodeCrash
+          stageDisplayName: AKS Node Crash
+          testPackage: ./test/aks
+          testFilter: aks && aks-node-crash
+          testOutputFile: test-aks-node-crash.xml
+          resourcePrefix: aks-node-crash
+          helmArgs: --values src/subsystems/cache-controller/charts/dacs/aks-int-${{ parameters.scalingMode }}-values.yaml
+          condition: not(canceled())
+          azureServiceConnection: ${{ parameters.azureServiceConnection }}
+          dockerRegistry: ${{ parameters.dockerRegistry }}
+          cacheServerBuildId: ${{ parameters.cacheServerBuildId }}
+          buildPipeline: ${{ parameters.buildPipeline }}
+          location: ${{ parameters.location }}
+
+      - template: /.pipelines/templates/Dacs.AksTest.Stages.yml@self
+        parameters:
           stageName: AksHelmUpgrade
           stageDisplayName: AKS Helm Upgrade
           testPackage: ./test/aks
