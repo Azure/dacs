@@ -49,8 +49,8 @@ The test framework will:
 ### Azure Pipeline: dacs-integration
 
 [dacs-integration](../.pipelines/dacs-integration.yml) runs on `main` every day
-at 06:00 and 18:00 UTC. It runs performance, AKS upgrade, AKS scale, and Helm
-upgrade stages in parallel.
+at 06:00 and 18:00 UTC. It runs performance, AKS upgrade, AKS scale, AKS restart,
+and Helm upgrade stages in parallel.
 
 To run it on demand:
 

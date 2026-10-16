@@ -82,6 +82,7 @@ var _ = Describe("aks tests", Label("aks"), Serial, func() {
 	testClusterUpgrade(&tc)
 	testClusterScale(&tc)
 	testClusterHelmUpgrade(&tc)
+	testClusterRestart(&tc)
 	AfterEach(afterEach)
 	ReportAfterEach(emitSpecOutcomeMetric)
 })
@@ -234,7 +235,7 @@ func afterEach(ctx context.Context) {
 	var postNodes corev1.NodeList
 	Eventually(func(g Gomega, ctx context.Context) {
 		g.Expect(tc.List(ctx, &postNodes)).To(Succeed())
-	}).WithContext(ctx).WithTimeout(2*time.Minute).WithPolling(5*time.Second).Should(Succeed(), "failed to list nodes after test")
+	}).WithContext(ctx).WithTimeout(10*time.Minute).WithPolling(5*time.Second).Should(Succeed(), "failed to list nodes after test")
 	postNodeNames := make([]string, len(postNodes.Items))
 	for i, n := range postNodes.Items {
 		postNodeNames[i] = n.Name
