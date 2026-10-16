@@ -30,7 +30,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	storagev1 "github.com/Azure/dacs/cache-controller/api/v1"
-	akshelpers "github.com/Azure/dacs/test/pkg/aks"
 	"github.com/Azure/dacs/test/pkg/kusto"
 	"github.com/Azure/dacs/test/pkg/utils"
 )
@@ -56,12 +55,7 @@ func testClusterNodeCrash(tc *testContext) {
 		image := cacheserverImage(victimPod)
 		Expect(image).NotTo(BeEmpty(), "victim pod %s has no cacheserver image", victimPod.Name)
 
-		var node corev1.Node
-		Expect(tc.Get(ctx, client.ObjectKey{Name: victimNode}, &node)).
-			To(Succeed(), "getting victim node %s", victimNode)
-		providerID := node.Spec.ProviderID
-		Expect(providerID).NotTo(BeEmpty(), "victim node %s has no provider ID", victimNode)
-		log.Info("selected victim", "node", victimNode, "pod", victimPod.Name, "providerID", providerID)
+		log.Info("selected victim", "node", victimNode, "pod", victimPod.Name)
 
 		By("creating a privileged crash helper on the victim node")
 		var crashPod = corev1.Pod{
@@ -126,10 +120,7 @@ func testClusterNodeCrash(tc *testContext) {
 		}).WithContext(ctx).WithTimeout(5*time.Minute).WithPolling(2*time.Second).
 			Should(Succeed(), "crash did not affect cache readiness")
 
-		By("restarting the victim's VMSS instance")
-		Expect(akshelpers.RestartNode(ctx, providerID, log)).To(Succeed(), "restarting victim node %s", victimNode)
-
-		By("waiting for the victim node to recover")
+		By("waiting for the victim node to recover automatically")
 		Eventually(func(g Gomega, ctx context.Context) {
 			var node corev1.Node
 			g.Expect(tc.Get(ctx, client.ObjectKey{Name: victimNode}, &node)).
