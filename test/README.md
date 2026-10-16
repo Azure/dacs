@@ -52,8 +52,8 @@ The test framework will:
 at 06:00 and 18:00 UTC. It runs performance, AKS upgrade, AKS scale, AKS node
 crash, and Helm upgrade stages in parallel.
 
-The node-crash test intentionally panics one node and restarts its VMSS
-instance. Run it only against a disposable test cluster.
+The node-crash test intentionally panics one node and waits for automatic
+recovery. Run it only against a disposable test cluster.
 
 To run it on demand:
 
