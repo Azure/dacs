@@ -4,5 +4,5 @@ packaging
 patchelf
 pip
 setuptools
-tomli==2.4.1
+tomli==2.5.0
 wheel
