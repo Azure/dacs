@@ -15,11 +15,15 @@
 package main
 
 import (
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	"go.uber.org/zap/zapcore"
 	"gotest.tools/v3/assert"
@@ -100,4 +104,70 @@ func TestRemoveUnusedNodeFields_NonNodeInput(t *testing.T) {
 	out, err := removeUnusedNodeFields(cm)
 	assert.NilError(t, err)
 	assert.Equal(t, any(cm), out, "expected pass-through for non-Node input")
+}
+
+type healthCheckRecorder struct {
+	checks map[string]healthz.Checker
+}
+
+func (r *healthCheckRecorder) AddHealthzCheck(name string, checker healthz.Checker) error {
+	r.checks[name] = checker
+	return nil
+}
+
+func (r *healthCheckRecorder) AddReadyzCheck(name string, checker healthz.Checker) error {
+	r.checks[name] = checker
+	return nil
+}
+
+func TestSetupHealthChecks(t *testing.T) {
+	tests := []struct {
+		name           string
+		enableWebhooks bool
+		certsReady     bool
+		webhookErr     error
+		wantErr        string
+	}{
+		{name: "webhooks disabled"},
+		{name: "certificates pending", enableWebhooks: true, wantErr: "certs are not ready yet"},
+		{
+			name:           "webhook starting",
+			enableWebhooks: true,
+			certsReady:     true,
+			webhookErr:     errors.New("webhook server has not started"),
+			wantErr:        "webhook server has not started",
+		},
+		{name: "webhook ready", enableWebhooks: true, certsReady: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			certsReady := make(chan struct{})
+			if tt.certsReady {
+				close(certsReady)
+			}
+			recorder := &healthCheckRecorder{checks: make(map[string]healthz.Checker)}
+			webhookCalls := 0
+			err := setupHealthChecks(recorder, tt.enableWebhooks, certsReady, func(*http.Request) error {
+				webhookCalls++
+				return tt.webhookErr
+			})
+			assert.NilError(t, err)
+			assert.Assert(t, recorder.checks["healthz"] != nil, "liveness check must be registered")
+			assert.Assert(t, recorder.checks["readyz"] != nil, "readiness check must be registered")
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil)
+			assert.NilError(t, recorder.checks["healthz"](req), "liveness must not depend on certificate or webhook readiness")
+			req = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/readyz", nil)
+			err = recorder.checks["readyz"](req)
+			if tt.wantErr == "" {
+				assert.NilError(t, err)
+			} else {
+				assert.Error(t, err, tt.wantErr)
+			}
+			wantWebhookCalls := 0
+			if tt.enableWebhooks && tt.certsReady {
+				wantWebhookCalls = 1
+			}
+			assert.Equal(t, webhookCalls, wantWebhookCalls, "only check webhook startup after certificates are ready")
+		})
+	}
 }
