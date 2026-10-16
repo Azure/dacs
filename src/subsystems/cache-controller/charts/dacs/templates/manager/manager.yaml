@@ -99,6 +99,12 @@ spec:
                         port: 8081
                     initialDelaySeconds: 5
                     periodSeconds: 10
+                  startupProbe:
+                    httpGet:
+                        path: /readyz
+                        port: 8081
+                    failureThreshold: 60
+                    periodSeconds: 5
                   resources:
                     {{- if .Values.manager.resources }}
                     {{- toYaml .Values.manager.resources | nindent 20 }}
