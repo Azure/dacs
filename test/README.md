@@ -49,8 +49,8 @@ The test framework will:
 ### Azure Pipeline: dacs-integration
 
 [dacs-integration](../.pipelines/dacs-integration.yml) runs on `main` every day
-at 06:00 and 18:00 UTC. It runs performance, AKS upgrade, AKS scale, and Helm
-upgrade stages in parallel.
+at 06:00 and 18:00 UTC. It runs performance, AKS upgrade, AKS scale, AKS restart,
+and Helm upgrade stages in parallel.
 
 To run it on demand:
 
@@ -135,6 +135,38 @@ bin/Release/<architecture>/aks-tests/dacs-aks-tests
 
 The executable is self-contained, but AKS tests still require a valid
 kubeconfig and the external `az`, `helm`, and `kubectl` commands.
+
+### AKS Cluster Restart Test
+
+The `aks-restart` test stops and starts the entire AKS cluster, including its
+control plane and nodes. Use only a disposable test cluster with DACS already
+deployed. Confirm your kubeconfig points to that cluster before running:
+
+```bash
+make test-e2e TEST_PACKAGES=./test/aks TEST_FILTER='aks && aks-restart'
+```
+
+The suite discovers the subscription and cluster from node metadata. If
+`AKS_CLUSTER_NAME` is set, it uses that cluster name and requires
+`AKS_RESOURCE_GROUP` too. Ensure those variables refer to the same cluster as
+your kubeconfig. The Azure CLI must be signed in with permission to read the
+cluster and its node resource group and to stop/start the cluster.
+
+The test allows logs to flush, stops the cluster, confirms management-plane
+completion, and waits 30 minutes for shutdown to settle before starting it.
+This follows the
+[AKS stop/start guidance](https://learn.microsoft.com/en-us/azure/aks/start-stop-cluster).
+Shared checks verify node and DACS application recovery and a fresh
+checksum-validated upload/download. They do not require pre-restart NVMe cache
+contents to survive, nor uninterrupted service during shutdown.
+
+If restart is interrupted, cleanup uses a fresh context to attempt to start
+the cluster after any pending shutdown completes and settles. Recovery errors
+are reported explicitly. Azure capacity constraints skip the test; other
+operation errors fail it. A recovery attempt cannot guarantee that Azure can
+allocate capacity, so a stopped cluster may require manual recovery or
+deletion. The integration pipeline's isolated `AksRestart` stage publishes
+results and diagnostics and separately deletes the test's owned resources.
 
 ## Support Bundle
 

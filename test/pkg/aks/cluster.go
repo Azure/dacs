@@ -46,6 +46,72 @@ type ManagedClusterInfo struct {
 	ResourceGroup string
 }
 
+// ClusterState describes the management-plane state of an AKS cluster.
+type ClusterState struct {
+	PowerState        string `json:"powerState"`
+	ProvisioningState string `json:"provisioningState"`
+}
+
+// GetClusterState queries Azure even when the Kubernetes API is unavailable.
+func GetClusterState(ctx context.Context, subscription, resourceGroup, clusterName string) (ClusterState, error) {
+	cmd := exec.CommandContext(ctx,
+		"az", "aks", "show",
+		"--subscription", subscription,
+		"--resource-group", resourceGroup,
+		"--name", clusterName,
+		"--query", "{powerState:powerState.code,provisioningState:provisioningState}",
+		"-o", "json",
+	)
+	output, err := utils.Run(cmd)
+	if err != nil {
+		return ClusterState{}, fmt.Errorf("failed to query state for cluster %s: %w", clusterName, err)
+	}
+	var state ClusterState
+	if err := json.Unmarshal([]byte(output), &state); err != nil {
+		return ClusterState{}, fmt.Errorf("failed to parse state for cluster %s: %w", clusterName, err)
+	}
+	if state.PowerState == "" || state.ProvisioningState == "" {
+		return ClusterState{}, fmt.Errorf("incomplete state for cluster %s: %+v", clusterName, state)
+	}
+	return state, nil
+}
+
+// StopCluster stops the control plane and nodes, reusing the Azure retry policy.
+func StopCluster(ctx context.Context, subscription, resourceGroup, clusterName string, log logr.Logger) error {
+	log.Info("Stopping AKS cluster", "cluster", clusterName)
+	err := retryAzCommand(ctx, log, "aks-stop", func() *exec.Cmd {
+		return exec.CommandContext(ctx,
+			"az", "aks", "stop",
+			"--subscription", subscription,
+			"--resource-group", resourceGroup,
+			"--name", clusterName,
+		)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to stop cluster %s: %w", clusterName, err)
+	}
+	log.Info("AKS cluster stopped", "cluster", clusterName)
+	return nil
+}
+
+// StartCluster starts a stopped cluster, returning ErrCapacity on allocation failures.
+func StartCluster(ctx context.Context, subscription, resourceGroup, clusterName string, log logr.Logger) error {
+	log.Info("Starting AKS cluster", "cluster", clusterName)
+	err := retryAzCommand(ctx, log, "aks-start", func() *exec.Cmd {
+		return exec.CommandContext(ctx,
+			"az", "aks", "start",
+			"--subscription", subscription,
+			"--resource-group", resourceGroup,
+			"--name", clusterName,
+		)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to start cluster %s: %w", clusterName, err)
+	}
+	log.Info("AKS cluster started", "cluster", clusterName)
+	return nil
+}
+
 // GetNodeResourceGroup extracts the node resource group name from a provider ID.
 // The provider ID has the form:
 //
