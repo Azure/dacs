@@ -34,16 +34,39 @@ This allows the Kubernetes API server to trust the webhook's TLS certificate.
 - **Path:** `/tmp/k8s-webhook-server/serving-certs`
 - **Purpose:** The webhook server reads certificates from this directory
 
-The rotator writes certificates here so the controller-runtime webhook server can use them.
+Kubelet projects the certificate Secret into this directory so the
+controller-runtime webhook server can use it. Secret updates are asynchronous;
+generating certificates does not make the mounted files available immediately.
 
 ## How It Works
 
 1. Controller starts -> cert rotator initializes
 2. Rotator generates self-signed CA + server certificate
-3. Certificates stored in Secret and written to filesystem
+3. Certificates stored in Secret and projected into the pod by kubelet
 4. CA bundle injected into webhook configurations
 5. Webhooks registered (only after certs are ready)
 6. Rotator monitors expiry and auto-renews
+
+## Health Probes
+
+`/healthz` checks process liveness independently of certificate initialization.
+`/readyz` succeeds only after certificate setup completes and the webhook server
+starts. With webhooks disabled, readiness does not depend on certificates.
+
+The Helm chart's startup probe checks `/readyz` every five seconds and allows
+60 failures, giving initialization approximately five minutes before Kubernetes
+restarts the container. Liveness and readiness probes begin after startup
+succeeds. Keep `EnableReadinessCheck` enabled in the cert rotator so webhook
+configuration reconciliation waits for mounted certificates.
+
+Unit tests cover the registered liveness and readiness checks, certificate
+initialization, and webhook startup. Run them from
+`src/subsystems/cache-controller`:
+
+```bash
+CACHE_CONTROLLER_CONFIG_PATH="$PWD/internal/config/cache-controller-config.yaml" \
+  go test ./cmd
+```
 
 ## RBAC Requirements
 
@@ -58,4 +81,3 @@ Check certificate secret:
 ```
 kubectl get secret cache-controller-webhook-server-cert -n cache-controller-system
 ```
-
