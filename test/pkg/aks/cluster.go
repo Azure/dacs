@@ -275,6 +275,39 @@ func ScaleNodePool(ctx context.Context, subscription, resourceGroup, clusterName
 	return nil
 }
 
+// RestartNode reboots the exact VMSS instance identified by an AKS node provider ID.
+func RestartNode(ctx context.Context, providerID string, log logr.Logger) error {
+	subscription, err := GetSubscription(providerID)
+	if err != nil {
+		return err
+	}
+	resourceGroup, err := GetNodeResourceGroup(providerID)
+	if err != nil {
+		return err
+	}
+	vmss, err := getSegmentAfterKey(providerID, "virtualMachineScaleSets")
+	if err != nil {
+		return err
+	}
+	instanceID, err := getSegmentAfterKey(providerID, "virtualMachines")
+	if err != nil {
+		return err
+	}
+	log.Info("Restarting AKS node", "resourceGroup", resourceGroup, "vmss", vmss, "instanceID", instanceID)
+	err = retryAzCommand(ctx, log, "vmss-restart", func() *exec.Cmd {
+		return exec.CommandContext(ctx, "az", "vmss", "restart",
+			"--subscription", subscription,
+			"--resource-group", resourceGroup,
+			"--name", vmss,
+			"--instance-ids", instanceID,
+		)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to restart VMSS instance %s in %s/%s: %w", instanceID, resourceGroup, vmss, err)
+	}
+	return nil
+}
+
 // UpgradeCluster upgrades the AKS cluster to the specified Kubernetes version.
 // A rolling upgrade provisions a surge node, so it can hit the same Azure
 // capacity constraints as a node pool scale-up. Any failure other than a
