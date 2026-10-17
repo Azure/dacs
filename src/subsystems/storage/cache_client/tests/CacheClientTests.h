@@ -36,6 +36,7 @@ class CacheClientTests : public ::testing::TestWithParam<bool>
 
     // Discovery test helper methods
     bool WaitForServerCount(int expectedCount, int timeoutSeconds = 10) const;
+    std::vector<std::string> GetRingHostnames() const;
     bool IsDiscoveryTest() const { return GetParam(); }
     void AssertServersContain(const std::vector<std::string>& servers, const std::string& expectedServer) const;
 

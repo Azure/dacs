@@ -14,6 +14,7 @@
 
 #include "CacheClientTests.h"
 #include "gtest/gtest.h"
+#include <algorithm>
 #include <chrono>  // For std::chrono::seconds
 #include <cstring> // For memcmp function
 #include <filesystem>
@@ -281,6 +282,10 @@ bool CacheClientTests::WaitForServerCount(int expectedCount, int timeoutSeconds)
     return false;
 }
 //---------------------------------------------------------------------------------------------------------------------
+std::vector<std::string> CacheClientTests::GetRingHostnames() const {
+    return m_cacheClientImpl.m_spConnectionManager->GetAllCacheServerHostnames();
+}
+//---------------------------------------------------------------------------------------------------------------------
 void CacheClientTests::AssertServersContain(const std::vector<std::string>& servers, const std::string& expectedServer) const {
     auto it = std::find(servers.begin(), servers.end(), expectedServer);
     ASSERT_NE(it, servers.end()) << "Expected server " << expectedServer << " not found in server list";
@@ -546,6 +551,60 @@ TEST(CacheClientPublicApiTests, InitializeRejectsNullServerListWithNonzeroCount)
                    30, /**nCacheServerDiscoveryIntervalInSeconds*/
                    "127.0.0.1", /**strCacheServerDiscoveryEndpoint*/
                    CHECKSUM_METADATA_OPTIONAL));
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST(CacheClientPublicApiTests, GetCacheServerHostnamesRejectsNullLength)
+{
+    CacheClientImpl client;
+    char buffer[8] = {};
+    ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT, client.GetCacheServerHostnames(buffer, nullptr));
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST(CacheClientPublicApiTests, GetCacheServerHostnamesFailsBeforeInitialize)
+{
+    CacheClientImpl client;
+    uint64_t nLength = 0;
+    ASSERT_EQ(CacheClientStatus::INTERNAL_ERROR, client.GetCacheServerHostnames(nullptr, &nLength));
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_P(CacheClientTests, GetCacheServerHostnamesMatchesTheRing)
+{
+    std::vector<std::string> expected = GetRingHostnames();
+    std::sort(expected.begin(), expected.end());
+
+    // A NULL buffer reports the size: every name plus its terminator, and the final terminator.
+    uint64_t nRequired = 0;
+    ASSERT_EQ(CacheClientStatus::SUCCESS, m_cacheClientImpl.GetCacheServerHostnames(nullptr, &nRequired));
+    uint64_t nExpectedLength = 1;
+    for (const auto& server : expected)
+    {
+        nExpectedLength += server.size() + 1;
+    }
+    ASSERT_EQ(nExpectedLength, nRequired);
+
+    std::vector<char> buffer(nRequired);
+    uint64_t nLength = nRequired;
+    ASSERT_EQ(CacheClientStatus::SUCCESS, m_cacheClientImpl.GetCacheServerHostnames(buffer.data(), &nLength));
+    ASSERT_EQ(nRequired, nLength);
+    ASSERT_EQ('\0', buffer[nLength - 1]);
+
+    std::vector<std::string> actual;
+    for (const char* cursor = buffer.data(); *cursor != '\0'; cursor += actual.back().size() + 1)
+    {
+        actual.emplace_back(cursor);
+    }
+    std::sort(actual.begin(), actual.end());
+    ASSERT_EQ(expected, actual);
+
+    // A buffer that is too small is refused and the required size is reported.
+    uint64_t nSmall = 1;
+    std::vector<char> small(1);
+    if (nRequired > 1)
+    {
+        ASSERT_EQ(CacheClientStatus::INVALID_ARGUMENT,
+                  m_cacheClientImpl.GetCacheServerHostnames(small.data(), &nSmall));
+        ASSERT_EQ(nRequired, nSmall);
+    }
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_P(CacheClientTests, DownloadNonExistent)

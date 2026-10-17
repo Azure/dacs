@@ -87,6 +87,10 @@ class CacheClientImpl
     CacheClientStatus DeleteByLastAccessTime(/*[in]*/ const char* lastAccessTime,
                                   /*[inopt]*/ const char* strCorrelationId = nullptr);
 
+    CacheClientStatus GetCacheServerHostnames(
+        /*[outopt]*/ char* strServers,
+        /*[inout] */ uint64_t* nLength) const;
+
     bool IsInitialized() const;
 
   private:
