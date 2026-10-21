@@ -74,8 +74,10 @@ assert_log_contains \
     "push example.azurecr.io/dacs/cache-controller:candidate-123-linux-arm64"
 assert_log_contains \
     "push example.azurecr.io/dacs/runai-dacs-client:candidate-123-linux-arm64"
-[[ "$(grep -c '^push ' "$TEST_DIR/docker.log")" -eq 5 ]] ||
-    fail "Expected exactly five candidate image pushes"
+assert_log_contains \
+    "push example.azurecr.io/dacs/cache-setup:candidate-123-linux-arm64"
+[[ "$(grep -c '^push ' "$TEST_DIR/docker.log")" -eq 6 ]] ||
+    fail "Expected exactly six candidate image pushes"
 
 : >"$TEST_DIR/docker.log"
 PATH="$TEST_DIR/bin:$PATH" \
@@ -92,8 +94,10 @@ assert_log_contains \
     "buildx imagetools create --tag example.azurecr.io/dacs/cache-controller:v1.2.3 example.azurecr.io/dacs/cache-controller:v1.2.3-linux-amd64 example.azurecr.io/dacs/cache-controller:v1.2.3-linux-arm64"
 assert_log_contains \
     "buildx imagetools create --tag example.azurecr.io/dacs/runai-dacs-client:v1.2.3 example.azurecr.io/dacs/runai-dacs-client:v1.2.3-linux-amd64 example.azurecr.io/dacs/runai-dacs-client:v1.2.3-linux-arm64"
-[[ "$(grep -c '^buildx imagetools create ' "$TEST_DIR/docker.log")" -eq 15 ]] ||
-    fail "Expected ten architecture promotions and five manifest promotions"
+assert_log_contains \
+    "buildx imagetools create --tag example.azurecr.io/dacs/cache-setup:v1.2.3 example.azurecr.io/dacs/cache-setup:v1.2.3-linux-amd64 example.azurecr.io/dacs/cache-setup:v1.2.3-linux-arm64"
+[[ "$(grep -c '^buildx imagetools create ' "$TEST_DIR/docker.log")" -eq 18 ]] ||
+    fail "Expected twelve architecture promotions and six manifest promotions"
 
 if PATH="$TEST_DIR/bin:$PATH" \
     TEST_DOCKER_LOG="$TEST_DIR/docker.log" \
@@ -124,15 +128,15 @@ for architecture in amd64 arm64; do
     OUTPUT_DIR="$TEST_DIR/images/$architecture" \
         "$SAVE_SCRIPT"
 
-    [[ "$(find "$TEST_DIR/images/$architecture" -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 5 ]] ||
-        fail "Expected five image archives for $architecture"
-    [[ "$(wc -l < "$TEST_DIR/images/$architecture/SHA256SUMS")" -eq 5 ]] ||
-        fail "Expected five image checksums for $architecture"
+    [[ "$(find "$TEST_DIR/images/$architecture" -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 6 ]] ||
+        fail "Expected six image archives for $architecture"
+    [[ "$(wc -l < "$TEST_DIR/images/$architecture/SHA256SUMS")" -eq 6 ]] ||
+        fail "Expected six image checksums for $architecture"
     (
         cd "$TEST_DIR/images/$architecture"
         sha256sum -c SHA256SUMS
     )
-    for image in cache-server cache-test-client cacheserver-scheduler cache-controller runai-dacs-client; do
+    for image in cache-server cache-test-client cacheserver-scheduler cache-controller runai-dacs-client cache-setup; do
         ref="example.azurecr.io/dacs/$image:v1.2.3-linux-$architecture"
         assert_log_contains "tag $image:local $ref"
         assert_log_contains "save $ref"

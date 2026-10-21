@@ -32,7 +32,7 @@ case "$BUILD_ARCH" in
         ;;
 esac
 
-IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler" "cache-controller" "runai-dacs-client")
+IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler" "cache-controller" "runai-dacs-client" "cache-setup")
 PIDS=()
 
 for image in "${IMAGES[@]}"; do

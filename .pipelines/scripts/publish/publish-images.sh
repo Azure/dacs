@@ -29,7 +29,7 @@ REGISTRY="${DOCKER_REGISTRY:?DOCKER_REGISTRY is required}"
 BUILD_NUMBER="${BUILD_NUMBER:?BUILD_NUMBER is required}"
 BUILD_ARCH="${BUILD_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')}"
 
-IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler" "cache-controller" "runai-dacs-client")
+IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler" "cache-controller" "runai-dacs-client" "cache-setup")
 
 for image in "${IMAGES[@]}"; do
     if ! docker image inspect "${image}:local" >/dev/null 2>&1; then
@@ -58,6 +58,7 @@ CACHE_CLIENT_IMAGE=${TARGET_IMAGES["cache-test-client"]}
 CACHE_SERVER_SCHEDULER_IMAGE=${TARGET_IMAGES["cacheserver-scheduler"]}
 CACHE_CONTROLLER_IMAGE=${TARGET_IMAGES["cache-controller"]}
 RUNAI_DACS_CLIENT_IMAGE=${TARGET_IMAGES["runai-dacs-client"]}
+CACHE_SETUP_IMAGE=${TARGET_IMAGES["cache-setup"]}
 EOF
 
 echo "Published immutable linux/${BUILD_ARCH} application images for ${BUILD_NUMBER}"
