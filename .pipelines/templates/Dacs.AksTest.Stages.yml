@@ -185,7 +185,10 @@ stages:
               inlineScript: |
                 set -euo pipefail
                 echo "Deploying cache-server prerequisites..."
-                make helm-prereq-install
+                make helm-prereq-install \
+                    DOCKER_REGISTRY="$DOCKER_REGISTRY" BUILD_NUMBER="$(cacheServerBuildNumber)"
+            env:
+              DOCKER_REGISTRY: ${{ parameters.dockerRegistry }}
 
           - task: AzureCLI@2
             displayName: Deploy Cache Server

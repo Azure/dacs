@@ -60,6 +60,7 @@ BASE_REPO ?= $(DOCKER_REGISTRY)
 CACHE_SERVER_IMG ?= $(BASE_REPO)/cache-server
 SCHEDULER_IMG ?= $(BASE_REPO)/cacheserver-scheduler
 CACHE_CONTROLLER_IMG ?= $(BASE_REPO)/cache-controller
+CACHE_SETUP_IMG ?= $(DOCKER_REGISTRY)/dacs/cache-setup
 IMAGE_TAG ?= $(BUILD_NUMBER)
 
 # Tool versions
@@ -221,6 +222,8 @@ endef
 helm-prereq-install: helm ## Deploy dacs-prereq chart for NVMe RAID setup.
 	$(HELM_BIN) upgrade --install dacs-prereq ./helm/dacs-prereq \
 		--namespace $(HELM_NAMESPACE) --create-namespace \
+		--set nvmeRaidSetup.image.repository=$(CACHE_SETUP_IMG) \
+		--set nvmeRaidSetup.image.tag=$(IMAGE_TAG) \
 		--wait --timeout 10m --atomic $(HELM_ARGS)
 
 .PHONY: helm-prereq-uninstall

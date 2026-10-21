@@ -270,7 +270,7 @@ include architecture-specific image archives under `images/`.
 Every official build archives application images for protected public
 publication, including branch, tag, and scheduled builds. PR builds skip
 archive creation, upload, download, and assembly. Each architecture still
-pushes the four local images directly to build-specific candidate tags:
+pushes the five local images, including `cache-setup`, directly to build-specific candidate tags:
 
 ```text
 <image>:candidate-<Build.BuildId>-linux-amd64
