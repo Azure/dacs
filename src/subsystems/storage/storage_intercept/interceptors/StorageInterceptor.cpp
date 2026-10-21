@@ -12,6 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <features.h>
+#if !__GLIBC_PREREQ(2, 33)
+// Older glibc defines inline stat wrappers that conflict with these interceptors.
+#undef __USE_EXTERN_INLINES
+#endif
+
 #include "StorageInterceptorImpl.h"
 #include <limits>
 #include "../remote_client/RemoteClientException.h"

@@ -886,9 +886,9 @@ The wheel is built by the helper script
      -r .pipelines/requirements/python-build.txt
    ```
 
-   `auditwheel` is pinned to 6.7.0 because
-   [6.8.0 can produce invalid `DT_NEEDED` and `RPATH` entries](https://github.com/pypa/auditwheel/issues/722),
-   causing repaired wheels to fail when imported.
+   The build-tool versions, including `auditwheel`, are pinned in
+   `.pipelines/requirements/python-build.txt`. These tools require Python 3.10
+   or newer; the wheel's metadata still declares Python 3.8 or newer.
 
 Regenerate all Python lock files with Python 3.10 and the locked compiler
 environment:
@@ -921,7 +921,9 @@ The script:
 4. Runs `auditwheel repair` on the produced wheel. This bundles all required native shared libraries into the wheel and re-tags it as `manylinux_X_Y_{x86_64,aarch64}`.
 5. Deletes the unrepaired `linux_*` wheel so only the `manylinux` wheel remains.
 
-The final artifact in `dist/` looks like (the `manylinux_X_Y` tag is set by `auditwheel` based on the build image's glibc, e.g. `manylinux_2_31` on Ubuntu 20.04):
+The final artifact in `dist/` looks like this. `auditwheel` determines the
+compatible `manylinux` policy from the wheel's native dependencies and symbol
+requirements, not just the build image's glibc version:
 
 ```
 dacs_client-0.1.0-py3-none-manylinux_X_Y_x86_64.whl
@@ -931,6 +933,37 @@ dacs_client-0.1.0-py3-none-manylinux_X_Y_x86_64.whl
 
 Use the helper script above so the wheel receives the Git-derived version and
 the staged package metadata is restored even when the build fails.
+
+### Ubuntu 20.04 compatibility wheels
+
+GitHub Actions and Azure Pipelines build wheels for both `amd64` and `arm64`
+using separate Ubuntu 22.04 and Ubuntu 20.04 containers. The Ubuntu 20.04
+(Focal) jobs build only the `StorageDirect` target and run the same packaging
+helper. They do not reuse Ubuntu 22.04 binaries or run server, Go, or Rust builds.
+
+The Focal image uses Ubuntu's `apt` packages for Clang 18 and libstdc++.
+CMake and the Python build interpreter are installed separately because
+Focal's system versions are too old. The project's CMake configuration and
+the image's glibc remain unchanged. Build the image from the repository root
+with:
+
+```bash
+docker build -f src/images/native-build-wheel-focal/Dockerfile \
+  -t dacs-wheel-focal:local src/images/native-build
+```
+
+The `wheel-focal` job in `.github/workflows/build.yml` contains the container
+invocation. It sets `AUDITWHEEL_PLAT=manylinux_2_31_<architecture>` so repair
+fails if the native dependencies require a newer ABI. This targets Ubuntu
+20.04/glibc 2.31, not glibc 2.30 or 2.28.
+
+Focal wheels use the same package version as the Ubuntu 22.04 wheels and are
+uploaded as `dacs-wheel-focal-<arch>`. Azure release collection includes both
+wheel variants for each architecture.
+
+Use a modern Python interpreter on Ubuntu 20.04. Its stock Python 3.8 currently
+fails to import the client's evaluated `tuple[...]` annotations, despite the
+package metadata. The older-glibc build does not change Python syntax support.
 
 ## To Publish
 

@@ -20,6 +20,7 @@ name: Build
 #
 #   compile --+--> images-cpp (matrix: cache-server, cache-test-client)
 #             +--> packages (Python wheel and Rust crate)
+#   wheel-focal (Ubuntu 20.04 Python wheel only)
 #   images-go (matrix: scheduler, controller)   # no needs: runs alongside compile
 #
 # The two Go images compile Go from source inside their own Dockerfiles and do
@@ -51,6 +52,68 @@ on:
 permissions: {}
 
 jobs:
+  wheel-focal:
+    name: Python wheel (Ubuntu 20.04)
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      BUILD_ARCH: ${{ inputs.build_arch }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4.4.0
+
+      - name: Build Ubuntu 20.04 wheel container
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: src/images/native-build
+          file: src/images/native-build-wheel-focal/Dockerfile
+          tags: dacs-wheel-focal:local
+          load: true
+          cache-from: >-
+            ${{ !startsWith(github.ref, 'refs/tags/') &&
+            format('type=gha,scope=wheel-focal-{0}', inputs.build_arch) || '' }}
+          cache-to: >-
+            ${{ !startsWith(github.ref, 'refs/tags/') &&
+            format('type=gha,scope=wheel-focal-{0},mode=min', inputs.build_arch) || '' }}
+
+      - name: Build native library and wheel
+        run: |
+          docker run --rm \
+            -v "$PWD:/workspace" -w /workspace -e BUILD_ARCH \
+            dacs-wheel-focal:local bash -euo pipefail -c '
+              export CMAKE_BINARY_DIR="$PWD/build/focal/$BUILD_ARCH"
+              export CMAKE_LIBRARY_OUTPUT_DIRECTORY="$PWD/bin/Release/$BUILD_ARCH/native"
+              export CMAKE_RUNTIME_OUTPUT_DIRECTORY="$CMAKE_LIBRARY_OUTPUT_DIRECTORY"
+              export CMAKE_REMOTE_PUBLISH_DIRECTORY="$CMAKE_LIBRARY_OUTPUT_DIRECTORY"
+              cmake -S . -B "$CMAKE_BINARY_DIR" -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release -DDISABLE_AMQP=ON \
+                -DGIT_COMMIT_HASH="$(git rev-parse HEAD)"
+              cmake --build "$CMAKE_BINARY_DIR" --target StorageDirect --parallel 4
+              AUDITWHEEL_PLAT="manylinux_2_31_$(uname -m)" \
+                bash .pipelines/scripts/build/build-python-package.sh
+            '
+
+      - name: Upload Ubuntu 20.04 wheel
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dacs-wheel-focal-${{ inputs.build_arch }}
+          path: src/subsystems/storage/dacs_client/dist/*.whl
+          if-no-files-found: error
+
   # Compile once. Publishes the build tree so images, packages, and the
   # caller's test jobs can all reuse it. Builds and gha-caches the native-build
   # toolchain image so downstream jobs restore it cheaply.

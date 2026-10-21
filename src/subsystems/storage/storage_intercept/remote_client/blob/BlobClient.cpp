@@ -29,6 +29,7 @@
 #include <mstream.h>
 #include <atomic>
 #include <limits>
+#include <type_traits>
 #include <utility>
 
 // Global counter for tracking retries
@@ -124,7 +125,7 @@ BlobClient::BlobClient(const std::string& mountName)
         m_nMaxConnections,
         m_bIsDynamicAccount,
         m_bIsDynamicContainer,
-        std::to_underlying(m_storageAuthContext.authType),
+        static_cast<std::underlying_type_t<decltype(m_storageAuthContext.authType)>>(m_storageAuthContext.authType),
         m_isTokenFetchEnabled);
 }
 //---------------------------------------------------------------------------------------------------------------------

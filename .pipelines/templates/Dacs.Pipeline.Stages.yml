@@ -38,6 +38,64 @@ parameters:
     default: false
 
 stages:
+  - ${{ each architecture in split('amd64,arm64', ',') }}:
+      - stage: Wheel_focal_${{ architecture }}
+        displayName: Ubuntu 20.04 wheel linux/${{ architecture }}
+        dependsOn: []
+        ${{ if eq(architecture, 'arm64') }}:
+          pool:
+            name: 1es-dacs-pool-arm64
+            image: 1es-pt-linux-arm64
+            os: linux
+            hostArchitecture: arm64
+        jobs:
+          - job: Wheel
+            displayName: Build Python wheel
+            timeoutInMinutes: 120
+            templateContext:
+              outputs:
+                - output: pipelineArtifact
+                  path: $(Build.ArtifactStagingDirectory)/wheel
+                  artifact: dacs-wheel-focal-${{ architecture }}
+            steps:
+              - checkout: self
+                path: s/dacs
+                fetchDepth: 0
+                fetchTags: true
+              - template: /.pipelines/templates/Dacs.VerifyBaseImages.Steps.yml@self
+              - task: PipAuthenticate@1
+                displayName: Authenticate to Python package feed
+                inputs:
+                  artifactFeeds: One/One_PublicPackages
+              - bash: |
+                  set -euo pipefail
+                  docker build \
+                    --secret id=pip_index_url,env=PIP_INDEX_URL \
+                    -f src/images/native-build-wheel-focal/Dockerfile \
+                    -t dacs-wheel-focal:local src/images/native-build
+                  docker run --rm \
+                    -v "$PWD:/workspace" -w /workspace \
+                    -e BUILD_ARCH -e PIP_INDEX_URL \
+                    dacs-wheel-focal:local bash -euo pipefail -c '
+                      export CMAKE_BINARY_DIR="$PWD/build/focal/$BUILD_ARCH"
+                      export CMAKE_LIBRARY_OUTPUT_DIRECTORY="$PWD/bin/Release/$BUILD_ARCH/native"
+                      export CMAKE_RUNTIME_OUTPUT_DIRECTORY="$CMAKE_LIBRARY_OUTPUT_DIRECTORY"
+                      export CMAKE_REMOTE_PUBLISH_DIRECTORY="$CMAKE_LIBRARY_OUTPUT_DIRECTORY"
+                      cmake -S . -B "$CMAKE_BINARY_DIR" -G Ninja \
+                        -DCMAKE_BUILD_TYPE=Release -DDISABLE_AMQP=ON \
+                        -DGIT_COMMIT_HASH="$(git rev-parse HEAD)"
+                      cmake --build "$CMAKE_BINARY_DIR" --target StorageDirect --parallel 4
+                      AUDITWHEEL_PLAT="manylinux_2_31_$(uname -m)" \
+                        bash .pipelines/scripts/build/build-python-package.sh
+                    '
+                  mkdir -p "$(Build.ArtifactStagingDirectory)/wheel/python-wheel"
+                  cp src/subsystems/storage/dacs_client/dist/*.whl \
+                    "$(Build.ArtifactStagingDirectory)/wheel/python-wheel/"
+                displayName: Build Ubuntu 20.04 native library and wheel
+                workingDirectory: $(Pipeline.Workspace)/s/dacs
+                env:
+                  BUILD_ARCH: ${{ architecture }}
+
   - stage: Build_amd64
     displayName: Compile linux/amd64
     dependsOn: []
@@ -192,12 +250,16 @@ stages:
       - Images_arm64
       - AzureTests_amd64
       - AzureTests_arm64
+      - Wheel_focal_amd64
+      - Wheel_focal_arm64
     condition: >-
       and(
         in(dependencies.Images_amd64.result, 'Succeeded', 'SucceededWithIssues'),
         in(dependencies.Images_arm64.result, 'Succeeded', 'SucceededWithIssues'),
         in(dependencies.AzureTests_amd64.result, 'Succeeded', 'SucceededWithIssues'),
-        in(dependencies.AzureTests_arm64.result, 'Succeeded', 'SucceededWithIssues')
+        in(dependencies.AzureTests_arm64.result, 'Succeeded', 'SucceededWithIssues'),
+        in(dependencies.Wheel_focal_amd64.result, 'Succeeded', 'SucceededWithIssues'),
+        in(dependencies.Wheel_focal_arm64.result, 'Succeeded', 'SucceededWithIssues')
       )
     jobs:
       - job: Package
@@ -230,6 +292,13 @@ stages:
               buildType: current
               artifact: dacs-build-linux-arm64
               targetPath: $(Pipeline.Workspace)/feed-artifacts/arm64
+          - ${{ each architecture in split('amd64,arm64', ',') }}:
+              - task: DownloadPipelineArtifact@2
+                displayName: Download Ubuntu 20.04 linux/${{ architecture }} wheel
+                inputs:
+                  buildType: current
+                  artifact: dacs-wheel-focal-${{ architecture }}
+                  targetPath: $(Pipeline.Workspace)/feed-artifacts/focal-${{ architecture }}
           - ${{ if parameters.retainImageArchives }}:
               - task: DownloadPipelineArtifact@2
                 displayName: Download linux/amd64 image archives
@@ -283,7 +352,9 @@ stages:
               ./.pipelines/scripts/build/prepare-package-artifacts.sh \
                 "$(Pipeline.Workspace)/feed-artifacts/amd64" \
                 "$(Pipeline.Workspace)/feed-artifacts/arm64" \
-                "$package_artifacts"
+                "$package_artifacts" \
+                "$(Pipeline.Workspace)/feed-artifacts/focal-amd64" \
+                "$(Pipeline.Workspace)/feed-artifacts/focal-arm64"
 
               cp dist/*.tgz "$helm_artifacts/"
               cp helm-chart.txt "$helm_artifacts/"

@@ -22,6 +22,8 @@ readonly REPOSITORY_ROOT
 readonly AMD64_ARTIFACT_ROOT="${1:?amd64 build artifact root is required}"
 readonly ARM64_ARTIFACT_ROOT="${2:?arm64 build artifact root is required}"
 readonly OUTPUT_ROOT="${3:?output root is required}"
+readonly FOCAL_AMD64_ARTIFACT_ROOT="${4:?focal amd64 wheel artifact root is required}"
+readonly FOCAL_ARM64_ARTIFACT_ROOT="${5:?focal arm64 wheel artifact root is required}"
 RUST_VERSION="$("${REPOSITORY_ROOT}/.pipelines/scripts/get-version.sh" rust)"
 readonly RUST_VERSION
 readonly RUST_SOURCE="${REPOSITORY_ROOT}/src/subsystems/storage/rust/dacs_client"
@@ -75,20 +77,26 @@ extract_native_packages() {
 copy_wheels() {
     local artifact_root
     local wheel
-    local wheel_count=0
+    local wheels=()
 
     mkdir -p -- "${OUTPUT_ROOT}/python"
-    for artifact_root in "${AMD64_ARTIFACT_ROOT}" "${ARM64_ARTIFACT_ROOT}"; do
-        while IFS= read -r -d '' wheel; do
-            cp -- "${wheel}" "${OUTPUT_ROOT}/python/"
-            wheel_count=$((wheel_count + 1))
-        done < <(find "${artifact_root}/python-wheel" -maxdepth 1 -type f -name '*.whl' -print0)
+    for artifact_root in \
+        "${AMD64_ARTIFACT_ROOT}" "${ARM64_ARTIFACT_ROOT}" \
+        "${FOCAL_AMD64_ARTIFACT_ROOT}" "${FOCAL_ARM64_ARTIFACT_ROOT}"; do
+        mapfile -d '' -t wheels < <(
+            find "${artifact_root}/python-wheel" -maxdepth 1 -type f -name '*.whl' -print0
+        )
+        [[ "${#wheels[@]}" -eq 1 ]] || {
+            echo "Expected one wheel in ${artifact_root}, found ${#wheels[@]}." >&2
+            return 1
+        }
+        wheel="${wheels[0]}"
+        [[ ! -e "${OUTPUT_ROOT}/python/${wheel##*/}" ]] || {
+            echo "Duplicate Python wheel: ${wheel##*/}" >&2
+            return 1
+        }
+        cp -- "${wheel}" "${OUTPUT_ROOT}/python/"
     done
-
-    [[ "${wheel_count}" -eq 2 ]] || {
-        echo "Expected two Python wheels, found ${wheel_count}." >&2
-        return 1
-    }
 }
 
 prepare_rust_bundle() {

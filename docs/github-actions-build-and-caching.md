@@ -29,9 +29,9 @@ For the Azure implementation, see
 
 Each reusable workflow runs the same architecture-specific graph:
 
-                  +----------------+
-                  |                |
-               compile         images-go
+                  +----------------+----------------+
+                  |                |                |
+               compile         images-go       wheel-focal
                   |
           +-------+-------+
           |               |
@@ -47,6 +47,11 @@ wheel, and Rust crate. The caller then consumes those artifacts:
 
 The GitHub workflow builds locally in each runner. It does not publish
 container images or packages to ACR or a package registry.
+
+The independent `wheel-focal` job builds `StorageDirect` and a Python wheel
+inside Ubuntu 20.04, without restoring the normal build tree. It uses
+`src/images/native-build-wheel-focal/Dockerfile` with the shared
+`src/images/native-build` context and runs the existing wheel packaging helper.
 
 ## Native-build image
 
@@ -91,6 +96,8 @@ BuildKit caches are separated by image and architecture:
 ```text
 native-build-amd64
 native-build-arm64
+wheel-focal-amd64
+wheel-focal-arm64
 
 cache-server-amd64
 cache-server-arm64
@@ -166,7 +173,8 @@ The reusable workflow also uploads:
 | `dacs-native-build-image-<arch>` | BuildKit-exported native toolchain image |
 | `dacs-build-tree-<arch>` | Native binaries and CTest metadata |
 | `dacs-image-<name>-<arch>` | BuildKit-exported component image |
-| `dacs-wheel-<arch>` | Python wheel |
+| `dacs-wheel-<arch>` | Ubuntu 22.04 Python wheel |
+| `dacs-wheel-focal-<arch>` | Ubuntu 20.04 Python wheel, validated against the glibc 2.31 policy |
 | `dacs-rust-crate-<arch>` | Rust crate |
 
 Large Docker and build-tree archives are uploaded with compression disabled.
