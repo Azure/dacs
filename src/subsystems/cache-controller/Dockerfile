@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Build the manager binary
-FROM mcr.microsoft.com/oss/go/microsoft/golang:1.26@sha256:216bcfa984fca3ad0a98190dc61842fe910413c0b280f0bd813c9704ba71dc9c AS builder
+FROM mcr.microsoft.com/oss/go/microsoft/golang:1.26@sha256:3638c0d1ad4b55d09cfa4e4583733303dffd6bcb7f97f2b5ba350d0d833dbabb AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -44,7 +44,7 @@ RUN --mount=type=cache,target=/mnt/go-mod-cache \
     --mount=type=cache,target=/mnt/go-cache \
     CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -o manager cmd/main.go
 
-FROM mcr.microsoft.com/azurelinux/base/core:3.0@sha256:af39b0587a0fd132e574faabf9aaf56833d69908b9ff227131d519ee219759e7 AS dependency-install
+FROM mcr.microsoft.com/azurelinux/base/core:3.0@sha256:bd88359666e3f20296e7fe639a480dfd3c3c8eba299b21f26e4560353e21a656 AS dependency-install
 RUN tdnf install -y --releasever 3.0 --installroot /staging \
     # ensure that libcrypto.so.X is available for dlopen for fips builds
     openssl-libs \
@@ -54,7 +54,7 @@ RUN tdnf install -y --releasever 3.0 --installroot /staging \
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM mcr.microsoft.com/azurelinux/distroless/minimal:3.0@sha256:792ea6ed971a69bbca863882354d4ff197ca461e0f699d0256653f7886a62d42
+FROM mcr.microsoft.com/azurelinux/distroless/minimal:3.0@sha256:c91e907c537ad861cb90bc18aece90479b0754b090afd4eb8722dd15477dc9e8
 WORKDIR /
 COPY --from=builder /workspace/manager .
 COPY --from=builder /workspace/internal/config/cache-controller-config.yaml /cache-controller-config.yaml
