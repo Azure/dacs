@@ -50,6 +50,7 @@ CACHESERVER_IMAGE="${CACHE_SERVER_IMAGE:-cache-server:local}"
 CACHECLIENT_IMAGE="${CACHE_CLIENT_IMAGE:-cache-test-client:local}"
 CACHESERVER_SCHEDULER_IMAGE="${CACHE_SERVER_SCHEDULER_IMAGE:-cacheserver-scheduler:local}"
 CACHECONTROLLER_IMAGE="${CACHE_CONTROLLER_IMAGE:-cache-controller:local}"
+RUNAI_DACS_CLIENT_IMAGE="${RUNAI_DACS_CLIENT_IMAGE:-runai-dacs-client:local}"
 
 echo "Building Docker images..."
 echo "Docker directory: $DOCKER_DIR"
@@ -57,6 +58,7 @@ echo "Cache Server Image: $CACHESERVER_IMAGE"
 echo "Cache Client Image: $CACHECLIENT_IMAGE"
 echo "Cache Server Scheduler Image: $CACHESERVER_SCHEDULER_IMAGE"
 echo "Cache Controller Image: $CACHECONTROLLER_IMAGE"
+echo "Runai DACS Client Image: $RUNAI_DACS_CLIENT_IMAGE"
 
 # Registry used for BuildKit cache references.
 REGISTRY="${DOCKER_REGISTRY:-}"
@@ -122,6 +124,9 @@ build_cpp_image() {
 }
 
 # Build Docker images from Dockerfiles
+mkdir -p "$DOCKER_DIR/storage/python-wheel"
+rm -f "$DOCKER_DIR/storage/python-wheel/"*.whl
+cp "$REPOSITORY_ROOT/src/subsystems/storage/dacs_client/dist/"*.whl "$DOCKER_DIR/storage/python-wheel/"
 cd "$DOCKER_DIR"
 
 server_build_args=()
@@ -129,8 +134,7 @@ if [[ -n "$UBUNTU_ARCHIVE_MIRROR" ]]; then
     server_build_args+=(--build-arg "UBUNTU_ARCHIVE_MIRROR=$UBUNTU_ARCHIVE_MIRROR")
 fi
 
-# Only the client image installs pip packages, so the internal feed URL is
-# forwarded to that build alone.
+# Only the client images install pip packages.
 client_build_args=("${server_build_args[@]}")
 if [[ "${USE_AZURE_CFS:-false}" == "true" && -n "${PIP_INDEX_URL:-}" ]]; then
     client_build_args+=(--secret "id=pip_index_url,env=PIP_INDEX_URL")
@@ -151,6 +155,13 @@ build_cpp_image \
     "${client_build_args[@]}" \
     &
 PID_CLIENT=$!
+build_cpp_image \
+    "runai-dacs-client" \
+    "$DOCKER_DIR/RunaiDACSClient.Dockerfile" \
+    "$RUNAI_DACS_CLIENT_IMAGE" \
+    "${client_build_args[@]}" \
+    &
+PID_RUNAI_CLIENT=$!
 
 # Build Go images in parallel
 docker build \
@@ -165,6 +176,7 @@ PID_CONTROLLER=$!
 
 wait $PID_SERVER || { echo "CacheServer build failed"; exit 1; }
 wait $PID_CLIENT || { echo "CacheClient build failed"; exit 1; }
+wait "$PID_RUNAI_CLIENT" || { echo "Runai DACS client build failed"; exit 1; }
 wait $PID_SCHEDULER || { echo "CacheServerScheduler build failed"; exit 1; }
 wait $PID_CONTROLLER || { echo "CacheController build failed"; exit 1; }
 
