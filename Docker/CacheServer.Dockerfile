@@ -37,6 +37,7 @@ RUN if [ -n "${UBUNTU_ARCHIVE_MIRROR}" ]; then \
     libpam-modules-bin \
     libpam-modules \
     libpam-runtime \
+    libxml2 \
     libxxhash0 && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get clean
