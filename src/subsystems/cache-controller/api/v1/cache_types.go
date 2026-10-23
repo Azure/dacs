@@ -15,6 +15,7 @@
 package v1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -143,6 +144,11 @@ type CacheSpec struct {
 	// +optional
 	// +kubebuilder:default="gpu"
 	NodeSelectorValue *string `json:"nodeSelectorValue,omitempty"`
+
+	// Tolerations for CacheServer pods, independent of controller pod tolerations.
+	// +optional
+	// +listType=atomic
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 
 	// Max allowed cache size in GB per cache server
 	// +required

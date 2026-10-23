@@ -90,6 +90,9 @@ EOF
             "s#^([[:space:]]*repository:)[[:space:]]*(acstor/dacs-controller|cache-controller)\$#\\1 $REGISTRY/dacs/cache-controller#" \
             "$CHART_STAGE/values.yaml"
         sed -i -E \
+            "s#^([[:space:]]*repository:)[[:space:]]*cache-setup\$#\\1 $REGISTRY/dacs/cache-setup#" \
+            "$CHART_STAGE/values.yaml"
+        sed -i -E \
             "s#^([[:space:]]*tag:)[[:space:]]*\"\".*\$#\\1 \"$CONTAINER_VERSION\"#" \
             "$CHART_STAGE/values.yaml"
     fi

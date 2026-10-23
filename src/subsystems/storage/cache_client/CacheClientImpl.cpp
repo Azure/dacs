@@ -330,7 +330,7 @@ CacheClientStatus CacheClientImpl::Upload(
             }
             const char emptyBuffer = '\0';
             const void* checksumBuffer = nBufferLength == 0 ? &emptyBuffer : pBuffer;
-            uint32_t calculatedChecksum = checksumCalculator->CalculateChecksum(checksumBuffer, nBufferLength);
+            uint64_t calculatedChecksum = checksumCalculator->CalculateChecksum(checksumBuffer, nBufferLength);
             std::string bufferChecksum = std::to_string(calculatedChecksum);
             fileMetadata[(char*)CACHE_META_CHUNK_CHECKSUM_KEY] = bufferChecksum;
             fileMetadata[(char*)CACHE_META_CHECKSUM_ALGORITHM_KEY] = std::to_string(static_cast<int>(m_checksumAlgorithm));
@@ -697,15 +697,9 @@ CacheClientStatus CacheClientImpl::Download(
                         }
                         const char emptyBuffer = '\0';
                         const void* checksumBuffer = actualReadLen == 0 ? &emptyBuffer : pOutBuffer;
-                        uint32_t calculatedChecksum =
+                        uint64_t calculatedChecksum =
                             checksumCalculator->CalculateChecksum(checksumBuffer, actualReadLen);
-                        
-                        uint64_t checksumValue = std::stoull(checksumIter->second);
-                        if(checksumValue > UINT32_MAX)
-                        {
-                            throw std::out_of_range("Checksum exceeds uint32_t range");
-                        }
-                        uint32_t expectedChecksum = static_cast<uint32_t>(checksumValue);
+                        uint64_t expectedChecksum = std::stoull(checksumIter->second);
                         LOG_DEBUG_CACHECLIENT_EXTENDED(
                             "Checksum calculated: algorithm: {}, expectedChecksum: {}, calculatedChecksum: {}",
                             *downloadRequest,

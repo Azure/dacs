@@ -43,6 +43,7 @@ helm install dacs ./charts/dacs \
 | `manager.cacheServerImage.repository` | Cache server image repository | `dacs/cache-server` |
 | `manager.cacheServerImage.tag` | Cache server image tag; empty uses the chart app version | `""` |
 | `manager.logLevel` | Controller log level via env (`CACHE_CONTROLLER_LOGLEVEL`) | `info` |
+| `manager.tolerations` | Controller pod tolerations only; does not affect CacheServer pods | `[{key: CriticalAddonsOnly, operator: Exists}]` |
 | `manager.resources.limits.cpu` | CPU limit | `500m` |
 | `manager.resources.limits.memory` | Memory limit | `512Mi` |
 | `manager.resources.requests.cpu` | CPU request | `10m` |
@@ -63,12 +64,76 @@ helm install dacs ./charts/dacs \
 | `cache.serverSizeInGB` | Storage per server (GB), minimum 1 | `4` |
 | `cache.serverThreads` | Threads per server, range 4-128 | `80` |
 | `cache.memoryLimitMB` | Optional memory limit per server, minimum 1024 MB | |
+| `cache.tolerations` | CacheServer pod tolerations in the chart-managed Cache CR (`cache.enabled=true`) | `[]` |
+
+### CacheServer Scheduling on Tainted Nodes
+
+`manager.tolerations` applies only to the controller Deployment. CacheServer
+StatefulSets are generated from each `Cache` resource, not from the controller's
+pod settings. For a chart-managed Cache, set:
+
+```yaml
+cache:
+  enabled: true
+  tolerations:
+    - key: sku
+      operator: Equal
+      value: gpu
+      effect: NoSchedule
+```
+
+For a Cache managed separately from Helm, set the same list directly under
+`spec.tolerations`:
+
+```yaml
+apiVersion: storage.azure.com/v1
+kind: Cache
+metadata:
+  name: gpu-node-cache
+spec:
+  scaling:
+    static:
+      numServers: 2
+  serverSizeInGB: 4
+  serverThreads: 8
+  nodeSelectorKey: agentpool
+  nodeSelectorValue: gpu
+  tolerations:
+    - key: sku
+      operator: Equal
+      value: gpu
+      effect: NoSchedule
+```
+
+Choose node selector labels that exist on your target nodes. Tolerations permit
+placement on matching tainted nodes; they neither select nodes nor request GPU
+resources. The example tolerates `sku=gpu:NoSchedule` without allocating a GPU.
+
+Standard Kubernetes toleration fields are supported: `key`, `operator`
+(`Equal` by default, or `Exists`), `value`, `effect`, and `tolerationSeconds`.
+An empty key requires `Exists`, which requires an empty value. An empty effect
+matches all effects; `tolerationSeconds` is only valid with `NoExecute`.
+Omitted or empty tolerations add no CacheServer tolerations.
+
+Update the Cache resource rather than patching generated pods or StatefulSets.
+Changes update the pod template using the existing StatefulSet rolling-update
+strategy. The controller restores configured tolerations on reconciliation,
+restart, and StatefulSet recreation; replacement pods inherit the template.
+Setting `spec.tolerations: []` removes them from the desired template.
+
+When upgrading an existing installation, install the updated Cache CRD before
+using this field. Helm does not upgrade CRDs in the chart's `crds/` directory
+automatically; follow the [upgrade procedure](#upgrade) using
+`charts/dacs/crds/storage.azure.com_caches.yaml`.
 
 ### RBAC Configuration
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `rbacHelpers.enable` | Install admin/editor/viewer roles | `false` |
+| `rbacHelpers.enable` | Install optional admin/editor roles | `false` |
+
+The Cache viewer role is always installed. Its read permissions are aggregated
+into the standard Kubernetes `view` role.
 
 ### CRD Configuration
 
@@ -89,13 +154,20 @@ CRDs are always installed (required for controller to function).
 
 ## Upgrade
 
+Helm does not upgrade existing CRDs. Apply the target chart's CRDs first.
+
 ```bash
+set -euo pipefail
+kubectl apply -f ./charts/dacs/crds
+kubectl wait --for=condition=Established --timeout=60s -f ./charts/dacs/crds
+
 helm upgrade dacs ./charts/dacs \
   --namespace dacs-system \
   --set manager.image.tag=local
 ```
 
 **Note:** The controller pod will be recreated during upgrade. Existing Cache CRs are not affected.
+Rollback retains the updated CRDs; verify compatibility with the previous controller.
 
 ## Uninstall
 

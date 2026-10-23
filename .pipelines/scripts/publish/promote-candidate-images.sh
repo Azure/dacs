@@ -21,7 +21,7 @@ REGISTRY="${DOCKER_REGISTRY:?DOCKER_REGISTRY is required}"
 BUILD_ID="${BUILD_ID:?BUILD_ID is required}"
 BUILD_NUMBER="${BUILD_NUMBER:?BUILD_NUMBER is required}"
 BUILD_ARCHS="${BUILD_ARCHS:-amd64 arm64}"
-IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler" "cache-controller")
+IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler" "cache-controller" "cache-setup")
 
 read -r -a architectures <<<"$BUILD_ARCHS"
 if [[ "${#architectures[@]}" -eq 0 ]]; then

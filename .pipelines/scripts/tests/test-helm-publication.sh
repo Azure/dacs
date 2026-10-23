@@ -66,6 +66,8 @@ helm show chart "${dacs_package}" |
 rendered_dacs="$(helm template test-release "${dacs_package}")"
 grep -Fq "example.azurecr.io/dacs/cache-controller:${container_version}" <<<"${rendered_dacs}"
 grep -Fq "example.azurecr.io/dacs/cache-server:${container_version}" <<<"${rendered_dacs}"
+rendered_prereq="$(helm template test-release "${OUTPUT_DIR}/dacs-prereq-${chart_version}.tgz")"
+grep -Fq "example.azurecr.io/dacs/cache-setup:${container_version}" <<<"${rendered_prereq}"
 
 grep -Fq "CACHE_CONTROLLER_CHART_VERSION=${chart_version}" "${METADATA_FILE}"
 grep -Fq "APP_VERSION=$("${REPOSITORY_ROOT}/.pipelines/scripts/get-version.sh" source)" "${METADATA_FILE}"

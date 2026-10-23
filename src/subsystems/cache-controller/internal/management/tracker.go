@@ -32,9 +32,6 @@ const (
 	SuccessivePodStuckEventThreshold = 3
 )
 
-// List of states in which a pod can be considered stuck
-var podStuckStates = []PodStatus{PodStatusPending, PodStatusFailed, PodStatusUnknown, PodStatusTerminating, PodStatusNotReady}
-
 // Tracker configuration
 type TrackerConfig struct {
 	PodStuckThresholdDuration          time.Duration
@@ -55,6 +52,10 @@ type trackerPodInfo struct {
 	LastHitTimestamp time.Time `json:"timestamp"`
 	// Earliest timestamp this state was recorded
 	FirstHitTimestamp time.Time `json:"firstHitTimestamp"`
+	// Time when the pod first became unhealthy on its current node
+	UnhealthySinceOnCurrentNode time.Time `json:"unhealthySinceOnCurrentNode"`
+	// Whether the current scheduling attempt has already recorded a stuck event
+	StuckEventRecordedForCurrentAttempt bool `json:"stuckEventRecordedForCurrentAttempt"`
 }
 
 // Collection of cacheserver pods. Key is pod name, value is pod information
@@ -89,12 +90,30 @@ type trackerNodeInfo struct {
 }
 
 func isPodStuck(podState trackerPodInfo, trackerConfig TrackerConfig) bool {
-	for _, stuckState := range podStuckStates {
-		if podState.State == stuckState && (time.Since(podState.FirstHitTimestamp) > trackerConfig.PodStuckThresholdDuration) {
-			return true
-		}
+	return podState.State != PodStatusRunning &&
+		!podState.UnhealthySinceOnCurrentNode.IsZero() &&
+		time.Since(podState.UnhealthySinceOnCurrentNode) > trackerConfig.PodStuckThresholdDuration
+}
+
+func isPodStable(podState trackerPodInfo, trackerConfig TrackerConfig) bool {
+	return podState.State == PodStatusRunning &&
+		time.Since(podState.FirstHitTimestamp) > trackerConfig.PodStuckThresholdDuration
+}
+
+func (t *Tracker) getPodUnhealthyStartTime(previousPodState trackerPodInfo, currentPod Pod, currentTime time.Time) time.Time {
+	// Keep the original time while the pod stays on the same node and has
+	// not been Running long enough to prove that it recovered.
+	if previousPodState.NodeName == currentPod.NodeName &&
+		!isPodStable(previousPodState, t.Config) &&
+		!previousPodState.UnhealthySinceOnCurrentNode.IsZero() {
+		return previousPodState.UnhealthySinceOnCurrentNode
 	}
-	return false
+
+	// The pod is unhealthy on a new node or after a stable recovery.
+	if currentPod.State != PodStatusRunning {
+		return currentTime
+	}
+	return time.Time{}
 }
 
 func clearOldPodStuckEvents(nodeInfo *trackerNodeInfo) {
@@ -284,8 +303,11 @@ func (t *Tracker) updatePodMap(cacheKey string, pods []Pod) {
 	for _, pod := range pods {
 		if pod.NodeName != "" {
 			podState, existingPodStateFound := t.lookupPodMap(pod.Namespace, pod.PodName)
+			unhealthySince := t.getPodUnhealthyStartTime(podState, pod, now)
+
 			if existingPodStateFound && podState.NodeName == pod.NodeName && podState.State == pod.State {
 				podState.LastHitTimestamp = now
+				podState.UnhealthySinceOnCurrentNode = unhealthySince
 			} else {
 				if existingPodStateFound {
 					if podState.NodeName != pod.NodeName {
@@ -298,43 +320,58 @@ func (t *Tracker) updatePodMap(cacheKey string, pods []Pod) {
 				}
 
 				podState = trackerPodInfo{
-					PodName:           pod.PodName,
-					Namespace:         pod.Namespace,
-					NodeName:          pod.NodeName,
-					State:             pod.State,
-					LastHitTimestamp:  time.Now(),
-					FirstHitTimestamp: time.Now(),
+					PodName:                     pod.PodName,
+					Namespace:                   pod.Namespace,
+					NodeName:                    pod.NodeName,
+					State:                       pod.State,
+					LastHitTimestamp:            time.Now(),
+					FirstHitTimestamp:           time.Now(),
+					UnhealthySinceOnCurrentNode: unhealthySince,
+					StuckEventRecordedForCurrentAttempt: existingPodStateFound &&
+						podState.NodeName == pod.NodeName &&
+						podState.StuckEventRecordedForCurrentAttempt,
 				}
 			}
 
 			t.updatePodMapEntry(podState)
 			log.WithFields(log.Fields{
-				"podName":           pod.PodName,
-				"nodeName":          pod.NodeName,
-				"state":             pod.State,
-				"lastHitTimestamp":  podState.LastHitTimestamp,
-				"firstHitTimestamp": podState.FirstHitTimestamp,
+				"podName":                             pod.PodName,
+				"nodeName":                            pod.NodeName,
+				"state":                               pod.State,
+				"lastHitTimestamp":                    podState.LastHitTimestamp,
+				"firstHitTimestamp":                   podState.FirstHitTimestamp,
+				"unhealthySinceOnCurrentNode":         podState.UnhealthySinceOnCurrentNode,
+				"stuckEventRecordedForCurrentAttempt": podState.StuckEventRecordedForCurrentAttempt,
 			}).Debugf("Scheduler processed pod %s", pod.PodName)
 
 			isPodStuck := isPodStuck(podState, t.Config)
-			if isPodStuck {
+			if isPodStuck && !podState.StuckEventRecordedForCurrentAttempt {
 				log.Warnf("Pod %s is stuck on node %s in %s state", pod.PodName, pod.NodeName, pod.State)
 
 				stuckNodeInfo, stuckNodeFound := t.State.CurrentNodes[pod.NodeName]
 				if stuckNodeFound {
 					addPodStuckEvent(&stuckNodeInfo, podState)
 					t.State.CurrentNodes[pod.NodeName] = stuckNodeInfo
+					podState.StuckEventRecordedForCurrentAttempt = true
+					t.updatePodMapEntry(podState)
 				}
 			}
 
 			// If pod is running for more than PodStableStateDurationThreshold, clear the node's stuck events
-			if pod.State == PodStatusRunning && (time.Since(podState.FirstHitTimestamp) > t.Config.PodStuckThresholdDuration) {
+			if isPodStable(podState, t.Config) {
 				nodeInfo, nodeInfoFound := t.State.CurrentNodes[pod.NodeName]
 				if nodeInfoFound && len(nodeInfo.PodsStuckEvents) > 0 {
 					log.Infof("Pod %s is running on node %s. Clearing node's stuck events", pod.PodName, pod.NodeName)
 					nodeInfo.PodsStuckEvents = []podStuckEvent{}
 					t.State.CurrentNodes[pod.NodeName] = nodeInfo
 				}
+			}
+		} else {
+			// An unbound pod is a new scheduling attempt for the same logical pod.
+			podState, found := t.lookupPodMap(pod.Namespace, pod.PodName)
+			if found && podState.StuckEventRecordedForCurrentAttempt {
+				podState.StuckEventRecordedForCurrentAttempt = false
+				t.updatePodMapEntry(podState)
 			}
 		}
 	}
@@ -449,11 +486,8 @@ func (t *Tracker) GetPodCountInStuckStates(cacheKey string) int {
 		if t.isPodWaitingForNodeRecovery(pod) {
 			continue
 		}
-		for _, stuckState := range podStuckStates {
-			if pod.State == stuckState {
-				count++
-				break
-			}
+		if pod.State != PodStatusRunning {
+			count++
 		}
 	}
 	return count

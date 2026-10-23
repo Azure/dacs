@@ -50,6 +50,7 @@ CACHESERVER_IMAGE="${CACHE_SERVER_IMAGE:-cache-server:local}"
 CACHECLIENT_IMAGE="${CACHE_CLIENT_IMAGE:-cache-test-client:local}"
 CACHESERVER_SCHEDULER_IMAGE="${CACHE_SERVER_SCHEDULER_IMAGE:-cacheserver-scheduler:local}"
 CACHECONTROLLER_IMAGE="${CACHE_CONTROLLER_IMAGE:-cache-controller:local}"
+CACHE_SETUP_IMAGE="${CACHE_SETUP_IMAGE:-cache-setup:local}"
 
 echo "Building Docker images..."
 echo "Docker directory: $DOCKER_DIR"
@@ -57,6 +58,7 @@ echo "Cache Server Image: $CACHESERVER_IMAGE"
 echo "Cache Client Image: $CACHECLIENT_IMAGE"
 echo "Cache Server Scheduler Image: $CACHESERVER_SCHEDULER_IMAGE"
 echo "Cache Controller Image: $CACHECONTROLLER_IMAGE"
+echo "Cache Setup Image: $CACHE_SETUP_IMAGE"
 
 # Registry used for BuildKit cache references.
 REGISTRY="${DOCKER_REGISTRY:-}"
@@ -159,6 +161,9 @@ docker build \
     "$REPOSITORY_ROOT/src/subsystems/storage/cache_server_scheduler" &
 PID_SCHEDULER=$!
 
+docker build -f CacheSetup.Dockerfile -t "$CACHE_SETUP_IMAGE" . &
+PID_CACHE_SETUP=$!
+
 cd "$CACHE_CONTROLLER_DIR"
 IMG="$CACHECONTROLLER_IMAGE" make docker-build &
 PID_CONTROLLER=$!
@@ -166,6 +171,7 @@ PID_CONTROLLER=$!
 wait $PID_SERVER || { echo "CacheServer build failed"; exit 1; }
 wait $PID_CLIENT || { echo "CacheClient build failed"; exit 1; }
 wait $PID_SCHEDULER || { echo "CacheServerScheduler build failed"; exit 1; }
+wait "$PID_CACHE_SETUP" || { echo "Cache setup image build failed"; exit 1; }
 wait $PID_CONTROLLER || { echo "CacheController build failed"; exit 1; }
 
 echo ""

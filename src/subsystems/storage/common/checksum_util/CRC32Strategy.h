@@ -25,7 +25,7 @@ class CRC32Strategy : public IChecksumStrategy
 public:
     static CRC32Strategy& GetInstance();
     
-    uint32_t CalculateChecksum(const void* pBuffer, size_t nBufferLength) override;
+    uint64_t CalculateChecksum(const void* pBuffer, size_t nBufferLength) override;
 
 private:
     CRC32Strategy() = default;

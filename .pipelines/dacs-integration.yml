@@ -260,6 +260,7 @@ extends:
           extraTestEnv: |
             export HELM_UPGRADE_TARGET_VERSION="$(cacheServerChartVersion)"
             export HELM_UPGRADE_TARGET_REGISTRY="${{ parameters.dockerRegistry }}/dacs"
+            export HELM_UPGRADE_TARGET_IMAGE="${{ parameters.dockerRegistry }}/dacs/cache-server:$(cacheServerBuildNumber)"
           condition: not(canceled())
           azureServiceConnection: ${{ parameters.azureServiceConnection }}
           dockerRegistry: ${{ parameters.dockerRegistry }}

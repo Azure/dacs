@@ -8,7 +8,7 @@ before the DACS cache server starts.
 The chart runs an init container that:
 
 1. Checks if the cache directory is already mounted (fast-path exit).
-2. Installs `mdadm` if needed and runs `mdadm --assemble --scan` to
+2. Uses the cache-setup image's tools and runs `mdadm --assemble --scan` to
    reassemble any previously created RAID arrays.
 3. Looks for an existing filesystem labeled `dacs` (covers both
    RAID and single-disk setups from a prior boot).
@@ -16,30 +16,42 @@ The chart runs an init container that:
    - **Single disk:** formats ext4 directly (no RAID overhead).
    - **Multiple disks:** creates a RAID0 array, then formats ext4.
    All filesystems are labeled `dacs` for ownership detection.
-5. Writes `mdadm.conf`, `fstab` (by label), and runs `update-initramfs`
-   for reboot persistence.
+5. Writes host `mdadm.conf` and `fstab` (by label), and runs the host's
+   `update-initramfs` when available.
 
 ## Prerequisites
 
 - Kubernetes cluster with NVMe-capable nodes
 - Nodes labeled with `dacs.azure.com/processing-unit: cpu`
-- Privileged container support (the init container uses `nsenter`)
+- Privileged container and host PID/device access
 
-**OS support:** AzureLinux (tdnf) and Ubuntu (apt-get).
+**OS support:** AzureLinux and Ubuntu hosts. RAID and filesystem tools are
+provided by the cache-setup image; no packages are installed on the host.
 
 ## Installation
 
 ```bash
 helm upgrade --install dacs-prereq ./helm/dacs-prereq \
   --namespace cache-server --create-namespace \
+  --set nvmeRaidSetup.image.repository="<registry>/dacs/cache-setup" \
+  --set-string nvmeRaidSetup.image.tag="<image-version>" \
   --wait --timeout 10m
 ```
 
 Or using the Makefile:
 
 ```bash
-make helm-prereq-install
+make helm-prereq-install DOCKER_REGISTRY="<registry>" BUILD_NUMBER="<image-version>"
 ```
+
+Build the image with `make images`, or build it independently:
+
+```bash
+docker build -f Docker/CacheSetup.Dockerfile -t cache-setup:local Docker
+```
+
+Publish the image before deploying the chart, and select the same immutable
+image version as the rest of the deployment.
 
 ## Configuration
 
@@ -51,45 +63,43 @@ make helm-prereq-install
 | `priorityClassName` | Pod priority class | `system-node-critical` |
 | `updateStrategy.type` | DaemonSet update strategy | `RollingUpdate` |
 | `updateStrategy.rollingUpdate.maxUnavailable` | Max unavailable during updates | `"10%"` |
-| `nvmeRaidSetup.image.repository` | Init container image | `mcr.microsoft.com/azurelinux/base/core` |
-| `nvmeRaidSetup.image.tag` | Init container image tag | `3.0` |
+| `nvmeRaidSetup.image.repository` | Init container image | `cache-setup` |
+| `nvmeRaidSetup.image.tag` | Init container image tag; empty uses chart appVersion | `""` |
 | `nvmeRaidSetup.resources.limits.cpu` | CPU limit for init container | `1` |
 | `nvmeRaidSetup.resources.limits.memory` | Memory limit for init container | `2Gi` |
 | `pauseContainer.image.repository` | Pause container image | `mcr.microsoft.com/azurelinux/base/core` |
 | `pauseContainer.resources.limits.cpu` | CPU limit for pause container | `10m` |
 | `pauseContainer.resources.limits.memory` | Memory limit for pause container | `16Mi` |
 
-The init container keeps a 512 MiB memory request but uses a 2 GiB limit.
-Azure Linux package metadata refreshes can exceed 512 MiB while `mdadm` and
-the filesystem tools are installed.
+The init container uses a 512 MiB memory request and a 2 GiB limit.
 
 ## How It Works
 
-The DaemonSet uses `nsenter -t 1 -m -u -i -n -p` to execute the setup script
-in the host PID/mount/network namespace.  This allows it to format disks,
-run `mdadm`, mount filesystems, and write host config files (`mdadm.conf`,
-`fstab`) without complex volume mounts.
+The DaemonSet uses `hostPID`, a privileged init container, and a host `/dev`
+mount. It enters only the host UTS namespace to use the node hostname for RAID
+operations while retaining the image's tools. The script explicitly targets
+the host mount namespace and writes host configuration through `/proc/1/root`.
+Host `update-initramfs`, when available, runs in the host mount namespace.
 
 ### Reboot Behavior
 
 **Managed OS (persistent root filesystem):**
-The script writes `mdadm.conf` and `fstab` entries, so the OS auto-starts the
-RAID array and mounts it on boot.  The DaemonSet re-runs and detects the
-existing mount (fast-path exit).
+The script retains host `mdadm.conf` and `fstab` entries. Boot-time assembly
+still depends on the node's existing MD support and boot configuration; the
+container does not install host packages. When setup runs again, it reuses an
+existing mount or attempts to assemble and mount the labeled filesystem.
 
 **Ephemeral OS (root filesystem recreated on reboot):**
-The root filesystem is recreated, so `mdadm.conf`, `fstab`, and installed
-packages are all lost.  However, the RAID superblock metadata and the ext4
-filesystem (labeled `dacs`) survive on the NVMe data disks.  On the
-next run, the script:
+If the node root filesystem is recreated, host configuration may be lost.
+When the NVMe disks and their metadata are retained, the next setup run:
 
-1. Reinstalls `mdadm`.
+1. Uses the cache-setup image's preinstalled tools.
 2. Runs `mdadm --assemble --scan` to reassemble any RAID arrays.
 3. Finds the filesystem by label (`blkid -L dacs`) and mounts it.
-4. Rewrites `mdadm.conf`, `fstab`, and `initramfs`.
+4. Rewrites host `mdadm.conf` and `fstab`, and updates initramfs if supported.
 
-This means **cached data survives ephemeral OS reboots** as long as the NVMe
-data disks are not replaced.
+Recovery depends on retention of the local disks and a successful setup run;
+this chart does not guarantee local-disk retention across node lifecycle events.
 
 ### Filesystem Label
 

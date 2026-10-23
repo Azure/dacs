@@ -56,7 +56,7 @@ OUTPUT_DIR="${OUTPUT_DIR:-$REPOSITORY_ROOT/image-tarballs}"
 GZIP_LEVEL="${GZIP_LEVEL:-6}"
 
 # Must match IMAGES in publish-images.sh / build-docker-images.sh
-IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler" "cache-controller")
+IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler" "cache-controller" "cache-setup")
 
 echo "Saving Docker images as tarballs"
 echo "  Registry     : ${DOCKER_REGISTRY}"

@@ -111,7 +111,8 @@ manager:
   # Node selector for pod scheduling
   nodeSelector: {}
 
-  # Pod tolerations. Defaults to tolerating the CriticalAddonsOnly taint.
+  # Controller pod tolerations only; CacheServer pods use cache.tolerations.
+  # Defaults to tolerating the CriticalAddonsOnly taint.
   tolerations:
     - key: CriticalAddonsOnly
       operator: Exists
@@ -127,10 +128,11 @@ manager:
 # Note: Essential RBAC is always enabled as it's required for the controller to function
 
 # Helper RBAC roles for managing custom resources
-# These provide convenient admin/editor/viewer roles for each CRD type
+# These provide convenient admin/editor roles for each CRD type.
+# The viewer role is always installed and aggregated into the standard view role.
 # Useful for giving users different levels of access to your custom resources
 rbacHelpers:
-  enable: false  # Install convenience admin/editor/viewer roles for CRDs
+  enable: false  # Install convenience admin/editor roles for CRDs
 
 # Custom Resource Definitions
 # CRDs are always installed (required for controller to function)
@@ -176,7 +178,7 @@ prometheus:
 cleanup:
   image:
     repository: mcr.microsoft.com/oss/v2/kubernetes/kubectl
-    tag: v1.35.8
+    tag: v1.35.9
     pullPolicy: IfNotPresent
   timeoutSeconds: 300
   resources:
@@ -192,6 +194,14 @@ cache:
   enabled: false  # Set to true to deploy a sample Cache instance with the chart 
   name: cache-sample
   namespace: ""  # Namespace for Cache CR (empty = Release.Namespace)
+
+  # CacheServer pod tolerations, written to Cache.spec.tolerations when enabled.
+  # For externally managed Cache resources, set spec.tolerations on the CR.
+  tolerations: []
+  # - key: sku
+  #   operator: Equal
+  #   value: gpu
+  #   effect: NoSchedule
   
   # Scaling configuration (use either static or dynamic, not both).
   # If `dynamic` is set, it takes precedence over the default `static` below,

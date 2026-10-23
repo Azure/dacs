@@ -24,6 +24,6 @@ target_include_directories(StorageCommon PUBLIC ${CMAKE_CURRENT_LIST_DIR} ${CMAK
 
 add_dependencies(StorageCommon IbverbsDlsym diagnostics)
 
-target_link_libraries(StorageCommon IbverbsDlsym diagnostics curl jsoncpp dl uuid crypto xxhash)
+target_link_libraries(StorageCommon IbverbsDlsym diagnostics curl jsoncpp dl uuid crypto xxhash Azure::azure-storage-common)
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/metrics)

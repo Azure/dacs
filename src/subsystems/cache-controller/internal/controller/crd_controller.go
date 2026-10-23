@@ -32,6 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -277,6 +278,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		NodeSelectorValue            []string
 		Image                        string
 		ImagePullPolicy              string
+		Tolerations                  []corev1.Toleration
 		ServerThreads                int32
 		Port                         int
 		MetricsPort                  int
@@ -350,6 +352,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		NodeSelectorValue:            []string{*cache.Spec.NodeSelectorValue},
 		Image:                        cfg.CacheServerImage,
 		ImagePullPolicy:              string(cfg.ImagePullPolicy),
+		Tolerations:                  cache.Spec.Tolerations,
 		ServerThreads:                cache.Spec.ServerThreads,
 		Port:                         int(*cache.Spec.Port),
 		MetricsPort:                  int(*cache.Spec.MetricsPort),
@@ -377,6 +380,12 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 	var desired appsv1.StatefulSet
 	if err := renderTemplateInto("templates/cacheserver-app.yaml", values, &desired); err != nil {
 		return fmt.Errorf("failed to render cacheserver StatefulSet template (numServers=%d, image=%s): %w", numServers, values.Image, err)
+	}
+	for i := range desired.Spec.Template.Spec.Tolerations {
+		// Match Pod defaulting to avoid repeatedly patching an omitted operator.
+		if desired.Spec.Template.Spec.Tolerations[i].Operator == "" {
+			desired.Spec.Template.Spec.Tolerations[i].Operator = corev1.TolerationOpEqual
+		}
 	}
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -552,6 +561,9 @@ func isImmutableFieldErr(err error) bool {
 // the workload template, so the controller fails closed if admission validation
 // was disabled or bypassed. It mirrors the checks in the admission webhook.
 func validateRenderInputs(cache *storagev1.Cache, nodeCachePath string) error {
+	if errs := storagev1.ValidateTolerations(cache.Spec.Tolerations, field.NewPath("spec", "tolerations")); len(errs) > 0 {
+		return errs.ToAggregate()
+	}
 	if cache.Spec.NodeSelectorKey == nil {
 		return fmt.Errorf("spec.nodeSelectorKey must be set")
 	}
