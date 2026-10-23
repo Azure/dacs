@@ -259,8 +259,16 @@ TEST_F(BlobAuthTokenProviderTest, TestMultiThreadedTokenNearingExpiry)
         thread.join();
     }
 
+    // Joining callers does not wait for the background refresh.
+    const auto refreshDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     std::string token2 = mockProvider.GetAccessToken(mountPath);
+    while (token2 == token1 && std::chrono::steady_clock::now() < refreshDeadline)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        token2 = mockProvider.GetAccessToken(mountPath);
+    }
     ASSERT_FALSE(token2.empty()) << "Failed to fetch access token from MSI endpoint after expiry";
+    ASSERT_NE(token1, token2) << "Timed out waiting for background token refresh";
     tokens.insert(token2);
     //one token from cache and only one new fetched token from  all threads
     ASSERT_EQ(tokens.size(), 2U) << "Multiple different tokens fetched from MSI endpoint";
