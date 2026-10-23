@@ -29,6 +29,7 @@ steps:
   - template: Dacs.RestoreBuild.Steps.yml
     parameters:
       architecture: ${{ parameters.architecture }}
+      restoreWheel: true
       fetchDepth: 0
       persistCredentials: true
 

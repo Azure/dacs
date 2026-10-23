@@ -20,7 +20,7 @@ REGISTRY="${DOCKER_REGISTRY:?DOCKER_REGISTRY is required}"
 BUILD_NUMBER="${BUILD_NUMBER:?BUILD_NUMBER is required}"
 BUILD_ARCHS="${BUILD_ARCHS:-amd64 arm64}"
 
-IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler" "cache-controller")
+IMAGES=("cache-server" "cache-test-client" "cacheserver-scheduler" "cache-controller" "runai-dacs-client")
 
 create_manifest() {
     local image="$1"
