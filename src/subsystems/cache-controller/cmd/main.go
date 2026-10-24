@@ -402,30 +402,48 @@ func main() {
 
 	// +kubebuilder:scaffold:builder
 
-	// Setup health checks with cert readiness awareness
-	checker := healthz.Ping
-	if enableWebhooks {
-		checker = func(req *http.Request) error {
-			select {
-			case <-certSetupFinished:
-				return mgr.GetWebhookServer().StartedChecker()(req)
-			default:
-				return fmt.Errorf("certs are not ready yet")
-			}
-		}
-	}
-
-	if err := mgr.AddHealthzCheck("healthz", checker); err != nil {
-		logAndExit(err, "unable to set up health check")
-	}
-	if err := mgr.AddReadyzCheck("readyz", checker); err != nil {
-		logAndExit(err, "unable to set up ready check")
+	if err := setupHealthChecks(mgr, enableWebhooks, certSetupFinished, func(req *http.Request) error {
+		return mgr.GetWebhookServer().StartedChecker()(req)
+	}); err != nil {
+		logAndExit(err, "unable to set up health checks")
 	}
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctx); err != nil {
 		logAndExit(err, "problem running manager")
 	}
+}
+
+type healthCheckRegistrar interface {
+	AddHealthzCheck(string, healthz.Checker) error
+	AddReadyzCheck(string, healthz.Checker) error
+}
+
+func setupHealthChecks(
+	mgr healthCheckRegistrar,
+	enableWebhooks bool,
+	certSetupFinished <-chan struct{},
+	webhookStarted healthz.Checker,
+) error {
+	checker := healthz.Ping
+	if enableWebhooks {
+		checker = func(req *http.Request) error {
+			select {
+			case <-certSetupFinished:
+				return webhookStarted(req)
+			default:
+				return fmt.Errorf("certs are not ready yet")
+			}
+		}
+	}
+
+	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+		return fmt.Errorf("registering liveness check: %w", err)
+	}
+	if err := mgr.AddReadyzCheck("readyz", checker); err != nil {
+		return fmt.Errorf("registering readiness check: %w", err)
+	}
+	return nil
 }
 
 // logAndExit logs the error and exits the program with a non-zero status code.
