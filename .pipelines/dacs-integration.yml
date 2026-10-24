@@ -250,6 +250,22 @@ extends:
 
       - template: /.pipelines/templates/Dacs.AksTest.Stages.yml@self
         parameters:
+          stageName: AksRestart
+          stageDisplayName: AKS Cluster Restart
+          testPackage: ./test/aks
+          testFilter: aks && aks-restart
+          testOutputFile: test-aks-restart.xml
+          resourcePrefix: aks-restart
+          helmArgs: --values src/subsystems/cache-controller/charts/dacs/aks-int-${{ parameters.scalingMode }}-values.yaml
+          condition: not(canceled())
+          azureServiceConnection: ${{ parameters.azureServiceConnection }}
+          dockerRegistry: ${{ parameters.dockerRegistry }}
+          cacheServerBuildId: ${{ parameters.cacheServerBuildId }}
+          buildPipeline: ${{ parameters.buildPipeline }}
+          location: ${{ parameters.location }}
+
+      - template: /.pipelines/templates/Dacs.AksTest.Stages.yml@self
+        parameters:
           stageName: AksHelmUpgrade
           stageDisplayName: AKS Helm Upgrade
           testPackage: ./test/aks
