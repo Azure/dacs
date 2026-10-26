@@ -300,6 +300,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		UseHostPath                  bool
 		SnapshotIntervalSeconds      int32
 		UseZeroCopy                  bool
+		UseFlatRadixLocatorIndex     bool
 	}
 
 	// Extract values from CRD spec
@@ -373,6 +374,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		UseHostPath:                  useHostPath,
 		SnapshotIntervalSeconds:      cfg.CacheServerSnapshotIntervalSeconds,
 		UseZeroCopy:                  featuregate.Enabled(featuregate.UseZeroCopy),
+		UseFlatRadixLocatorIndex:     featuregate.Enabled(featuregate.UseFlatRadixLocatorIndex),
 	}
 	var desired appsv1.StatefulSet
 	if err := renderTemplateInto("templates/cacheserver-app.yaml", values, &desired); err != nil {
