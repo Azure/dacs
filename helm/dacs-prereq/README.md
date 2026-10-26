@@ -81,6 +81,11 @@ operations while retaining the image's tools. The script explicitly targets
 the host mount namespace and writes host configuration through `/proc/1/root`.
 Host `update-initramfs`, when available, runs in the host mount namespace.
 
+Both single-disk and RAID0 formatting explicitly disable `orphan_file` and
+`metadata_csum_seed`. This keeps the image-created ext4 filesystems compatible
+with Ubuntu 22.04's e2fsck 1.46.5. The host `fstab` entry uses fsck pass `2`, so
+the host can check the cache filesystem at boot.
+
 ### Reboot Behavior
 
 **Managed OS (persistent root filesystem):**
@@ -100,6 +105,13 @@ When the NVMe disks and their metadata are retained, the next setup run:
 
 Recovery depends on retention of the local disks and a successful setup run;
 this chart does not guarantee local-disk retention across node lifecycle events.
+
+### Upgrade Compatibility
+
+Existing cache filesystems are reused without changing their features.
+Upgrading the chart does not repair filesystems created with `orphan_file`
+enabled. On Ubuntu 22.04, those filesystems need separate remediation before
+the next node reboot to avoid a boot-time fsck failure.
 
 ### Filesystem Label
 
