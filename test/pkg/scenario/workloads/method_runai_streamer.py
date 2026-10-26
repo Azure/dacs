@@ -49,27 +49,6 @@ sys.path.insert(0, "/app")
 from auth import ensure_auth
 
 
-def _patch_file_streamer():
-    """Fix handle_object_store bug (returns None for Azure URLs).
-
-    The method only returns the path for S3 URLs, returning None for Azure
-    https:// URLs. stream_files() then overwrites FileChunks.path with None,
-    causing 'File access error' from the native library. This patch is a
-    no-op if the bug is already fixed in the installed version.
-    """
-    from runai_model_streamer.file_streamer.file_streamer import FileStreamer
-    _original = FileStreamer.handle_object_store
-
-    def _fixed(self, path, credentials):
-        result = _original(self, path, credentials)
-        return result if result is not None else path
-
-    FileStreamer.handle_object_store = _fixed
-
-
-_patch_applied = False
-
-
 def discover_shards(config):
     """List .safetensors files under the blob prefix using blobfile.
 
@@ -102,11 +81,6 @@ def read_shard(shard_url, config):
     exports blob_read() — the streamer calls it automatically to serve reads
     from DACS cache (NVMe on hit, blob on miss).
     """
-    global _patch_applied
-    if not _patch_applied:
-        _patch_file_streamer()
-        _patch_applied = True
-
     from runai_model_streamer import FileStreamer, FileChunks
 
     block_size = int(os.environ.get("RUNAI_STREAMER_BLOCK_SIZE", str(32 * 1024 * 1024)))
@@ -130,7 +104,9 @@ def read_shard(shard_url, config):
 
     total_bytes = 0
     with FileStreamer() as streamer:
-        file_request = FileChunks(id=0, path=shard_url, offset=0, chunks=chunks)
+        file_request = FileChunks.contiguous(
+            id=0, path=shard_url, offset=0, sizes=chunks
+        )
         streamer.stream_files([file_request])
         for file_path, chunk_index, tensor in streamer.get_chunks():
             total_bytes += tensor.numel()

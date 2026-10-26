@@ -174,8 +174,7 @@ func (r *ModelLoadingRunner) buildJob(ctx context.Context, jobName string) (*bat
 	// before any intercepted filesystem call.
 	preCommand := ""
 	if r.Method == RunAIStreamer {
-		// The standard pipeline image carries the generated lock but installs
-		// these large, scenario-specific packages only when they are needed.
+		// Install the image's pinned RunAI dependencies only for this method.
 		preCommand = `python3 -m pip install --no-cache-dir --require-hashes \
     -r /app/runai-model-streamer-requirements.txt
 `

@@ -15,22 +15,22 @@
 """Blobfuse2 access method - mounts an Azure Blob container via blobfuse2 and
 reads model shards as regular files.
 
-Configured pipeline with dist_cache disabled:
+Configured pipeline with distributed_cache disabled:
     libfuse -> block_cache -> attr_cache -> azstorage
 
-Configured pipeline with dist_cache enabled:
-    libfuse -> dist_cache -> attr_cache -> azstorage
+Configured pipeline with distributed_cache enabled:
+    libfuse → distributed_cache → attr_cache → azstorage
 
-blobfuse2 automatically inserts and configures block_cache as dist_cache's L1.
+blobfuse2 automatically inserts and configures block_cache as distributed_cache's L1.
 The YAML must not include a block_cache component or section in this mode.
 
-dist_cache is included when $BLOBFUSE_USE_DIST_CACHE is "true" and uses
+distributed_cache is included when $BLOBFUSE_USE_DIST_CACHE is "true" and uses
 $BLOBFUSE_DIST_CACHE_DISCOVERY_ENDPOINT (the DACS discovery endpoint) to
 locate the cache servers as an L2.
 
 Always sets libfuse.direct-io=true so reads bypass the Linux kernel page cache
 on the FUSE mount - required for warm_cache runs to actually exercise
-dist_cache (DACS L2) rather than reading from stale page-cached data.
+distributed_cache (DACS L2) rather than reading from stale page-cached data.
 
 Auth: uses blobfuse2's `azstorage.mode: spn` with `oauth-token-path` pointing at
 the federated token file mounted by the AKS workload-identity webhook. This is
@@ -81,7 +81,7 @@ def _render_config(account, container, use_dist_cache, dist_cache_discovery,
         "  - libfuse",
     ]
     if use_dist_cache:
-        lines.append("  - dist_cache")
+        lines.append("  - distributed_cache")
     else:
         lines.append("  - block_cache")
     lines.extend([
@@ -95,7 +95,7 @@ def _render_config(account, container, use_dist_cache, dist_cache_discovery,
     ])
     if use_dist_cache:
         lines.extend([
-            "dist_cache:",
+            "distributed_cache:",
             f"  discovery-endpoint: {dist_cache_discovery}",
             # These L1 knobs are fanned out to the auto-inserted block_cache.
             "  block-size-mb: 32",
@@ -209,7 +209,7 @@ def _setup(config):
         )
 
     print(f"  Blobfuse mount: {mount_path}", flush=True)
-    print(f"  dist_cache: {'on (' + dist_cache_discovery + ')' if use_dist_cache else 'off'}",
+    print(f"  distributed_cache: {'on (' + dist_cache_discovery + ')' if use_dist_cache else 'off'}",
           flush=True)
 
     _drop_page_cache()
