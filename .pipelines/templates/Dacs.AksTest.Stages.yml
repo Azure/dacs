@@ -50,6 +50,12 @@ parameters:
   - name: helmArgs
     type: string
     default: ''
+  - name: cacheFixture
+    type: string
+    default: src/subsystems/cache-controller/charts/dacs/examples/cache/static.yaml
+  - name: cacheStaticServers
+    type: number
+    default: 0
   - name: resourcePrefix
     type: string
     default: aks-resilience
@@ -205,8 +211,6 @@ stages:
                         DACS_CACHE_CHART_REPO=dacs/helmchart/dacs \
                         DACS_CACHE_CHART_VERSION="$(cacheServerChartVersion)" \
                         HELM_ARGS="--set global.registry= --set manager.image.repository=$DOCKER_REGISTRY/dacs/cache-controller --set manager.cacheServerImage.repository=$DOCKER_REGISTRY/dacs/cache-server $EXTRA_HELM_ARGS"
-                    echo "Waiting for all Cache CRs to be ready..."
-                    kubectl wait --for=condition=Ready caches.storage.azure.com --all --all-namespaces --timeout=10m
                 else
                     make helm-install \
                         DOCKER_REGISTRY="$DOCKER_REGISTRY" BASE_REPO="$DOCKER_REGISTRY/dacs" \
@@ -218,6 +222,20 @@ stages:
             env:
               DOCKER_REGISTRY: ${{ parameters.dockerRegistry }}
               EXTRA_HELM_ARGS: ${{ parameters.helmArgs }}
+
+          - ${{ if and(eq(parameters.helmChart, 'dacs'), ne(parameters.cacheFixture, '')) }}:
+              - task: AzureCLI@2
+                displayName: Apply Cache Test Fixture
+                inputs:
+                  azureSubscription: ${{ parameters.azureServiceConnection }}
+                  scriptType: bash
+                  scriptLocation: inlineScript
+                  inlineScript: |
+                    set -euo pipefail
+                    bash .pipelines/scripts/apply-cache-fixture.sh "$CACHE_FIXTURE" "$CACHE_STATIC_SERVERS"
+                env:
+                  CACHE_FIXTURE: ${{ parameters.cacheFixture }}
+                  CACHE_STATIC_SERVERS: ${{ parameters.cacheStaticServers }}
 
           - task: AzureCLI@2
             displayName: Run Test (${{ parameters.testFilter }})

@@ -1,0 +1,49 @@
+# Copyright (c) Microsoft Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: storage.azure.com/v1
+kind: Cache
+metadata:
+  name: cache-sample
+  labels:
+    app.kubernetes.io/name: dacs
+    app.kubernetes.io/instance: cache-sample
+    app.kubernetes.io/version: example
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/part-of: dacs
+    app.kubernetes.io/managed-by: kubectl
+    dacs.azure.com/example: "true"
+spec:
+  scaling:
+    dynamic:
+      percentageOfNodesToUse: 100
+  serverSizeInGB: 1000
+  serverThreads: 80
+  port: 9065
+  metricsPort: 9096
+  cpuLimit: 4
+  memoryLimitMB: 128000
+  nodeSelectorKey: dacs.azure.com/processing-unit
+  nodeSelectorValue: cpu
+  eviction:
+    enableAccessTimeEviction: true
+    evictionMaintainFreeSpace: true
+    lastAccessThreshold: 30d
+    passFrequency: 15m
+    sizeTarget: "80"
+    sizeThreshold: "90"
+    bucketInterval: 15m
+  storage:
+    hostPath:
+      nodeCacheFolderPath: /var/lib/ssd/cacheserver

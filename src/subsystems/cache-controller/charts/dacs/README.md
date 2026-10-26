@@ -14,20 +14,33 @@ A Kubernetes controller that manages distributed cache infrastructure through cu
 
 ```bash
 helm install dacs ./charts/dacs \
-  --namespace dacs-system \
+  --namespace cache-server \
   --create-namespace \
   --values ./charts/dacs/values.yaml 
 ```
 
-### Install Controller + Sample Cache
+### Install Controller and Example Cache
 
 ```bash
 helm install dacs ./charts/dacs \
-  --namespace dacs-system \
+  --namespace cache-server \
   --create-namespace \
-  --values ./charts/dacs/values.yaml \
-  --set cache.enabled=true
+  --values ./charts/dacs/values.yaml
 ```
+
+After the controller chart succeeds, apply one of the example Cache manifests:
+
+```bash
+kubectl apply \
+  --namespace cache-server \
+  -f ./charts/dacs/examples/cache/static.yaml
+```
+
+Use [examples/cache/dynamic.yaml](examples/cache/dynamic.yaml) instead to enable
+dynamic scaling. `make deploy CONTROLLER=new` installs the controller and
+prerequisites only; apply the desired Cache manifest separately. AKS test
+pipelines use these same examples, with the static manifest also used for
+performance tests.
 
 ## Configuration
 
@@ -50,40 +63,16 @@ helm install dacs ./charts/dacs \
 | `manager.resources.requests.memory` | Memory request | `64Mi` |
 | `manager.priorityClassName` | PriorityClass for the controller pod. Empty uses the chart-managed `<fullname>-priority` PriorityClass (value `100000`); set a name to use an existing PriorityClass instead. | `""` |
 
-### Cache Configuration
+### Example Cache Configuration
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `cache.enabled` | Deploy a Cache CR with controller | `false` |
-| `cache.name` | Name of the Cache CR (max 53 chars, RFC 1123 DNS label) | `cache-sample` |
-| `cache.namespace` | Namespace for Cache CR; empty uses the release namespace | `""` |
-| `cache.scaling.static.numServers` | Number of cache servers | |
-| `cache.scaling.dynamic.percentageOfNodesToUse` | Percentage of nodes to run cache on (1-100) | |
-| `cache.scaling.dynamic.minServers` | Minimum cache servers, 1-499 (desired below this floors to 0) | |
-| `cache.scaling.dynamic.maxServers` | Maximum cache servers, 1-499 (hard cap; must be >= minServers) | |
-| `cache.serverSizeInGB` | Storage per server (GB), minimum 1 | `4` |
-| `cache.serverThreads` | Threads per server, range 4-128 | `80` |
-| `cache.memoryLimitMB` | Optional memory limit per server, minimum 1024 MB | |
-| `cache.tolerations` | CacheServer pod tolerations in the chart-managed Cache CR (`cache.enabled=true`) | `[]` |
+The controller chart does not create Cache resources. Start with the static,
+dynamic, or Minikube manifests in [`examples`](examples/README.md).
 
 ### CacheServer Scheduling on Tainted Nodes
 
 `manager.tolerations` applies only to the controller Deployment. CacheServer
 StatefulSets are generated from each `Cache` resource, not from the controller's
-pod settings. For a chart-managed Cache, set:
-
-```yaml
-cache:
-  enabled: true
-  tolerations:
-    - key: sku
-      operator: Equal
-      value: gpu
-      effect: NoSchedule
-```
-
-For a Cache managed separately from Helm, set the same list directly under
-`spec.tolerations`:
+pod settings. Set CacheServer tolerations directly under `spec.tolerations`:
 
 ```yaml
 apiVersion: storage.azure.com/v1
@@ -126,6 +115,14 @@ using this field. Helm does not upgrade CRDs in the chart's `crds/` directory
 automatically; follow the [upgrade procedure](#upgrade) using
 `charts/dacs/crds/storage.azure.com_caches.yaml`.
 
+Query the installed CRD for fields omitted from the examples, including
+dynamic scaling bounds, ephemeral storage, InfiniBand, and image pull policy:
+
+```bash
+kubectl explain cache.spec --api-version=storage.azure.com/v1 --recursive
+kubectl explain cache.spec.scaling.dynamic --api-version=storage.azure.com/v1
+```
+
 ### RBAC Configuration
 
 | Parameter | Description | Default |
@@ -143,7 +140,8 @@ CRDs are always installed (required for controller to function).
 |-----------|-------------|---------|
 | `crd.keep` | Keep CRDs on uninstall | `true` |
 
-**Warning:** Setting `crd.keep=false` will delete all Cache custom resources when uninstalling the chart.
+Setting `crd.keep=false` removes the CRD on uninstall. It does not bypass the
+Cache resource guard described in [Uninstall](#uninstall).
 
 ### Monitoring Configuration
 
@@ -154,6 +152,20 @@ CRDs are always installed (required for controller to function).
 
 ## Upgrade
 
+**Before upgrading from a chart that created a Cache:** inspect the existing
+release with `helm get values dacs -n cache-server --all`
+and `helm get manifest dacs -n cache-server`. Removing the
+Cache template can delete a previously chart-owned Cache during upgrade.
+Do not upgrade such a release until its Cache ownership has been migrated
+and the migration verified. Merely removing `cache.enabled` or setting it
+to `false` does not protect an existing chart-owned resource.
+
+Legacy `cache.enabled=true` fails rendering with a migration message.
+`cache.enabled=false` is accepted for controller-only consumers; other
+legacy `cache.*` settings are ignored because Cache configuration belongs in
+standalone manifests. This values guard is not a substitute for inspecting
+existing release resources, since old values may not be passed to the new chart.
+
 Helm does not upgrade existing CRDs. Apply the target chart's CRDs first.
 
 ```bash
@@ -162,37 +174,87 @@ kubectl apply -f ./charts/dacs/crds
 kubectl wait --for=condition=Established --timeout=60s -f ./charts/dacs/crds
 
 helm upgrade dacs ./charts/dacs \
-  --namespace dacs-system \
+  --namespace cache-server \
   --set manager.image.tag=local
 ```
 
 **Note:** The controller pod will be recreated during upgrade. Existing Cache CRs are not affected.
 Rollback retains the updated CRDs; verify compatibility with the previous controller.
 
-## Uninstall
+Controller chart upgrades do not manage separately applied Cache manifests.
+Edit and reapply the selected example when its Cache configuration changes:
 
 ```bash
-# Remove controller (CRDs are kept by default)
-helm uninstall dacs -n dacs-system
-
-# Remove CRDs manually if needed
-kubectl delete crd caches.storage.azure.com
+kubectl apply \
+  --namespace cache-server \
+  -f src/subsystems/cache-controller/charts/dacs/examples/cache/static.yaml
 ```
+
+## Uninstall
+
+Uninstalling the controller chart runs a pre-delete hook that blocks uninstall
+while any Cache resources remain in the cluster, including resources that are
+still terminating. Delete the Cache resources you own and wait for cleanup
+before uninstalling the controller. For example:
+
+```bash
+kubectl delete -n cache-server \
+  -f ./charts/dacs/examples/cache/static.yaml \
+  --wait=true --timeout=5m
+helm uninstall dacs -n cache-server
+```
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `cleanup.forceDeleteCaches` | Delete all Cache resources cluster-wide; after the cleanup timeout, clear finalizers on remaining terminating Cache resources. | `false` |
+| `cleanup.timeoutSeconds` | Time allowed for normal cleanup before force mode removes remaining Cache finalizers. | `300` |
+
+To explicitly allow deletion of **all Cache resources in the cluster**, save
+`cleanup.forceDeleteCaches=true` on the release **before the first uninstall
+attempt**. Helm uninstall does not accept `--set`; use the same chart version
+and existing release configuration for the upgrade:
+
+```bash
+helm upgrade dacs ./charts/dacs \
+  -n cache-server --reuse-values \
+  --set cleanup.forceDeleteCaches=true
+helm uninstall dacs -n cache-server --timeout=10m
+```
+
+This opt-in includes Cache resources created by other users or releases, even
+when `crd.keep=true`. It first requests deletion without waiting, then polls
+for completion. After `cleanup.timeoutSeconds`, it clears **all finalizers**
+on remaining terminating Cache resources, including finalizers added by other
+controllers. Uninstall proceeds only after no Cache resources remain.
+
+**Warning:** Removing finalizers bypasses unfinished cleanup and can leave
+resources behind. Use force deletion only when this is acceptable. It does
+not remove finalizers from child resources or erase cached files on nodes.
+The value remains enabled on the release until changed or the release is
+uninstalled.
+
+If uninstall has already been blocked, delete the remaining Cache resources,
+wait for their cleanup, and retry `helm uninstall`. A failed uninstall hook
+can leave the release in `uninstalling` status, preventing a Helm upgrade to
+enable force deletion.
+
+Permission or API errors fail the hook. Do not use `helm uninstall --no-hooks`
+to bypass this protection: it can remove the controller while Cache resources
+still depend on it. Do not uninstall if those resources must remain.
 
 ## Namespace Architecture
 
-**Recommended:** Deploy controller and cache in separate namespaces:
-- Controller: `dacs-system` (watches cluster-wide)
-- Cache instances: `cache-server`, `app-namespace`, etc.
-
-**Alternative:** Deploy both in the same namespace by setting `cache.namespace=""`.
+Install the controller and Cache resources in the same namespace. These
+instructions use `cache-server`. If you install the Helm release in another
+namespace, use that namespace for the Cache examples and subsequent commands.
+The example printed by Helm uses the release namespace.
 
 ## Troubleshooting
 
 ### Controller Not Starting
 
 ```bash
-kubectl logs -n dacs-system -l app.kubernetes.io/name=dacs -f
+kubectl logs -n cache-server -l app.kubernetes.io/name=dacs -f
 ```
 
 ### Cache Pods Pending
@@ -221,29 +283,23 @@ kubectl get nodes --show-labels
 ```bash
 kubectl get crd caches.storage.azure.com
 # If missing, CRDs should be installed automatically. Check:
-helm get manifest dacs -n dacs-system | grep CustomResourceDefinition
+helm get manifest dacs -n cache-server | grep CustomResourceDefinition
 ```
 
 ## Development
 
 ### Testing
 
-Run the built-in Helm tests to verify the deployment:
+With the controller installed, validate both example manifests against the
+cluster without creating resources:
 
 ```bash
-helm test dacs -n dacs-system
-```
-
-This runs three tests:
-1. **Controller Test** - Verifies the controller pod is running
-2. **CRD Test** - Verifies the Cache CRD is installed
-3. **Cache Test** - Verifies Cache CR and pods (if `cache.enabled=true`)
-
-View test logs:
-```bash
-kubectl logs -n dacs-system dacs-test-controller
-kubectl logs -n dacs-system dacs-test-crd
-kubectl logs -n dacs-system dacs-test-cache  # if cache enabled
+kubectl apply --dry-run=server \
+  --namespace cache-server \
+  -f ./charts/dacs/examples/cache/static.yaml
+kubectl apply --dry-run=server \
+  --namespace cache-server \
+  -f ./charts/dacs/examples/cache/dynamic.yaml
 ```
 
 ### Linting
@@ -255,9 +311,11 @@ helm lint ./charts/dacs
 ### Template Rendering
 
 ```bash
-helm template test ./charts/dacs \
-  --set cache.enabled=true \
-  --debug
+helm template test ./charts/dacs --debug
+
+kubectl apply --dry-run=server \
+  --namespace cache-server \
+  -f ./charts/dacs/examples/cache/static.yaml
 ```
 
 ### Schema Validation

@@ -136,7 +136,7 @@ rbacHelpers:
 
 # Custom Resource Definitions
 # CRDs are always installed (required for controller to function)
-# Set keep=false to remove CRDs on chart uninstall (WARNING: deletes all Cache instances)
+# Set keep=false to remove CRDs on chart uninstall; the Cache guard still applies.
 crd:
   keep: true    # Keep CRDs when uninstalling
 
@@ -173,13 +173,15 @@ prometheus:
   enable: false
 
 
-# Pre-delete cleanup job that deletes Cache CRs before chart uninstall.
-# Ensures finalizers run and pods are cleaned up gracefully.
+# Pre-delete hook that blocks uninstall while Cache CRs remain.
 cleanup:
+  # Delete all Cache CRs cluster-wide; strip remaining finalizers after the timeout.
+  forceDeleteCaches: false
   image:
     repository: mcr.microsoft.com/oss/v2/kubernetes/kubectl
     tag: v1.35.9
     pullPolicy: IfNotPresent
+  # Time allowed for normal cleanup before force mode removes Cache finalizers.
   timeoutSeconds: 300
   resources:
     limits:
@@ -188,64 +190,3 @@ cleanup:
     requests:
       cpu: 50m
       memory: 32Mi
-
-# Cache Custom Resource configuration
-cache:
-  enabled: false  # Set to true to deploy a sample Cache instance with the chart 
-  name: cache-sample
-  namespace: ""  # Namespace for Cache CR (empty = Release.Namespace)
-
-  # CacheServer pod tolerations, written to Cache.spec.tolerations when enabled.
-  # For externally managed Cache resources, set spec.tolerations on the CR.
-  tolerations: []
-  # - key: sku
-  #   operator: Equal
-  #   value: gpu
-  #   effect: NoSchedule
-  
-  # Scaling configuration (use either static or dynamic, not both).
-  # If `dynamic` is set, it takes precedence over the default `static` below,
-  # so you can enable dynamic scaling without overriding `static` to null.
-  scaling:
-    static:
-      numServers: 2
-    # dynamic:
-    #   percentageOfNodesToUse: 50
-    #   minServers: 2
-    #   maxServers: 10
-
-  # Server configuration
-  serverSizeInGB: 4
-  serverThreads: 80
-  port: 9065
-  metricsPort: 9096
-
-  # Resource limits
-  # cpuLimit: 4
-  # memoryLimitMB: 2048
-  # egressBandwidthLimitGbps: 10
-
-  # Node selection
-  nodeSelectorKey: "dacs.azure.com/processing-unit"
-  nodeSelectorValue: "cpu"
-
-  # Eviction configuration
-  eviction:
-    enableAccessTimeEviction: true
-    evictionMaintainFreeSpace: true
-    lastAccessThreshold: "30d"
-    passFrequency: "15m"
-    sizeTarget: "80"
-    sizeThreshold: "90"
-    bucketInterval: "15m"
-
-  # Storage configuration
-  storage:
-    ephemeral: false
-    hostPath: 
-      nodeCacheFolderPath: /var/lib/ssd/cacheserver
-
-  # InfiniBand resource configuration (optional)
-  # Set count > 0 to enable IB resources on cache server pods
-  infinibandResourceLimitCount: 0
-  infinibandResourceLimitName: "rdma/hca_rdma_infiniband"

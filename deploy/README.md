@@ -21,6 +21,24 @@ make undeploy
 make unprovision
 ```
 
+For the new controller, install the charts and then apply the desired Cache
+manifest directly:
+
+```bash
+make deploy CONTROLLER=new
+kubectl apply -n cache-server \
+  -f src/subsystems/cache-controller/charts/dacs/examples/cache/static.yaml
+kubectl wait -n cache-server \
+  -f src/subsystems/cache-controller/charts/dacs/examples/cache/static.yaml \
+  --for=condition=Ready --timeout=10m
+```
+
+Use the dynamic example instead when needed. Cache manifests are not managed
+by Make targets. The controller chart blocks uninstall while Cache resources
+remain. Delete them first, or explicitly enable `cleanup.forceDeleteCaches`
+on the release before uninstalling; see the
+[chart uninstall instructions](../src/subsystems/cache-controller/charts/dacs/README.md#uninstall).
+
 ## Minikube (Local Development)
 
 ```bash

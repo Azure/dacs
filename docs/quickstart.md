@@ -66,8 +66,9 @@ remaining steps.
 
 ## Install DACS and an ephemeral cache
 
-The chart creates a single 2 GiB CacheServer on a Linux node. No prerequisite
-chart, local NVMe disk, or RAID setup is required.
+Install the controller, then apply a standalone Cache manifest to create a
+single 2 GiB CacheServer on a Linux node. No prerequisite chart, local NVMe
+disk, or RAID setup is required.
 
 ```bash
 helm upgrade --install dacs "$CHART_REF" \
@@ -76,15 +77,24 @@ helm upgrade --install dacs "$CHART_REF" \
   --create-namespace \
   --atomic \
   --wait \
-  --timeout 10m \
-  --set cache.enabled=true \
-  --set cache.name=cache-sample \
-  --set cache.scaling.static.numServers=1 \
-  --set cache.serverSizeInGB=2 \
-  --set cache.serverThreads=4 \
-  --set cache.storage.ephemeral=true \
-  --set cache.nodeSelectorKey=kubernetes.io/os \
-  --set cache.nodeSelectorValue=linux
+  --timeout 10m
+
+kubectl apply --namespace "$NAMESPACE" -f - <<'YAML'
+apiVersion: storage.azure.com/v1
+kind: Cache
+metadata:
+  name: cache-sample
+spec:
+  scaling:
+    static:
+      numServers: 1
+  serverSizeInGB: 2
+  serverThreads: 4
+  storage:
+    ephemeral: true
+  nodeSelectorKey: kubernetes.io/os
+  nodeSelectorValue: linux
+YAML
 ```
 
 The chart uses its `appVersion` for the controller and CacheServer image tags.

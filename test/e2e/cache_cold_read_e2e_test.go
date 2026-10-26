@@ -20,7 +20,9 @@
 //
 // # Running Tests
 //
-//	make deploy CONTROLLER=new HELM_ARGS="--set cache.enabled=true"
+//	make deploy CONTROLLER=new
+//	kubectl apply -n cache-server -f src/subsystems/cache-controller/charts/dacs/examples/cache/static.yaml
+//	kubectl wait -n cache-server cache/cache-sample --for=condition=Ready --timeout=10m
 //	make test-e2e TEST_FILTER=cold-read
 //
 // # Prerequisites

@@ -46,6 +46,35 @@ The test framework will:
 
 ## Workflows
 
+The new-controller Minikube job applies
+`src/subsystems/cache-controller/charts/dacs/examples/cache/minikube.yaml`
+after installing the controller. It defines two 4 GB servers without explicit
+CPU or memory limits. Cleanup deletes the Cache and waits for it before
+uninstalling the controller.
+
+AKS stages select `examples/cache/static.yaml` or `dynamic.yaml` using
+`scalingMode`. Performance tests use the static fixture and pass
+`cacheServerCount` as `cacheStaticServers`. A positive override changes only
+the static server count in a temporary copy; zero keeps the fixture default.
+Dynamic fixtures reject a nonzero static override.
+
+Both pipelines call `.pipelines/scripts/apply-cache-fixture.sh` to retry
+admission dry-runs, apply once, and wait for the selected Cache to become Ready.
+The shared AKS template's `cacheFixture` parameter selects the manifest;
+an empty value skips fixture creation.
+
+For manual new-controller deployments, install the controller first and then
+apply a fixture separately:
+
+```bash
+make deploy CONTROLLER=new
+kubectl apply -n cache-server \
+  -f src/subsystems/cache-controller/charts/dacs/examples/cache/static.yaml
+kubectl wait -n cache-server \
+  -f src/subsystems/cache-controller/charts/dacs/examples/cache/static.yaml \
+  --for=condition=Ready --timeout=10m
+```
+
 ### Azure Pipeline: dacs-integration
 
 [dacs-integration](../.pipelines/dacs-integration.yml) runs on `main` every day

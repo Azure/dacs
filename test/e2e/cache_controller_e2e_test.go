@@ -21,14 +21,16 @@
 //
 // Controller tests:
 //
-//	make deploy CONTROLLER=new HELM_ARGS="--set cache.enabled=true"
+//	make deploy CONTROLLER=new
+//	kubectl apply -n cache-server -f src/subsystems/cache-controller/charts/dacs/examples/cache/static.yaml
+//	kubectl wait -n cache-server cache/cache-sample --for=condition=Ready --timeout=10m
 //	make test-e2e TEST_FILTER=controller
 //
 // # Prerequisites
 //
 // Controller tests require:
 //   - New controller deployed via helm (CONTROLLER=new)
-//   - Cache CR deployed via helm (cache.enabled=true)
+//   - Cache CR applied from a static or dynamic example manifest
 //
 // # Controller Test Resources
 //
@@ -122,8 +124,8 @@ var _ = Describe("Cache Controller", Label("e2e", "controller"), Ordered, func()
 	EnforceDefaultTimeoutsWhenUsingContexts()
 
 	// Note: Controller deployment is handled by helm deploy (CONTROLLER=new).
-	// Cache CR is deployed via helm with cache.enabled=true.
-	// Cleanup is handled by helm undeploy.
+	// Cache CR is applied from an example manifest after the controller is ready.
+	// Cleanup deletes the Cache before uninstalling the controller.
 	// Note: perf tests run BEFORE controller tests to avoid DNS propagation
 	// issues caused by StatefulSet mutations (scaling, spec updates).
 
@@ -134,7 +136,7 @@ var _ = Describe("Cache Controller", Label("e2e", "controller"), Ordered, func()
 		if output, err := cmd.CombinedOutput(); err != nil {
 			GinkgoWriter.Printf("Warning: job cleanup had issues: %v\nOutput: %s\n", err, string(output))
 		}
-		// Note: Cache CR cleanup is handled by helm undeploy
+		// Note: Cache CR cleanup is handled by make undeploy.
 	})
 
 	Describe("Cache resource lifecycle", func() {
