@@ -96,10 +96,10 @@ bool HandleRequest(IConnection& clientConnection,
     }
     else
     {
-        LOG_ERROR("unkown req type={}, close id={}", request.type_case(), clientConnection.GetId());
+        LOG_ERROR("unkown req type={}, close id={}", static_cast<int>(request.type_case()), clientConnection.GetId());
     }
 
-    LOG_DEBUG("Done handling request={}", request.type_case());
+    LOG_DEBUG("Done handling request={}", static_cast<int>(request.type_case()));
     return bRet;
 }
 //---------------------------------------------------------------------------------------------------------------------

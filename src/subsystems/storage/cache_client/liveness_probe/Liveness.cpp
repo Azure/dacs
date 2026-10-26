@@ -94,7 +94,7 @@ int main()
     }
     else
     {
-        LOG_ERROR("Liveness probe failed. Download status: {}", status);
+        LOG_ERROR("Liveness probe failed. Download status: {}", static_cast<int>(status));
         return 1;
     }
 }
