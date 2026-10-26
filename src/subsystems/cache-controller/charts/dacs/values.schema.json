@@ -78,131 +78,6 @@
         }
       }
     },
-    "cache": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Deploy a Cache CR with the controller"
-        },
-        "name": {
-          "type": "string",
-          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
-          "description": "Name of the Cache CR (must be DNS-1123 compliant)"
-        },
-        "namespace": {
-          "type": "string",
-          "description": "Namespace for Cache CR (empty = Release.Namespace)"
-        },
-        "serverSizeInGB": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 10000
-        },
-        "serverThreads": {
-          "type": "integer",
-          "minimum": 4,
-          "maximum": 128
-        },
-        "tolerations": {
-          "type": "array",
-          "description": "CacheServer pod tolerations, independent of manager.tolerations; requires cache.enabled.",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "key": { "type": "string" },
-              "operator": { "type": "string", "enum": ["", "Equal", "Exists"] },
-              "value": { "type": "string" },
-              "effect": { "type": "string", "enum": ["", "NoSchedule", "PreferNoSchedule", "NoExecute"] },
-              "tolerationSeconds": { "type": "integer" }
-            },
-            "allOf": [
-              {
-                "if": { "properties": { "key": { "const": "" } } },
-                "then": {
-                  "required": ["operator"],
-                  "properties": { "operator": { "const": "Exists" } }
-                }
-              },
-              {
-                "if": {
-                  "required": ["operator"],
-                  "properties": { "operator": { "const": "Exists" } }
-                },
-                "then": { "properties": { "value": { "const": "" } } }
-              },
-              {
-                "if": { "required": ["tolerationSeconds"] },
-                "then": {
-                  "required": ["effect"],
-                  "properties": { "effect": { "const": "NoExecute" } }
-                }
-              }
-            ]
-          }
-        },
-        "port": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 65535
-        },
-        "metricsPort": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 65535
-        },
-        "cpuLimit": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "memoryLimitMB": {
-          "type": "integer",
-          "anyOf": [
-            {
-              "const": 0
-            },
-            {
-              "minimum": 1024
-            }
-          ]
-        },
-        "scaling": {
-          "type": "object",
-          "properties": {
-            "static": {
-              "type": "object",
-              "properties": {
-                "numServers": {
-                  "type": "integer",
-                  "minimum": 1
-                }
-              }
-            },
-            "dynamic": {
-              "type": "object",
-              "properties": {
-                "minServers": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 499
-                },
-                "maxServers": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 499
-                },
-                "percentageOfNodesToUse": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 100
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "rbacHelpers": {
       "type": "object",
       "properties": {
@@ -218,6 +93,15 @@
         "keep": {
           "type": "boolean",
           "description": "Keep CRDs when uninstalling chart"
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "properties": {
+        "forceDeleteCaches": {
+          "type": "boolean",
+          "description": "Delete all Cache CRs cluster-wide before uninstall, clearing finalizers on remaining terminating Caches after cleanup.timeoutSeconds."
         }
       }
     },

@@ -319,6 +319,11 @@ jobs:
           make deploy CONTROLLER=new \
             HELM_ARGS="--set manager.cacheServerImage.repository=cache-server --set manager.cacheServerImage.tag=local"
 
+      - name: Apply Cache fixture
+        run: |
+          bash .pipelines/scripts/apply-cache-fixture.sh \
+            src/subsystems/cache-controller/charts/dacs/examples/cache/minikube.yaml
+
       - name: Run controller and perf E2E tests
         run: >-
           make test-e2e
@@ -359,6 +364,9 @@ jobs:
         continue-on-error: true
         run: |
           status=0
+          kubectl delete --namespace cache-server \
+            -f src/subsystems/cache-controller/charts/dacs/examples/cache/minikube.yaml \
+            --ignore-not-found --wait=true --timeout=5m || status=$?
           make undeploy || status=$?
           ./deploy/scripts/minikube/clean.sh || status=$?
           exit "$status"

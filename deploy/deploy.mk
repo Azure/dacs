@@ -267,7 +267,6 @@ $(HELM_BIN) upgrade --install dacs ./$(DACS_CACHE_CHART_PATH) \
 	--set manager.image.tag=$(2) \
 	--set manager.cacheServerImage.repository=$(LOCAL_CACHE_SERVER_IMG) \
 	--set manager.cacheServerImage.tag=$(LOCAL_CACHE_SERVER_TAG) \
-	--set cache.enabled=true \
 	--wait --timeout 5m --atomic $(HELM_ARGS)
 endef
 
@@ -278,7 +277,6 @@ $(HELM_BIN) upgrade --install dacs oci://$(DOCKER_REGISTRY)/$(DACS_CACHE_CHART_R
 	--set global.registry=$(DOCKER_REGISTRY) \
 	--set manager.image.tag=$(IMAGE_TAG) \
 	--set manager.cacheServerImage.tag=$(IMAGE_TAG) \
-	--set cache.enabled=true \
 	--wait --timeout 5m --atomic $(HELM_ARGS)
 endef
 

@@ -17,12 +17,3 @@
 
 manager:
   featureGates: "UseZeroCopy=true"
-
-cache:
-  serverSizeInGB: 1000
-  cpuLimit: 4
-  memoryLimitMB: 128000
-  storage:
-    ephemeral: false
-    hostPath:
-      nodeCacheFolderPath: /var/lib/ssd/cacheserver

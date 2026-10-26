@@ -54,6 +54,7 @@ parameters:
   - name: helmUpgradeBaselineVersion
     displayName: Known-good immutable DACS chart version
     type: string
+    # The baseline CRD must support spec.eviction.bucketInterval in the fixtures.
     default: 0.1.0-alpha.0.113+5f43ac1cc927f9
   - name: location
     displayName: AKS region
@@ -184,7 +185,9 @@ extends:
           aksTemplate: ${{ parameters.perfAksTemplate }}
           helmChart: ${{ parameters.helmChart }}
           ${{ if eq(parameters.helmChart, 'dacs') }}:
-            helmArgs: --values src/subsystems/cache-controller/charts/dacs/perf-values.yaml --set cache.scaling.static.numServers=${{ parameters.cacheServerCount }}
+            helmArgs: --values src/subsystems/cache-controller/charts/dacs/perf-values.yaml
+            cacheFixture: src/subsystems/cache-controller/charts/dacs/examples/cache/static.yaml
+            cacheStaticServers: ${{ parameters.cacheServerCount }}
           ${{ else }}:
             helmArgs: --values helm/cache-server/perf-values.yaml --set cacheServer.numServers=${{ parameters.cacheServerCount }}
           extraTestArgs: >-
@@ -208,7 +211,7 @@ extends:
           testFilter: aks && aks-upgrade
           testOutputFile: test-aks-upgrade.xml
           resourcePrefix: aks-upgrade
-          helmArgs: --values src/subsystems/cache-controller/charts/dacs/aks-int-${{ parameters.scalingMode }}-values.yaml
+          cacheFixture: src/subsystems/cache-controller/charts/dacs/examples/cache/${{ parameters.scalingMode }}.yaml
           condition: not(canceled())
           azureServiceConnection: ${{ parameters.azureServiceConnection }}
           dockerRegistry: ${{ parameters.dockerRegistry }}
@@ -224,7 +227,7 @@ extends:
           testFilter: aks && aks-scale
           testOutputFile: test-aks-scale.xml
           resourcePrefix: aks-scale
-          helmArgs: --values src/subsystems/cache-controller/charts/dacs/aks-int-${{ parameters.scalingMode }}-values.yaml
+          cacheFixture: src/subsystems/cache-controller/charts/dacs/examples/cache/${{ parameters.scalingMode }}.yaml
           condition: not(canceled())
           azureServiceConnection: ${{ parameters.azureServiceConnection }}
           dockerRegistry: ${{ parameters.dockerRegistry }}
@@ -240,7 +243,7 @@ extends:
           testFilter: aks && aks-node-crash
           testOutputFile: test-aks-node-crash.xml
           resourcePrefix: aks-node-crash
-          helmArgs: --values src/subsystems/cache-controller/charts/dacs/aks-int-${{ parameters.scalingMode }}-values.yaml
+          cacheFixture: src/subsystems/cache-controller/charts/dacs/examples/cache/${{ parameters.scalingMode }}.yaml
           condition: not(canceled())
           azureServiceConnection: ${{ parameters.azureServiceConnection }}
           dockerRegistry: ${{ parameters.dockerRegistry }}
@@ -256,7 +259,8 @@ extends:
           testFilter: aks && helm-upgrade
           testOutputFile: test-aks-helm-upgrade.xml
           resourcePrefix: aks-helm-upgrade
-          helmArgs: --values src/subsystems/cache-controller/charts/dacs/aks-int-${{ parameters.scalingMode }}-values.yaml --version ${{ parameters.helmUpgradeBaselineVersion }} --set manager.image.tag= --set manager.cacheServerImage.tag=
+          cacheFixture: src/subsystems/cache-controller/charts/dacs/examples/cache/${{ parameters.scalingMode }}.yaml
+          helmArgs: --version ${{ parameters.helmUpgradeBaselineVersion }} --set cache.enabled=false --set manager.image.tag= --set manager.cacheServerImage.tag=
           extraTestEnv: |
             export HELM_UPGRADE_TARGET_VERSION="$(cacheServerChartVersion)"
             export HELM_UPGRADE_TARGET_REGISTRY="${{ parameters.dockerRegistry }}/dacs"

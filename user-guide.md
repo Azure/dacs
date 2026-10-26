@@ -83,7 +83,7 @@ Install the prerequisite chart to automatically set up RAID on each node:
 helm install dacs-prereq \
   oci://dacstest.azurecr.io/dacs/helmchart/dacs-prereq \
   --version <version> \
-  --namespace dacs-system \
+  --namespace cache-server \
   --create-namespace \
   --wait --timeout 10m
 ```
@@ -112,26 +112,23 @@ infrastructure through a Cache custom resource (CR).
 helm install dacs \
   oci://dacstest.azurecr.io/dacs/helmchart/dacs \
   --version <version> \
-  --namespace dacs-system \
+  --namespace cache-server \
   --create-namespace \
   --wait --timeout 10m
 ```
 
-### Step 3: Deploy a Cache Instance
+### Step 3: Apply an Example Cache
 
-Create a cache cluster by enabling the Cache CR:
+After the controller and prerequisites are ready, apply a standalone Cache:
 
 ```sh
-helm upgrade dacs \
-  oci://dacstest.azurecr.io/dacs/helmchart/dacs \
-  --version <version> \
-  --namespace dacs-system \
-  --set cache.enabled=true \
-  --set cache.scaling.static.numServers=3 \
-  --set cache.serverSizeInGB=100
+kubectl apply --namespace cache-server \
+  -f src/subsystems/cache-controller/charts/dacs/examples/cache/static.yaml
 ```
 
-The controller will create and manage the cache server StatefulSet automatically.
+Use [dynamic.yaml](src/subsystems/cache-controller/charts/dacs/examples/cache/dynamic.yaml)
+to scale with eligible nodes. Edit sizing, resources, and storage in the
+manifest. The controller creates and manages the CacheServer StatefulSet.
 
 Helm chart values are documented in the
 [dacs README](src/subsystems/cache-controller/charts/dacs/README.md).
@@ -141,7 +138,7 @@ Helm chart values are documented in the
 Check the controller is running:
 
 ```sh
-kubectl get pods -n dacs-system
+kubectl get pods -n cache-server -l app.kubernetes.io/name=dacs
 ```
 
 Expected output:
@@ -154,7 +151,7 @@ dacs-manager-xxxxxxx-xxxxx           1/1     Running   0          2m
 Check the Cache custom resource:
 
 ```sh
-kubectl get cache -n dacs-system
+kubectl get cache -n cache-server
 ```
 
 Expected output:
@@ -168,7 +165,7 @@ Check the discovery service. Cache clients use this service to discover
 CacheServers and connect on port `9065`:
 
 ```sh
-kubectl get service cache-sample-discovery -n dacs-system
+kubectl get service cache-sample-discovery -n cache-server
 ```
 
 Check the cache server pods (created by the controller). Pod names are
@@ -176,10 +173,10 @@ derived from the Cache CR name (default `cache-sample`):
 
 ```sh
 # List pods for a specific Cache CR
-kubectl get pods -n dacs-system -l dacs.azure.com/cache-name=cache-sample
+kubectl get pods -n cache-server -l dacs.azure.com/cache-name=cache-sample
 
 # Or list all cache server pods across all Cache CRs
-kubectl get pods -n dacs-system -l app=cacheserver
+kubectl get pods -n cache-server -l app=cacheserver
 ```
 
 Expected output:
@@ -201,84 +198,42 @@ The most common configuration options:
 helm upgrade dacs \
   oci://dacstest.azurecr.io/dacs/helmchart/dacs \
   --version <version> \
-  --namespace dacs-system \
-  --set cache.enabled=true \
-  --set cache.scaling.static.numServers=5 \
-  --set cache.serverSizeInGB=100 \
-  --set cache.serverThreads=160 \
-  --set cache.cpuLimit=8 \
-  --set cache.memoryLimitMB=8192
+  --namespace cache-server \
+  --set manager.logLevel=debug
 ```
 
-For a complete list of configuration options, see the
-[dacs README](src/subsystems/cache-controller/charts/dacs/README.md)
-and [values.yaml](src/subsystems/cache-controller/charts/dacs/values.yaml).
+For controller options, see the
+[dacs README](src/subsystems/cache-controller/charts/dacs/README.md).
 
-### Using a Values File
+### Using a Cache Manifest
 
-For complex configurations, create a `values.yaml` file:
-
-```yaml
-global:
-  registry: dacstest.azurecr.io
-
-manager:
-  image:
-    repository: dacs/cache-controller
-  cacheServerImage:
-    repository: dacs/cache-server
-
-cache:
-  enabled: true
-  scaling:
-    static:
-      numServers: 5
-  serverSizeInGB: 100
-  serverThreads: 160
-  cpuLimit: 8
-  memoryLimitMB: 8192
-  eviction:
-    enableAccessTimeEviction: true
-    evictionMaintainFreeSpace: true
-    sizeThreshold: "90"
-    sizeTarget: "80"
-    lastAccessThreshold: "30d"
-    passFrequency: "1h"
-  storage:
-    hostPath:
-      nodeCacheFolderPath: /var/lib/ssd/cacheserver
-```
-
-Install with the values file:
+Copy a manifest from
+[`examples`](src/subsystems/cache-controller/charts/dacs/examples),
+edit its fields, and reapply it independently of the controller Helm release:
 
 ```sh
-helm upgrade --install dacs \
-  oci://dacstest.azurecr.io/dacs/helmchart/dacs \
-  --version <version> \
-  --namespace dacs-system \
-  -f values.yaml
+kubectl apply --namespace cache-server -f my-cache.yaml
 ```
+
+Before upgrading a release that used `cache.enabled=true`, read the
+[migration warning](src/subsystems/cache-controller/charts/dacs/README.md#upgrade).
+Removing old values alone does not preserve a chart-owned Cache.
 
 ## Scale a cache
 
-For a statically scaled cache, update `numServers` with the same chart version
-used for the deployment:
+For a statically scaled Cache, update `spec.scaling.static.numServers` in its
+manifest and reapply it:
 
 ```sh
-helm upgrade dacs \
-  oci://dacstest.azurecr.io/dacs/helmchart/dacs \
-  --version <version> \
-  --namespace dacs-system \
-  --reuse-values \
-  --set cache.scaling.static.numServers=<server-count>
+kubectl apply --namespace cache-server -f my-cache.yaml
 ```
 
 Verify the requested replicas and pod readiness:
 
 ```sh
-kubectl get cache cache-sample -n dacs-system
+kubectl get cache cache-sample -n cache-server
 kubectl get pods \
-  -n dacs-system \
+  -n cache-server \
   --selector=dacs.azure.com/cache-name=cache-sample
 ```
 
@@ -292,26 +247,26 @@ and scaling status, see
 
 ```sh
 # Controller logs
-kubectl logs -n dacs-system -l app.kubernetes.io/name=dacs --prefix -f
+kubectl logs -n cache-server -l app.kubernetes.io/name=dacs --prefix -f
 
 # Cache server logs (all cache pods)
-kubectl logs -n dacs-system -l app=cacheserver --prefix --all-containers
+kubectl logs -n cache-server -l app=cacheserver --prefix --all-containers
 
 # Cache server logs (specific Cache CR)
-kubectl logs -n dacs-system -l dacs.azure.com/cache-name=cache-sample --prefix --all-containers
+kubectl logs -n cache-server -l dacs.azure.com/cache-name=cache-sample --prefix --all-containers
 
 # Events
-kubectl events -n dacs-system
+kubectl events -n cache-server
 ```
 
 ### Check Cache Status
 
 ```sh
 # View the Cache CR status
-kubectl get cache -n dacs-system
+kubectl get cache -n cache-server
 
 # Detailed status
-kubectl describe cache -n dacs-system
+kubectl describe cache -n cache-server
 ```
 
 ## Troubleshooting
@@ -321,7 +276,7 @@ kubectl describe cache -n dacs-system
 Check controller logs:
 
 ```sh
-kubectl logs -n dacs-system -l app.kubernetes.io/name=dacs -f
+kubectl logs -n cache-server -l app.kubernetes.io/name=dacs -f
 ```
 
 ### Cache CR Not Reconciling
@@ -329,13 +284,13 @@ kubectl logs -n dacs-system -l app.kubernetes.io/name=dacs -f
 Check the Cache resource status:
 
 ```sh
-kubectl describe cache -n dacs-system
+kubectl describe cache -n cache-server
 ```
 
 Check controller logs for reconciliation errors:
 
 ```sh
-kubectl logs -n dacs-system -l app.kubernetes.io/name=dacs -f
+kubectl logs -n cache-server -l app.kubernetes.io/name=dacs -f
 ```
 
 ### Pods Stuck in Pending
@@ -343,7 +298,7 @@ kubectl logs -n dacs-system -l app.kubernetes.io/name=dacs -f
 Check pod events and node labels:
 
 ```sh
-kubectl describe pod <cache-name>-0 -n dacs-system
+kubectl describe pod <cache-name>-0 -n cache-server
 kubectl get nodes --show-labels | grep dacs.azure.com/processing-unit
 ```
 
@@ -352,7 +307,7 @@ kubectl get nodes --show-labels | grep dacs.azure.com/processing-unit
 Check the prereq logs:
 
 ```sh
-kubectl logs -n dacs-system -l app.kubernetes.io/name=dacs-prereq -c nvme-raid-setup
+kubectl logs -n cache-server -l app.kubernetes.io/name=dacs-prereq -c nvme-raid-setup
 ```
 
 Common causes:
@@ -365,7 +320,7 @@ Common causes:
 Check logs:
 
 ```sh
-kubectl logs <cache-name>-0 -n dacs-system --previous
+kubectl logs <cache-name>-0 -n cache-server --previous
 ```
 
 ## Uninstall DACS
@@ -375,7 +330,7 @@ To uninstall DACS, follow these steps:
 1. Delete Cache custom resources first:
 
    ```sh
-   kubectl delete cache --all -n dacs-system
+   kubectl delete cache --all -n cache-server
    ```
 
    > [!NOTE]
@@ -384,13 +339,13 @@ To uninstall DACS, follow these steps:
 2. Uninstall the DACS controller:
 
    ```sh
-   helm uninstall dacs -n dacs-system
+   helm uninstall dacs -n cache-server
    ```
 
 3. Uninstall the prerequisites (optional):
 
    ```sh
-   helm uninstall dacs-prereq -n dacs-system
+   helm uninstall dacs-prereq -n cache-server
    ```
 
    > [!NOTE]
@@ -400,7 +355,7 @@ To uninstall DACS, follow these steps:
 4. Delete the namespace (optional):
 
    ```sh
-   kubectl delete namespace dacs-system
+   kubectl delete namespace cache-server
    ```
 
 ## Development and contribution
