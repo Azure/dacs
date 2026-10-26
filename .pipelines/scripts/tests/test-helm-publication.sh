@@ -32,6 +32,7 @@ assert_safe_labels() {
     local chart_package="${TEMP_DIR}/${chart_name}-${TEST_CHART_VERSION}.tgz"
     local rendered
 
+    helm dependency build "${chart_dir}" --skip-refresh >/dev/null
     helm package "${chart_dir}" \
         --destination "${TEMP_DIR}" \
         --version "${TEST_CHART_VERSION}" \
@@ -68,6 +69,13 @@ grep -Fq "example.azurecr.io/dacs/cache-controller:${container_version}" <<<"${r
 grep -Fq "example.azurecr.io/dacs/cache-server:${container_version}" <<<"${rendered_dacs}"
 rendered_prereq="$(helm template test-release "${OUTPUT_DIR}/dacs-prereq-${chart_version}.tgz")"
 grep -Fq "example.azurecr.io/dacs/cache-setup:${container_version}" <<<"${rendered_prereq}"
+
+for chart in cache-server dacs; do
+    rendered_parent="$(helm template test-release "${OUTPUT_DIR}/${chart}-${chart_version}.tgz" \
+        --set cacheServerPrereq.enabled=true)"
+    grep -Fq "example.azurecr.io/dacs/cache-setup:${container_version}" <<<"${rendered_parent}"
+    grep -Fq "helm.sh/hook: post-install,post-upgrade" <<<"${rendered_parent}"
+done
 
 grep -Fq "CACHE_CONTROLLER_CHART_VERSION=${chart_version}" "${METADATA_FILE}"
 grep -Fq "APP_VERSION=$("${REPOSITORY_ROOT}/.pipelines/scripts/get-version.sh" source)" "${METADATA_FILE}"

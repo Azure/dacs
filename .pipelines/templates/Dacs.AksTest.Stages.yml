@@ -56,6 +56,9 @@ parameters:
   - name: cacheStaticServers
     type: number
     default: 0
+  - name: bundledPrerequisites
+    type: boolean
+    default: true
   - name: resourcePrefix
     type: string
     default: aks-resilience
@@ -183,20 +186,6 @@ stages:
               RESOURCE_PREFIX: $(resourcePrefix)
 
           - task: AzureCLI@2
-            displayName: Deploy Cache Server Prerequisites
-            inputs:
-              azureSubscription: ${{ parameters.azureServiceConnection }}
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: |
-                set -euo pipefail
-                echo "Deploying cache-server prerequisites..."
-                make helm-prereq-install \
-                    DOCKER_REGISTRY="$DOCKER_REGISTRY" BUILD_NUMBER="$(cacheServerBuildNumber)"
-            env:
-              DOCKER_REGISTRY: ${{ parameters.dockerRegistry }}
-
-          - task: AzureCLI@2
             displayName: Deploy Cache Server
             inputs:
               azureSubscription: ${{ parameters.azureServiceConnection }}
@@ -205,14 +194,24 @@ stages:
               inlineScript: |
                 set -euo pipefail
                 echo "Deploying with chart=${{ parameters.helmChart }}, build=$(cacheServerBuildNumber)..."
+                prereq_enabled=true
+                if [[ "${BUNDLED_PREREQUISITES,,}" != true ]]; then
+                    make helm-prereq-install \
+                        DOCKER_REGISTRY="$DOCKER_REGISTRY" BUILD_NUMBER="$(cacheServerBuildNumber)"
+                    prereq_enabled=false
+                fi
                 if [[ "${{ parameters.helmChart }}" == dacs ]]; then
                     make helm-dacs-install \
+                        CACHE_SERVER_PREREQ_ENABLED="$prereq_enabled" \
+                        CACHE_SETUP_IMG="$DOCKER_REGISTRY/dacs/cache-setup" \
                         DOCKER_REGISTRY="$DOCKER_REGISTRY" BUILD_NUMBER="$(cacheServerBuildNumber)" \
                         DACS_CACHE_CHART_REPO=dacs/helmchart/dacs \
                         DACS_CACHE_CHART_VERSION="$(cacheServerChartVersion)" \
                         HELM_ARGS="--set global.registry= --set manager.image.repository=$DOCKER_REGISTRY/dacs/cache-controller --set manager.cacheServerImage.repository=$DOCKER_REGISTRY/dacs/cache-server $EXTRA_HELM_ARGS"
                 else
                     make helm-install \
+                        CACHE_SERVER_PREREQ_ENABLED="$prereq_enabled" \
+                        CACHE_SETUP_IMG="$DOCKER_REGISTRY/dacs/cache-setup" \
                         DOCKER_REGISTRY="$DOCKER_REGISTRY" BASE_REPO="$DOCKER_REGISTRY/dacs" \
                         BUILD_NUMBER="$(cacheServerBuildNumber)" \
                         HELM_CHART_REPO=dacs/helmchart/cache-server \
@@ -222,6 +221,7 @@ stages:
             env:
               DOCKER_REGISTRY: ${{ parameters.dockerRegistry }}
               EXTRA_HELM_ARGS: ${{ parameters.helmArgs }}
+              BUNDLED_PREREQUISITES: ${{ parameters.bundledPrerequisites }}
 
           - ${{ if and(eq(parameters.helmChart, 'dacs'), ne(parameters.cacheFixture, '')) }}:
               - task: AzureCLI@2

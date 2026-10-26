@@ -15,6 +15,11 @@
 # Default values for dacs-prereq
 
 # Base name used for all resources (DaemonSet, ServiceAccount, Role, RoleBinding)
+global:
+  registry: ""
+  registryMode: legacy
+  imagePullSecrets: []
+
 name: dacs-prereq
 
 # Node selector for targeting NVMe-capable nodes
@@ -37,6 +42,21 @@ updateStrategy:
   type: RollingUpdate
   rollingUpdate:
     maxUnavailable: "10%"
+
+# Post-install/upgrade verification of the latest DaemonSet rollout.
+rolloutCheck:
+  timeoutSeconds: 600
+  image:
+    repository: mcr.microsoft.com/oss/v2/kubernetes/kubectl
+    tag: v1.35.9
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
 
 # nvme-raid-setup init container settings
 nvmeRaidSetup:

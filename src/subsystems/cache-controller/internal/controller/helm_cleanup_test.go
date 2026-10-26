@@ -34,6 +34,9 @@ func TestHelmStandaloneCache(t *testing.T) {
 	if err != nil {
 		t.Skip("helm is required for chart rendering tests")
 	}
+	if output, err := exec.Command(helm, "dependency", "build", "../../charts/dacs", "--skip-refresh").CombinedOutput(); err != nil {
+		t.Fatalf("building chart dependencies: %v\n%s", err, output)
+	}
 	for _, tt := range []struct {
 		name    string
 		args    []string
@@ -67,6 +70,9 @@ func TestHelmCacheCleanup(t *testing.T) {
 	helm, err := exec.LookPath("helm")
 	if err != nil {
 		t.Skip("helm is required for chart rendering tests")
+	}
+	if output, err := exec.Command(helm, "dependency", "build", "../../charts/dacs", "--skip-refresh").CombinedOutput(); err != nil {
+		t.Fatalf("building chart dependencies: %v\n%s", err, output)
 	}
 	chart := "../../charts/dacs"
 	script, err := os.ReadFile(filepath.Join(chart, "scripts/pre-delete-cache-cleanup.sh"))

@@ -58,44 +58,43 @@ package_chart() (
     local CHART_NAME="$2"
 
     local CHART_PACKAGE="$OUTPUT_DIR/$CHART_NAME-$CHART_VERSION.tgz"
-    local CHART_DESCRIPTION
     local CHART_STAGE
-    CHART_DESCRIPTION="$(grep '^description:' "$CHART_DIR/Chart.yaml" | cut -d: -f2- | xargs)"
     CHART_STAGE="$(mktemp -d "$OUTPUT_DIR/.${CHART_NAME}.XXXXXX")"
     trap 'rm -rf -- "$CHART_STAGE"' EXIT
 
     cp -a "$CHART_DIR/." "$CHART_STAGE/"
 
-    cat > "$CHART_STAGE/Chart.yaml" << EOF
-apiVersion: v2
-name: $CHART_NAME
-description: $CHART_DESCRIPTION
-type: application
-version: $CHART_VERSION
-appVersion: "$CONTAINER_VERSION"
-EOF
+    if [[ "$CHART_NAME" != dacs-prereq ]]; then
+        mkdir -p "$CHART_STAGE/charts"
+        rm -f "$CHART_STAGE/charts"/dacs-prereq-*.tgz
+        cp -a "$REPOSITORY_ROOT/helm/dacs-prereq" "$CHART_STAGE/charts/dacs-prereq"
+        sed -i "s|^appVersion:.*|appVersion: \"$CONTAINER_VERSION\"|" \
+            "$CHART_STAGE/charts/dacs-prereq/Chart.yaml"
+    fi
 
     # Update values.yaml with the build registry and image versions.
-    if [[ -f "$CHART_STAGE/values.yaml" ]]; then
+    local VALUES_FILE
+    for VALUES_FILE in "$CHART_STAGE/values.yaml" "$CHART_STAGE/charts/dacs-prereq/values.yaml"; do
+        [[ -f "$VALUES_FILE" ]] || continue
         sed -i -E \
             "s#^([[:space:]]*registry:)[[:space:]]*dacstest\.azurecr\.io\$#\\1 $REGISTRY#" \
-            "$CHART_STAGE/values.yaml"
+            "$VALUES_FILE"
         sed -i -E \
             "s#^([[:space:]]*repository:)[[:space:]]*(acstor/dacs-server|cache-server)\$#\\1 $REGISTRY/dacs/cache-server#" \
-            "$CHART_STAGE/values.yaml"
+            "$VALUES_FILE"
         sed -i -E \
             "s#^([[:space:]]*repository:)[[:space:]]*(acstor/dacs-scheduler|cacheserver-scheduler)\$#\\1 $REGISTRY/dacs/cacheserver-scheduler#" \
-            "$CHART_STAGE/values.yaml"
+            "$VALUES_FILE"
         sed -i -E \
             "s#^([[:space:]]*repository:)[[:space:]]*(acstor/dacs-controller|cache-controller)\$#\\1 $REGISTRY/dacs/cache-controller#" \
-            "$CHART_STAGE/values.yaml"
+            "$VALUES_FILE"
         sed -i -E \
             "s#^([[:space:]]*repository:)[[:space:]]*cache-setup\$#\\1 $REGISTRY/dacs/cache-setup#" \
-            "$CHART_STAGE/values.yaml"
+            "$VALUES_FILE"
         sed -i -E \
             "s#^([[:space:]]*tag:)[[:space:]]*\"\".*\$#\\1 \"$CONTAINER_VERSION\"#" \
-            "$CHART_STAGE/values.yaml"
-    fi
+            "$VALUES_FILE"
+    done
 
     # Package the chart (empty tag in values.yaml defaults to appVersion)
     helm package "$CHART_STAGE" -d "$OUTPUT_DIR" \

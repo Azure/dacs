@@ -32,6 +32,10 @@ spec:
         kubectl.kubernetes.io/default-container: nvme-raid-setup
     spec:
       hostPID: true
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- if .Values.priorityClassName }}
       priorityClassName: {{ .Values.priorityClassName }}
       {{- end }}
@@ -46,7 +50,7 @@ spec:
       serviceAccountName: {{ .Values.name }}
       initContainers:
         - name: nvme-raid-setup
-          image: "{{ .Values.nvmeRaidSetup.image.repository }}:{{ .Values.nvmeRaidSetup.image.tag | default .Chart.AppVersion }}"
+          image: {{ include "dacs-prereq.image" (dict "global" .Values.global "image" .Values.nvmeRaidSetup.image "appVersion" .Chart.AppVersion) | quote }}
           imagePullPolicy: {{ .Values.nvmeRaidSetup.image.pullPolicy }}
           securityContext:
             privileged: true
@@ -115,7 +119,7 @@ spec:
             {{- toYaml .Values.nvmeRaidSetup.resources | nindent 12 }}
       containers:
         - name: pause
-          image: "{{ .Values.pauseContainer.image.repository }}:{{ .Values.pauseContainer.image.tag }}"
+          image: {{ include "dacs-prereq.image" (dict "global" .Values.global "image" .Values.pauseContainer.image "appVersion" .Chart.AppVersion) | quote }}
           imagePullPolicy: {{ .Values.pauseContainer.image.pullPolicy }}
           command:
             - sleep

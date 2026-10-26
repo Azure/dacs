@@ -64,18 +64,14 @@ var (
 	// Optional Environment Variables:
 	// - INSTALL=true: Install DACS components before tests. Default is to
 	//   skip installation (assumes components are already deployed).
-	// - INSTALL_PREREQ=true: Install dacs-prereq before tests. Default
-	//   is to skip installation.
+	// - CACHE_SERVER_PREREQ_ENABLED=true: Include NVMe prerequisites when
+	//   installing the parent chart. Default is false.
 	// - UNINSTALL=true: Uninstall DACS components after tests. Default is
 	//   to skip uninstallation.
-	// - UNINSTALL_PREREQ=true: Uninstall dacs-prereq after tests.
-	//   Default is to skip uninstallation.
 	// - SKIP_SUPPORT_BUNDLE=true: Skips collecting support bundle after the
 	//   test.
 	doInstall         = os.Getenv("INSTALL") == trueString
-	doInstallPrereq   = os.Getenv("INSTALL_PREREQ") == trueString
 	doUninstall       = os.Getenv("UNINSTALL") == trueString
-	doUninstallPrereq = os.Getenv("UNINSTALL_PREREQ") == trueString
 	skipSupportBundle = os.Getenv("SKIP_SUPPORT_BUNDLE") == trueString
 
 	startTime     = time.Now()
@@ -156,21 +152,12 @@ func Setup(ctx context.Context, k8sClient client.Client, namespace string) {
 		}
 	}).WithContext(ctx).Should(Succeed(), "Namespace creation failed or namespace not found")
 
-	if doInstallPrereq {
-		By("deploying cache server prerequisites")
-		cmd = exec.CommandContext(ctx, "make", "helm-prereq-install")
-		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to deploy cache server prerequisites")
-	} else {
-		log.Info("Skipping dacs-prereq installation (set INSTALL_PREREQ=true to install)")
-	}
-
 	By("deploying cache server")
 	Eventually(func(g Gomega, ctx context.Context) {
 		cmd = exec.CommandContext(ctx, "make", "helm-install")
 		_, err = utils.Run(cmd)
 		g.Expect(err).NotTo(HaveOccurred(), "Failed to deploy cache server")
-	}).WithTimeout(5*time.Minute).WithContext(ctx).Should(Succeed(), "Failed to deploy cache server")
+	}).WithTimeout(20*time.Minute).WithContext(ctx).Should(Succeed(), "Failed to deploy cache server")
 
 	ensureCacheReady(ctx, k8sClient, namespace, LegacyStatefulSetName, false)
 }
@@ -237,17 +224,6 @@ func Teardown(ctx context.Context, k8sClient client.Client, namespace string, su
 		_, err := utils.Run(cmd)
 		g.Expect(err).NotTo(HaveOccurred(), "Failed to uninstall DACS")
 	}).WithTimeout(5*time.Minute).WithContext(ctx).Should(Succeed(), "Failed to uninstall DACS")
-
-	if doUninstallPrereq {
-		By("uninstalling cache server prerequisites")
-		Eventually(func(g Gomega, ctx context.Context) {
-			cmd := exec.CommandContext(ctx, "make", "helm-prereq-uninstall")
-			_, err := utils.Run(cmd)
-			g.Expect(err).NotTo(HaveOccurred(), "Failed to uninstall cache server prerequisites")
-		}).WithTimeout(5*time.Minute).WithContext(ctx).Should(Succeed(), "Failed to uninstall cache server prerequisites")
-	} else {
-		log.Info("Skipping dacs-prereq uninstallation (set UNINSTALL_PREREQ=true to uninstall)")
-	}
 
 	if namespace != "kube-system" && namespace != "dacs" {
 		By("removing namespace")

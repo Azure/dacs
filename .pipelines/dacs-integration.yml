@@ -254,6 +254,7 @@ extends:
       - template: /.pipelines/templates/Dacs.AksTest.Stages.yml@self
         parameters:
           stageName: AksHelmUpgrade
+          bundledPrerequisites: false
           stageDisplayName: AKS Helm Upgrade
           testPackage: ./test/aks
           testFilter: aks && helm-upgrade

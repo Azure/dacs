@@ -162,6 +162,8 @@ minikube-clean: ## Delete the Minikube cluster.
 
 HELM_NAMESPACE ?= cache-server
 HELM_ARGS ?=
+HELM_TIMEOUT ?= 15m
+CACHE_SERVER_PREREQ_ENABLED ?= false
 
 # Local image settings for minikube
 LOCAL_CACHE_SERVER_IMG ?= cache-server
@@ -184,13 +186,17 @@ DACS_CACHE_CHART_VERSION ?= $(DACS_CACHE_CHART_BASE_VERSION)-$(BUILD_NUMBER)
 DACS_CACHE_NAMESPACE ?= cache-server
 
 define helm_install
+$(HELM_BIN) dependency build ./helm/cache-server
 $(HELM_BIN) upgrade --install cache-server ./helm/cache-server \
 	--namespace $(HELM_NAMESPACE) --create-namespace \
 	--set cacheServer.image.repository=$(1) \
 	--set cacheServer.image.tag=$(2) \
 	--set cacheServer.scheduler.image.repository=$(3) \
 	--set cacheServer.scheduler.image.tag=$(4) \
-	--wait --timeout 10m --atomic $(HELM_ARGS)
+	--set cacheServerPrereq.enabled=$(CACHE_SERVER_PREREQ_ENABLED) \
+	--set cacheServerPrereq.nvmeRaidSetup.image.repository=$(CACHE_SETUP_IMG) \
+	--set-string cacheServerPrereq.nvmeRaidSetup.image.tag=$(IMAGE_TAG) \
+	--wait --timeout $(HELM_TIMEOUT) --atomic $(HELM_ARGS)
 endef
 
 define helm_install_remote
@@ -201,7 +207,10 @@ $(HELM_BIN) upgrade --install cache-server oci://$(DOCKER_REGISTRY)/$(HELM_CHART
 	--set cacheServer.image.tag=$(IMAGE_TAG) \
 	--set cacheServer.scheduler.image.repository=$(SCHEDULER_IMG) \
 	--set cacheServer.scheduler.image.tag=$(IMAGE_TAG) \
-	--wait --timeout 10m --atomic $(HELM_ARGS)
+	--set cacheServerPrereq.enabled=$(CACHE_SERVER_PREREQ_ENABLED) \
+	--set cacheServerPrereq.nvmeRaidSetup.image.repository=$(CACHE_SETUP_IMG) \
+	--set-string cacheServerPrereq.nvmeRaidSetup.image.tag=$(IMAGE_TAG) \
+	--wait --timeout $(HELM_TIMEOUT) --atomic $(HELM_ARGS)
 endef
 
 # Login to ACR for Helm if the registry is an Azure Container Registry
@@ -219,15 +228,15 @@ fi
 endef
 
 .PHONY: helm-prereq-install
-helm-prereq-install: helm ## Deploy dacs-prereq chart for NVMe RAID setup.
+helm-prereq-install: helm ## Deploy standalone NVMe prerequisites for older parent charts.
 	$(HELM_BIN) upgrade --install dacs-prereq ./helm/dacs-prereq \
 		--namespace $(HELM_NAMESPACE) --create-namespace \
 		--set nvmeRaidSetup.image.repository=$(CACHE_SETUP_IMG) \
-		--set nvmeRaidSetup.image.tag=$(IMAGE_TAG) \
-		--wait --timeout 10m --atomic $(HELM_ARGS)
+		--set-string nvmeRaidSetup.image.tag=$(IMAGE_TAG) \
+		--wait --timeout $(HELM_TIMEOUT) --atomic $(HELM_ARGS)
 
 .PHONY: helm-prereq-uninstall
-helm-prereq-uninstall: helm ## Uninstall dacs-prereq chart.
+helm-prereq-uninstall: helm ## Uninstall standalone NVMe prerequisites.
 	$(HELM_BIN) uninstall dacs-prereq --namespace $(HELM_NAMESPACE) --ignore-not-found --wait
 
 .PHONY: teardown-raid
@@ -260,6 +269,7 @@ helm-uninstall: helm ## Uninstall cache-server chart.
 ##@ DACS Cache Controller Helm (New Controller)
 
 define helm_install_dacs_cache
+$(HELM_BIN) dependency build ./$(DACS_CACHE_CHART_PATH)
 $(HELM_BIN) upgrade --install dacs ./$(DACS_CACHE_CHART_PATH) \
 	--namespace $(DACS_CACHE_NAMESPACE) --create-namespace \
 	--set-string global.registry= \
@@ -267,7 +277,10 @@ $(HELM_BIN) upgrade --install dacs ./$(DACS_CACHE_CHART_PATH) \
 	--set manager.image.tag=$(2) \
 	--set manager.cacheServerImage.repository=$(LOCAL_CACHE_SERVER_IMG) \
 	--set manager.cacheServerImage.tag=$(LOCAL_CACHE_SERVER_TAG) \
-	--wait --timeout 5m --atomic $(HELM_ARGS)
+	--set cacheServerPrereq.enabled=$(CACHE_SERVER_PREREQ_ENABLED) \
+	--set cacheServerPrereq.nvmeRaidSetup.image.repository=$(CACHE_SETUP_IMG) \
+	--set-string cacheServerPrereq.nvmeRaidSetup.image.tag=$(IMAGE_TAG) \
+	--wait --timeout $(HELM_TIMEOUT) --atomic $(HELM_ARGS)
 endef
 
 define helm_install_dacs_cache_remote
@@ -277,7 +290,10 @@ $(HELM_BIN) upgrade --install dacs oci://$(DOCKER_REGISTRY)/$(DACS_CACHE_CHART_R
 	--set global.registry=$(DOCKER_REGISTRY) \
 	--set manager.image.tag=$(IMAGE_TAG) \
 	--set manager.cacheServerImage.tag=$(IMAGE_TAG) \
-	--wait --timeout 5m --atomic $(HELM_ARGS)
+	--set cacheServerPrereq.enabled=$(CACHE_SERVER_PREREQ_ENABLED) \
+	--set cacheServerPrereq.nvmeRaidSetup.image.repository=$(CACHE_SETUP_IMG) \
+	--set-string cacheServerPrereq.nvmeRaidSetup.image.tag=$(IMAGE_TAG) \
+	--wait --timeout $(HELM_TIMEOUT) --atomic $(HELM_ARGS)
 endef
 
 .PHONY: helm-dacs-install
@@ -303,14 +319,14 @@ ifeq ($(CONTROLLER),new)
 ifeq ($(CLUSTER_TYPE),minikube)
 	@$(MAKE) helm-dacs-install
 else
-	@$(MAKE) helm-prereq-install helm-dacs-install
+	@$(MAKE) helm-dacs-install CACHE_SERVER_PREREQ_ENABLED=true
 endif
 else
 	@echo "Deploying with old controller (cache-server helm chart)..."
 ifeq ($(CLUSTER_TYPE),minikube)
 	@$(MAKE) helm-install
 else
-	@$(MAKE) helm-prereq-install helm-install
+	@$(MAKE) helm-install CACHE_SERVER_PREREQ_ENABLED=true
 endif
 endif
 	@echo "Deployment complete (CONTROLLER=$(CONTROLLER))."

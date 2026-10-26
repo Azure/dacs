@@ -67,25 +67,25 @@ To install Helm, please follow the official [Helm installation guide](https://he
 
 ## Install DACS
 
-Use the same release version for the prerequisite and DACS charts. The DACS
-chart's `appVersion` identifies the matching container-safe image tag. If you
+The DACS chart bundles optional NVMe prerequisites. Its `appVersion`
+identifies the matching container-safe image tag. If you
 override image settings, keep
 `dacstest.azurecr.io/dacs/cache-controller`,
 `dacstest.azurecr.io/dacs/cache-server`, and
 `dacstest.azurecr.io/dacs/cache-test-client` on that matching version.
 
-### Step 1: Install NVMe RAID Prerequisites (Required)
+### Step 1: Install the Controller with NVMe Prerequisites
 
-The cache server requires local NVMe storage to be configured as a RAID array.
-Install the prerequisite chart to automatically set up RAID on each node:
+Enable the bundled dependency to prepare local NVMe storage:
 
 ```sh
-helm install dacs-prereq \
-  oci://dacstest.azurecr.io/dacs/helmchart/dacs-prereq \
+helm install dacs \
+  oci://dacstest.azurecr.io/dacs/helmchart/dacs \
   --version <version> \
   --namespace cache-server \
   --create-namespace \
-  --wait --timeout 10m
+  --set cacheServerPrereq.enabled=true \
+  --atomic --timeout 15m
 ```
 
 When installed, a DaemonSet will automatically:
@@ -99,25 +99,14 @@ When installed, a DaemonSet will automatically:
 > The RAID setup is idempotent. If a RAID array already exists, the script
 > will detect it and skip creation.
 >
-> The init container requests 512 MiB of memory and has a 2 GiB limit. The
-> higher limit accommodates Azure Linux package metadata refreshes while the
-> storage utilities are installed.
+> The init container requests 512 MiB of memory and has a 2 GiB limit.
+> Storage tools are preinstalled in the cache-setup image.
 
-### Step 2: Install DACS Cache Controller
+Wait for the release and its prerequisite rollout check to succeed before
+creating a Cache. The hook does not block workloads created in the same
+operation or stop existing Cache workloads during storage maintenance.
 
-The `dacs` chart deploys a Kubernetes controller that manages cache
-infrastructure through a Cache custom resource (CR).
-
-```sh
-helm install dacs \
-  oci://dacstest.azurecr.io/dacs/helmchart/dacs \
-  --version <version> \
-  --namespace cache-server \
-  --create-namespace \
-  --wait --timeout 10m
-```
-
-### Step 3: Apply an Example Cache
+### Step 2: Deploy a Cache Instance
 
 After the controller and prerequisites are ready, apply a standalone Cache:
 
@@ -194,11 +183,14 @@ cache-sample-2    1/1     Running   0          2m
 
 The most common configuration options:
 
+These commands update an existing release after storage setup succeeds.
+
 ```sh
 helm upgrade dacs \
   oci://dacstest.azurecr.io/dacs/helmchart/dacs \
   --version <version> \
   --namespace cache-server \
+  --reuse-values \
   --set manager.logLevel=debug
 ```
 
@@ -307,7 +299,7 @@ kubectl get nodes --show-labels | grep dacs.azure.com/processing-unit
 Check the prereq logs:
 
 ```sh
-kubectl logs -n cache-server -l app.kubernetes.io/name=dacs-prereq -c nvme-raid-setup
+kubectl logs -n cache-server -l app.kubernetes.io/component=nvme-setup,app.kubernetes.io/instance=dacs -c nvme-raid-setup
 ```
 
 Common causes:
@@ -342,17 +334,11 @@ To uninstall DACS, follow these steps:
    helm uninstall dacs -n cache-server
    ```
 
-3. Uninstall the prerequisites (optional):
-
-   ```sh
-   helm uninstall dacs-prereq -n cache-server
-   ```
-
    > [!NOTE]
-   > Uninstalling the prereq chart does **not** remove the RAID array or data.
+   > Uninstalling the parent chart removes its prerequisite resources but does **not** remove the RAID array or data.
    > The array persists on the node until manually removed.
 
-4. Delete the namespace (optional):
+3. Delete the namespace (optional):
 
    ```sh
    kubectl delete namespace cache-server
