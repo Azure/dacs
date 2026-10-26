@@ -186,7 +186,7 @@ namespace ibutils
                 bDeviceFound = true;
                 LOG_INFO("Found active IB device: {},{}:{},{},{},{},{},{},{}",
                     deviceId, (devices.get())[deviceId]->name, port, devAttr.sys_image_guid, portAttr.active_speed,
-                    portAttr.active_width, portAttr.active_mtu, devAttr.max_qp, portAttr.lid);
+                    portAttr.active_width, static_cast<int>(portAttr.active_mtu), devAttr.max_qp, portAttr.lid);
                 break;
             }
 

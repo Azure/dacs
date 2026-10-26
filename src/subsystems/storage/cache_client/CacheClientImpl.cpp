@@ -446,7 +446,7 @@ CacheClientStatus CacheClientImpl::Upload(
             LOG_WARN_CACHECLIENT_EXTENDED(
                 "Upload to server failed, error: {}",
                 *uploadRequest,
-                response.result());
+                static_cast<int>(response.result()));
             status = CacheClientStatus::INTERNAL_ERROR;
         }
 
@@ -626,7 +626,7 @@ CacheClientStatus CacheClientImpl::Download(
     LOG_DEBUG_CACHECLIENT_EXTENDED(
         "Download response: {}, filesize: {}, isFullDownload: {}",
         *downloadRequest,
-        response.result(),
+        static_cast<int>(response.result()),
         response.filesize(),
         response.isfulldownload());
 
@@ -949,7 +949,7 @@ CacheClientStatus CacheClientImpl::DeleteGroupFromServer(
     default:
         LOG_ERROR_REQID("Delete request failed due to unknown response: {}, for server: {}",
                         *deleteGroupRequest,
-                        response.result(),
+                        static_cast<int>(response.result()),
                         hostname);
         m_spConnectionManager->ReleaseConnection(hostname, std::move(connection), true);
         return CacheClientStatus::INTERNAL_ERROR;
@@ -1060,7 +1060,7 @@ CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
 
         LOG_INFO_REQID("Last access time distribution response from server: {}, for server: {}",
                        *lastAccessTimeDistributionRequest,
-                       response.result(),
+                       static_cast<int>(response.result()),
                        hostname);
 
         switch (response.result())
@@ -1082,7 +1082,7 @@ CacheClientStatus CacheClientImpl::GetLastAccessTimeDistribution(
         default:
             LOG_ERROR_REQID("Last access time distribution request failed due to unknown response: {}, for server: {}",
                             *lastAccessTimeDistributionRequest,
-                            response.result(),
+                            static_cast<int>(response.result()),
                             hostname);
             return CacheClientStatus::INTERNAL_ERROR;
         }
@@ -1210,7 +1210,7 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
         LOG_INFO_REQID("Delete by last access request for time {} completed with response: {}, for server: {}",
                             *deleteByLastAccessTimeRequest,
                             lastAccessTime,
-                            response.result(),
+                            static_cast<int>(response.result()),
                             hostname);
 
         switch(response.result())
@@ -1227,7 +1227,7 @@ CacheClientStatus CacheClientImpl::DeleteByLastAccessTime(/*[in]*/ const char* l
         default:
             LOG_ERROR_REQID("Delete by last access request failed due to unknown response: {}, for server: {}",
                             *deleteByLastAccessTimeRequest,
-                            response.result(),
+                            static_cast<int>(response.result()),
                             hostname);
             return CacheClientStatus::INTERNAL_ERROR;
         }

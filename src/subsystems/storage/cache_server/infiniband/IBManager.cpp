@@ -131,7 +131,7 @@ bool IBManager::Init()
     LOG_INFO("Configured IB device: {},{},{},{},{},{}",
         m_ibDevice.port,
         m_ibDevice.lid,
-        m_ibDevice.mtu,
+        static_cast<int>(m_ibDevice.mtu),
         m_ibDevice.sendCQ->cqe,
         devAttr.max_qp,
         devAttr.max_qp_wr);
@@ -328,7 +328,7 @@ void IBManager::IBListenerThread()
 
             if (wc.opcode != IBV_WC_RECV)
             {
-                LOG_CRITICAL("Received unexpected completion opcode: {}", wc.opcode);
+                LOG_CRITICAL("Received unexpected completion opcode: {}", static_cast<int>(wc.opcode));
                 continue;
             }
 

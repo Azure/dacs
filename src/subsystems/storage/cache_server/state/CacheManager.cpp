@@ -946,7 +946,7 @@ void CacheManager::EvictionWorker()
             // Use dynamic eviction threshold that adapts based on cache size and access patterns
             evictionThreshold = CalculateDynamicEvictionThreshold();
             LOG_INFO("Using dynamic eviction threshold: {}",
-                     LOG_READABLE_TIME_UTC(evictionThreshold));
+                     fmt::streamed(LOG_READABLE_TIME_UTC(evictionThreshold)));
         }
         else
         {
@@ -956,7 +956,7 @@ void CacheManager::EvictionWorker()
                 ? 0
                 : now - static_cast<time_t>(m_nEvictionLastAccessThresholdSeconds);
             LOG_INFO("Using fixed eviction threshold: {}", 
-                     LOG_READABLE_TIME_UTC(evictionThreshold));
+                     fmt::streamed(LOG_READABLE_TIME_UTC(evictionThreshold)));
         }
         if(evictionThreshold <= 0)
         {
@@ -974,7 +974,7 @@ void CacheManager::EvictByAccessTime(time_t nEvictionLastAccessTime)
     int nNumFilesDeleted = 0;
     vector<string> vecFilesToDelete;
     LOG_INFO("Started evict by access time, Eviction last access time: {}", 
-             LOG_READABLE_TIME_UTC(nEvictionLastAccessTime));
+             fmt::streamed(LOG_READABLE_TIME_UTC(nEvictionLastAccessTime)));
 
     for(size_t bucket = 0; bucket < static_cast<size_t>(NUM_MAPS); bucket++)
     {
@@ -1049,7 +1049,7 @@ void CacheManager::EvictByAccessTime(time_t nEvictionLastAccessTime)
 
     m_totalCachedSize.fetch_sub(nDeleteFileSize);
     LOG_INFO("Delete files by access time: {}, num files: {}, size: {}", 
-             LOG_READABLE_TIME_UTC(nEvictionLastAccessTime), 
+             fmt::streamed(LOG_READABLE_TIME_UTC(nEvictionLastAccessTime)),
              nNumFilesDeleted, 
              nDeleteFileSize);
     for (auto& filename : vecFilesToDelete)
@@ -1096,7 +1096,7 @@ bool CacheManager::GetLastAccessTimeDistribution(
     for (auto it = lastAccessTimeDistribution.begin(); it != lastAccessTimeDistribution.end(); ++it)
     {
         LOG_DEBUG("Last access time: {}, size: {}", 
-                  LOG_READABLE_TIME_UTC(it->first), 
+                  fmt::streamed(LOG_READABLE_TIME_UTC(it->first)),
                   it->second);
     }
 
@@ -1162,7 +1162,7 @@ time_t CacheManager::CalculateDynamicEvictionThreshold()
     evictionThreshold = lastBucketTimestamp + (time_t)m_nEvictionBucketIntervalSeconds; // round up to include all entries in this bucket
 
     LOG_INFO("Dynamic eviction threshold calculated: {}, will evict ~{} bytes, bucketIntervalSec={}, sizeToEvict={}", 
-             LOG_READABLE_TIME_UTC(evictionThreshold), 
+             fmt::streamed(LOG_READABLE_TIME_UTC(evictionThreshold)),
              accumulatedSize,
              m_nEvictionBucketIntervalSeconds,
              sizeToEvict);

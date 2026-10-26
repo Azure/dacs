@@ -86,7 +86,7 @@ bool UploadWithRetries(
 
         if(eStatus != CacheClientStatus::SUCCESS)
         {
-            LOG_WARN("Upload {} failed with error {}", strFileName, eStatus);
+            LOG_WARN("Upload {} failed with error {}", strFileName, static_cast<int>(eStatus));
             nGlobalFailureCounter++;
         }
         else
@@ -114,7 +114,7 @@ bool DownloadWithRetries(
 
         if(eStatus != CacheClientStatus::SUCCESS)
         {
-            LOG_WARN("Download {} failed with error {}", strFileName, eStatus);
+            LOG_WARN("Download {} failed with error {}", strFileName, static_cast<int>(eStatus));
             nGlobalFailureCounter++;
         }
         else
@@ -765,7 +765,7 @@ int PerfClient(int argc, char *argv[])
 
     if (initStatus != CacheClientStatus::SUCCESS)
     {
-        LOG_CRITICAL("Failed to initialize cache client with error {}", initStatus);
+        LOG_CRITICAL("Failed to initialize cache client with error {}", static_cast<int>(initStatus));
         return static_cast<int>(initStatus);
     }
 
@@ -942,7 +942,7 @@ int EvictionClient(int argc, char* argv[])
 
     if (initStatus != CacheClientStatus::SUCCESS)
     {
-        LOG_CRITICAL("Failed to initialize cache client with error {}", initStatus);
+        LOG_CRITICAL("Failed to initialize cache client with error {}", static_cast<int>(initStatus));
         return static_cast<int>(initStatus);
     }
 
@@ -953,7 +953,7 @@ int EvictionClient(int argc, char* argv[])
 
     if (status != CacheClientStatus::SUCCESS)
     {
-        LOG_CRITICAL("Failed to request eviction, return code: {}", status);
+        LOG_CRITICAL("Failed to request eviction, return code: {}", static_cast<int>(status));
         return static_cast<int>(status);
     }
     else
@@ -997,7 +997,7 @@ int LastAccessTimeDistributionClient(int argc, char* argv[])
 
     if (initStatus != CacheClientStatus::SUCCESS)
     {
-        LOG_CRITICAL("Failed to initialize cache client with error {}", initStatus);
+        LOG_CRITICAL("Failed to initialize cache client with error {}", static_cast<int>(initStatus));
         return static_cast<int>(initStatus);
     }
 
@@ -1010,7 +1010,7 @@ int LastAccessTimeDistributionClient(int argc, char* argv[])
 
     if (status != CacheClientStatus::SUCCESS)
     {
-        LOG_CRITICAL("Failed to get last access distribution, return code: {}", status);
+        LOG_CRITICAL("Failed to get last access distribution, return code: {}", static_cast<int>(status));
         return static_cast<int>(status);
     }
     else

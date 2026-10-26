@@ -278,7 +278,7 @@ TokenInfo BlobAuthTokenProvider::ExecuteWithRetry(
             else
             {
                 LOG_ERROR("{}: non-retryable curl error: {} ({})",
-                          context, curl_easy_strerror(response.curlCode), response.curlCode);
+                          context, curl_easy_strerror(response.curlCode), static_cast<int>(response.curlCode));
                 throw RemoteClientException(
                     "CurlError: " + context + ": " + std::string(curl_easy_strerror(response.curlCode)));
             }
@@ -685,7 +685,7 @@ HttpResponse BlobAuthTokenProvider::PerformCurlRequestWithHeaders(const std::str
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 
-    LOG_INFO("CURL response code: {}, http status code: {}", response.curlCode, response.statusCode);
+    LOG_INFO("CURL response code: {}, http status code: {}", static_cast<int>(response.curlCode), response.statusCode);
     return response;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -735,7 +735,7 @@ HttpResponse BlobAuthTokenProvider::PerformCurlPostRequest(const std::string& ur
     curl_slist_free_all(headers);
     // unique_ptr will handle cleanup
 
-    LOG_INFO("CURL POST response code: {}, http status code: {}", response.curlCode, response.statusCode);
+    LOG_INFO("CURL POST response code: {}, http status code: {}", static_cast<int>(response.curlCode), response.statusCode);
     return response;
 }
 //---------------------------------------------------------------------------------------------------------------------

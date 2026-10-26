@@ -14,9 +14,9 @@
 
 ExternalProject_Add(
         fmt
-        # Pin the official fmt 8.1.1 release archive by SHA-256.
-        URL "https://github.com/fmtlib/fmt/releases/download/8.1.1/fmt-8.1.1.zip"
-        URL_HASH "SHA256=23778bad8edba12d76e4075da06db591f3b0e3c6c04928ced4a7282ca3400e5d"
+        # Pin the official fmt 9.1.0 release archive by SHA-256.
+        URL "https://github.com/fmtlib/fmt/releases/download/9.1.0/fmt-9.1.0.zip"
+        URL_HASH "SHA256=cceb4cb9366e18a5742128cb3524ce5f50e88b476f1e54737a47ffdf4df4c996"
         UPDATE_COMMAND ""
         CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=${CMAKE_DEP_INSTALL_DIR}
