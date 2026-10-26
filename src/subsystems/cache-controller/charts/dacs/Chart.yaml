@@ -21,6 +21,13 @@ version: 0.1.0
 # Application version - should match the controller image tag
 appVersion: "local"
 
+dependencies:
+  - name: dacs-prereq
+    version: 0.1.0
+    repository: file://../../../../../helm/dacs-prereq
+    alias: cacheServerPrereq
+    condition: cacheServerPrereq.enabled
+
 keywords:
   - cache
   - storage

@@ -11,8 +11,29 @@ This chart deploys the CacheServer distributed caching system for Kubernetes.
 ## Installation
 
 ```bash
+helm dependency build ./helm/cache-server
 helm install cache-server ./helm/cache-server -n cache-server --create-namespace
 ```
+
+### Optional NVMe Prerequisites
+
+Enable the bundled prerequisite DaemonSet to prepare local NVMe storage:
+
+```bash
+helm upgrade --install cache-server ./helm/cache-server \
+  -n cache-server --create-namespace \
+  --set cacheServerPrereq.enabled=true \
+  --set cacheServerPrereq.nvmeRaidSetup.image.repository="<registry>/dacs/cache-setup" \
+  --set-string cacheServerPrereq.nvmeRaidSetup.image.tag="<image-version>" \
+  --atomic --timeout 15m
+```
+
+Prerequisites default to off. Post-install and post-upgrade hooks verify
+DaemonSet rollout completion. Rolling updates default to `10%` maximum
+unavailable pods, configurable through
+`cacheServerPrereq.updateStrategy.rollingUpdate.maxUnavailable`.
+See the [shared prerequisite documentation](../dacs-prereq/README.md)
+for configuration details.
 
 ## Configuration
 

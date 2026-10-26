@@ -117,25 +117,37 @@ make unprovision
 | `DOCKER_REGISTRY` | Docker registry for images | `docker.io` |
 | `BUILD_NUMBER` | Image tag to use | `local` |
 | `HELM_ARGS` | Additional arguments to pass to helm | - |
+| `HELM_TIMEOUT` | Helm install/upgrade timeout; keep longer than the prerequisite rollout-check timeout | `15m` |
+| `CACHE_SERVER_PREREQ_ENABLED` | Enable bundled NVMe prerequisites | `false`; `make deploy` enables it on AKS |
+| `CACHE_SETUP_IMG` | NVMe setup image repository | `$(DOCKER_REGISTRY)/dacs/cache-setup` |
 
 ### Usage
 
 ```bash
-# Install dacs-prereq (NVMe RAID setup)
-make helm-prereq-install
-
-# Install cache-server
+# Install cache-server without prerequisites
 make helm-install
+
+# Install either parent chart with NVMe prerequisites
+make helm-install CACHE_SERVER_PREREQ_ENABLED=true
+make helm-dacs-install CACHE_SERVER_PREREQ_ENABLED=true
 
 # Install with custom image
 DOCKER_REGISTRY=myregistry.azurecr.io BUILD_NUMBER=v1.2.3 make helm-install
 
-# Uninstall cache-server
+# Uninstall cache-server and its bundled prerequisites (host data is retained)
 make helm-uninstall
-
-# Uninstall dacs-prereq
-make helm-prereq-uninstall
 ```
+
+Both charts default prerequisites to off. AKS `make deploy` and the AKS test
+pipeline opt in explicitly; Minikube deployments do not. See the
+[prerequisite configuration](../helm/dacs-prereq/README.md) for rollout
+limits and validation-hook behavior.
+
+`make helm-dacs-install` and `make deploy CONTROLLER=new` install the
+controller and optional prerequisites without creating a Cache. Wait for
+prerequisite setup to succeed, then apply a standalone Cache manifest, as shown in the
+[user guide](../user-guide.md#step-2-deploy-a-cache-instance).
+Minikube needs no NVMe setup and uses the standalone Minikube Cache fixture.
 
 ## Dependencies
 

@@ -10,6 +10,12 @@ A Kubernetes controller that manages distributed cache infrastructure through cu
 
 ## Quick Start
 
+When installing from this repository, build the bundled dependency first:
+
+```bash
+helm dependency build ./src/subsystems/cache-controller/charts/dacs
+```
+
 ### Install Controller Only
 
 ```bash
@@ -43,6 +49,31 @@ pipelines use these same examples, with the static manifest also used for
 performance tests.
 
 ## Configuration
+
+### Optional NVMe Prerequisites
+
+Set `cacheServerPrereq.enabled=true` to include NVMe setup in this release.
+It defaults to `false`. For example, from the repository root:
+
+```bash
+helm upgrade --install dacs ./src/subsystems/cache-controller/charts/dacs \
+  --namespace dacs-system --create-namespace \
+  --set cacheServerPrereq.enabled=true \
+  --set cacheServerPrereq.nvmeRaidSetup.image.repository="<registry>/dacs/cache-setup" \
+  --set-string cacheServerPrereq.nvmeRaidSetup.image.tag="<image-version>" \
+  --atomic --timeout 15m
+```
+
+Post-install and post-upgrade hooks verify the DaemonSet rollout. The maximum
+unavailable pods defaults to `10%`, configurable through
+`cacheServerPrereq.updateStrategy.rollingUpdate.maxUnavailable`.
+See the [shared prerequisite documentation](../../../../../helm/dacs-prereq/README.md)
+for configuration details.
+
+Wait for the controller/prerequisite release to succeed, then apply a
+standalone Cache manifest from [`examples`](examples/README.md). The hook
+runs after resources are created, so storage preparation must finish before
+creating Cache workloads.
 
 ### Controller Configuration
 

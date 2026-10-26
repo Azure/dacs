@@ -17,20 +17,18 @@ The test framework uses controller-runtime client for cluster interactions.
 
 The test framework will:
 1. Create the `cache-server` namespace
-2. Deploy dacs-prereq (RAID setup) if `INSTALL_PREREQ=true`
-3. Deploy cache-server (scheduler + StatefulSet) if `INSTALL=true`
-4. Verify all pods are ready
-5. Run test scenarios
-6. Collect support bundle on completion
+2. Deploy cache-server if `INSTALL=true`, including NVMe prerequisites when `CACHE_SERVER_PREREQ_ENABLED=true`
+3. Verify all pods are ready
+4. Run test scenarios
+5. Collect support bundle on completion
 
 #### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `INSTALL` | `false` | Install cache-server helm chart before tests |
-| `INSTALL_PREREQ` | `false` | Install dacs-prereq helm chart before tests |
+| `CACHE_SERVER_PREREQ_ENABLED` | `false` | Enable the bundled prerequisites when `INSTALL=true` |
 | `UNINSTALL` | `false` | Uninstall cache-server helm chart after tests |
-| `UNINSTALL_PREREQ` | `false` | Uninstall dacs-prereq helm chart after tests |
 | `SKIP_SUPPORT_BUNDLE` | `false` | Skip collecting support bundle after tests |
 | `DOCKER_REGISTRY` | - | Docker registry to pull images from |
 | `BUILD_NUMBER` | - | Image tag to use for cache-server images |
@@ -140,7 +138,7 @@ az aks update -g $AKS_RESOURCE_GROUP -n ${AKS_RESOURCE_GROUP}-cluster --attach-a
 # Build and publish images
 DOCKER_REGISTRY=myacr.azurecr.io BUILD_NUMBER=v1.0.0 make images publish-images
 
-# Install helm charts (prereq for NVMe RAID setup, then cache-server)
+# Install cache-server with bundled NVMe prerequisites
 DOCKER_REGISTRY=myacr.azurecr.io BUILD_NUMBER=v1.0.0 make deploy
 
 # Run e2e tests (auto-detects AKS, runs all tests)

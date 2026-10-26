@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["name", "updateStrategy", "rolloutCheck"],
+  "properties": {
+    "global": {
+      "type": "object",
+      "properties": {
+        "registry": {
+          "type": "string",
+          "pattern": "^$|^[a-zA-Z0-9][a-zA-Z0-9.:-]*(/[a-z0-9._-]+)*/?$"
+        },
+        "registryMode": {
+          "type": "string",
+          "enum": ["legacy", "replace"]
+        },
+        "imagePullSecrets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 253,
+                "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 55,
+      "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+    },
+    "updateStrategy": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string", "enum": ["RollingUpdate"] }
+      }
+    },
+    "rolloutCheck": {
+      "type": "object",
+      "required": ["timeoutSeconds"],
+      "properties": {
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483467
+        }
+      }
+    }
+  }
+}

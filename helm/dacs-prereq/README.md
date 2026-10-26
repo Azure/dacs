@@ -1,7 +1,7 @@
 # dacs-prereq
 
 Helm chart that deploys a DaemonSet to prepare NVMe data disks on each node
-before the DACS cache server starts.
+for the DACS cache server.
 
 ## Overview
 
@@ -30,19 +30,29 @@ provided by the cache-setup image; no packages are installed on the host.
 
 ## Installation
 
+Both parent charts bundle this chart as an optional dependency, disabled by
+default. Enable it when the release should prepare NVMe storage:
+
 ```bash
-helm upgrade --install dacs-prereq ./helm/dacs-prereq \
+helm dependency build ./helm/cache-server
+helm upgrade --install cache-server ./helm/cache-server \
   --namespace cache-server --create-namespace \
-  --set nvmeRaidSetup.image.repository="<registry>/dacs/cache-setup" \
-  --set-string nvmeRaidSetup.image.tag="<image-version>" \
-  --wait --timeout 10m
+  --set cacheServerPrereq.enabled=true \
+  --set cacheServerPrereq.nvmeRaidSetup.image.repository="<registry>/dacs/cache-setup" \
+  --set-string cacheServerPrereq.nvmeRaidSetup.image.tag="<image-version>" \
+  --atomic --timeout 15m
 ```
 
-Or using the Makefile:
+For the controller chart, use
+`make helm-dacs-install CACHE_SERVER_PREREQ_ENABLED=true`. Wait for storage
+preparation to succeed before creating Cache resources in a separate operation.
+The rollout hook runs at the end of the release and does not block workloads
+created in the same operation. Minikube leaves prerequisites disabled.
 
-```bash
-make helm-prereq-install DOCKER_REGISTRY="<registry>" BUILD_NUMBER="<image-version>"
-```
+The chart is also published independently and can be installed directly with
+`make helm-prereq-install`. Published parent charts contain the build registry's
+`dacs/cache-setup` image and stamp the bundled chart's `appVersion` with the
+matching container version.
 
 Build the image with `make images`, or build it independently:
 
@@ -57,6 +67,10 @@ image version as the rest of the deployment.
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
+| `global.registry` | Registry host with optional project prefix, without a URL scheme | `""` |
+| `global.registryMode` | `replace` redirects prerequisite image hosts; `legacy` leaves repositories unchanged | `legacy` |
+| `global.imagePullSecrets` | Existing registry credential Secret references in the release namespace | `[]` |
+| `name` | Base name for the DaemonSet and RBAC resources | `dacs-prereq` |
 | `nodeSelector` | Node selector for targeting NVMe nodes | `dacs.azure.com/processing-unit: cpu` |
 | `tolerations` | Tolerations for the DaemonSet | `[]` |
 | `mountPoint` | Mount point for the cache directory | `/var/lib/ssd/cacheserver` |
@@ -65,6 +79,9 @@ image version as the rest of the deployment.
 | `updateStrategy.rollingUpdate.maxUnavailable` | Max unavailable during updates | `"10%"` |
 | `nvmeRaidSetup.image.repository` | Init container image | `cache-setup` |
 | `nvmeRaidSetup.image.tag` | Init container image tag; empty uses chart appVersion | `""` |
+| `rolloutCheck.timeoutSeconds` | Current DaemonSet rollout timeout | `600` |
+| `rolloutCheck.image.repository` | Rollout-check kubectl image | `mcr.microsoft.com/oss/v2/kubernetes/kubectl` |
+| `rolloutCheck.image.tag` | Rollout-check kubectl image tag | `v1.35.9` |
 | `nvmeRaidSetup.resources.limits.cpu` | CPU limit for init container | `1` |
 | `nvmeRaidSetup.resources.limits.memory` | Memory limit for init container | `2Gi` |
 | `pauseContainer.image.repository` | Pause container image | `mcr.microsoft.com/azurelinux/base/core` |
@@ -72,6 +89,31 @@ image version as the rest of the deployment.
 | `pauseContainer.resources.limits.memory` | Memory limit for pause container | `16Mi` |
 
 The init container uses a 512 MiB memory request and a 2 GiB limit.
+
+### Private Registries
+
+Set these values at the parent chart's top level. Helm passes `global` values
+to the bundled prerequisite chart:
+
+```yaml
+cacheServerPrereq:
+  enabled: true
+global:
+  registry: registry.example.com/dacs
+  registryMode: replace
+  imagePullSecrets:
+    - name: registry-auth
+```
+
+With `replace`, setup, pause, and rollout-check images use this registry while
+preserving repository subpaths and tags. Mirror all three images there.
+With `legacy`, their repositories stay unchanged. For mixed registries, leave
+`global.registry` empty and override each prerequisite image directly.
+
+Create referenced Secrets in the release namespace before installation.
+An empty list uses node-provided image authentication. These settings cover
+the prerequisites and rollout Job, not controller or generated CacheServer
+image authentication.
 
 ## How It Works
 
@@ -85,6 +127,28 @@ Both single-disk and RAID0 formatting explicitly disable `orphan_file` and
 `metadata_csum_seed`. This keeps the image-created ext4 filesystems compatible
 with Ubuntu 22.04's e2fsck 1.46.5. The host `fstab` entry uses fsck pass `2`, so
 the host can check the cache filesystem at boot.
+
+### Rollout Verification
+
+A post-install/post-upgrade Job runs [rollout-check.sh](scripts/rollout-check.sh)
+to verify the current DaemonSet rollout on at least one targeted node.
+Its dedicated ServiceAccount, Role, and RoleBinding are namespace-scoped.
+DaemonSet access is restricted to the prerequisite's name; pod and event lists
+are used for failure diagnostics.
+
+Rollout commands share a 600-second budget by default, with up to three
+attempts and five seconds between failures. The final node-count lookup has
+a separate 40-second budget. Process-level timeouts preserve automatic
+in-cluster API authentication. Diagnostics have a ten-second limit per command.
+The Job deadline is the rollout timeout plus 180 seconds. Use a Helm timeout
+longer than that deadline; 15 minutes covers the defaults. Persistent failures
+fail the hook and an atomic Helm release.
+
+### Migrating a Standalone Release
+
+Uninstall a standalone `dacs-prereq` release before enabling the dependency in
+a parent release in the same namespace. Helm cannot adopt another release's
+resources. Host arrays, filesystems, and data remain in place.
 
 ### Reboot Behavior
 
@@ -122,14 +186,16 @@ array, enabling a unified fast-path mount.
 
 ## Uninstallation
 
+Uninstall the parent release to remove its bundled prerequisite resources:
+
 ```bash
-helm uninstall dacs-prereq --namespace cache-server
+helm uninstall cache-server --namespace cache-server
 ```
 
-Or using the Makefile:
+For a directly installed prerequisite release:
 
 ```bash
-make helm-prereq-uninstall
+helm uninstall dacs-prereq --namespace cache-server
 ```
 
 **Note:** Uninstalling the chart does not remove the RAID array, filesystem, or

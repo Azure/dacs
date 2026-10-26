@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+cacheServerPrereq:
+  enabled: false
+
 # -- Node selector for system pod assignment.
 nodeSelector:
   dacs.azure.com/processing-unit: system
