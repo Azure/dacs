@@ -27,10 +27,10 @@ function execute_test() {
 
   if [ ! -z "$TEST_NAME" ]; then
     export GTEST_FILTER="*${TEST_NAME}*"
-    ctest -V --no-tests=error -j -1
+    ctest --output-on-failure -V --no-tests=error -j -1
     unset GTEST_FILTER
   else
-    ctest -V --no-tests=error -j -1
+    ctest --output-on-failure -V --no-tests=error -j -1
   fi
 
   if [ $? -ne 0 ]
