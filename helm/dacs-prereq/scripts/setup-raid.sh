@@ -20,6 +20,8 @@ set -euo pipefail
 
 readonly RAID_NAME="dacs"
 readonly FS_LABEL="dacs"
+# Keep image-created filesystems compatible with Ubuntu 22.04's e2fsck.
+readonly EXT4_FEATURES="^orphan_file,^metadata_csum_seed"
 readonly HOST_ROOT="/proc/1/root"
 MOUNT_POINT="${MOUNT_POINT:-/var/lib/ssd/cacheserver}"
 readonly NODE_HOSTNAME="${NODE_NAME:-$(uname -n 2>/dev/null || echo '<unknown>')}"
@@ -126,7 +128,7 @@ log "Found ${#UNUSED_DEVICES[@]} unused NVMe device(s): ${UNUSED_DEVICES[*]}"
 if [[ ${#UNUSED_DEVICES[@]} -eq 1 ]]; then
   DEVICE="${UNUSED_DEVICES[0]}"
   log "Formatting ${DEVICE} as ext4 (label '${FS_LABEL}')"
-  if ! mkfs.ext4 -F -L "${FS_LABEL}" "${DEVICE}"; then
+  if ! mkfs.ext4 -F -O "${EXT4_FEATURES}" -L "${FS_LABEL}" "${DEVICE}"; then
     log "ERROR: mkfs failed on ${DEVICE}."
     dump_diag
     exit 1
@@ -160,7 +162,7 @@ log "Waiting for RAID device..."
 sleep 5
 
 log "Formatting ${RAID_DEVICE} as ext4 (label '${FS_LABEL}')"
-if ! mkfs.ext4 -F -L "${FS_LABEL}" "${RAID_DEVICE}"; then
+if ! mkfs.ext4 -F -O "${EXT4_FEATURES}" -L "${FS_LABEL}" "${RAID_DEVICE}"; then
   log "ERROR: mkfs failed."
   dump_diag
   exit 1
