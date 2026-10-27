@@ -16,6 +16,9 @@
 #include "FlatRadixIndex.h"
 #include "LoggingApi.h"
 
+#include <deque>
+#include <unordered_map>
+
 #include <utility>
 //---------------------------------------------------------------------------------------------------------------------
 
@@ -101,6 +104,80 @@ PrefixLookupResult LocatorCache::PrefixLookup(const std::string& strBaseParentKe
 size_t LocatorCache::PurgeExpired()
 {
     return m_pIndex->PurgeExpired();
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+void LocatorCache::ForEachEntry(const std::function<void(const LocatorEntry&)>& fn) const
+{
+    m_pIndex->ForEachEntry(fn);
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+size_t LocatorCache::Restore(std::vector<LocatorEntry> vEntries, uint64_t nNowMs)
+{
+    // Keep the entries that still have a live replica, once per key.
+    std::unordered_map<std::string, size_t> mapPosition;
+    std::vector<size_t> vKept;
+    for (size_t i = 0; i < vEntries.size(); ++i)
+    {
+        vEntries[i].PurgeExpiredReplicas(nNowMs);
+        if (vEntries[i].HasReplicas() && mapPosition.emplace(vEntries[i].m_strKey, i).second)
+        {
+            vKept.push_back(i);
+        }
+    }
+
+    // Parents first: start from the entries whose parent is not being restored and walk down
+    // breadth-first. Iterative, because one chain can be thousands of entries deep.
+    std::unordered_map<std::string, std::vector<size_t>> mapChildren;
+    std::deque<size_t> queue;
+    for (size_t i : vKept)
+    {
+        const std::string& strParentKey = vEntries[i].m_strParentKey;
+        if (!strParentKey.empty() && mapPosition.contains(strParentKey))
+        {
+            mapChildren[strParentKey].push_back(i);
+        }
+        else
+        {
+            queue.push_back(i);
+        }
+    }
+
+    auto registerEntry = [this](const LocatorEntry& entry) {
+        for (const auto& replica : entry.m_vReplicas)
+        {
+            m_pIndex->Register(entry.m_strKey, entry.m_strParentKey, entry.m_strRootKey, replica);
+        }
+    };
+
+    std::vector<bool> vRegistered(vEntries.size(), false);
+    size_t nRegistered = 0;
+    while (!queue.empty())
+    {
+        const size_t i = queue.front();
+        queue.pop_front();
+        registerEntry(vEntries[i]);
+        vRegistered[i] = true;
+        ++nRegistered;
+        auto it = mapChildren.find(vEntries[i].m_strKey);
+        if (it != mapChildren.end())
+        {
+            queue.insert(queue.end(), it->second.begin(), it->second.end());
+        }
+    }
+
+    // Entries on a parent cycle are never reached from a root. A valid index has no cycles, but
+    // a damaged snapshot might; register them anyway rather than lose them.
+    for (size_t i : vKept)
+    {
+        if (!vRegistered[i])
+        {
+            registerEntry(vEntries[i]);
+            ++nRegistered;
+        }
+    }
+    return nRegistered;
 }
 
 //---------------------------------------------------------------------------------------------------------------------

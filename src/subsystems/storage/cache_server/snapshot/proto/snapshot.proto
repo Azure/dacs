@@ -25,6 +25,26 @@ message SnapshotEntry
     uint64 accessTimestamp = 6;
 }
 //---------------------------------------------------------------------------------------------------------------------
+// One replica of a locator entry (kvclient::ContentReplica).
+message LocatorReplica
+{
+    uint32 tier = 1;            // kvclient::ReplicaTier: 0 = cache, 1 = blob
+    uint32 nodeId = 2;
+    uint64 expiresAtMs = 3;
+    uint64 lastRefreshedMs = 4;
+    uint64 contentSize = 5;
+}
+//---------------------------------------------------------------------------------------------------------------------
+// One entry of this server's locator index (kvclient::LocatorEntry), with its place in the
+// prefix tree. Children are not stored: they are rebuilt from the children's parent keys.
+message LocatorSnapshotEntry
+{
+    string key = 1;
+    string parentKey = 2;
+    string rootKey = 3;
+    repeated LocatorReplica replicas = 4;
+}
+//---------------------------------------------------------------------------------------------------------------------
 message SnapshotBucket
 {
     repeated SnapshotEntry entries = 1;
@@ -37,5 +57,7 @@ message Snapshot
     uint64 saveTimestamp = 3;
     repeated SnapshotBucket buckets = 4;
     repeated string toDeleteGroups = 5;
+    // The locator index this server owns. Absent in snapshots from earlier versions.
+    repeated LocatorSnapshotEntry locatorEntries = 6;
 }
 //---------------------------------------------------------------------------------------------------------------------

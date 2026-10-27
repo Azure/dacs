@@ -197,6 +197,18 @@ PrefixLookupResult FlatMapIndex::PrefixLookup(const std::string& strBaseParentKe
 }
 
 //---------------------------------------------------------------------------------------------------------------------
+void FlatMapIndex::ForEachEntry(const std::function<void(const LocatorEntry&)>& fn) const
+{
+    for (uint32_t i = 0; i < NUM_LOCATOR_BUCKETS; ++i)
+    {
+        std::lock_guard<std::mutex> lock(m_vMutexes[i]);
+        for (const auto& item : m_vEntries[i])
+        {
+            fn(item.second);
+        }
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
 size_t FlatMapIndex::GetEntryCount() const
 {
     size_t nCount = 0;
