@@ -18,6 +18,10 @@
 #include "Constants.h"
 #include "Utils.h"
 #include "Logger.h"
+#include "ServerLocatorCache.h"
+#include "FlatMapIndex.h"
+#include <chrono>
+#include <memory>
 //---------------------------------------------------------------------------------------------------------------------
 CacheManagerTest::CacheManagerTest()
 {
@@ -374,5 +378,65 @@ TEST_F(CacheManagerTest, TestDynamicEviction)
     ValidateCacheEntry(fileNames[2], fileSize, 0, "testGroup");
     ValidateCacheEntry(fileNames[3], fileSize, 0, "testGroup");
     ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize.load(), 2 * fileSize);
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(CacheManagerTest, IsKVCacheEntryMatchesClientAndLegacyTags)
+{
+    google::protobuf::Map<std::string, std::string> metadata;
+    EXPECT_FALSE(CacheManager::IsKVCacheEntry(metadata));
+
+    metadata["other"] = "1";
+    EXPECT_FALSE(CacheManager::IsKVCacheEntry(metadata));
+
+    metadata["dacs_kv"] = "1";
+    EXPECT_TRUE(CacheManager::IsKVCacheEntry(metadata));
+
+    google::protobuf::Map<std::string, std::string> legacyMetadata;
+    legacyMetadata["tachyonkv"] = "1";
+    EXPECT_TRUE(CacheManager::IsKVCacheEntry(legacyMetadata));
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(CacheManagerTest, EvictionUnregistersKVEntriesFromLocator)
+{
+    // Hold the eviction mutex for the whole test so the background eviction pass can't run.
+    std::lock_guard<std::mutex> lock(CacheManager::GetInstance().m_mutexEviction);
+    RESET_CACHE_MANAGER();
+    kvclient::ResetServerLocatorCacheForTest(
+        std::make_unique<kvclient::FlatMapIndex>(), /*nNodeId=*/0, /*nNumNodes=*/1);
+    auto& locator = kvclient::GetServerLocatorCache();
+
+    const uint64_t nFileSize = 4096;
+    const uint64_t nNowMs = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+    const std::vector<std::pair<std::string, std::string>> entries = {
+        {"/kv/client-tag", "dacs_kv"},
+        {"/kv/legacy-tag", "tachyonkv"},
+        {"/kv/untagged", ""},
+    };
+    for (const auto& [strName, strTag] : entries)
+    {
+        ASSERT_TRUE(CacheManager::GetInstance().InitCacheInfo(strName, true /* ignore lock */, nFileSize));
+        google::protobuf::Map<std::string, std::string> metadata;
+        if (!strTag.empty())
+        {
+            metadata[strTag] = "1";
+        }
+        ASSERT_TRUE(CacheManager::GetInstance().UpdateCacheInfo(strName, nFileSize, metadata, 0, ""));
+        locator.Register(strName, ContentReplica(locator.GetNodeId(), nNowMs + 3600 * 1000, nNowMs, nFileSize));
+        ASSERT_TRUE(locator.Lookup(strName).has_value());
+    }
+
+    // Evict everything accessed up to a minute from now, i.e. all three entries.
+    CacheManager::GetInstance().EvictByAccessTime(time(nullptr) + 60);
+
+    for (const auto& [strName, strTag] : entries)
+    {
+        ValidateCacheEntryNotExists(strName);
+    }
+    EXPECT_FALSE(locator.Lookup("/kv/client-tag").has_value());
+    EXPECT_FALSE(locator.Lookup("/kv/legacy-tag").has_value());
+    // Untagged entries are not KV entries, so eviction leaves their locator entries alone.
+    EXPECT_TRUE(locator.Lookup("/kv/untagged").has_value());
 }
 //---------------------------------------------------------------------------------------------------------------------

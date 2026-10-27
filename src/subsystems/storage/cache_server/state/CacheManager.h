@@ -40,6 +40,7 @@ class CacheManager
     DACS_FRIEND_TEST(CacheManagerTest, CleanupWorkerStartsWithConfiguredInterval);
     DACS_FRIEND_TEST(CacheManagerTest, TestEviction);
     DACS_FRIEND_TEST(CacheManagerTest, TestDynamicEviction);
+    DACS_FRIEND_TEST(CacheManagerTest, EvictionUnregistersKVEntriesFromLocator);
 
     public:
         static CacheManager& GetInstance();
@@ -158,6 +159,10 @@ class CacheManager
 
         bool GetLastAccessTimeDistribution(uint64_t distributionBucketIntervalInSeconds,
                                            ::google::protobuf::Map<int64_t, uint64_t>& lastAccessTimeDistributionMap) const;
+
+        // True if the entry was uploaded by the KV client and so has a locator entry. The client
+        // tags uploads "dacs_kv"; "tachyonkv" is the tag used before the rename.
+        static bool IsKVCacheEntry(const ::google::protobuf::Map<std::string, std::string>& metadata);
 
       private:
         CacheManager();
