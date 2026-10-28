@@ -17,6 +17,8 @@ This configuration is for evaluation only. Cache data is lost when the
 CacheServer pod or release is removed. For NVMe/RAID storage, production sizing,
 scaling, authentication, troubleshooting, and uninstall details, see the
 [deployment user guide](../user-guide.md).
+If installation or the smoke test fails, use the
+[installation troubleshooting guide (TSG)](installation-troubleshooting.md).
 
 ## Set variables
 

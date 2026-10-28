@@ -316,6 +316,13 @@ kubectl describe cache -n dacs-system
 
 ## Troubleshooting
 
+For symptom-based installation checks, fixes, readiness checkpoints, and an
+escalation checklist, see the
+[installation troubleshooting guide (TSG)](docs/installation-troubleshooting.md).
+For common runtime issues such as slow reads, eviction, scaling, node recovery,
+storage access, and client writes, see the
+[post-installation troubleshooting guides](docs/operations-troubleshooting.md).
+
 ### Controller Not Starting
 
 Check controller logs:

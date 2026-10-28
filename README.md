@@ -86,6 +86,8 @@ See [Architecture](docs/architecture.md) for the detailed request flow.
 | Understand the system architecture | [Architecture](docs/architecture.md) |
 | Understand the security model and trust boundary | [Security model](docs/security-model.md) |
 | Install and operate DACS | [Deployment user guide](user-guide.md) |
+| Diagnose basic installation failures | [Installation troubleshooting guide](docs/installation-troubleshooting.md) |
+| Diagnose common runtime issues | [Post-installation troubleshooting guides](docs/operations-troubleshooting.md) |
 | Build from a clean clone | [Build from source](docs/build-from-source.md) |
 | Understand Azure Pipelines build caching | [Azure Pipelines build and caching](docs/azure-pipeline-build-and-caching.md) |
 | Understand GitHub Actions build caching | [GitHub Actions build and caching](docs/github-actions-build-and-caching.md) |
