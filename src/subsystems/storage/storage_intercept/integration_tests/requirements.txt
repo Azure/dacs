@@ -39,7 +39,7 @@ h5py==3.15.1 \
     --hash=sha256:f4a016df3f4a8a14d573b496e4d1964deb380e26031fc85fb40e417e9131888a \
     --hash=sha256:fa8df5267f545b4946df8ca0d93d23382191018e4cda2deda4c2cedf9a010e13 \
     --hash=sha256:fd125c131889ebbef0849f4a0e29cf363b48aba42f228d08b4079913b576bb3a
-    # via -r src/subsystems/storage/storage_intercept/integration_tests/requirements.in
+    # via -r requirements.in
 numpy==2.2.6 \
     --hash=sha256:038613e9fb8c72b0a41f025a7e4c3f0b7a1b5d768ece4796b674c8f3fe13efff \
     --hash=sha256:0678000bb9ac1475cd454c6b8c799206af8107e310843532b04d49649c717a47 \
@@ -99,7 +99,7 @@ numpy==2.2.6 \
     # via h5py
 
 # The following packages are considered to be unsafe in a requirements file:
-pip==26.2.1 \
-    --hash=sha256:71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e \
-    --hash=sha256:f6ad667e89a1fe78046c8f13232b247200f5258d7828f3f7883d660878e0813f
-    # via -r src/subsystems/storage/storage_intercept/integration_tests/requirements.in
+pip==26.2.2 \
+    --hash=sha256:3a8e5c800492787f33a4114ef54444546c340df428974ebba17e0fd47e11af2f \
+    --hash=sha256:fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70
+    # via -r requirements.in
