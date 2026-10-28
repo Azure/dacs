@@ -4,7 +4,8 @@
 
 The prerequisite DaemonSet is missing from expected nodes, its init container
 fails or restarts, or the expected cache mount is absent. Logs may report
-package-installation failures or `No unused NVMe devices found.`.
+missing-tool errors or `No unused NVMe devices found.`. Older deployments may
+also report runtime package-installation failures.
 
 ## Description
 
@@ -35,11 +36,25 @@ quickstart does not require the prerequisite chart.
 3. For admission denial of privileged containers or host PID access, ask the
    cluster administrator to review required privileges. Do not weaken
    cluster-wide policy as a workaround.
-4. For package failures, verify host package-repository access. Supported host
-   package managers are Azure Linux `tdnf` and Ubuntu `apt-get`.
+4. Inspect the deployed init-container image and tag:
+
+   ```bash
+   kubectl get pod <prereq-pod> -n "$NAMESPACE" \
+     -o jsonpath='{range .spec.initContainers[?(@.name=="nvme-raid-setup")]}{.image}{"\n"}{end}'
+   ```
+
+   The current cache-setup image bundles `e2fsprogs`, `mdadm`, and `util-linux`;
+   setup does not install these packages on the host at runtime. For
+   `Required tool ... is missing from the cache-setup image`, verify the deployed
+   repository/tag and restore the matching chart/image rather than installing
+   host packages. Only for older deployments whose logs show runtime package
+   installation should you check package-repository access for Azure Linux
+   `tdnf` or Ubuntu `apt-get`.
 5. For `OOMKilled`, inspect the deployed init-container limit. Current defaults
-   request `512Mi` and allow `2Gi`; older or overridden limits may be too small
-   for package metadata refreshes.
+   request `512Mi` and allow `2Gi`. Use current/previous logs and resource
+   observations to identify the failing operation before adjusting the limit.
+   Package metadata refreshes are relevant only to older deployments that
+   install packages at runtime, not the current bundled-tools setup.
 6. For no unused disks or a missing mount, confirm the VM has local NVMe data
    disks. With approved access, run these **read-only commands on the host**:
 

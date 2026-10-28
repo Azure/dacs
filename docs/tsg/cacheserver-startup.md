@@ -39,8 +39,15 @@ configures cache capacity; it is not the container memory limit.
    expected ownership. Follow the [NVMe setup TSG](nvme-setup.md) for host
    storage; do not apply broad permissions changes blindly.
 5. For `No space left on device` or `DiskPressure`, inspect the backing filesystem
-   and node ephemeral storage. Reduce cache sizing or add capacity; do not delete
-   unrelated host data.
+   and node ephemeral storage. Add suitable capacity or investigate non-cache
+   disk use with the administrator; do not delete unrelated host data.
+   **Before considering a reduction of `cache.serverSizeInGB`, confirm
+   authoritative remote copies and resolve pending asynchronous writes.**
+   On subsequent startup, `check_space_overuse.sh` deletes every entry in the
+   cache directory if its existing contents exceed the configured limit; it does
+   not merely trim the excess. Cache-only or not-yet-persisted data can be lost.
+   Follow the [capacity and downsizing safeguards](cache-capacity.md#steps-to-mitigate)
+   before changing sizing or restarting.
 6. For probe failures or process exits, use the actual startup error to check
    ports, configuration, and chart/image compatibility before restarting.
 
