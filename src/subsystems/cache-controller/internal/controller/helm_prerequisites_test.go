@@ -40,19 +40,44 @@ func TestHelmPrerequisites(t *testing.T) {
 	}
 	controllerDefault := []corev1.Toleration{{Key: "CriticalAddonsOnly", Operator: corev1.TolerationOpExists}}
 	customController := []corev1.Toleration{{Key: "controller-only", Operator: corev1.TolerationOpExists}}
+	rolloutAffinity := &corev1.Affinity{
+		NodeAffinity: &corev1.NodeAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+				NodeSelectorTerms: []corev1.NodeSelectorTerm{{
+					MatchExpressions: []corev1.NodeSelectorRequirement{
+						{Key: "kubernetes.io/os", Operator: corev1.NodeSelectorOpIn, Values: []string{"linux"}},
+						{Key: "kubernetes.io/arch", Operator: corev1.NodeSelectorOpIn, Values: []string{"amd64", "arm64"}},
+					},
+				}},
+			},
+			PreferredDuringSchedulingIgnoredDuringExecution: []corev1.PreferredSchedulingTerm{{
+				Weight: 50,
+				Preference: corev1.NodeSelectorTerm{
+					MatchExpressions: []corev1.NodeSelectorRequirement{{
+						Key: "kubernetes.azure.com/mode", Operator: corev1.NodeSelectorOpIn, Values: []string{"system"},
+					}},
+				},
+			}},
+		},
+	}
 	for _, tt := range []struct {
-		name            string
-		args            []string
-		manager         []corev1.Toleration
-		prereq          bool
-		global          string
-		localized       bool
-		pullSecrets     []corev1.LocalObjectReference
-		invalidProperty string
+		name                      string
+		args                      []string
+		manager                   []corev1.Toleration
+		prereq                    bool
+		global                    string
+		localized                 bool
+		pullSecrets               []corev1.LocalObjectReference
+		invalidProperty           string
+		overrideRolloutScheduling bool
 	}{
 		{name: "defaults", manager: controllerDefault},
 		{name: "independent controller", args: []string{"--set-json", `manager.tolerations=[{"key":"controller-only","operator":"Exists"}]`}, manager: customController},
 		{name: "bundled prerequisites", manager: controllerDefault, prereq: true},
+		{name: "rollout scheduling overridden", manager: controllerDefault, prereq: true, overrideRolloutScheduling: true, args: []string{
+			"--set-json", "cacheServerPrereq.rolloutCheck.tolerations=[]",
+			"--set-json", "cacheServerPrereq.rolloutCheck.affinity.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution=[]",
+		}},
 		{name: "legacy prerequisite registry", manager: controllerDefault, prereq: true, global: `{"registry":"mirror.example.com:5000/project/","imagePullSecrets":[{"name":"registry-auth"}]}`, pullSecrets: []corev1.LocalObjectReference{{Name: "registry-auth"}}},
 		{name: "private prerequisites", manager: controllerDefault, prereq: true, global: `{"registry":"mirror.example.com:5000/project/","registryMode":"replace","imagePullSecrets":[{"name":"registry-auth"}]}`, localized: true, pullSecrets: []corev1.LocalObjectReference{{Name: "registry-auth"}}},
 		{name: "private prerequisites without pull secrets", manager: controllerDefault, prereq: true, global: `{"registry":"mirror.example.com:5000/project/","registryMode":"replace","imagePullSecrets":[]}`, localized: true},
@@ -137,6 +162,21 @@ func TestHelmPrerequisites(t *testing.T) {
 						t.Fatalf("rollout-check deadline: %v", job.Spec.ActiveDeadlineSeconds)
 					}
 					pod := job.Spec.Template.Spec
+					wantTolerations, wantAffinity := controllerDefault, rolloutAffinity
+					if tt.overrideRolloutScheduling {
+						wantTolerations = nil
+						wantAffinity = rolloutAffinity.DeepCopy()
+						wantAffinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.PreferredSchedulingTerm{}
+					}
+					if !reflect.DeepEqual(pod.Tolerations, wantTolerations) {
+						t.Fatalf("rollout-check tolerations: got %#v, want %#v", pod.Tolerations, wantTolerations)
+					}
+					if !reflect.DeepEqual(pod.Affinity, wantAffinity) {
+						t.Fatalf("rollout-check affinity: got %#v, want %#v", pod.Affinity, wantAffinity)
+					}
+					if len(pod.NodeSelector) != 0 {
+						t.Fatalf("rollout check must not require the DaemonSet's node selector: %#v", pod.NodeSelector)
+					}
 					if len(pod.Containers) != 1 || pod.Containers[0].Image != rolloutImage {
 						t.Fatalf("rollout-check containers: %#v", pod.Containers)
 					}

@@ -46,6 +46,31 @@ updateStrategy:
 # Post-install/upgrade verification of the latest DaemonSet rollout.
 rolloutCheck:
   timeoutSeconds: 600
+  tolerations:
+    - key: CriticalAddonsOnly
+      operator: Exists
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                  - linux
+              - key: kubernetes.io/arch
+                operator: In
+                values:
+                  - amd64
+                  - arm64
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 50
+          preference:
+            matchExpressions:
+              - key: kubernetes.azure.com/mode
+                operator: In
+                values:
+                  - system
   image:
     repository: mcr.microsoft.com/oss/v2/kubernetes/kubectl
     tag: v1.35.9

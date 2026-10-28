@@ -80,6 +80,8 @@ image version as the rest of the deployment.
 | `nvmeRaidSetup.image.repository` | Init container image | `cache-setup` |
 | `nvmeRaidSetup.image.tag` | Init container image tag; empty uses chart appVersion | `""` |
 | `rolloutCheck.timeoutSeconds` | Current DaemonSet rollout timeout | `600` |
+| `rolloutCheck.tolerations` | Tolerations for the rollout-check Job, independent of the DaemonSet | `CriticalAddonsOnly` with operator `Exists` |
+| `rolloutCheck.affinity` | Affinity for the rollout-check Job | Linux amd64/arm64 nodes, with a soft preference for AKS system nodes |
 | `rolloutCheck.image.repository` | Rollout-check kubectl image | `mcr.microsoft.com/oss/v2/kubernetes/kubectl` |
 | `rolloutCheck.image.tag` | Rollout-check kubectl image tag | `v1.35.9` |
 | `nvmeRaidSetup.resources.limits.cpu` | CPU limit for init container | `1` |
@@ -135,6 +137,15 @@ to verify the current DaemonSet rollout on at least one targeted node.
 Its dedicated ServiceAccount, Role, and RoleBinding are namespace-scoped.
 DaemonSet access is restricted to the prerequisite's name; pod and event lists
 are used for failure diagnostics.
+
+The Job's scheduling defaults match the controller Deployment: it tolerates
+`CriticalAddonsOnly`, requires Linux amd64/arm64 nodes, and prefers nodes
+labeled `kubernetes.azure.com/mode=system`. The system-pool preference is soft,
+so it can also run on other eligible nodes. Other taints still need matching
+tolerations.
+Configure `rolloutCheck.tolerations` and `rolloutCheck.affinity` independently
+of the DaemonSet's scheduling settings. For a bundled chart, use the
+`cacheServerPrereq.rolloutCheck` values.
 
 Rollout commands share a 600-second budget by default, with up to three
 attempts and five seconds between failures. The final node-count lookup has
