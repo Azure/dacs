@@ -252,6 +252,12 @@ func (r *Cache) validateCache() (admission.Warnings, error) { //nolint:gocyclo
 	// Validate optional scheduling settings
 	allErrs = append(allErrs, ValidateTolerations(r.Spec.Tolerations, specPath.Child("tolerations"))...)
 
+	for i, envVar := range r.Spec.Env {
+		if err := ValidateCacheServerEnvVarName(envVar.Name); err != nil {
+			allErrs = append(allErrs, field.Invalid(specPath.Child("env").Index(i).Child("name"), envVar.Name, err.Error()))
+		}
+	}
+
 	// Validate optional resource limits
 	if r.Spec.CpuLimit != nil && *r.Spec.CpuLimit < 0 {
 		allErrs = append(allErrs, field.Invalid(specPath.Child("cpuLimit"), *r.Spec.CpuLimit, "must be at least 0"))

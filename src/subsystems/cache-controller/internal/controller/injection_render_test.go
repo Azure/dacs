@@ -294,6 +294,26 @@ func TestRenderTemplate_CachePathIsEnvironmentData(t *testing.T) {
 	}
 }
 
+func TestSetEnvVarReportsOverrides(t *testing.T) {
+	current := []corev1.EnvVar{{Name: "CACHESERVER_THREADPOOL_SIZE", Value: "16"}}
+
+	updated, existingEnvVarOverridden := setEnvVar(current, corev1.EnvVar{Name: "CACHESERVER_THREADPOOL_SIZE", Value: "32"})
+	if !existingEnvVarOverridden {
+		t.Fatal("expected an existing environment variable to be reported as overridden")
+	}
+	if updated[0].Value != "32" {
+		t.Fatalf("expected overridden value 32, got %q", updated[0].Value)
+	}
+
+	updated, existingEnvVarOverridden = setEnvVar(updated, corev1.EnvVar{Name: "STORAGE_LOG_LEVEL", Value: "DEBUG"})
+	if existingEnvVarOverridden {
+		t.Fatal("expected a new environment variable not to be reported as overridden")
+	}
+	if len(updated) != 2 || updated[1].Name != "STORAGE_LOG_LEVEL" {
+		t.Fatalf("expected STORAGE_LOG_LEVEL to be appended, got %#v", updated)
+	}
+}
+
 // TestValidateRenderInputs_FailClosed ensures the controller rejects Cache
 // objects that reach rendering with required fields unset (e.g. when the
 // admission webhook is disabled or was bypassed), instead of panicking on a
@@ -335,6 +355,9 @@ func TestValidateRenderInputs_FailClosed(t *testing.T) {
 	}{
 		{"nil nodeSelectorKey", func(c *storagev1.Cache) { c.Spec.NodeSelectorKey = nil }},
 		{"nil nodeSelectorValue", func(c *storagev1.Cache) { c.Spec.NodeSelectorValue = nil }},
+		{"unrelated environment variable", func(c *storagev1.Cache) {
+			c.Spec.Env = []corev1.EnvVar{{Name: "LD_PRELOAD", Value: "/tmp/library.so"}}
+		}},
 		{"nil infinibandResourceLimitName", func(c *storagev1.Cache) { c.Spec.InfinibandResourceLimitName = nil }},
 		{"nil infinibandResourceLimitCount", func(c *storagev1.Cache) { c.Spec.InfinibandResourceLimitCount = nil }},
 		{"nil eviction", func(c *storagev1.Cache) { c.Spec.Eviction = nil }},

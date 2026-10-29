@@ -46,6 +46,11 @@ const maxDurationComponent = 1_000_000
 // are rejected at admission instead of silently taking effect.
 const MaxBucketInterval = 7 * 24 * time.Hour
 
+const (
+	storageEnvVarPrefix     = "STORAGE_"
+	cacheServerEnvVarPrefix = "CACHESERVER_"
+)
+
 // parseDuration converts the composite duration syntax into a time.Duration.
 func parseDuration(s string) (time.Duration, error) {
 	if s == "" {
@@ -113,6 +118,14 @@ func ValidatePercentage(value string, fieldName string) error {
 		return fmt.Errorf("%s must be between 0 and 100, got %d", fieldName, parsed)
 	}
 	return nil
+}
+
+// ValidateCacheServerEnvVarName requires env var names to start with STORAGE_ or CACHESERVER_.
+func ValidateCacheServerEnvVarName(name string) error {
+	if strings.HasPrefix(name, storageEnvVarPrefix) || strings.HasPrefix(name, cacheServerEnvVarPrefix) {
+		return nil
+	}
+	return fmt.Errorf("must start with %q or %q", storageEnvVarPrefix, cacheServerEnvVarPrefix)
 }
 
 // ValidateNodeSelectorKey rejects any value that is not a valid Kubernetes label

@@ -381,6 +381,14 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 	if err := renderTemplateInto("templates/cacheserver-app.yaml", values, &desired); err != nil {
 		return fmt.Errorf("failed to render cacheserver StatefulSet template (numServers=%d, image=%s): %w", numServers, values.Image, err)
 	}
+	cacheServerContainer := &desired.Spec.Template.Spec.Containers[0]
+	for _, desiredEnvVar := range cache.Spec.Env {
+		var existingEnvVarOverridden bool
+		cacheServerContainer.Env, existingEnvVarOverridden = setEnvVar(cacheServerContainer.Env, desiredEnvVar)
+		if existingEnvVarOverridden {
+			log.Info("Overriding default cache server environment variable", "name", desiredEnvVar.Name)
+		}
+	}
 	for i := range desired.Spec.Template.Spec.Tolerations {
 		// Match Pod defaulting to avoid repeatedly patching an omitted operator.
 		if desired.Spec.Template.Spec.Tolerations[i].Operator == "" {
@@ -425,6 +433,16 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 	logResourceOperation(log, result, "StatefulSet", sts.Name, "replicas", numServers)
 
 	return nil
+}
+
+func setEnvVar(currentEnvVars []corev1.EnvVar, desiredEnvVar corev1.EnvVar) ([]corev1.EnvVar, bool) {
+	for i := range currentEnvVars {
+		if currentEnvVars[i].Name == desiredEnvVar.Name {
+			currentEnvVars[i] = desiredEnvVar
+			return currentEnvVars, true
+		}
+	}
+	return append(currentEnvVars, desiredEnvVar), false
 }
 
 func (r *CacheReconciler) reconcileServices(ctx context.Context, cache *storagev1.Cache) error {
@@ -563,6 +581,11 @@ func isImmutableFieldErr(err error) bool {
 func validateRenderInputs(cache *storagev1.Cache, nodeCachePath string) error {
 	if errs := storagev1.ValidateTolerations(cache.Spec.Tolerations, field.NewPath("spec", "tolerations")); len(errs) > 0 {
 		return errs.ToAggregate()
+	}
+	for i, envVar := range cache.Spec.Env {
+		if err := storagev1.ValidateCacheServerEnvVarName(envVar.Name); err != nil {
+			return fmt.Errorf("spec.env[%d].name: %w", i, err)
+		}
 	}
 	if cache.Spec.NodeSelectorKey == nil {
 		return fmt.Errorf("spec.nodeSelectorKey must be set")

@@ -160,6 +160,15 @@ type CacheSpec struct {
 	// +kubebuilder:validation:Minimum=4
 	ServerThreads int32 `json:"serverThreads"`
 
+	// Environment variables for the cache server container.
+	// Variables with the same name replace the controller defaults.
+	// Environment variable names must start with STORAGE_ or CACHESERVER_.
+	// +optional
+	// +listType=map
+	// +listMapKey=name
+	// +kubebuilder:validation:XValidation:rule="self.all(envVar, envVar.name.startsWith('STORAGE_') || envVar.name.startsWith('CACHESERVER_'))",message="environment variable names must start with STORAGE_ or CACHESERVER_"
+	Env []corev1.EnvVar `json:"env,omitempty"`
+
 	// CPU limit per cache server pod. Set to 0 to disable CPU requests and limits.
 	// +optional
 	// +kubebuilder:validation:Minimum=0
