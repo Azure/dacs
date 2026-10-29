@@ -32,6 +32,19 @@ param agentVMSize string = 'Standard_L8s_v3'
 @description('The SKU of the nodepool.')
 param osSKU string = 'AzureLinux'
 
+@description('Use mixed Linux nodes instead of the single-pool template count.')
+param mixedNodeOS bool = false
+
+@description('Node architecture. ARM64 uses Standard_L16ps_v5 local NVMe nodes.')
+@allowed([
+  'amd64'
+  'arm64'
+])
+param nodeArchitecture string = 'amd64'
+
+@description('Kubernetes version for mixed Linux integration clusters only.')
+param mixedNodeKubernetesVersion string = '1.35'
+
 @description('The zones in which the cluster should be created.')
 param zones array = []
 
@@ -51,8 +64,11 @@ module cluster 'cluster.bicep' = {
     location: location
     tags: tags
     agentCount: agentCount
-    agentVMSize: agentVMSize
+    agentVMSize: nodeArchitecture == 'arm64' ? 'Standard_L16ps_v5' : agentVMSize
     osSKU: osSKU
+    mixedNodeOS: mixedNodeOS
+    nodeArchitecture: nodeArchitecture
+    mixedNodeKubernetesVersion: mixedNodeKubernetesVersion
     zones: zones
     defenderLogAnalyticsWorkspaceId: defenderWorkspace.id
     deployAzureSecurityLinuxAgent: false

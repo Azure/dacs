@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -45,7 +46,7 @@ const opAKSUpgrade = "aks-upgrade"
 const postUpgradePlacementTimeout = 20 * time.Minute
 
 func testClusterUpgrade(tc *testContext) {
-	It("should survive an AKS cluster upgrade", Label("aks-upgrade"), func(ctx context.Context) {
+	It("should survive an AKS cluster upgrade", Label("aks-upgrade"), func(ctx SpecContext) {
 
 		By("recording pre-upgrade cacheserver pod placement")
 		var prePodsByNode map[string]string
@@ -63,8 +64,13 @@ func testClusterUpgrade(tc *testContext) {
 			upgrades, err = akshelpers.GetAvailableUpgrades(ctx, tc.subscription, tc.resourceGroupName, tc.managedCluster)
 			g.Expect(err).NotTo(HaveOccurred())
 		}).WithContext(ctx).WithTimeout(2*time.Minute).WithPolling(5*time.Second).Should(Succeed(), "failed to get available AKS upgrades")
+		if tc.mixedNodeOS {
+			upgrades = slices.DeleteFunc(upgrades, func(version string) bool {
+				return !akshelpers.SupportsMixedNodeOSVersion(version)
+			})
+		}
 		if len(upgrades) == 0 {
-			Skip("no available AKS upgrades")
+			Skip("no available AKS upgrades compatible with the node OS profile")
 		}
 
 		nextVersion, err := akshelpers.GetNextSemver(upgrades)

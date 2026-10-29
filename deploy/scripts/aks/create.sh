@@ -29,6 +29,9 @@ usage() {
     echo "Environment variables:"
     echo "  DOCKER_REGISTRY   (Optional) Docker registry to attach to AKS (default: dacstest.azurecr.io)"
     echo "  AKS_PARAMETER_FILE (Optional) Deployment parameter file instead of the named template"
+    echo "  AKS_MIXED_NODE_OS (Optional) Mixed Linux integration profile (default: false)"
+    echo "  AKS_NODE_ARCHITECTURE (Optional) Integration node architecture: amd64 or arm64 (default: amd64)"
+    echo "  AKS_MIXED_NODE_KUBERNETES_VERSION (Optional) Mixed-profile Kubernetes version (default: 1.35)"
     exit 1
 }
 
@@ -67,6 +70,33 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 PARAM_FILE="${AKS_PARAMETER_FILE:-$DEPLOY_DIR/parameters/$AKS_TEMPLATE.json}"
+MIXED_NODE_OS="${AKS_MIXED_NODE_OS:-false}"
+readonly MIXED_NODE_OS="${MIXED_NODE_OS,,}"
+readonly MIXED_NODE_VERSION="${AKS_MIXED_NODE_KUBERNETES_VERSION:-1.35}"
+readonly NODE_ARCHITECTURE="${AKS_NODE_ARCHITECTURE:-amd64}"
+if [[ "$NODE_ARCHITECTURE" != amd64 && "$NODE_ARCHITECTURE" != arm64 ]]; then
+    echo "AKS_NODE_ARCHITECTURE must be amd64 or arm64." >&2
+    exit 1
+fi
+if [[ "$NODE_ARCHITECTURE" == arm64 && -z "$RESOURCE_PREFIX" ]]; then
+    echo "ARM64 node provisioning is supported only for integration runs." >&2
+    exit 1
+fi
+if [[ "$MIXED_NODE_OS" != true && "$MIXED_NODE_OS" != false ]]; then
+    echo "AKS_MIXED_NODE_OS must be true or false." >&2
+    exit 1
+fi
+if [[ "$MIXED_NODE_OS" == true ]]; then
+    if [[ -z "$RESOURCE_PREFIX" ]]; then
+        echo "Mixed node OS provisioning is supported only for integration runs." >&2
+        exit 1
+    fi
+    if [[ ! "$MIXED_NODE_VERSION" =~ ^1\.(34|35|36)(\.[0-9]+)?$ ]]; then
+        echo "Mixed node OS coverage requires Kubernetes 1.34, 1.35, or 1.36." >&2
+        exit 1
+    fi
+    echo "Using mixed Linux nodes ($NODE_ARCHITECTURE) on Kubernetes $MIXED_NODE_VERSION; the single-pool template count does not apply."
+fi
 
 if [[ "$AKS_RESOURCE_GROUP" == dacs-integration && -z "$RESOURCE_PREFIX" ]]; then
     echo "Shared resource group dacs-integration requires --resource-prefix; subscription deployment is not allowed." >&2
@@ -86,7 +116,13 @@ if [[ -n "$RESOURCE_PREFIX" ]]; then
     fi
     INTEGRATION_PARAMETERS="$(mktemp)"
     trap 'rm -f "$INTEGRATION_PARAMETERS"' EXIT
-    jq '.parameters |= with_entries(select(.key == "agentCount" or .key == "agentVMSize" or .key == "osSKU" or .key == "zones"))' \
+    jq --argjson mixed "$MIXED_NODE_OS" --arg version "$MIXED_NODE_VERSION" --arg architecture "$NODE_ARCHITECTURE" '
+        .parameters |= with_entries(select(.key == "agentCount" or .key == "agentVMSize" or .key == "osSKU" or .key == "zones")) |
+        .parameters.nodeArchitecture = {value: $architecture} |
+        if $mixed then
+            .parameters.mixedNodeOS = {value: true} |
+            .parameters.mixedNodeKubernetesVersion = {value: $version}
+        else . end' \
         "$PARAM_FILE" > "$INTEGRATION_PARAMETERS"
     if [[ "$WHAT_IF" == true ]]; then
         az deployment group what-if \

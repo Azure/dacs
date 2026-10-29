@@ -82,7 +82,7 @@ crash, and Helm upgrade stages in parallel.
 The node-crash test intentionally panics one node and waits for automatic
 recovery. Run it only against a disposable test cluster.
 
-To run it on demand:
+To run the pipeline on demand:
 
 1. Queue `dacs-integration` and select `dacsOfficial` or `dacsPullRequest`.
 2. Under **Resources**, select the producer run to test.
@@ -105,6 +105,72 @@ For failures, select a producer run with a complete `dacs-release` artifact,
 check both regional SKU restrictions and quota, and inspect the suite log and
 support bundle. Do not bypass cleanup ownership checks or delete the shared
 resource group.
+
+#### Daily architecture coverage
+
+The 06:00 UTC schedule runs correctness stages on AMD64 nodes; the 18:00 UTC
+schedule runs them on ARM64 nodes. Both run every day. With
+`correctnessArchitecture=auto`, manual runs use AMD64. Select `amd64` or
+`arm64` explicitly to override this selection when queuing a run.
+
+ARM64 correctness clusters use `Standard_L16ps_v5` NVMe nodes; AMD64 uses
+the stage's `nvme-l8` template. ARM64 uses `armLocation` (default `eastus2`);
+AMD64 uses `location` (default `australiaeast`). Confirm VM availability
+and quota in the selected region before running. ARM64 uses managed OS
+disks to leave local NVMe storage available for the cache.
+The pipeline agent remains AMD64 and runs
+the Go test harness against the selected cluster architecture. Published
+DACS images must include both architectures.
+
+Performance/scenario tests stay on their homogeneous AMD64
+`perfAksTemplate` configuration on both schedules.
+
+#### Mixed Linux node images
+
+Queue `dacs-integration` with `mixedNodeOS=true` to use the following profile
+in AKS upgrade, scale, node-crash, and Helm-upgrade stages:
+
+| Pool | OS SKU | FIPS image | AMD64 nodes | ARM64 nodes |
+|------|--------|------------|-------------|-------------|
+| `nvmepool` (System) | `AzureLinux3` | No | 2 | 2 |
+| `az3fips` (User) | `AzureLinux3` | Yes | 1 | 1 |
+| `ub2204` (User) | `Ubuntu2204` | No | 1 | 1 |
+| `ub22fips` (User) | `Ubuntu2204` | Yes | 1 | 0 |
+| `ub2404` (User) | `Ubuntu2404` | No | 1 | 1 |
+| `acl` (User) | `AzureContainerLinux` | No | 1 | 1 |
+
+AMD64 has seven nodes; ARM64 has six. AKS does not support Ubuntu FIPS
+node images on ARM64. All nodes use the selected architecture's NVMe VM
+size and CacheServer node label.
+The performance/scenario stage uses its single-pool configuration,
+`perfAksTemplate`, and benchmark inputs regardless of this switch.
+
+Mixed mode is opt-in and requires live validation. Select published
+artifacts with Ubuntu 22.04 ext4 compatibility. The
+default `mixedNodeKubernetesVersion` is `1.35`; the common supported window
+is Kubernetes 1.34 through 1.36. Confirm regional version and VM availability
+before running. Upgrades outside this window are excluded from mixed runs.
+OS image auto-upgrades are disabled for these disposable mixed clusters.
+
+The ACL pool enables Secure Boot and vTPM. Its NVMe initialization and
+host-namespace compatibility must be established by a real cluster run;
+local template compilation does not establish ACL runtime support. Keep
+ACL security settings enabled and inspect prerequisite logs and the support
+bundle if storage setup fails.
+
+Checks run against the mixed cluster; they are not a per-OS
+test matrix. The scale test takes the ACL user pool from one node to zero
+and back, checking cluster totals of seven, six, and seven on AMD64 or
+six, five, and six on ARM64. The crash test
+selects one CacheServer victim. Dynamic 100% scaling provides the
+broadest CacheServer placement coverage; static five-server mode can omit
+an OS profile. The scale test requires dynamic 100% mode.
+Node images and pool FIPS settings are logged before tests.
+FIPS node images do not certify the cryptography inside DACS containers.
+
+For a homogeneous run, leave `mixedNodeOS=false`. See
+[deployment configuration](../deploy/README.md#mixed-linux-integration-profile)
+for local provisioning inputs.
 
 ### Minikube Workflow (Local Development)
 
@@ -165,6 +231,10 @@ bin/Release/<architecture>/aks-tests/dacs-aks-tests
 
 The executable is self-contained, but AKS tests still require a valid
 kubeconfig and the external `az`, `helm`, and `kubectl` commands.
+Set `AKS_MIXED_NODE_OS=true` when testing a mixed-profile cluster so the suite
+verifies its pool inventory and scales the ACL user pool. Set
+`AKS_NODE_ARCHITECTURE=arm64` for ARM64 clusters; the suite checks every
+node's reported architecture when this variable is set.
 
 ## Support Bundle
 

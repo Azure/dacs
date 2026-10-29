@@ -27,6 +27,15 @@ parameters:
   - name: aksTemplate
     type: string
     default: nvme-l8
+  - name: mixedNodeOS
+    type: boolean
+    default: false
+  - name: nodeArchitecture
+    type: string
+    default: amd64
+  - name: mixedNodeKubernetesVersion
+    type: string
+    default: '1.35'
   - name: cacheServerBuildId
     type: string
     default: latest
@@ -141,6 +150,8 @@ stages:
               echo "Cache Server Build Number: $(cacheServerBuildNumber)"
               echo "Docker Registry: ${{ parameters.dockerRegistry }}"
               echo "AKS Template: ${{ parameters.aksTemplate }}"
+              echo "Mixed node OS: ${{ parameters.mixedNodeOS }}"
+              echo "Node architecture: ${{ parameters.nodeArchitecture }}"
               echo "Location: ${{ parameters.location }}"
               echo "Test Filter: ${{ parameters.testFilter }}"
             displayName: Print Build Configuration
@@ -181,6 +192,9 @@ stages:
             env:
               DOCKER_REGISTRY: ${{ parameters.dockerRegistry }}
               AKS_TEMPLATE: ${{ parameters.aksTemplate }}
+              AKS_MIXED_NODE_OS: ${{ parameters.mixedNodeOS }}
+              AKS_NODE_ARCHITECTURE: ${{ parameters.nodeArchitecture }}
+              AKS_MIXED_NODE_KUBERNETES_VERSION: ${{ parameters.mixedNodeKubernetesVersion }}
               AKS_LOCATION: ${{ parameters.location }}
               RESOURCE_GROUP: $(resourceGroup)
               RESOURCE_PREFIX: $(resourcePrefix)
@@ -263,6 +277,8 @@ stages:
               REGISTRY_HOST: ${{ parameters.dockerRegistry }}
               AKS_RESOURCE_GROUP: $(resourceGroup)
               AKS_CLUSTER_NAME: $(resourcePrefix)-cluster
+              AKS_MIXED_NODE_OS: ${{ parameters.mixedNodeOS }}
+              AKS_NODE_ARCHITECTURE: ${{ parameters.nodeArchitecture }}
               STORAGE_ACCOUNT: $(integrationStorageAccount)
               WORKLOAD_IDENTITY_CLIENT_ID: $(integrationWorkloadIdentityClientId)
 

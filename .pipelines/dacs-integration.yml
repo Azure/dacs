@@ -19,13 +19,13 @@ pr: none
 
 schedules:
   - cron: "0 6 * * *"
-    displayName: Daily morning run (6:00 AM UTC)
+    displayName: Daily AMD64 (6:00 AM UTC)
     branches:
       include:
         - main
     always: true
   - cron: "0 18 * * *"
-    displayName: Daily evening run (6:00 PM UTC)
+    displayName: Daily ARM64 (6:00 PM UTC)
     branches:
       include:
         - main
@@ -74,6 +74,31 @@ parameters:
       - nvme-l8
       - nvme-l16
       - nvme-l32
+  - name: armLocation
+    displayName: 'Correctness: ARM64 AKS region'
+    type: string
+    default: eastus2
+    values:
+      - eastus2
+      - eastus
+      - westus2
+      - centralus
+  - name: mixedNodeOS
+    displayName: 'Correctness: Mixed Linux and FIPS node images (requires compatible published artifacts)'
+    type: boolean
+    default: false
+  - name: correctnessArchitecture
+    displayName: 'Correctness: Node architecture (auto follows the daily schedule; manual defaults to AMD64)'
+    type: string
+    default: auto
+    values:
+      - auto
+      - amd64
+      - arm64
+  - name: mixedNodeKubernetesVersion
+    displayName: 'Correctness: Mixed-profile Kubernetes version'
+    type: string
+    default: '1.35'
   - name: scalingMode
     displayName: Cache Scaling Mode
     type: string
@@ -136,6 +161,15 @@ parameters:
     values:
       - dacs
       - cache-server
+
+variables:
+  - name: correctnessArchitecture
+    ${{ if eq(parameters.correctnessArchitecture, 'auto') }}:
+      value: $[iif(eq(variables['Build.CronSchedule.DisplayName'], 'Daily ARM64 (6:00 PM UTC)'), 'arm64', 'amd64')]
+    ${{ else }}:
+      value: ${{ parameters.correctnessArchitecture }}
+  - name: correctnessLocation
+    value: $[iif(eq(variables['correctnessArchitecture'], 'arm64'), '${{ parameters.armLocation }}', '${{ parameters.location }}')]
 
 resources:
   repositories:
@@ -206,6 +240,9 @@ extends:
       - template: /.pipelines/templates/Dacs.AksTest.Stages.yml@self
         parameters:
           stageName: AksUpgrade
+          nodeArchitecture: $(correctnessArchitecture)
+          mixedNodeOS: ${{ parameters.mixedNodeOS }}
+          mixedNodeKubernetesVersion: ${{ parameters.mixedNodeKubernetesVersion }}
           stageDisplayName: AKS Kubernetes Upgrade
           testPackage: ./test/aks
           testFilter: aks && aks-upgrade
@@ -217,11 +254,14 @@ extends:
           dockerRegistry: ${{ parameters.dockerRegistry }}
           cacheServerBuildId: ${{ parameters.cacheServerBuildId }}
           buildPipeline: ${{ parameters.buildPipeline }}
-          location: ${{ parameters.location }}
+          location: $(correctnessLocation)
 
       - template: /.pipelines/templates/Dacs.AksTest.Stages.yml@self
         parameters:
           stageName: AksScale
+          nodeArchitecture: $(correctnessArchitecture)
+          mixedNodeOS: ${{ parameters.mixedNodeOS }}
+          mixedNodeKubernetesVersion: ${{ parameters.mixedNodeKubernetesVersion }}
           stageDisplayName: AKS Node Pool Scale
           testPackage: ./test/aks
           testFilter: aks && aks-scale
@@ -233,11 +273,14 @@ extends:
           dockerRegistry: ${{ parameters.dockerRegistry }}
           cacheServerBuildId: ${{ parameters.cacheServerBuildId }}
           buildPipeline: ${{ parameters.buildPipeline }}
-          location: ${{ parameters.location }}
+          location: $(correctnessLocation)
 
       - template: /.pipelines/templates/Dacs.AksTest.Stages.yml@self
         parameters:
           stageName: AksNodeCrash
+          nodeArchitecture: $(correctnessArchitecture)
+          mixedNodeOS: ${{ parameters.mixedNodeOS }}
+          mixedNodeKubernetesVersion: ${{ parameters.mixedNodeKubernetesVersion }}
           stageDisplayName: AKS Node Crash
           testPackage: ./test/aks
           testFilter: aks && aks-node-crash
@@ -249,12 +292,15 @@ extends:
           dockerRegistry: ${{ parameters.dockerRegistry }}
           cacheServerBuildId: ${{ parameters.cacheServerBuildId }}
           buildPipeline: ${{ parameters.buildPipeline }}
-          location: ${{ parameters.location }}
+          location: $(correctnessLocation)
 
       - template: /.pipelines/templates/Dacs.AksTest.Stages.yml@self
         parameters:
           stageName: AksHelmUpgrade
           bundledPrerequisites: false
+          nodeArchitecture: $(correctnessArchitecture)
+          mixedNodeOS: ${{ parameters.mixedNodeOS }}
+          mixedNodeKubernetesVersion: ${{ parameters.mixedNodeKubernetesVersion }}
           stageDisplayName: AKS Helm Upgrade
           testPackage: ./test/aks
           testFilter: aks && helm-upgrade
@@ -271,4 +317,4 @@ extends:
           dockerRegistry: ${{ parameters.dockerRegistry }}
           cacheServerBuildId: ${{ parameters.cacheServerBuildId }}
           buildPipeline: ${{ parameters.buildPipeline }}
-          location: ${{ parameters.location }}
+          location: $(correctnessLocation)

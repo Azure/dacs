@@ -31,6 +31,19 @@ param agentVMSize string = 'standard_l8s_v3'
 @description('The SKU of the nodepool.')
 param osSKU string = 'AzureLinux'
 
+@description('Use the mixed Linux integration profile.')
+param mixedNodeOS bool = false
+
+@description('Node architecture for selecting supported mixed Linux image profiles.')
+@allowed([
+  'amd64'
+  'arm64'
+])
+param nodeArchitecture string = 'amd64'
+
+@description('Kubernetes version for mixed Linux integration clusters only.')
+param mixedNodeKubernetesVersion string = '1.35'
+
 @description('The zones in which the cluster should be created.')
 param zones array = []
 
@@ -69,7 +82,7 @@ var enableDefender = defenderLogAnalyticsWorkspaceId != ''
 var enablePrometheus = azureMonitorWorkspaceId != ''
 
 // Single NVMe pool that runs both system and cache-server pods
-var nvmePool = {
+var nvmePool = union({
   name: 'nvmepool'
   vmSize: agentVMSize
   osDiskSizeGB: 128
@@ -80,11 +93,31 @@ var nvmePool = {
   maxPods: 125
   availabilityZones: zones
   count: agentCount
-  vnetSubnetID: vnet.properties.subnets[0].id
+  vnetSubnetID: '${vnet.id}/subnets/aks-subnet'
   nodeLabels: {
     'dacs.azure.com/processing-unit': 'cpu'
   }
-}
+}, nodeArchitecture == 'arm64' ? {
+  osDiskType: 'Managed'
+} : {})
+
+var mixedOSProfiles = [
+  { name: 'nvmepool', osSKU: 'AzureLinux3', enableFIPS: false, mode: 'System', count: 2 }
+  { name: 'az3fips', osSKU: 'AzureLinux3', enableFIPS: true, mode: 'User', count: 1 }
+  { name: 'ub2204', osSKU: 'Ubuntu2204', enableFIPS: false, mode: 'User', count: 1 }
+  { name: 'ub22fips', osSKU: 'Ubuntu2204', enableFIPS: true, mode: 'User', count: 1 }
+  { name: 'ub2404', osSKU: 'Ubuntu2404', enableFIPS: false, mode: 'User', count: 1 }
+  { name: 'acl', osSKU: 'AzureContainerLinux', enableFIPS: false, mode: 'User', count: 1 }
+]
+
+var supportedMixedOSProfiles = filter(mixedOSProfiles, pool => nodeArchitecture != 'arm64' || pool.name != 'ub22fips')
+
+var mixedNodePools = [for pool in supportedMixedOSProfiles: union(nvmePool, pool, pool.name == 'acl' ? {
+  securityProfile: {
+    enableSecureBoot: true
+    enableVTPM: true
+  }
+} : {})]
 
 // Virtual network for AKS with storage service endpoint
 resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = {
@@ -115,7 +148,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = {
   }
 }
 
-resource aks 'Microsoft.ContainerService/managedClusters@2024-01-01' = {
+resource aks 'Microsoft.ContainerService/managedClusters@2026-08-01' = {
   name: '${resourcePrefix}-cluster'
   location: location
   tags: union(tags, {
@@ -128,7 +161,7 @@ resource aks 'Microsoft.ContainerService/managedClusters@2024-01-01' = {
   identity: {
     type: 'SystemAssigned'
   }
-  properties: {
+  properties: union({
     nodeResourceGroup: '${resourcePrefix}-node-rg'
     dnsPrefix: '${resourcePrefix}-dns'
     // Enable OIDC issuer for workload identity
@@ -157,7 +190,7 @@ resource aks 'Microsoft.ContainerService/managedClusters@2024-01-01' = {
         }
       }
     } : {}
-    agentPoolProfiles: [ nvmePool ]
+    agentPoolProfiles: mixedNodeOS ? mixedNodePools : [ nvmePool ]
     servicePrincipalProfile: {
       clientId: 'msi'
     }
@@ -180,7 +213,12 @@ resource aks 'Microsoft.ContainerService/managedClusters@2024-01-01' = {
         enabled: false
       }
     }
-  }
+  }, mixedNodeOS ? {
+    kubernetesVersion: mixedNodeKubernetesVersion
+    autoUpgradeProfile: {
+      nodeOSUpgradeChannel: 'None'
+    }
+  } : {})
 }
 
 // Azure Security Linux Agent extension for Defender for Containers
