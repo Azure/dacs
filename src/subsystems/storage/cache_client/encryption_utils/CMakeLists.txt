@@ -25,4 +25,4 @@ target_include_directories(EncryptionUtils PUBLIC ${CMAKE_CURRENT_LIST_DIR})
 
 add_dependencies(EncryptionUtils StorageCommon StorageLibcDlsymWrapper ClientConnections CacheProto diagnostics)
 
-target_link_libraries(EncryptionUtils StorageCommon StorageLibcDlsymWrapper ClientConnections CacheProto diagnostics curl jsoncpp dl uuid crypto)
+target_link_libraries(EncryptionUtils StorageCommon StorageLibcDlsymWrapper ClientConnections CacheProto diagnostics ${DACS_TLS_LIBS} jsoncpp dl uuid)

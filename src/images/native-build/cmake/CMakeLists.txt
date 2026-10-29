@@ -35,6 +35,10 @@ include(CheckCXXSymbolExists)
 # Enable referencing git projects dependencies
 include(ExternalProject)
 
+# Owned PIC archives for the opt-in DACS_STATIC_TLS application build.
+include(external/External_openssl.cmake)
+include(external/External_curl.cmake)
+
 # The GTest git hub project for testing and testing related vars
 include(external/External_GTest.cmake)
 include(GoogleTest)
