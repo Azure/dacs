@@ -59,7 +59,7 @@ SET_TARGET_PROPERTIES(static-azurestorage PROPERTIES
         IMPORTED_LOCATION /opt/azure-storage-cpplite-0.3.0/lib/libazure-storage-lite.a)
 
 set(CommonDeps CacheClientLib StorageCommon CacheProto ClientConnections EncryptionUtils diagnostics
-    curl static-azurestorage jsoncpp dl uuid crypto staticprotobuf Azure::azure-identity
+    ${DACS_TLS_LIBS} static-azurestorage jsoncpp dl uuid staticprotobuf Azure::azure-identity
     Azure::azure-storage-blobs)
 
 # Linker flags to hide static symbols

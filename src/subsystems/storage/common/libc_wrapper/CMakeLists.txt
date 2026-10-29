@@ -19,7 +19,7 @@ add_library(StorageLibcDirectWrapper StorageLibcDirectWrapper.cpp)
 add_library(StorageLibcDlsymWrapper StorageLibcDlsymWrapper.cpp)
 
 set(IncludeDirs ${CMAKE_CURRENT_LIST_DIR})
-set(Links StorageCommon diagnostics curl jsoncpp dl uuid crypto)
+set(Links StorageCommon diagnostics ${DACS_TLS_LIBS} jsoncpp dl uuid)
 set(Dependencies diagnostics)
 
 target_include_directories(StorageLibcDirectWrapper PUBLIC ${IncludeDirs})
