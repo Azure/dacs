@@ -118,16 +118,3 @@ func TestValidateMixedNodePools(t *testing.T) {
 		t.Fatalf("decoding Azure CLI pool image fields: pools=%+v, err=%v", pools, err)
 	}
 }
-
-func TestSupportsMixedNodeOSVersion(t *testing.T) {
-	for _, version := range []string{"1.34", "1.34.0", "v1.35.6", "1.36.99"} {
-		if !SupportsMixedNodeOSVersion(version) {
-			t.Errorf("expected Kubernetes %q to support the mixed profile", version)
-		}
-	}
-	for _, version := range []string{"", "latest", "1.33.9", "1.37.0", "1.35.0-beta.1"} {
-		if SupportsMixedNodeOSVersion(version) {
-			t.Errorf("expected Kubernetes %q to be outside the mixed profile support window", version)
-		}
-	}
-}

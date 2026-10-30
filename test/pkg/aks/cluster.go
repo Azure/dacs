@@ -253,13 +253,6 @@ func ValidateMixedNodePools(pools []NodePool) error {
 	return nil
 }
 
-// SupportsMixedNodeOSVersion bounds upgrades to the common OS support window.
-func SupportsMixedNodeOSVersion(version string) bool {
-	version = "v" + strings.TrimPrefix(version, "v")
-	return semver.IsValid(version) && semver.Prerelease(version) == "" &&
-		semver.Compare(version, "v1.34.0") >= 0 && semver.Compare(version, "v1.37.0") < 0
-}
-
 // ErrCapacity is returned by az control-plane operations (node pool scale,
 // cluster upgrade) when Azure cannot allocate the requested compute because of
 // a capacity/allocation constraint (for example OverconstrainedAllocationRequest

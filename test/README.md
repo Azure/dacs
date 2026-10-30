@@ -108,7 +108,7 @@ resource group.
 
 #### Mixed Linux node images
 
-AKS upgrade, scale, node-crash, and Helm-upgrade stages use `nvme-mixed`
+AKS upgrade, node-crash, and Helm-upgrade stages use `nvme-mixed`
 on both schedules and manual runs. All seven nodes are AMD64
 `Standard_L8s_v3` VMs with the CacheServer node label:
 
@@ -124,18 +124,22 @@ on both schedules and manual runs. All seven nodes are AMD64
 Performance/scenario tests use the homogeneous AMD64 `perfAksTemplate`
 configuration and their benchmark inputs.
 
+The scale stage uses the single-pool `nvme-l8` template with six AMD64
+`Standard_L8s_v3` nodes. It scales the pool from six nodes to one and back to
+six, checking matching CacheServer replica counts and controller scaling events.
+It requires dynamic 100% scaling.
+
 The mixed template pins Kubernetes `1.35` and disables OS image auto-upgrades.
-The upgrade test excludes versions outside the common 1.34-1.36 support window.
+The upgrade test selects the next version from the upgrades reported by AKS,
+without an additional OS-version filter.
 Select published artifacts with Ubuntu 22.04 ext4 compatibility.
 ACL enables Secure Boot and vTPM; its storage initialization requires a live run.
 
 The suite detects multiple pools and verifies the mixed inventory without extra
-environment variables. The scale test takes ACL from one node to zero and back,
-checking cluster totals of seven, six, and seven. The crash test selects one
-CacheServer victim, not one per OS. Dynamic 100% scaling gives the broadest
-placement coverage; static five-server mode can omit an OS profile. The scale
-test requires dynamic 100% mode. FIPS node images do not certify cryptography
-inside DACS containers.
+environment variables. The crash test selects one CacheServer victim, not one
+per OS. Dynamic 100% scaling gives the broadest placement coverage; static
+five-server mode can omit an OS profile. FIPS node images do not certify
+cryptography inside DACS containers.
 
 See
 [deployment configuration](../deploy/README.md#mixed-linux-integration-profile)

@@ -111,8 +111,10 @@ make unprovision
 ### Mixed Linux Integration Profile
 
 `AKS_TEMPLATE=nvme-mixed` selects seven AMD64 nodes across six OS/FIPS
-profiles. Correctness stages use this template; performance/scenario stages
-use their selected single-pool template. The full pool list is documented in the
+profiles. AKS upgrade, node-crash, and Helm-upgrade stages use this template.
+The scale stage uses the single-pool `nvme-l8` template for six-to-one-to-six
+scaling. Performance/scenario stages use their selected single-pool template.
+The full pool list is documented in the
 [integration test guide](../test/README.md#mixed-linux-node-images).
 
 The parameter file supplies `nodePools` overrides and `kubernetesVersion`.
@@ -124,14 +126,14 @@ For an owned disposable integration run:
 ```bash
 make provision TARGET=aks AKS_IS_TEST=true \
   AKS_RESOURCE_GROUP=dacs-integration \
-  AKS_RESOURCE_PREFIX='aks-scale-<build>-<stage-attempt>-<job-attempt>' \
+  AKS_RESOURCE_PREFIX='aks-upgrade-<build>-<stage-attempt>-<job-attempt>' \
   AKS_TEMPLATE=nvme-mixed AKS_LOCATION=australiaeast
 ```
 
 Replace the prefix placeholders with the integration run's identifiers.
 `make aks-cluster-requirements` accepts the same inputs for what-if.
 The mixed template pins Kubernetes `1.35` and disables OS image auto-upgrades;
-the upgrade test stays within the common 1.34-1.36 support window.
+the upgrade test selects the next version from the upgrades reported by AKS.
 
 The ACL pool enables Secure Boot and vTPM. Its storage initialization requires
 live validation. The shared AKS template uses managed-cluster API `2026-08-01`;

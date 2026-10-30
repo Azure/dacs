@@ -222,6 +222,7 @@ extends:
       - template: /.pipelines/templates/Dacs.AksTest.Stages.yml@self
         parameters:
           stageName: AksScale
+          aksTemplate: nvme-l8
           stageDisplayName: AKS Node Pool Scale
           testPackage: ./test/aks
           testFilter: aks && aks-scale
