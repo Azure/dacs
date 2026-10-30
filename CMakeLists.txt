@@ -59,6 +59,10 @@ include(ExternalProject)
 # Include all pre-built dependency projects
 add_subdirectory(${CMAKE_DEP_INSTALL_DIR}/cmake ${CMAKE_DEP_INSTALL_DIR} EXCLUDE_FROM_ALL)
 
+# Select TLS targets before OpenTelemetry and Azure SDK discover their
+# dependencies. See static_tls.cmake for the two-stage build.
+include(${CMAKE_SOURCE_DIR}/src/images/native-build/cmake/external/static_tls.cmake)
+
 # The GTest git hub project for testing and testing related vars
 include(${CMAKE_EXTERNAL_PROJECT}/gtest_include.cmake)
 
