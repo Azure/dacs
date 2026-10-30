@@ -77,7 +77,7 @@ kubectl wait -n cache-server \
 
 [dacs-integration](../.pipelines/dacs-integration.yml) runs on `main` every day
 at 06:00 and 18:00 UTC. It runs performance, AKS upgrade, AKS scale, AKS node
-crash, and Helm upgrade stages in parallel.
+crash, AKS restart, and Helm upgrade stages in parallel.
 
 The node-crash test intentionally panics one node and waits for automatic
 recovery. Run it only against a disposable test cluster.
