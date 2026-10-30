@@ -35,7 +35,7 @@ include(CheckCXXSymbolExists)
 # Enable referencing git projects dependencies
 include(ExternalProject)
 
-# Owned PIC archives for the opt-in DACS_STATIC_TLS application build.
+# Owned PIC archives for the default DACS_STATIC_TLS application build.
 include(external/External_openssl.cmake)
 include(external/External_curl.cmake)
 

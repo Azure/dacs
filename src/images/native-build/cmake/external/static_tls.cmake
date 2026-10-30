@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Optional static TLS stack for the storage client targets (StorageDirect,
+# Default static TLS stack for the storage client targets (StorageDirect,
 # StorageIntercept, CacheClient and their StorageCommon/ClientConnections/
 # EncryptionUtils/libc_wrapper dependencies). When enabled, curl and OpenSSL
 # are linked from prebuilt no-shared/-fPIC archives instead of the system
@@ -24,19 +24,19 @@
 #   cmake -S src/images/native-build/cmake -B build/tls-dependencies -G Ninja
 #   cmake --build build/tls-dependencies --target dacs_curl --parallel 4
 #
-# Then configure the application with its normal output environment and
-# -DDACS_STATIC_TLS=ON. Stage 1 must finish before Stage 2 configuration:
+# Then configure the application with its normal output environment.
+# Stage 1 must finish before Stage 2 configuration:
 # Azure SDK and OpenTelemetry discover TLS headers/libraries at configure time.
 # Advanced overrides DACS_STATIC_OPENSSL_PREFIX and DACS_STATIC_CURL_PREFIX
 # select alternative prebuilt PIC archive installations.
 #
-# DACS_STATIC_TLS defaults to OFF so existing builds keep linking the system
+# DACS_STATIC_TLS defaults to ON. Set -DDACS_STATIC_TLS=OFF to link the system
 # shared libcurl/libssl/libcrypto packages installed by the native-build image.
-# Upstream curl 7.81.0 is NOT Ubuntu's security-patched package. This opt-in
+# Upstream curl 7.81.0 is NOT Ubuntu's security-patched package. This static
 # mode is not production security ready; resolve patch coverage before adoption.
 option(DACS_STATIC_TLS
     "Link storage client targets against static, position-independent OpenSSL/curl archives instead of system shared libcurl/libssl/libcrypto"
-    OFF)
+    ON)
 
 if(DACS_STATIC_TLS)
     set(DACS_STATIC_OPENSSL_PREFIX "${CMAKE_DEP_INSTALL_DIR}/tls/openssl" CACHE PATH
