@@ -160,8 +160,7 @@ class CacheManager
         bool GetLastAccessTimeDistribution(uint64_t distributionBucketIntervalInSeconds,
                                            ::google::protobuf::Map<int64_t, uint64_t>& lastAccessTimeDistributionMap) const;
 
-        // True if the entry was uploaded by the KV client and so has a locator entry. The client
-        // tags uploads "dacs_kv"; "tachyonkv" is the tag used before the rename.
+        // True if the entry has the KV client's "dacs_kv" upload tag and so has a locator entry.
         static bool IsKVCacheEntry(const ::google::protobuf::Map<std::string, std::string>& metadata);
 
       private:

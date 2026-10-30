@@ -380,7 +380,7 @@ TEST_F(CacheManagerTest, TestDynamicEviction)
     ASSERT_EQ(CacheManager::GetInstance().m_totalCachedSize.load(), 2 * fileSize);
 }
 //---------------------------------------------------------------------------------------------------------------------
-TEST_F(CacheManagerTest, IsKVCacheEntryMatchesClientAndLegacyTags)
+TEST_F(CacheManagerTest, IsKVCacheEntryMatchesOnlyClientTag)
 {
     google::protobuf::Map<std::string, std::string> metadata;
     EXPECT_FALSE(CacheManager::IsKVCacheEntry(metadata));
@@ -393,7 +393,7 @@ TEST_F(CacheManagerTest, IsKVCacheEntryMatchesClientAndLegacyTags)
 
     google::protobuf::Map<std::string, std::string> legacyMetadata;
     legacyMetadata["tachyonkv"] = "1";
-    EXPECT_TRUE(CacheManager::IsKVCacheEntry(legacyMetadata));
+    EXPECT_FALSE(CacheManager::IsKVCacheEntry(legacyMetadata));
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(CacheManagerTest, EvictionUnregistersKVEntriesFromLocator)
@@ -435,8 +435,8 @@ TEST_F(CacheManagerTest, EvictionUnregistersKVEntriesFromLocator)
         ValidateCacheEntryNotExists(strName);
     }
     EXPECT_FALSE(locator.Lookup("/kv/client-tag").has_value());
-    EXPECT_FALSE(locator.Lookup("/kv/legacy-tag").has_value());
-    // Untagged entries are not KV entries, so eviction leaves their locator entries alone.
+    // Legacy-tagged and untagged entries are not KV entries, so their locator entries remain.
+    EXPECT_TRUE(locator.Lookup("/kv/legacy-tag").has_value());
     EXPECT_TRUE(locator.Lookup("/kv/untagged").has_value());
 }
 //---------------------------------------------------------------------------------------------------------------------
