@@ -45,7 +45,7 @@ const opAKSUpgrade = "aks-upgrade"
 const postUpgradePlacementTimeout = 20 * time.Minute
 
 func testClusterUpgrade(tc *testContext) {
-	It("should survive an AKS cluster upgrade", Label("aks-upgrade"), func(ctx context.Context) {
+	It("should survive an AKS cluster upgrade", Label("aks-upgrade"), func(ctx SpecContext) {
 
 		By("recording pre-upgrade cacheserver pod placement")
 		var prePodsByNode map[string]string

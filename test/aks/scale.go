@@ -35,9 +35,6 @@ import (
 )
 
 const (
-	// Target node count for the scale-down phase. Must be less than the initial node count.
-	scaleDownTargetNodes = 1
-
 	// How long to wait for the K8s node list to reflect a nodepool scale.
 	// 20m accommodates AKS nodepool scale latency.
 	nodeCountSettleTimeout = 20 * time.Minute
@@ -57,27 +54,25 @@ const (
 )
 
 func testClusterScale(tc *testContext) {
-	It("should survive scaling node pool down to 1 and back up to original count", Label("aks-scale"), func(ctx SpecContext) {
-		// Scale back up to the original size rather than a hardcoded number.
-		originalNodeCount := len(tc.initialNodeNames)
-		Expect(originalNodeCount).To(BeNumerically(">", scaleDownTargetNodes),
-			"initial node count (%d) must be greater than scale-down target (%d) for the test to exercise both directions",
-			originalNodeCount, scaleDownTargetNodes)
+	It("should survive scaling a node pool down and back up to its original count", Label("aks-scale"), func(ctx SpecContext) {
+		plan, err := akshelpers.PlanNodePoolScale(tc.initialNodePools, tc.mixedNodeOS)
+		Expect(err).NotTo(HaveOccurred(), "planning node pool scale")
+		Expect(plan.OriginalNodeCount).To(Equal(len(tc.initialNodeNames)), "pool counts must match the initial Kubernetes node inventory")
+		originalNodeCount := plan.OriginalNodeCount
+		scaleDownTargetNodes := plan.ScaledNodeCount
+		nodepool := plan.PoolName
 
 		// Used to filter Scaling events to those emitted during the test window.
 		scaleStart := metav1.NewMicroTime(time.Now())
 
-		By("discovering default node pool")
-		nodepool, err := akshelpers.GetDefaultNodePool(ctx, tc.subscription, tc.resourceGroupName, tc.managedCluster)
-		Expect(err).NotTo(HaveOccurred(), "failed to discover default node pool")
-		Expect(nodepool).NotTo(BeEmpty(), "default node pool name is empty")
-		log.Info("discovered default node pool", "nodepool", nodepool, "originalNodeCount", originalNodeCount)
+		log.Info("selected scale target", "nodepool", nodepool, "originalNodeCount", originalNodeCount,
+			"originalPoolCount", plan.OriginalPoolCount, "scaledPoolCount", plan.ScaledPoolCount)
 
-		By(fmt.Sprintf("scaling node pool %s down to %d node(s)", nodepool, scaleDownTargetNodes))
+		By(fmt.Sprintf("scaling node pool %s down to %d node(s)", nodepool, plan.ScaledPoolCount))
 		scaleDownStart := time.Now()
-		scaleNodePoolOrSkip(ctx, tc, nodepool, scaleDownTargetNodes)
+		scaleNodePoolOrSkip(ctx, tc, nodepool, plan.ScaledPoolCount)
 		log.Info("az aks nodepool scale call returned",
-			"direction", "down", "targetNodes", scaleDownTargetNodes,
+			"direction", "down", "targetNodes", plan.ScaledPoolCount,
 			"elapsed", time.Since(scaleDownStart).Round(time.Second).String())
 
 		By(fmt.Sprintf("waiting for node count to reach %d", scaleDownTargetNodes))
@@ -107,11 +102,11 @@ func testClusterScale(tc *testContext) {
 		Expect(verification.VerifyCacheServing(ctx, tc.Client, tc.namespace, log)).
 			To(Succeed(), "cache serving verification failed after scale-down to %d node(s)", scaleDownTargetNodes)
 
-		By(fmt.Sprintf("scaling node pool %s up to %d nodes (original count)", nodepool, originalNodeCount))
+		By(fmt.Sprintf("scaling node pool %s up to %d nodes (original count)", nodepool, plan.OriginalPoolCount))
 		scaleUpStart := time.Now()
-		scaleNodePoolOrSkip(ctx, tc, nodepool, originalNodeCount)
+		scaleNodePoolOrSkip(ctx, tc, nodepool, plan.OriginalPoolCount)
 		log.Info("az aks nodepool scale call returned",
-			"direction", "up", "targetNodes", originalNodeCount,
+			"direction", "up", "targetNodes", plan.OriginalPoolCount,
 			"elapsed", time.Since(scaleUpStart).Round(time.Second).String())
 
 		By(fmt.Sprintf("waiting for node count to reach %d", originalNodeCount))

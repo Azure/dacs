@@ -32,6 +32,12 @@ param agentVMSize string = 'Standard_L8s_v3'
 @description('The SKU of the nodepool.')
 param osSKU string = 'AzureLinux'
 
+@description('Node pool overrides merged with the default NVMe pool settings. Empty uses a single pool.')
+param nodePools array = []
+
+@description('Kubernetes version. Empty uses the AKS default.')
+param kubernetesVersion string = ''
+
 @description('The zones in which the cluster should be created.')
 param zones array = []
 
@@ -53,6 +59,8 @@ module cluster 'cluster.bicep' = {
     agentCount: agentCount
     agentVMSize: agentVMSize
     osSKU: osSKU
+    nodePools: nodePools
+    kubernetesVersion: kubernetesVersion
     zones: zones
     defenderLogAnalyticsWorkspaceId: defenderWorkspace.id
     deployAzureSecurityLinuxAgent: false

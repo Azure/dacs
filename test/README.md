@@ -82,7 +82,7 @@ crash, and Helm upgrade stages in parallel.
 The node-crash test intentionally panics one node and waits for automatic
 recovery. Run it only against a disposable test cluster.
 
-To run it on demand:
+To run the pipeline on demand:
 
 1. Queue `dacs-integration` and select `dacsOfficial` or `dacsPullRequest`.
 2. Under **Resources**, select the producer run to test.
@@ -105,6 +105,45 @@ For failures, select a producer run with a complete `dacs-release` artifact,
 check both regional SKU restrictions and quota, and inspect the suite log and
 support bundle. Do not bypass cleanup ownership checks or delete the shared
 resource group.
+
+#### Mixed Linux node images
+
+AKS upgrade, node-crash, and Helm-upgrade stages use `nvme-mixed`
+on both schedules and manual runs. All seven nodes are AMD64
+`Standard_L8s_v3` VMs with the CacheServer node label:
+
+| Pool | OS SKU | FIPS image | Nodes |
+|------|--------|------------|-------|
+| `nvmepool` (System) | `AzureLinux3` | No | 2 |
+| `az3fips` (User) | `AzureLinux3` | Yes | 1 |
+| `ub2204` (User) | `Ubuntu2204` | No | 1 |
+| `ub22fips` (User) | `Ubuntu2204` | Yes | 1 |
+| `ub2404` (User) | `Ubuntu2404` | No | 1 |
+| `acl` (User) | `AzureContainerLinux` | No | 1 |
+
+Performance/scenario tests use the homogeneous AMD64 `perfAksTemplate`
+configuration and their benchmark inputs.
+
+The scale stage uses the single-pool `nvme-l8` template with six AMD64
+`Standard_L8s_v3` nodes. It scales the pool from six nodes to one and back to
+six, checking matching CacheServer replica counts and controller scaling events.
+It requires dynamic 100% scaling.
+
+The mixed template pins Kubernetes `1.35` and disables OS image auto-upgrades.
+The upgrade test selects the next version from the upgrades reported by AKS,
+without an additional OS-version filter.
+Select published artifacts with Ubuntu 22.04 ext4 compatibility.
+ACL enables Secure Boot and vTPM; its storage initialization requires a live run.
+
+The suite detects multiple pools and verifies the mixed inventory without extra
+environment variables. The crash test selects one CacheServer victim, not one
+per OS. Dynamic 100% scaling gives the broadest placement coverage; static
+five-server mode can omit an OS profile. FIPS node images do not certify
+cryptography inside DACS containers.
+
+See
+[deployment configuration](../deploy/README.md#mixed-linux-integration-profile)
+for local provisioning inputs.
 
 ### Minikube Workflow (Local Development)
 
@@ -165,6 +204,7 @@ bin/Release/<architecture>/aks-tests/dacs-aks-tests
 
 The executable is self-contained, but AKS tests still require a valid
 kubeconfig and the external `az`, `helm`, and `kubectl` commands.
+Mixed-profile clusters are detected from their node pool inventory.
 
 ## Support Bundle
 

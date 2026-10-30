@@ -71,6 +71,8 @@ type testContext struct {
 	subscription      string
 	namespace         string
 	initialNodeNames  []string
+	initialNodePools  []akshelpers.NodePool
+	mixedNodeOS       bool
 	initialReplicas   int32
 	testStartTime     time.Time
 }
@@ -87,7 +89,7 @@ var _ = Describe("aks tests", Label("aks"), Serial, func() {
 	ReportAfterEach(emitSpecOutcomeMetric)
 })
 
-func beforeEach(ctx context.Context) {
+func beforeEach(ctx SpecContext) {
 	ctrllog.SetLogger(log)
 
 	// Set first so diagnostic-link KQL windows cover the entire BeforeEach
@@ -137,6 +139,22 @@ func beforeEach(ctx context.Context) {
 	}).WithContext(ctx).WithTimeout(2*time.Minute).WithPolling(5*time.Second).Should(Succeed(), "failed to get managed cluster info")
 	tc.managedCluster = clusterInfo.Name
 	tc.resourceGroupName = clusterInfo.ResourceGroup
+	tc.initialNodePools, err = akshelpers.GetNodePools(ctx, tc.subscription, tc.resourceGroupName, tc.managedCluster)
+	Expect(err).NotTo(HaveOccurred(), "discovering node pool configuration")
+	tc.mixedNodeOS = len(tc.initialNodePools) > 1
+	log.Info("node pool inventory", "pools", tc.initialNodePools)
+	for _, n := range nodeList.Items {
+		log.Info("node OS inventory", "node", n.Name, "pool", n.Labels["kubernetes.azure.com/agentpool"],
+			"osImage", n.Status.NodeInfo.OSImage, "kernel", n.Status.NodeInfo.KernelVersion,
+			"architecture", n.Status.NodeInfo.Architecture)
+		if tc.mixedNodeOS {
+			Expect(n.Status.NodeInfo.Architecture).To(Equal("amd64"), "verifying node %s architecture", n.Name)
+		}
+	}
+	if tc.mixedNodeOS {
+		Expect(akshelpers.ValidateMixedNodePools(tc.initialNodePools)).
+			To(Succeed(), "verifying requested mixed OS and FIPS pool configuration")
+	}
 
 	log.Info("discovered AKS cluster",
 		"cluster", tc.managedCluster,

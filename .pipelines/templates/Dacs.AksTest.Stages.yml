@@ -26,7 +26,7 @@ parameters:
     default: eastus2
   - name: aksTemplate
     type: string
-    default: nvme-l8
+    default: nvme-mixed
   - name: cacheServerBuildId
     type: string
     default: latest

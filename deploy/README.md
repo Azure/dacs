@@ -79,6 +79,7 @@ Templates are defined as parameter files in `deploy/parameters/`. Available temp
 | `nvme-l8` | Performance testing cluster with L8s_v3 VMs | Standard_L8s_v3 |
 | `nvme-l16` | Performance testing cluster with L16s_v3 VMs | Standard_L16s_v3 |
 | `nvme-l32` | Performance testing cluster with L32s_v3 VMs | Standard_L32s_v3 |
+| `nvme-mixed` | Seven AMD64 nodes across six Linux OS/FIPS pools for correctness tests | Standard_L8s_v3 |
 
 The `nvme-perf-*` templates are optimized for performance testing with larger VM sizes and more NVMe storage capacity.
 
@@ -106,6 +107,38 @@ make undeploy
 # Delete the cluster (auto-detected from kubectl context)
 make unprovision
 ```
+
+### Mixed Linux Integration Profile
+
+`AKS_TEMPLATE=nvme-mixed` selects seven AMD64 nodes across six OS/FIPS
+profiles. AKS upgrade, node-crash, and Helm-upgrade stages use this template.
+The scale stage uses the single-pool `nvme-l8` template for six-to-one-to-six
+scaling. Performance/scenario stages use their selected single-pool template.
+The full pool list is documented in the
+[integration test guide](../test/README.md#mixed-linux-node-images).
+
+The parameter file supplies `nodePools` overrides and `kubernetesVersion`.
+Each pool inherits the shared NVMe settings, including VM size, zones, subnet,
+and CacheServer node label. Parameter files without `nodePools` use one pool.
+
+For an owned disposable integration run:
+
+```bash
+make provision TARGET=aks AKS_IS_TEST=true \
+  AKS_RESOURCE_GROUP=dacs-integration \
+  AKS_RESOURCE_PREFIX='aks-upgrade-<build>-<stage-attempt>-<job-attempt>' \
+  AKS_TEMPLATE=nvme-mixed AKS_LOCATION=australiaeast
+```
+
+Replace the prefix placeholders with the integration run's identifiers.
+`make aks-cluster-requirements` accepts the same inputs for what-if.
+The mixed template pins Kubernetes `1.35` and disables OS image auto-upgrades;
+the upgrade test selects the next version from the upgrades reported by AKS.
+
+The ACL pool enables Secure Boot and vTPM. Its storage initialization requires
+live validation. The shared AKS template uses managed-cluster API `2026-08-01`;
+older Bicep type bundles report `BCP081`, so compilation alone does not validate
+its resource properties.
 
 ## Helm Charts
 

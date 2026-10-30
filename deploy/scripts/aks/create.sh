@@ -86,7 +86,7 @@ if [[ -n "$RESOURCE_PREFIX" ]]; then
     fi
     INTEGRATION_PARAMETERS="$(mktemp)"
     trap 'rm -f "$INTEGRATION_PARAMETERS"' EXIT
-    jq '.parameters |= with_entries(select(.key == "agentCount" or .key == "agentVMSize" or .key == "osSKU" or .key == "zones"))' \
+    jq '.parameters |= with_entries(select(.key == "agentCount" or .key == "agentVMSize" or .key == "osSKU" or .key == "zones" or .key == "nodePools" or .key == "kubernetesVersion"))' \
         "$PARAM_FILE" > "$INTEGRATION_PARAMETERS"
     if [[ "$WHAT_IF" == true ]]; then
         az deployment group what-if \
