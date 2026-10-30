@@ -55,6 +55,7 @@ class FlatMapIndex final : public ILocatorIndex
     PrefixLookupResult PrefixLookup(const std::string& strBaseParentKey,
                                     std::span<const std::string> vStorageKeys,
                                     uint64_t nNowMs) const override;
+    void ForEachEntry(const std::function<void(const LocatorEntry&)>& fn) const override;
     size_t GetEntryCount() const override;
     size_t GetReplicaCount() const override;
 

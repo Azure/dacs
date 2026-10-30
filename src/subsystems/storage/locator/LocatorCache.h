@@ -20,10 +20,12 @@
 #include "ILocatorIndex.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string>
+#include <vector>
 //---------------------------------------------------------------------------------------------------------------------
 
 namespace kvclient
@@ -81,6 +83,19 @@ class LocatorCache
 
     // Remove all expired replicas across all entries. Returns total entries removed.
     size_t PurgeExpired();
+
+    //-- Persistence --
+
+    // Call fn for every entry (see ILocatorIndex::ForEachEntry).
+    void ForEachEntry(const std::function<void(const LocatorEntry&)>& fn) const;
+
+    // Re-register saved entries, for example from a snapshot after a restart. Replicas expired
+    // at nNowMs are dropped, and an entry with none left is skipped. Each entry is registered
+    // after its parent when the parent is among the entries, so the index rebuilds the
+    // parent-to-child links that cascade deletion relies on. Entries are registered on this node
+    // without the ownership check, because membership may have changed while the server was
+    // down. Returns the number of entries registered.
+    size_t Restore(std::vector<LocatorEntry> vEntries, uint64_t nNowMs);
 
     //-- Accessors --
 
