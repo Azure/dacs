@@ -58,16 +58,18 @@ spec:
               - key: {{ toJSON .NodeSelectorLabelKey }}
                 operator: In
                 values: {{ toJSON .NodeSelectorValue }}
-{{- if ne .UseEphemeralStorage true }}
+{{- if .UseEphemeralStorage }}
         podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: app
-                operator: In
-                values:
-                - cacheserver
-            topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - cacheserver
+              topologyKey: kubernetes.io/hostname
 {{- end }}
       containers:
       - name: cacheserver

@@ -193,6 +193,68 @@ func TestRenderTemplate_ValidInputStillWorks(t *testing.T) {
 	}
 }
 
+func TestRenderTemplate_PodAntiAffinity(t *testing.T) {
+	for _, tt := range []struct {
+		name                string
+		useEphemeralStorage bool
+	}{
+		{name: "ephemeral storage", useEphemeralStorage: true},
+		{name: "persistent storage", useEphemeralStorage: false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			v := baseRenderValues()
+			v.UseEphemeralStorage = tt.useEphemeralStorage
+			// Ensure we render a valid, realistic storage configuration:
+			// ephemeral storage uses emptyDir, persistent uses hostPath.
+			v.UseHostPath = !tt.useEphemeralStorage
+
+			var sts appsv1.StatefulSet
+			if err := renderTemplateInto("templates/cacheserver-app.yaml", v, &sts); err != nil {
+				t.Fatalf("render failed: %v", err)
+			}
+			affinity := sts.Spec.Template.Spec.Affinity
+			schedulerName := sts.Spec.Template.Spec.SchedulerName
+			if affinity == nil || affinity.NodeAffinity == nil ||
+				affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+				t.Fatal("required node affinity must be preserved")
+			}
+			if !tt.useEphemeralStorage {
+				if affinity.PodAntiAffinity != nil {
+					t.Fatal("persistent storage must not set pod anti-affinity")
+				}
+				if schedulerName != "cache-controller" {
+					t.Errorf("persistent storage should use cache-controller scheduler, got %q", schedulerName)
+				}
+				return
+			}
+			if affinity.PodAntiAffinity == nil {
+				t.Fatal("ephemeral storage must set preferred pod anti-affinity")
+			}
+			antiAffinity := affinity.PodAntiAffinity
+			if len(antiAffinity.RequiredDuringSchedulingIgnoredDuringExecution) != 0 {
+				t.Fatal("pod anti-affinity must not be required")
+			}
+			preferred := antiAffinity.PreferredDuringSchedulingIgnoredDuringExecution
+			if len(preferred) != 1 || preferred[0].Weight != 100 {
+				t.Fatalf("expected one weight-100 preference, got %#v", preferred)
+			}
+			term := preferred[0].PodAffinityTerm
+			if term.TopologyKey != corev1.LabelHostname || term.LabelSelector == nil {
+				t.Fatalf("unexpected pod affinity term: %#v", term)
+			}
+			expressions := term.LabelSelector.MatchExpressions
+			if len(expressions) != 1 || expressions[0].Key != "app" ||
+				expressions[0].Operator != "In" ||
+				len(expressions[0].Values) != 1 || expressions[0].Values[0] != "cacheserver" {
+				t.Fatalf("unexpected cache pod selector: %#v", expressions)
+			}
+			if schedulerName != "" {
+				t.Errorf("ephemeral storage should not set a custom scheduler, got %q", schedulerName)
+			}
+		})
+	}
+}
+
 func TestRenderTemplate_CachePathIsEnvironmentData(t *testing.T) {
 	v := baseRenderValues()
 	v.MountSsdPath = `/var/lib/$(touch /tmp/inj); "quoted"`
