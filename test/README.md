@@ -79,8 +79,11 @@ kubectl wait -n cache-server \
 at 06:00 and 18:00 UTC. It runs performance, AKS upgrade, AKS scale, AKS node
 crash, and Helm upgrade stages in parallel.
 
-The node-crash test intentionally panics one node and waits for automatic
-recovery. Run it only against a disposable test cluster.
+The node-crash test intentionally panics each node hosting a cache-server pod,
+one at a time. After each crash, it verifies the node rebooted, waits for node
+and application recovery, and verifies cache serving before proceeding to the
+next cache-server node. Nodes without cache-server pods are not crashed. Run it
+only against a disposable test cluster.
 
 To run it on demand:
 
