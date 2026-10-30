@@ -230,8 +230,8 @@ func PlanNodePoolScale(pools []NodePool, mixed bool) (NodePoolScalePlan, error) 
 	}, nil
 }
 
-// ValidateMixedNodePools checks that the architecture's supported image profiles exist.
-func ValidateMixedNodePools(pools []NodePool, architecture string) error {
+// ValidateMixedNodePools checks that the AMD64 mixed image profiles exist.
+func ValidateMixedNodePools(pools []NodePool) error {
 	expected := map[string]NodePool{
 		"nvmepool": {Name: "nvmepool", Mode: "System", Count: 2, OSSKU: "AzureLinux3"},
 		"az3fips":  {Name: "az3fips", Mode: "User", Count: 1, OSSKU: "AzureLinux3", EnableFIPS: true},
@@ -239,13 +239,6 @@ func ValidateMixedNodePools(pools []NodePool, architecture string) error {
 		"ub22fips": {Name: "ub22fips", Mode: "User", Count: 1, OSSKU: "Ubuntu2204", EnableFIPS: true},
 		"ub2404":   {Name: "ub2404", Mode: "User", Count: 1, OSSKU: "Ubuntu2404"},
 		"acl":      {Name: "acl", Mode: "User", Count: 1, OSSKU: "AzureContainerLinux"},
-	}
-	switch architecture {
-	case "amd64":
-	case "arm64":
-		delete(expected, "ub22fips")
-	default:
-		return fmt.Errorf("unsupported node architecture %q", architecture)
 	}
 	if len(pools) != len(expected) {
 		return fmt.Errorf("expected %d mixed node pools, got %d", len(expected), len(pools))

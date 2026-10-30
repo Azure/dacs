@@ -17,8 +17,6 @@ package aks
 import (
 	"context"
 	"fmt"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -141,24 +139,20 @@ func beforeEach(ctx SpecContext) {
 	}).WithContext(ctx).WithTimeout(2*time.Minute).WithPolling(5*time.Second).Should(Succeed(), "failed to get managed cluster info")
 	tc.managedCluster = clusterInfo.Name
 	tc.resourceGroupName = clusterInfo.ResourceGroup
-	tc.mixedNodeOS = strings.EqualFold(os.Getenv("AKS_MIXED_NODE_OS"), "true")
 	tc.initialNodePools, err = akshelpers.GetNodePools(ctx, tc.subscription, tc.resourceGroupName, tc.managedCluster)
 	Expect(err).NotTo(HaveOccurred(), "discovering node pool configuration")
+	tc.mixedNodeOS = len(tc.initialNodePools) > 1
 	log.Info("node pool inventory", "pools", tc.initialNodePools)
 	for _, n := range nodeList.Items {
 		log.Info("node OS inventory", "node", n.Name, "pool", n.Labels["kubernetes.azure.com/agentpool"],
 			"osImage", n.Status.NodeInfo.OSImage, "kernel", n.Status.NodeInfo.KernelVersion,
 			"architecture", n.Status.NodeInfo.Architecture)
-		if architecture := os.Getenv("AKS_NODE_ARCHITECTURE"); architecture != "" {
-			Expect(n.Status.NodeInfo.Architecture).To(Equal(architecture), "verifying node %s architecture", n.Name)
+		if tc.mixedNodeOS {
+			Expect(n.Status.NodeInfo.Architecture).To(Equal("amd64"), "verifying node %s architecture", n.Name)
 		}
 	}
 	if tc.mixedNodeOS {
-		architecture := os.Getenv("AKS_NODE_ARCHITECTURE")
-		if architecture == "" {
-			architecture = "amd64"
-		}
-		Expect(akshelpers.ValidateMixedNodePools(tc.initialNodePools, architecture)).
+		Expect(akshelpers.ValidateMixedNodePools(tc.initialNodePools)).
 			To(Succeed(), "verifying requested mixed OS and FIPS pool configuration")
 	}
 

@@ -68,9 +68,6 @@ make unprovision
 | `AKS_IS_TEST` | Mark cluster as test (for cleanup policies) | `false` |
 | `AKS_PARAMETER_FILE` | Optional parameter file override for the AKS creation script | Named template file |
 | `AKS_RESOURCE_PREFIX` | Integration-only `aks-<suite>-<build>-<stage-attempt>-<job-attempt>` prefix; requires the existing `dacs-integration` RG and `AKS_IS_TEST=true` | Empty (local subscription deployment) |
-| `AKS_MIXED_NODE_OS` | Integration-only mixed Linux profile, independent of the named template's single-pool count | `false` |
-| `AKS_NODE_ARCHITECTURE` | Integration node architecture: `amd64` uses the named template's VM size; `arm64` uses `Standard_L16ps_v5` | `amd64` |
-| `AKS_MIXED_NODE_KUBERNETES_VERSION` | Mixed-profile Kubernetes version in the common 1.34-1.36 support window | `1.35` |
 
 ### Templates
 
@@ -82,6 +79,7 @@ Templates are defined as parameter files in `deploy/parameters/`. Available temp
 | `nvme-l8` | Performance testing cluster with L8s_v3 VMs | Standard_L8s_v3 |
 | `nvme-l16` | Performance testing cluster with L16s_v3 VMs | Standard_L16s_v3 |
 | `nvme-l32` | Performance testing cluster with L32s_v3 VMs | Standard_L32s_v3 |
+| `nvme-mixed` | Seven AMD64 nodes across six Linux OS/FIPS pools for correctness tests | Standard_L8s_v3 |
 
 The `nvme-perf-*` templates are optimized for performance testing with larger VM sizes and more NVMe storage capacity.
 
@@ -112,48 +110,33 @@ make unprovision
 
 ### Mixed Linux Integration Profile
 
-`AKS_MIXED_NODE_OS=true` is restricted to integration deployments with the
-existing resource-prefix and resource-group ownership checks. It selects
-seven AMD64 nodes across six OS/FIPS profiles, or six ARM64 nodes across
-five profiles, instead of the parameter file's single-pool node count.
-Ubuntu FIPS is excluded on ARM64. Zones come from the parameter file.
-AMD64 VM size comes from that file; ARM64 uses `Standard_L16ps_v5`.
-ARM64 uses managed OS disks to preserve local NVMe storage for the cache.
-The full pool list and coverage limits are documented in the
+`AKS_TEMPLATE=nvme-mixed` selects seven AMD64 nodes across six OS/FIPS
+profiles. Correctness stages use this template; performance/scenario stages
+use their selected single-pool template. The full pool list is documented in the
 [integration test guide](../test/README.md#mixed-linux-node-images).
 
-For an owned disposable integration run, use the same provisioning interface:
+The parameter file supplies `nodePools` overrides and `kubernetesVersion`.
+Each pool inherits the shared NVMe settings, including VM size, zones, subnet,
+and CacheServer node label. Parameter files without `nodePools` use one pool.
+
+For an owned disposable integration run:
 
 ```bash
 make provision TARGET=aks AKS_IS_TEST=true \
   AKS_RESOURCE_GROUP=dacs-integration \
   AKS_RESOURCE_PREFIX='aks-scale-<build>-<stage-attempt>-<job-attempt>' \
-  AKS_TEMPLATE=nvme-l8 AKS_LOCATION=australiaeast \
-  AKS_MIXED_NODE_OS=true AKS_MIXED_NODE_KUBERNETES_VERSION=1.35
+  AKS_TEMPLATE=nvme-mixed AKS_LOCATION=australiaeast
 ```
-
-Add `AKS_NODE_ARCHITECTURE=arm64` for an ARM64 cluster.
 
 Replace the prefix placeholders with the integration run's identifiers.
 `make aks-cluster-requirements` accepts the same inputs for what-if.
-Mixed clusters disable OS image auto-upgrades; the upgrade test
-performs explicit upgrades within the common OS support window.
+The mixed template pins Kubernetes `1.35` and disables OS image auto-upgrades;
+the upgrade test stays within the common 1.34-1.36 support window.
 
-Normal Azure Container Linux uses Trusted Launch with Secure Boot and vTPM.
-The shared AKS template uses managed-cluster API `2026-08-01` for the
-versioned OS SKUs and pool security settings.
-Local Bicep type bundles without this API report `BCP081`; compilation
-alone does not validate its resource properties. Use what-if before deployment.
-Check the region's AKS versions and the VM's capabilities before provisioning.
-ACL FIPS and OS Guard are not included. Host storage compatibility requires
-live validation; failures must not be hidden by disabling ACL protections.
-Homogeneous and performance deployments do not receive mixed-only settings.
-
-Recommended reading:
-
-- [AKS FIPS node pools](https://learn.microsoft.com/en-us/azure/aks/enable-fips-nodes)
-- [Adding an Azure Container Linux pool](https://learn.microsoft.com/en-us/azure/azure-linux/tutorial-add-azure-container-linux-node-pool)
-- [Scaling AKS node pools](https://learn.microsoft.com/en-us/azure/aks/scale-cluster)
+The ACL pool enables Secure Boot and vTPM. Its storage initialization requires
+live validation. The shared AKS template uses managed-cluster API `2026-08-01`;
+older Bicep type bundles report `BCP081`, so compilation alone does not validate
+its resource properties.
 
 ## Helm Charts
 

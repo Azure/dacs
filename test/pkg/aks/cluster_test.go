@@ -16,7 +16,6 @@ package aks
 
 import (
 	"encoding/json"
-	"slices"
 	"testing"
 )
 
@@ -58,14 +57,6 @@ func TestPlanNodePoolScale(t *testing.T) {
 			pools: mixedPools(), mixed: true,
 			want: NodePoolScalePlan{"acl", 1, 0, 7, 6},
 		},
-		{
-			name: "ARM64 mixed ACL pool reaches zero",
-			pools: slices.DeleteFunc(mixedPools(), func(p NodePool) bool {
-				return p.Name == "ub22fips"
-			}),
-			mixed: true,
-			want:  NodePoolScalePlan{"acl", 1, 0, 6, 5},
-		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := PlanNodePoolScale(tt.pools, tt.mixed)
@@ -101,7 +92,7 @@ func TestPlanNodePoolScaleRejectsInvalidInventory(t *testing.T) {
 }
 
 func TestValidateMixedNodePools(t *testing.T) {
-	if err := ValidateMixedNodePools(mixedPools(), "amd64"); err != nil {
+	if err := ValidateMixedNodePools(mixedPools()); err != nil {
 		t.Fatalf("validating the complete mixed profile: %v", err)
 	}
 	for _, tt := range []struct {
@@ -116,25 +107,10 @@ func TestValidateMixedNodePools(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			pools := tt.mutate(mixedPools())
-			if err := ValidateMixedNodePools(pools, "amd64"); err == nil {
+			if err := ValidateMixedNodePools(pools); err == nil {
 				t.Fatal("expected incorrect mixed profile to fail validation")
 			}
 		})
-	}
-	armPools := slices.DeleteFunc(mixedPools(), func(p NodePool) bool {
-		return p.Name == "ub22fips"
-	})
-	if err := ValidateMixedNodePools(armPools, "arm64"); err != nil {
-		t.Fatalf("validating ARM64 profiles without Ubuntu FIPS: %v", err)
-	}
-	if err := ValidateMixedNodePools(mixedPools(), "arm64"); err == nil {
-		t.Fatal("expected Ubuntu FIPS on ARM64 to fail validation")
-	}
-	if err := ValidateMixedNodePools(armPools, "amd64"); err == nil {
-		t.Fatal("expected missing Ubuntu FIPS on AMD64 to fail validation")
-	}
-	if err := ValidateMixedNodePools(mixedPools(), "invalid"); err == nil {
-		t.Fatal("expected unsupported architecture to fail validation")
 	}
 	var pools []NodePool
 	err := json.Unmarshal([]byte(`[{"name":"az3fips","mode":"User","count":1,"osSku":"AzureLinux3","enableFips":true}]`), &pools)
