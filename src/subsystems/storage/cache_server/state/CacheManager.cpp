@@ -1027,8 +1027,7 @@ void CacheManager::EvictByAccessTime(time_t nEvictionLastAccessTime)
                 vecFilesToDelete.emplace_back(iter->first);
 
                 // Track KV entries for locator cache unregistration
-                auto kvMeta = iter->second.m_metadata.find("tachyonkv");
-                if (kvMeta != iter->second.m_metadata.end())
+                if (IsKVCacheEntry(iter->second.m_metadata))
                 {
                     vecKVKeysToUnregister.emplace_back(iter->first);
                 }
@@ -1091,6 +1090,11 @@ void CacheManager::EvictByAccessTime(time_t nEvictionLastAccessTime)
         LOG_INFO("Unregistered {} KV entries from locator cache after eviction",
                  vecKVKeysToUnregister.size());
     }
+}
+//---------------------------------------------------------------------------------------------------------------------
+bool CacheManager::IsKVCacheEntry(const ::google::protobuf::Map<std::string, std::string>& metadata)
+{
+    return metadata.find("dacs_kv") != metadata.end();
 }
 //---------------------------------------------------------------------------------------------------------------------
 time_t CacheManager::ParseAndConvertToTime(const std::string& dateTimeString) {
