@@ -48,6 +48,7 @@ helm install dacs ./charts/dacs \
 | `manager.resources.requests.cpu` | CPU request | `10m` |
 | `manager.resources.requests.memory` | Memory request | `64Mi` |
 | `manager.priorityClassName` | PriorityClass for the controller pod. Empty uses the chart-managed `<fullname>-priority` PriorityClass (value `100000`); set a name to use an existing PriorityClass instead. | `""` |
+| `manager.featureGates` | Comma-separated `Name=true\|false` feature gates. `UseZeroCopy` enables zero-copy transfers in the cache server. `UseFlatRadixLocatorIndex` runs the cache-server locator on the radix index (`CACHESERVER_LOCATOR_INDEX=flatradix`), which chain prefix lookups need. Changing it restarts the cache servers; after a restart the locator holds snapshot entries without their chain links, so chain lookups miss earlier data until it is written again. | `""` |
 
 ### Cache Configuration
 

@@ -23,11 +23,17 @@ import (
 const (
 	// UseZeroCopy enables zero-copy data transfers in the cache server.
 	UseZeroCopy = "UseZeroCopy"
+
+	// UseFlatRadixLocatorIndex runs the cache server's locator on the radix index
+	// (CACHESERVER_LOCATOR_INDEX=flatradix) instead of the default flat map. The
+	// radix index answers chain prefix lookups, which the flat map cannot.
+	UseFlatRadixLocatorIndex = "UseFlatRadixLocatorIndex"
 )
 
 // defaultGates defines the default state of each known feature gate.
 var defaultGates = map[string]bool{
-	UseZeroCopy: false,
+	UseZeroCopy:              false,
+	UseFlatRadixLocatorIndex: false,
 }
 
 var gates map[string]bool

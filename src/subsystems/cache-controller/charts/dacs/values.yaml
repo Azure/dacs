@@ -37,7 +37,10 @@ manager:
     repository: dacs/cache-server
     tag: "" # Empty defaults to .Chart.AppVersion (e.g. "local" for dev, build number for published charts)
 
-  # Feature gates to enable (e.g. "UseZeroCopy=true,Foo=false")
+  # Feature gates to enable, as comma-separated name=true|false pairs. Known gates:
+  #   UseZeroCopy               zero-copy data transfers in the cache server
+  #   UseFlatRadixLocatorIndex  radix locator index, needed for chain prefix lookups
+  # Example: "UseZeroCopy=true,UseFlatRadixLocatorIndex=true"
   featureGates: ""
 
   # Extra arguments to pass to the controller

@@ -93,6 +93,11 @@ spec:
           value: {{ toJSON .EvictionBucketInterval }}
         - name: CACHESERVER_USE_ZEROCOPY
           value: "{{- if .UseZeroCopy }}1{{- else }}0{{- end }}"
+        {{- /* Rendered only when the gate is on, so upgrading the controller leaves existing pod templates unchanged. */}}
+        {{- if .UseFlatRadixLocatorIndex }}
+        - name: CACHESERVER_LOCATOR_INDEX
+          value: "flatradix"
+        {{- end }}
         - name: CACHESERVER_PORT
           value: "{{ .Port }}"
         - name: CACHESERVER_CACHE_PATH

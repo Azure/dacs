@@ -50,6 +50,7 @@ type renderValues struct {
 	UseHostPath                  bool
 	SnapshotIntervalSeconds      int32
 	UseZeroCopy                  bool
+	UseFlatRadixLocatorIndex     bool
 }
 
 func baseRenderValues() renderValues {
@@ -330,5 +331,45 @@ func TestRenderTemplate_NoEvictionEnvInjection(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("CACHESERVER_EVICTION_BUCKET_INTERVAL not rendered")
+	}
+}
+
+// locatorIndexEnv returns the rendered CACHESERVER_LOCATOR_INDEX value and
+// whether the variable is present.
+func locatorIndexEnv(t *testing.T, v renderValues) (string, bool) {
+	t.Helper()
+	var sts appsv1.StatefulSet
+	if err := renderTemplateInto("templates/cacheserver-app.yaml", v, &sts); err != nil {
+		t.Fatalf("render failed: %v", err)
+	}
+	for _, env := range sts.Spec.Template.Spec.Containers[0].Env {
+		if env.Name == "CACHESERVER_LOCATOR_INDEX" {
+			return env.Value, true
+		}
+	}
+	return "", false
+}
+
+// TestRenderTemplate_LocatorIndexOffByDefault ensures that without the
+// UseFlatRadixLocatorIndex gate the variable is not rendered at all, so the
+// cache server keeps its default index and upgrading the controller does not
+// change the StatefulSet of existing caches.
+func TestRenderTemplate_LocatorIndexOffByDefault(t *testing.T) {
+	if value, found := locatorIndexEnv(t, baseRenderValues()); found {
+		t.Errorf("CACHESERVER_LOCATOR_INDEX rendered as %q with the gate off", value)
+	}
+}
+
+// TestRenderTemplate_LocatorIndexFlatRadix ensures the gate selects the radix
+// index on the cache server.
+func TestRenderTemplate_LocatorIndexFlatRadix(t *testing.T) {
+	v := baseRenderValues()
+	v.UseFlatRadixLocatorIndex = true
+	value, found := locatorIndexEnv(t, v)
+	if !found {
+		t.Fatal("CACHESERVER_LOCATOR_INDEX not rendered with the gate on")
+	}
+	if value != "flatradix" {
+		t.Errorf("expected CACHESERVER_LOCATOR_INDEX=flatradix, got %q", value)
 	}
 }
