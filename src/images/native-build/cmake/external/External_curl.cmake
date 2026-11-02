@@ -20,8 +20,8 @@ set(DACS_STATIC_CURL_PREFIX "${CMAKE_DEP_INSTALL_DIR}/tls/curl" CACHE PATH
 ExternalProject_Add(
     dacs_curl
     DEPENDS dacs_openssl
-    URL "https://curl.se/download/curl-7.81.0.tar.gz"
-    URL_HASH "SHA256=ac8e1087711084548d788ef18b9b732c8de887457b81f616fc681d1044b32f98"
+    URL "https://curl.se/download/curl-7.87.0.tar.gz"
+    URL_HASH "SHA256=8a063d664d1c23d35526b87a2bf15514962ffdd8ef7fd40519191b3c23e39548"
     DOWNLOAD_DIR "${CMAKE_DEP_INSTALL_DIR}/tls/downloads"
     INSTALL_DIR "${DACS_STATIC_CURL_PREFIX}"
     UPDATE_COMMAND ""
