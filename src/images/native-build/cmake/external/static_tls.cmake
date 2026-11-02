@@ -18,7 +18,7 @@
 # are linked from prebuilt no-shared/-fPIC archives instead of the system
 # libcurl.so/libssl.so/libcrypto.so, so the resulting shared libraries do not
 # carry a dynamic OpenSSL/curl dependency. Stage 1 builds pinned OpenSSL 3.5.9
-# and upstream curl 7.81.0 into ${CMAKE_DEP_INSTALL_DIR}/tls/{openssl,curl}:
+# and upstream curl 7.87.0 into ${CMAKE_DEP_INSTALL_DIR}/tls/{openssl,curl}:
 #
 #   export CMAKE_DEP_INSTALL_DIR=/dependency
 #   cmake -S src/images/native-build/cmake -B build/tls-dependencies -G Ninja
@@ -32,7 +32,7 @@
 #
 # DACS_STATIC_TLS defaults to ON. Set -DDACS_STATIC_TLS=OFF to link the system
 # shared libcurl/libssl/libcrypto packages installed by the native-build image.
-# Upstream curl 7.81.0 is NOT Ubuntu's security-patched package. This static
+# Upstream curl 7.87.0 is NOT Ubuntu's security-patched package. This static
 # mode is not production security ready; resolve patch coverage before adoption.
 option(DACS_STATIC_TLS
     "Link storage client targets against static, position-independent OpenSSL/curl archives instead of system shared libcurl/libssl/libcrypto"
