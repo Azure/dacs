@@ -20,7 +20,9 @@ import (
 	"time"
 
 	"gotest.tools/v3/assert"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/types"
 
 	config "github.com/Azure/dacs/cache-controller/internal/config"
 )
@@ -419,6 +421,7 @@ func TestContinousStuckPod(t *testing.T) {
 			// for 10 minutes. We should get a delete instruction for stuck pod-1.
 			podState := tracker.State.PodMap["cachens"]["cacheserver-1"]
 			podState.UnhealthySinceOnCurrentNode = time.Now().Add(-10 * time.Minute)
+			podState.BoundSince = podState.UnhealthySinceOnCurrentNode
 			tracker.State.PodMap["cachens"]["cacheserver-1"] = podState
 			schedulerInstructions = getSchedulerInstructions(pods, nodes)
 		}
@@ -494,6 +497,7 @@ func TestTransientStuckPod(t *testing.T) {
 		podState := tracker.State.PodMap["cachens"]["cacheserver-1"]
 		podState.FirstHitTimestamp = time.Now().Add(-10 * time.Minute)
 		podState.UnhealthySinceOnCurrentNode = time.Now().Add(-10 * time.Minute)
+		podState.BoundSince = podState.UnhealthySinceOnCurrentNode
 		tracker.State.PodMap["cachens"]["cacheserver-1"] = podState
 		schedulerInstructions = getSchedulerInstructions(pods, nodes)
 		assert.Equal(t, len(schedulerInstructions), 1)
@@ -528,6 +532,243 @@ func TestTransientStuckPod(t *testing.T) {
 	}
 }
 
+func TestManualDeletionBeforeStableRecoveryProtectsReplacement(t *testing.T) {
+	resetTracker()
+	nodes := CreateMockGpuNodeList(1)
+	pod := CreateMockPod("cachens", 0, "node-0", PodStatusPending, true)
+	pod.UID = "original"
+	assert.Equal(t, len(getSchedulerInstructions([]Pod{pod}, nodes)), 0)
+
+	// Simulate the deletion time as now: startup was 5m30s ago, and readiness
+	// began 2m after startup. No real sleeps or global clock changes are needed.
+	deletionTime := time.Now()
+	startupTime := deletionTime.Add(-5*time.Minute - 30*time.Second)
+	readyTime := startupTime.Add(2 * time.Minute)
+	podState := tracker.State.PodMap[pod.Namespace][pod.PodName]
+	podState.UnhealthySinceOnCurrentNode = startupTime
+	podState.BoundSince = startupTime
+	podState.FirstHitTimestamp = startupTime
+	tracker.updatePodMapEntry(podState)
+
+	pod.State = PodStatusRunning
+	assert.Equal(t, len(getSchedulerInstructions([]Pod{pod}, nodes)), 0)
+	podState = tracker.State.PodMap[pod.Namespace][pod.PodName]
+	podState.FirstHitTimestamp = readyTime
+	tracker.updatePodMapEntry(podState)
+	assert.Equal(t, len(getSchedulerInstructions([]Pod{pod}, nodes)), 0)
+	podState = tracker.State.PodMap[pod.Namespace][pod.PodName]
+	assert.Equal(t, podState.UnhealthySinceOnCurrentNode, startupTime)
+	assert.Assert(t, !isPodStable(podState, tracker.Config),
+		"the original pod has been ready for only 3m30s at deletion")
+
+	// The manual delete is observed as termination, then absence. Deleting
+	// the original must not erase its last-node or cumulative health history.
+	pod.State = PodStatusTerminating
+	instructions := getSchedulerInstructions([]Pod{pod}, nodes)
+	assert.Equal(t, len(instructions), 1)
+	assert.Equal(t, instructions[0].Type, DeleteInstruction)
+	assert.Equal(t, instructions[0].PodUID, pod.UID)
+	assert.Equal(t, len(getSchedulerInstructions(nil, nodes)), 0)
+
+	pod.UID = "replacement"
+	pod.markPodAsPending()
+	instructions = getSchedulerInstructions([]Pod{pod}, nodes)
+	assert.Equal(t, len(instructions), 1)
+	assertPodScheduledToNode(t, instructions, pod.Namespace, pod.PodName, "node-0",
+		"Rescheduling pod on the node it was previously running on")
+
+	boundTime := time.Now()
+	pod.NodeName = "node-0"
+	for _, state := range []PodStatus{PodStatusPending, PodStatusNotReady} {
+		pod.State = state
+		assert.Equal(t, len(getSchedulerInstructions([]Pod{pod}, nodes)), 0,
+			"the replacement must not be deleted using the original startup timestamp")
+	}
+	podState = tracker.State.PodMap[pod.Namespace][pod.PodName]
+	assert.Equal(t, podState.UID, pod.UID)
+	assert.Equal(t, podState.UnhealthySinceOnCurrentNode, startupTime)
+	assert.Assert(t, !podState.BoundSince.Before(boundTime))
+	nodeInfo := tracker.State.CurrentNodes["node-0"]
+	assert.Equal(t, getRecentPodStuckEventCount(&nodeInfo), 2,
+		"original and replacement failures remain recorded on the only eligible node")
+
+	// At two minutes into its own startup window the replacement can become
+	// ready, despite the cumulative unhealthy episode already being expired.
+	podState.BoundSince = time.Now().Add(-2 * time.Minute)
+	tracker.updatePodMapEntry(podState)
+	assert.Equal(t, len(getSchedulerInstructions([]Pod{pod}, nodes)), 0)
+	pod.State = PodStatusRunning
+	assert.Equal(t, len(getSchedulerInstructions([]Pod{pod}, nodes)), 0)
+}
+
+func TestReplacementPodGetsFreshDeletionWindow(t *testing.T) {
+	for _, observeUnbound := range []bool{false, true} {
+		t.Run(map[bool]string{false: "already bound", true: "initially unbound"}[observeUnbound], func(t *testing.T) {
+			resetTracker()
+			nodes := CreateMockNodeList(2, "", "user")
+			pod := validNonEphemeralPod()
+			pod.UID = "original"
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "cacheserver", Ready: false}}
+			assert.Equal(t, len(getSchedulerInstructions(BuildPodList([]corev1.Pod{pod}), nodes)), 0)
+
+			podState := tracker.State.PodMap[pod.Namespace][pod.Name]
+			podState.UnhealthySinceOnCurrentNode = time.Now().Add(-10 * time.Minute)
+			podState.BoundSince = podState.UnhealthySinceOnCurrentNode
+			unhealthySince := podState.UnhealthySinceOnCurrentNode
+			tracker.updatePodMapEntry(podState)
+			assert.Equal(t, len(getSchedulerInstructions(BuildPodList([]corev1.Pod{pod}), nodes)), 1)
+
+			pod.UID = "replacement"
+			if observeUnbound {
+				pod.Spec.NodeName = ""
+				pod.Status.Phase = corev1.PodPending
+				pod.Status.ContainerStatuses = nil
+				instructions := getSchedulerInstructions(BuildPodList([]corev1.Pod{pod}), nodes)
+				assertPodScheduledToNode(t, instructions, pod.Namespace, pod.Name, "node-1",
+					"Rescheduling pod on the node it was previously running on")
+			}
+			pod.Spec.NodeName = "node-1"
+			pod.Status.Phase = corev1.PodRunning
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "cacheserver", Ready: false}}
+			start := time.Now()
+			for range 3 {
+				assert.Equal(t, len(getSchedulerInstructions(BuildPodList([]corev1.Pod{pod}), nodes)), 0,
+					"replacement must receive its own deletion window")
+			}
+			podState = tracker.State.PodMap[pod.Namespace][pod.Name]
+			assert.Equal(t, podState.UnhealthySinceOnCurrentNode, unhealthySince)
+			assert.Assert(t, !podState.BoundSince.Before(start))
+			assert.Assert(t, podState.StuckEventRecordedForCurrentAttempt)
+			nodeInfo := tracker.State.CurrentNodes["node-1"]
+			assert.Equal(t, getRecentPodStuckEventCount(&nodeInfo), 2)
+
+			podState.BoundSince = time.Now().Add(-4 * time.Minute)
+			tracker.updatePodMapEntry(podState)
+			assert.Equal(t, len(getSchedulerInstructions(BuildPodList([]corev1.Pod{pod}), nodes)), 0,
+				"replacement must not be deleted before the five-minute window expires")
+			podState.BoundSince = time.Now().Add(-6 * time.Minute)
+			tracker.updatePodMapEntry(podState)
+			instructions := getSchedulerInstructions(BuildPodList([]corev1.Pod{pod}), nodes)
+			assert.Equal(t, len(instructions), 1,
+				"replacement should still be deleted after its own deletion window expires")
+			assert.Equal(t, instructions[0].PodUID, pod.UID)
+			nodeInfo = tracker.State.CurrentNodes["node-1"]
+			assert.Equal(t, getRecentPodStuckEventCount(&nodeInfo), 2)
+		})
+	}
+}
+
+func TestShortLivedReplacementPodsMoveAwayFromBadNode(t *testing.T) {
+	for _, observeUnbound := range []bool{false, true} {
+		t.Run(map[bool]string{false: "already bound", true: "initially unbound"}[observeUnbound], func(t *testing.T) {
+			resetTracker()
+			nodes := CreateMockGpuNodeList(2)
+			pod := CreateMockPod("cachens", 0, "node-0", PodStatusPending, true)
+			pod.UID = "original"
+			assert.Equal(t, len(getSchedulerInstructions([]Pod{pod}, nodes)), 0)
+			podState := tracker.State.PodMap[pod.Namespace][pod.PodName]
+			unhealthySince := time.Now().Add(-10 * time.Minute)
+			podState.UnhealthySinceOnCurrentNode = unhealthySince
+			tracker.updatePodMapEntry(podState)
+
+			for attempt, uid := range []types.UID{"attempt-1", "attempt-2", "attempt-3"} {
+				pod.UID = uid
+				if observeUnbound {
+					pod.markPodAsPending()
+					instructions := getSchedulerInstructions([]Pod{pod}, nodes)
+					assertPodScheduledToNode(t, instructions, pod.Namespace, pod.PodName, "node-0",
+						"Rescheduling pod on the node it was previously running on")
+				}
+				pod.NodeName = "node-0"
+				var boundSince time.Time
+				for index, state := range []PodStatus{PodStatusPending, PodStatusTerminating, PodStatusNotReady, PodStatusRunning, PodStatusTerminating} {
+					pod.State = state
+					assert.Equal(t, len(getSchedulerInstructions([]Pod{pod}, nodes)), 0,
+						"a short-lived replacement must not be deleted using the cumulative node timer")
+					podState = tracker.State.PodMap[pod.Namespace][pod.PodName]
+					assert.Equal(t, podState.UnhealthySinceOnCurrentNode, unhealthySince,
+						"UID and state changes must retain cumulative unhealthy-node timing")
+					if index == 0 {
+						boundSince = podState.BoundSince
+					}
+					assert.Equal(t, podState.BoundSince, boundSince,
+						"state flapping must not restart the current UID's deletion window")
+				}
+				nodeInfo := tracker.State.CurrentNodes["node-0"]
+				assert.Equal(t, getRecentPodStuckEventCount(&nodeInfo), attempt+1,
+					"each replacement must record one node failure, even before its deletion window expires")
+			}
+
+			pod.UID = "recovery"
+			pod.markPodAsPending()
+			instructions := getSchedulerInstructions([]Pod{pod}, nodes)
+			assertPodScheduledToNode(t, instructions, pod.Namespace, pod.PodName, "node-1",
+				"Scheduling pod on healthy node")
+			pod.markPodAsRunning("node-1")
+			assert.Equal(t, len(getSchedulerInstructions([]Pod{pod}, nodes)), 0)
+			podState = tracker.State.PodMap[pod.Namespace][pod.PodName]
+			assert.Assert(t, podState.UnhealthySinceOnCurrentNode.IsZero())
+		})
+	}
+}
+
+func TestPodDeletionWindowUsesConfiguredThreshold(t *testing.T) {
+	for _, threshold := range []time.Duration{5 * time.Minute, 20 * time.Minute} {
+		t.Run(threshold.String(), func(t *testing.T) {
+			cfg := TrackerConfig{PodStuckThresholdDuration: threshold}
+			old := time.Now().Add(-2 * threshold)
+			podState := trackerPodInfo{
+				State:                       PodStatusNotReady,
+				UnhealthySinceOnCurrentNode: old,
+				BoundSince:                  time.Now().Add(-threshold / 2),
+			}
+			assert.Assert(t, isPodUnhealthyOnNode(podState, cfg))
+			assert.Assert(t, !isPodStuck(podState, cfg),
+				"node-health evidence must not bypass the current UID's startup window")
+
+			podState.BoundSince = old
+			assert.Assert(t, isPodStuck(podState, cfg))
+			podState.State = PodStatusRunning
+			assert.Assert(t, !isPodStuck(podState, cfg))
+			podState.State = PodStatusNotReady
+			podState.UnhealthySinceOnCurrentNode = time.Now()
+			assert.Assert(t, !isPodStuck(podState, cfg),
+				"an old pod's new unhealthy episode must still get the configured timeout")
+		})
+	}
+}
+
+func TestStableRecoveryEndsUnhealthyNodeEpisode(t *testing.T) {
+	resetTracker()
+	nodes := CreateMockGpuNodeList(1)
+	pod := CreateMockPod("cachens", 0, "node-0", PodStatusNotReady, true)
+	pod.UID = "original"
+	assert.Equal(t, len(getSchedulerInstructions([]Pod{pod}, nodes)), 0)
+	podState := tracker.State.PodMap[pod.Namespace][pod.PodName]
+	podState.UnhealthySinceOnCurrentNode = time.Now().Add(-10 * time.Minute)
+	podState.BoundSince = podState.UnhealthySinceOnCurrentNode
+	tracker.updatePodMapEntry(podState)
+	assert.Equal(t, len(getSchedulerInstructions([]Pod{pod}, nodes)), 1)
+
+	pod.State = PodStatusRunning
+	assert.Equal(t, len(getSchedulerInstructions([]Pod{pod}, nodes)), 0)
+	podState = tracker.State.PodMap[pod.Namespace][pod.PodName]
+	podState.FirstHitTimestamp = time.Now().Add(-6 * time.Minute)
+	tracker.updatePodMapEntry(podState)
+	assert.Equal(t, len(getSchedulerInstructions([]Pod{pod}, nodes)), 0)
+	nodeInfo := tracker.State.CurrentNodes["node-0"]
+	assert.Equal(t, getRecentPodStuckEventCount(&nodeInfo), 0)
+	podState = tracker.State.PodMap[pod.Namespace][pod.PodName]
+	assert.Assert(t, podState.UnhealthySinceOnCurrentNode.IsZero())
+
+	pod.UID = "replacement"
+	pod.State = PodStatusNotReady
+	assert.Equal(t, len(getSchedulerInstructions([]Pod{pod}, nodes)), 0)
+	nodeInfo = tracker.State.CurrentNodes["node-0"]
+	assert.Equal(t, getRecentPodStuckEventCount(&nodeInfo), 0,
+		"a replacement after stable recovery must not inherit the previous unhealthy episode")
+}
+
 func TestGetPodUnhealthyStartTime(t *testing.T) {
 	resetTracker()
 
@@ -558,6 +799,17 @@ func TestGetPodUnhealthyStartTime(t *testing.T) {
 			previousPodState: trackerPodInfo{
 				NodeName:                    "node-1",
 				State:                       PodStatusPending,
+				UnhealthySinceOnCurrentNode: unhealthyStartTime,
+			},
+			currentPod: failedPod,
+			expected:   unhealthyStartTime,
+		},
+		{
+			name: "a replacement on the same node retains the unhealthy period",
+			previousPodState: trackerPodInfo{
+				UID:                         "original",
+				NodeName:                    "node-1",
+				State:                       PodStatusFailed,
 				UnhealthySinceOnCurrentNode: unhealthyStartTime,
 			},
 			currentPod: failedPod,
@@ -637,6 +889,7 @@ func TestPodStateFlappingMovesAwayFromBadNode(t *testing.T) {
 
 	podState := tracker.State.PodMap["cachens"]["cacheserver-1"]
 	podState.UnhealthySinceOnCurrentNode = time.Now().Add(-10 * time.Minute)
+	podState.BoundSince = podState.UnhealthySinceOnCurrentNode
 	tracker.State.PodMap["cachens"]["cacheserver-1"] = podState
 
 	for attempt := 1; attempt <= SuccessivePodStuckEventThreshold; attempt++ {

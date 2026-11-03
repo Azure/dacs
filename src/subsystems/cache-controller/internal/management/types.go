@@ -16,6 +16,7 @@ package management
 
 import (
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // Cacheserver pod status.
@@ -47,6 +48,7 @@ const (
 
 // Cacheserver pod definition
 type Pod struct {
+	UID types.UID `json:"uid"`
 	// Name of the pod
 	PodName string `json:"podName"`
 	// Namespace of the pod
