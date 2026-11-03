@@ -92,6 +92,10 @@ stages:
           resourceGroup: dacs-integration
           resourcePrefix: ${{ parameters.resourcePrefix }}-$(Build.BuildId)-$(System.StageAttempt)-$(System.JobAttempt)
           AZURE_STORAGE_AUTH_MODE: login
+          SEND_METRICS: 'true'
+          BUILD_DEFINITION_NAME: $(Build.DefinitionName)
+          BUILD_NUM: $(Build.BuildNumber)
+          AKS_CLUSTER_NAME: $(resourcePrefix)-cluster
         templateContext:
           outputs:
             - output: pipelineArtifact
@@ -251,7 +255,6 @@ stages:
                 export BUILD_DEFINITION_NAME="$(Build.DefinitionName)"
                 export BUILD_NUM="$(Build.BuildNumber)"
                 export GIT_BRANCH="$(Build.SourceBranchName)"
-                # export SEND_METRICS=true
                 ${{ parameters.extraTestEnv }}
                 make test-e2e \
                     TEST_PACKAGES="${{ parameters.testPackage }}" \
@@ -260,6 +263,7 @@ stages:
                     SUPPORT_BUNDLE_OUTPUT_DIR="support-bundles/${{ parameters.stageName }}" \
                     EXTRA_TEST_ARGS="${{ parameters.extraTestArgs }}"
             env:
+              AZURE_TOKEN_CREDENTIALS: AzureCLICredential
               REGISTRY_HOST: ${{ parameters.dockerRegistry }}
               AKS_RESOURCE_GROUP: $(resourceGroup)
               AKS_CLUSTER_NAME: $(resourcePrefix)-cluster

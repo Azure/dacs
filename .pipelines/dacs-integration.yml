@@ -137,6 +137,9 @@ parameters:
       - dacs
       - cache-server
 
+variables:
+  - group: dacs-integration-telemetry
+
 resources:
   repositories:
     - repository: 1ESPipelineTemplates
