@@ -4,9 +4,9 @@ azure-core==1.41.0 \
     # via
     #   azure-identity
     #   azure-storage-blob
-azure-identity==1.26.0 \
-    --hash=sha256:3c60d9682b3ac01507388d474cb5a5ffbe54152a96b6cdcaa7013da9315cf186 \
-    --hash=sha256:61b4538b87df10d2d6d44b77cd5ea28a8929fd4929d58b45bf3f230f7daba02e
+azure-identity==1.27.0 \
+    --hash=sha256:6a4c50e25e8e9a47b324a95ad024897e56cb3c6241e0094e93b126a2bf71edc5 \
+    --hash=sha256:92fd2a93c0d2f777dac6c04e5fd7d5734f6643582b983544ef66b4575844e46d
     # via -r requirements-test.in
 azure-storage-blob==12.31.0 \
     --hash=sha256:0c0cb601d3462491d09ea96023cd791bb9dd4b173bf950daf3cff34ff47ba5b5 \
@@ -634,9 +634,9 @@ pytest==9.1.1 \
     #   -r requirements-test.in
     #   pytest-asyncio
     #   pytest-timeout
-pytest-asyncio==1.4.0 \
-    --hash=sha256:933ca923a23075a87fb7070c0ec272a6848489824d887c85c812670932835aa1 \
-    --hash=sha256:c6c0d2259945122819f171a32ecea2c349ead889ee28176caaf492143424be42
+pytest-asyncio==1.4.1 \
+    --hash=sha256:507afa78ec77c6661164ef1a2368bc7820383fd1a14b2a7f813de8b5a92949cc \
+    --hash=sha256:e8266eb094e5ee9ffdb2068c9836f33e209ea77a970eb846933d416b5602669b
     # via -r requirements-test.in
 pytest-timeout==2.4.0 \
     --hash=sha256:7e68e90b01f9eff71332b25001f85c75495fc4e3a836701876183c4bcfd0540a \
