@@ -92,6 +92,26 @@ To run it on demand:
 The default region is `australiaeast`. Test jobs have a 120-minute limit.
 Cleanup runs separately and preserves the shared resource group.
 
+All stages send existing test JSON metrics through Event Hub to Kusto.
+The test task sets `AZURE_TOKEN_CREDENTIALS=AzureCLICredential` so the sender
+uses the task's Azure service connection rather than the agent's identity.
+Log collection and continuous Prometheus metrics are outside this iteration.
+The pipeline requires authorization to the
+`dacs-integration-telemetry` variable group:
+
+| Variable | Value |
+|----------|-------|
+| `EVENTHUB_NAMESPACE` | Event Hub namespace FQDN |
+| `EVENTHUB_NAME` | Test metrics hub name |
+
+Persistent Event Hub and Kusto infrastructure in `dacs-github` and its
+environment-specific settings are managed separately in `dacs-internal`.
+Query the `PerfMetrics` table by `RunID`
+(`<definition>-<build-number>`) and `TestMetadata.ClusterName`.
+Allow for asynchronous ingestion. Shared metrics infrastructure and retained
+data survive test-cluster deletion. Existing support bundles and per-spec
+diagnostic artifacts remain unchanged.
+
 If cleanup does not run, copy the prefix from **Publish Resource Prefix** and
 run:
 
@@ -219,6 +239,8 @@ These metrics are automatically collected from the PerfClient logs and can be se
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SEND_METRICS` | `false` | Send metrics to EventHub for Kusto ingestion |
+| `EVENTHUB_NAMESPACE` | - | Event Hub namespace FQDN, required when sending |
+| `EVENTHUB_NAME` | - | Event Hub name, required when sending |
 | `DOCKER_REGISTRY` | `dacstest.azurecr.io` | Docker registry for perf client image |
 | `BUILD_NUMBER` | - | Image tag for perf client |
 
@@ -238,7 +260,9 @@ make test-e2e TEST_FILTER=perf EXTRA_TEST_ARGS="--cache-server-count=5 --checksu
 make test-e2e TEST_FILTER=perf EXTRA_TEST_ARGS="--data-size-gib=100 --cache-server-count=5 --num-threads=32 --checksum-algorithm=xxhash32"
 
 # Send metrics to EventHub (requires Azure credentials)
-SEND_METRICS=true make test-e2e TEST_FILTER=perf EXTRA_TEST_ARGS="--data-size-gib=100 --num-threads=32"
+SEND_METRICS=true EVENTHUB_NAMESPACE=<namespace>.servicebus.windows.net \
+  EVENTHUB_NAME=<hub> make test-e2e TEST_FILTER=perf \
+  EXTRA_TEST_ARGS="--data-size-gib=100 --num-threads=32"
 ```
 
 ### AKS Performance Testing Workflow
