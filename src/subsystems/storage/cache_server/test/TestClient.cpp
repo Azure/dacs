@@ -14,6 +14,7 @@
 
 #include "SocketConnection.h"
 #include "CacheUtils.h"
+#include "../utils/ConfigUtils.h"
 #include "UploadRequest.h"
 #include "CommonLogger.h"
 #include "DownloadRequest.h"
@@ -1859,17 +1860,8 @@ int main(int argc, char *argv[])
     LoggingApi::Init();
     LoggingApi::FlushCachedLog();
 
-    char* cacheServerHost = std::getenv("TEST_CACHESERVER_ADDR_HOST");
-    if (cacheServerHost != nullptr)
-    {
-        CacherServer = cacheServerHost;
-    }
-
-    char* cacheServerPort = std::getenv("TEST_CACHESERVER_ADDR_PORT");
-    if (cacheServerPort != nullptr)
-    {
-        ServerPort = std::stoi(cacheServerPort);
-    }
+    CacherServer = GetConfigEnvVar("TEST_CACHESERVER_ADDR_HOST", CacherServer);
+    ServerPort = GetConfigEnvVar("TEST_CACHESERVER_ADDR_PORT", ServerPort, 1, 65535);
 
     // For use by storage_intercept/integration_tests/snapshot_integration_test.sh
     if(argc > 1)
@@ -1882,25 +1874,11 @@ int main(int argc, char *argv[])
         }
     }
 
-    bool runIBTests = false;
-    char* testIB = std::getenv("TEST_IB");
-    if(testIB != nullptr)
+    bool runIBTests = GetConfigEnvVar("TEST_IB", false);
+    bool runIBOnly = GetConfigEnvVar("TEST_IB_ONLY", false);
+    if (runIBOnly)
     {
-        if(strcmp(testIB, "true") == 0)
-        {
-            runIBTests = true;
-        }
-    }
-
-    bool runIBOnly = false;
-    char* testIBOnly = std::getenv("TEST_IB_ONLY");
-    if(testIBOnly != nullptr)
-    {
-        if(strcmp(testIBOnly, "true") == 0)
-        {
-            runIBOnly = true;
-            runIBTests = true;
-        }
+        runIBTests = true;
     }
 
     if(argc > 1)

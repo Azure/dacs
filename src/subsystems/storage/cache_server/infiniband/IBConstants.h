@@ -17,22 +17,25 @@
 #include <cstdint>
 //---------------------------------------------------------------------------------------------------------------------
 
-// Maximum requests that can be added to the IB send queue.
+// Baseline capacity of the IB completion queue.
 constexpr int MAX_REQUESTS = 1024;
 
-// Maximum number of receive buffers available for incoming requests.
-// This is the maximum number of concurrent requests the server can handle.
-constexpr int MAX_RECEIVE_BUFFERS = 256;
+// Default number of receive buffers, which limits concurrent incoming requests.
+constexpr uint32_t DEFAULT_RECEIVE_BUFFERS = 256;
+constexpr uint32_t MIN_IB_RECEIVE_BUFFERS = 1;
+constexpr uint32_t MAX_IB_RECEIVE_BUFFERS = 1024;
 
-// Number of workers to handle client requests, one thread handles one request.
-constexpr int IB_RECEIVE_THREADS = 128;
+// Default number of request workers, one thread handles one request.
+constexpr uint32_t DEFAULT_IB_RECEIVE_THREADS = 128;
+constexpr uint32_t MIN_IB_RECEIVE_THREADS = 1;
+constexpr uint32_t MAX_IB_RECEIVE_THREADS = 2048;
 
 // Encode the buffer index and operation type in WR IDs so failed completions can be classified without wc.opcode.
 constexpr uint64_t IB_SEND_WR_ID_FLAG = 1;
 
-constexpr bool IsValidIBBufferIndex(uint32_t bufferIndex)
+constexpr bool IsValidIBBufferIndex(uint32_t bufferIndex, uint32_t receiveBufferCount)
 {
-	return bufferIndex < MAX_RECEIVE_BUFFERS;
+	return bufferIndex < receiveBufferCount;
 }
 
 constexpr uint64_t MakeIBReceiveWrId(uint32_t bufferIndex)
