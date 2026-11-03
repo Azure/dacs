@@ -91,6 +91,28 @@
       "component": {
         "type": "git",
         "git": {
+          "repositoryUrl": "https://github.com/curl/curl.git",
+          "commitHash": "3163ec065643ba20709f190111f42c3e1fe95273",
+          "tag": "curl-8_23_0"
+        }
+      },
+      "developmentDependency": false
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "repositoryUrl": "https://github.com/openssl/openssl.git",
+          "commitHash": "45e844fa2a14ec92d146bd8f5778ac130b6625fb",
+          "tag": "openssl-3.5.9"
+        }
+      },
+      "developmentDependency": false
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "repositoryUrl": "https://github.com/fmtlib/fmt.git",
           "commitHash": "a33701196adfad74917046096bf5a2aa0ab0bb50",
           "tag": "9.1.0"
