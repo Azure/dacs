@@ -15,13 +15,12 @@
 set(DACS_STATIC_CURL_PREFIX "${CMAKE_DEP_INSTALL_DIR}/tls/curl" CACHE PATH
     "Prefix containing lib/libcurl.a built against the owned static OpenSSL with -fPIC")
 
-# This opt-in prototype uses unpatched upstream curl, not Ubuntu's patched
-# 7.81.0 package. Security patch coverage must be resolved before production use.
+# Security updates require updating this upstream pin and rebuilding consumers.
 ExternalProject_Add(
     dacs_curl
     DEPENDS dacs_openssl
-    URL "https://curl.se/download/curl-7.87.0.tar.gz"
-    URL_HASH "SHA256=8a063d664d1c23d35526b87a2bf15514962ffdd8ef7fd40519191b3c23e39548"
+    URL "https://curl.se/download/curl-8.23.0.tar.gz"
+    URL_HASH "SHA256=e3de77cfa6367083c776a26647fc9f633b538c06c3baa73d931a252ac8f72b49"
     DOWNLOAD_DIR "${CMAKE_DEP_INSTALL_DIR}/tls/downloads"
     INSTALL_DIR "${DACS_STATIC_CURL_PREFIX}"
     UPDATE_COMMAND ""
