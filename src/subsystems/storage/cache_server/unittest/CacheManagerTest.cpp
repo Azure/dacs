@@ -21,6 +21,7 @@
 #include "ServerLocatorCache.h"
 #include "FlatMapIndex.h"
 #include <chrono>
+#include <fstream>
 #include <memory>
 //---------------------------------------------------------------------------------------------------------------------
 CacheManagerTest::CacheManagerTest()
@@ -438,5 +439,45 @@ TEST_F(CacheManagerTest, EvictionUnregistersKVEntriesFromLocator)
     // Legacy-tagged and untagged entries are not KV entries, so their locator entries remain.
     EXPECT_TRUE(locator.Lookup("/kv/legacy-tag").has_value());
     EXPECT_TRUE(locator.Lookup("/kv/untagged").has_value());
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(CacheManagerTest, UpdateCacheInfoPreservesFirstFileOnDuplicateUpload)
+{
+    auto& cacheManager = CacheManager::GetInstance();
+    const uint64_t initialCachedSize = cacheManager.GetCacheServerSize();
+    const std::string fileName = "/test/concurrentUpload";
+    const std::string payloadA = "payload-from-writer-A";
+    const std::string payloadB = "payload-from-writer-B-different";
+    const std::string tempA = GetCacheTempPath(fileName);
+    const std::string tempB = GetCacheTempPath(fileName);
+    std::ofstream(tempA, std::ios::binary) << payloadA;
+    std::ofstream(tempB, std::ios::binary) << payloadB;
+
+    ASSERT_TRUE(cacheManager.InitCacheInfo(fileName, true, payloadA.size()));
+    ASSERT_TRUE(cacheManager.InitCacheInfo(fileName, true, payloadB.size()));
+    ASSERT_TRUE(cacheManager.InitCacheInfo(fileName, true, 64));
+
+    google::protobuf::Map<std::string, std::string> metaA, metaB;
+    metaA["Checksum"] = "341500382";
+    metaB["Checksum"] = "3351009794";
+
+    bool alreadyExists = false;
+    ASSERT_TRUE(cacheManager.UpdateCacheInfo(
+        fileName, payloadA.size(), metaA, 0, "groupA", tempA, &alreadyExists));
+    EXPECT_FALSE(alreadyExists);
+
+    ASSERT_FALSE(cacheManager.UpdateCacheInfo(
+        fileName, payloadB.size(), metaB, 0, "groupB", tempB, &alreadyExists));
+    EXPECT_TRUE(alreadyExists);
+
+    // An in-flight concurrent upload failing after completion must not erase the completed entry.
+    ASSERT_TRUE(cacheManager.ResetCacheInfo(fileName, 64));
+
+    ValidateCacheEntry(fileName, payloadA.size(), 0, "groupA");
+    EXPECT_EQ(cacheManager.GetCacheInfo(fileName).m_metadata.at("Checksum"), "341500382");
+    EXPECT_EQ(cacheManager.GetCacheServerSize(), initialCachedSize + payloadA.size());
+    std::ifstream inDest(GetCachePath(fileName), std::ios::binary);
+    EXPECT_EQ(std::string(std::istreambuf_iterator<char>(inDest), {}), payloadA);
+    remove(GetCachePath(fileName).c_str());
 }
 //---------------------------------------------------------------------------------------------------------------------

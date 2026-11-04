@@ -101,7 +101,8 @@ class CacheManager
         // Remove/reset cache entry in case of incomplete uploads to allow for next clean uploads
         bool ResetCacheInfo(
             /*[in] */ const std::string& fileName,
-            /*[in] */ uint64_t fileSize);
+            /*[in] */ uint64_t fileSize,
+            /*[in] */ bool onlyIfIncomplete = true);
 
         // Update cache info after upload file is successful
         bool UpdateCacheInfo(
@@ -109,7 +110,9 @@ class CacheManager
             /*[in] */ uint64_t fileSize,
             /*[in] */ const ::google::protobuf::Map<std::string, std::string>& metadata,
             /*[in] */ uint32_t cacheExpirySeconds,
-            /*[in] */ const std::string& groupId);
+            /*[in] */ const std::string& groupId,
+            /*[in] */ const std::string& tempFilename = "",
+            /*[out]*/ bool* pAlreadyExists = nullptr);
 
         // Delete all cache files matching the group-id.
         // This is asynchronous and actual file deletion happens in the background after this call returns.
