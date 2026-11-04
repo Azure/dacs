@@ -144,7 +144,7 @@ bool DownloadFile(IConnection& clientConnection, const DownloadRequest& download
             {
                 // Local file not present, cache state is not consistent with filesystem, reset the cache entry
                 LOG_WARN_REQID("Resetting cache for file: {}", downloadRequest, downloadRequest.filename());
-                CacheManager::GetInstance().ResetCacheInfo(downloadRequest.filename(), downloadFileSize);
+                CacheManager::GetInstance().ResetCacheInfo(downloadRequest.filename(), downloadFileSize, false);
             }
             eResponseCode = ResponseCode::INTERNAL_ERROR;
             return false;

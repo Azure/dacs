@@ -398,21 +398,15 @@ bool UploadFile(IConnection& clientConnection,
         return false;
     }
 
-    CacheManager::CacheInfo cacheInfo = CacheManager::GetInstance().GetCacheInfo(uploadRequest.filename());
-
-    // Duplicate file upload
-    if (cacheInfo.m_status == CacheManager::CacheStatus::COMPLETED)
+    if (uploadRequest.filesize() > UPLOAD_FILESIZE_LIMIT)
     {
-        LOG_WARN_REQID("Duplicate upload - file '{}' already exists in cache", uploadRequest, uploadRequest.filename());
-        if (!ReadAndDiscardFileData(
-               clientConnection, uploadRequest, eResponseCode, uploadResponse))
-        {
-            return false;
-        }
-
-        SET_RESULT(uploadResponse, eResponseCode, UploadResponse::FILE_EXISTS);
-        return SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
+        LOG_WARN_REQID("filesize too large: {}", uploadRequest, uploadRequest.filesize());
+        SET_RESULT(uploadResponse, eResponseCode, UploadResponse::BAD_REQUEST);
+        SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
+        return false;
     }
+
+    CacheManager::CacheInfo cacheInfo = CacheManager::GetInstance().GetCacheInfo(uploadRequest.filename());
 
     // Note: we let the client try to upload if another client has also started for a few reasons:
     // 1. Redundancy - if at the last moment the other client fails to upload, 
@@ -424,17 +418,25 @@ bool UploadFile(IConnection& clientConnection,
             uploadRequest, uploadRequest.filename());
     }
 
-    if (uploadRequest.filesize() > UPLOAD_FILESIZE_LIMIT)
+    if (cacheInfo.m_status == CacheManager::CacheStatus::COMPLETED ||
+        !CacheManager::GetInstance().InitCacheInfo(
+            uploadRequest.filename(), uploadRequest.ignorelock(), uploadRequest.filesize()))
     {
-        LOG_WARN_REQID("filesize too large: {}", uploadRequest, uploadRequest.filesize());
-        SET_RESULT(uploadResponse, eResponseCode, UploadResponse::BAD_REQUEST);
-        SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
-        return false;
-    }
+        if (cacheInfo.m_status == CacheManager::CacheStatus::COMPLETED ||
+            CacheManager::GetInstance().GetCacheInfo(uploadRequest.filename()).m_status ==
+                CacheManager::CacheStatus::COMPLETED)
+        {
+            LOG_WARN_REQID("Duplicate upload - file '{}' already exists in cache", uploadRequest, uploadRequest.filename());
+            if (!ReadAndDiscardFileData(
+                   clientConnection, uploadRequest, eResponseCode, uploadResponse))
+            {
+                return false;
+            }
 
-    if (!CacheManager::GetInstance().InitCacheInfo(uploadRequest.filename(), uploadRequest.ignorelock(),
-        uploadRequest.filesize()))
-    {
+            SET_RESULT(uploadResponse, eResponseCode, UploadResponse::FILE_EXISTS);
+            return SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
+        }
+
         LOG_WARN_REQID("error starting upload for: {}", uploadRequest, uploadRequest.filename());
         SET_RESULT(uploadResponse, eResponseCode, UploadResponse::INTERNAL_ERROR);
         SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
@@ -442,10 +444,11 @@ bool UploadFile(IConnection& clientConnection,
     }
 
     LOG_DEBUG_REQID("file size to upload: {}", uploadRequest, uploadRequest.filesize());
+    string tempFilename;
     if (uploadRequest.filesize() > 0)
     {
         // write to temp file on disk
-        string tempFilename = GetCacheTempPath(uploadRequest.filename());
+        tempFilename = GetCacheTempPath(uploadRequest.filename());
         if (tempFilename.empty())
         {
             LOG_WARN_REQID("Couldn't create a temp file for uploading: {}", uploadRequest, uploadRequest.filename());
@@ -477,51 +480,26 @@ bool UploadFile(IConnection& clientConnection,
             SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid);
             return false;
         }
+    }
 
-        // Required data has been correctly read at this point, connection can be safely reused 
-        // Now atomically rename file to final target
-        string destFilename = GetCachePath(uploadRequest.filename());
-        int ret = rename(tempFilename.c_str(), destFilename.c_str());
-        if (ret != 0)
+    bool alreadyExists = false;
+    if (!CacheManager::GetInstance().UpdateCacheInfo(
+            uploadRequest.filename(), uploadRequest.filesize(),
+            uploadRequest.metadata(), uploadRequest.expiryseconds(),
+            uploadRequest.groupid(), tempFilename, &alreadyExists))
+    {
+        SET_RESULT(uploadResponse, eResponseCode,
+            alreadyExists ? UploadResponse::FILE_EXISTS : UploadResponse::INTERNAL_ERROR);
+        if (alreadyExists)
         {
-            LOG_WARN_REQID("Failed to rename file from {} to {}. errno: {}:{}",
-                uploadRequest, tempFilename, destFilename, errno, strerror(errno));
-            remove(tempFilename.c_str());
-            SET_RESULT(uploadResponse, eResponseCode, UploadResponse::INTERNAL_ERROR);
-            CacheManager::GetInstance().ResetCacheInfo(uploadRequest.filename(), uploadRequest.filesize());
-        }
-        else
-        {
-            if (!CacheManager::GetInstance().UpdateCacheInfo(uploadRequest.filename(), uploadRequest.filesize(),
-                uploadRequest.metadata(), uploadRequest.expiryseconds(), uploadRequest.groupid()))
-            {
-                // UpdateCacheInfo returns false only if the file is already cached
-                SET_RESULT(uploadResponse, eResponseCode, UploadResponse::FILE_EXISTS);
-                LOG_WARN_REQID("Cache entry upload status already marked as COMPLETED: {} - duplicate upload scenario", uploadRequest, uploadRequest.filename());
-            }
-            else
-            {
-                SET_RESULT(uploadResponse, eResponseCode, UploadResponse::SUCCESS);
-                nFileSize = uploadRequest.filesize();
-                LOG_DEBUG_REQID("File successfully written to cache: {}", uploadRequest, uploadRequest.filename());
-            }
+            LOG_WARN_REQID("Cache entry upload status already marked as COMPLETED: {} - duplicate upload scenario", uploadRequest, uploadRequest.filename());
         }
     }
     else
     {
         SET_RESULT(uploadResponse, eResponseCode, UploadResponse::SUCCESS);
-        if (!CacheManager::GetInstance().UpdateCacheInfo(uploadRequest.filename(), uploadRequest.filesize(),
-            uploadRequest.metadata(), uploadRequest.expiryseconds(), uploadRequest.groupid()))
-        {
-            // UpdateCacheInfo returns false only if the file is already cached
-            SET_RESULT(uploadResponse, eResponseCode, UploadResponse::FILE_EXISTS);
-            LOG_WARN_REQID("Cache entry upload status already marked as COMPLETED: {} - duplicate upload scenario", uploadRequest, uploadRequest.filename());
-        }
-        else
-        {
-            LOG_DEBUG_REQID("File successfully written to cache: {}", uploadRequest, uploadRequest.filename());
-            nFileSize = uploadRequest.filesize();
-        }
+        nFileSize = uploadRequest.filesize();
+        LOG_DEBUG_REQID("File successfully written to cache: {}", uploadRequest, uploadRequest.filename());
     }
 
     if (!SendMessageToRemoteFinal(clientConnection, uploadResponse, requestid))

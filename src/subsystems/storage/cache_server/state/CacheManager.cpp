@@ -179,7 +179,7 @@ bool CacheManager::InitCacheInfo(const std::string& fileName, bool ignoreLock, u
     return true;
 }
 //---------------------------------------------------------------------------------------------------------------------
-bool CacheManager::ResetCacheInfo(const std::string& fileName, uint64_t fileSize)
+bool CacheManager::ResetCacheInfo(const std::string& fileName, uint64_t fileSize, bool onlyIfIncomplete)
 {
     m_totalCachedSize.fetch_sub(fileSize);
 
@@ -190,6 +190,11 @@ bool CacheManager::ResetCacheInfo(const std::string& fileName, uint64_t fileSize
     {
         if (iter->second.m_status == CacheStatus::COMPLETED)
         {
+            if (onlyIfIncomplete)
+            {
+                return true;
+            }
+
             // Clear TTLMap entry
             if (iter->second.m_expiryTime != 0)
             {
@@ -221,8 +226,13 @@ bool CacheManager::ResetCacheInfo(const std::string& fileName, uint64_t fileSize
 //---------------------------------------------------------------------------------------------------------------------
 bool CacheManager::UpdateCacheInfo(const std::string& fileName, uint64_t fileSize, 
     const ::google::protobuf::Map<std::string, std::string>& metadata, uint32_t cacheExpirySeconds,
-    const string& groupId)
+    const string& groupId, const std::string& tempFilename, bool* pAlreadyExists)
 {
+    if (pAlreadyExists != nullptr)
+    {
+        *pAlreadyExists = false;
+    }
+
     if (cacheExpirySeconds > 0 && !groupId.empty())
     {
         LOG_WARN("Both expiry and groupid should not be set, ignoring expiry. "
@@ -236,17 +246,44 @@ bool CacheManager::UpdateCacheInfo(const std::string& fileName, uint64_t fileSiz
     auto index = GetHashBucket(fileName);
     unique_lock lockCache(m_vCacheInfoMapMutex[index]);
     auto iter = m_vCacheInfoMap[index].find(fileName);
-    if (iter != m_vCacheInfoMap[index].end())
+    if (iter != m_vCacheInfoMap[index].end() && iter->second.m_status == CacheStatus::COMPLETED)
     {
-        if (iter->second.m_status == CacheStatus::COMPLETED)
+        // Some other upload for same file has already succeeded, ignore this one.
+        LOG_WARN("File already uploaded by another thread: {}", fileName);
+        m_totalCachedSize.fetch_sub(fileSize);
+        iter->second.m_accessTimestamp = time(NULL);
+        lockCache.unlock();
+        if (!tempFilename.empty())
         {
-            // Some other upload for same file has already succeeded, ignore this one.
-            LOG_WARN("File already uploaded by another thread: {}", fileName);
+            remove(tempFilename.c_str());
+        }
+        if (pAlreadyExists != nullptr)
+        {
+            *pAlreadyExists = true;
+        }
+        return false;
+    }
+
+    if (!tempFilename.empty())
+    {
+        const string destFilename = GetCachePath(fileName);
+        if (rename(tempFilename.c_str(), destFilename.c_str()) != 0)
+        {
+            LOG_WARN("Failed to rename file from {} to {}. errno: {}:{}",
+                     tempFilename, destFilename, errno, strerror(errno));
             m_totalCachedSize.fetch_sub(fileSize);
-            iter->second.m_accessTimestamp = time(NULL);
+            if (iter != m_vCacheInfoMap[index].end())
+            {
+                m_vCacheInfoMap[index].erase(iter);
+            }
+            lockCache.unlock();
+            remove(tempFilename.c_str());
             return false;
         }
+    }
 
+    if (iter != m_vCacheInfoMap[index].end())
+    {
         iter->second = CacheInfo(fileSize, metadata, CacheStatus::COMPLETED, expiryTimeBucket, groupId);
     }
     else
