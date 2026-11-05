@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "Utils.h"
+#include "ConfigUtils.h"
 #include "Constants.h"
 #include "Logger.h"
 #include <unordered_set>
@@ -130,18 +131,18 @@ void InitializeUtils()
 
     mkdir(GetSnapshotFolderPath().c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
-    char* serverHostName = std::getenv("CACHESERVER_HOSTNAME");
-    if (serverHostName != NULL && strlen(serverHostName) > 0)
+    const string serverHostName = GetConfigEnvVar("CACHESERVER_HOSTNAME", "");
+    if (!serverHostName.empty())
     {
         ServerHostName = serverHostName;
     }
 
-    char* cacheServerMetricPort = std::getenv("CACHESERVER_METRICS_PORT");
-    if (cacheServerMetricPort != NULL && strlen(cacheServerMetricPort) > 0)
+    const string cacheServerMetricPort = GetConfigEnvVar("CACHESERVER_METRICS_PORT", "");
+    if (!cacheServerMetricPort.empty())
     {
         char* pEndPtr = nullptr;
-        long int nValue = std::strtol(cacheServerMetricPort, &pEndPtr, 10);
-        if (pEndPtr == cacheServerMetricPort || nValue < 0 || nValue > 65535)
+        long int nValue = std::strtol(cacheServerMetricPort.c_str(), &pEndPtr, 10);
+        if (pEndPtr == cacheServerMetricPort.c_str() || nValue < 0 || nValue > 65535)
         {
             LOG_CRITICAL("Invalid port number for metrics: {}", cacheServerMetricPort);
             exit(-1);

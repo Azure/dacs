@@ -1,0 +1,193 @@
+# Copyright (c) Microsoft Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+suite: prerequisite image configuration
+templates:
+  - daemonset.yaml
+tests:
+  - it: preserves default images without requiring pull secrets
+    asserts:
+      - equal:
+          path: apiVersion
+          value: apps/v1
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: cache-setup:1.0.0
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mcr.microsoft.com/azurelinux/base/core:3.0
+      - notExists:
+          path: spec.template.spec.imagePullSecrets
+  - it: ignores the registry in default legacy mode
+    set:
+      global.registry: mirror/archive
+      nvmeRaidSetup.image.repository: source.example/team/setup
+    asserts: &legacyImages
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: source.example/team/setup:1.0.0
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mcr.microsoft.com/azurelinux/base/core:3.0
+  - it: ignores the registry in explicit legacy mode
+    set:
+      global.registryMode: legacy
+      global.registry: mirror.example/project/
+      nvmeRaidSetup.image.repository: source.example/team/setup
+    asserts: *legacyImages
+  - it: replaces hosts and preserves paths and explicit tags
+    set:
+      global.registryMode: replace
+      global.registry: harbor.example:8443/dacs/
+      nvmeRaidSetup.image.repository: source.example/team/setup
+      nvmeRaidSetup.image.tag: release
+      pauseContainer.image.repository: localhost:5000/base/pause
+      pauseContainer.image.tag: release
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: harbor.example:8443/dacs/team/setup:release
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: harbor.example:8443/dacs/base/pause:release
+  - it: localizes default images to an Azure China registry
+    set:
+      global.registryMode: replace
+      global.registry: mirror.azurecr.cn
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: mirror.azurecr.cn/cache-setup:1.0.0
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror.azurecr.cn/azurelinux/base/core:3.0
+  - it: preserves unqualified paths and removes localhost
+    set:
+      global.registryMode: replace
+      global.registry: mirror.example
+      nvmeRaidSetup.image.repository: team/custom
+      pauseContainer.image.repository: localhost/base/custom
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: mirror.example/team/custom:1.0.0
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror.example/base/custom:3.0
+  - it: permits mixed registries with no global registry
+    set:
+      global.registryMode: replace
+      nvmeRaidSetup.image.repository: setup.example/team/setup
+      pauseContainer.image.repository: pause.example/base/pause
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: setup.example/team/setup:1.0.0
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: pause.example/base/pause:3.0
+  - it: propagates multiple pull secrets in legacy mode
+    set:
+      global.imagePullSecrets: &secrets [{name: registry-auth}, {name: backup}]
+    asserts: &secretAssertions
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: *secrets
+  - it: propagates the same references in replacement mode
+    set:
+      global.registryMode: replace
+      global.registry: mirror.example
+      global.imagePullSecrets: *secrets
+    asserts: *secretAssertions
+  - it: does not apply the chart version to an empty pause tag
+    set:
+      pauseContainer.image.tag: ""
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "mcr.microsoft.com/azurelinux/base/core:"
+  - it: lets both component registries override the global destination
+    set:
+      global.registryMode: replace
+      global.registry: mirror.example
+      nvmeRaidSetup.image.registry: setup.example:5000/project/
+      nvmeRaidSetup.image.repository: source.example/team/setup
+      nvmeRaidSetup.image.tag: release
+      pauseContainer.image.registry: pause.example
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: setup.example:5000/project/team/setup:release
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: pause.example/azurelinux/base/core:3.0
+  - it: keeps an empty setup override on the global destination
+    set:
+      global.registryMode: replace
+      global.registry: mirror.example
+      nvmeRaidSetup.image.registry: ""
+      pauseContainer.image.registry: pause.example
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: mirror.example/cache-setup:1.0.0
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: pause.example/azurelinux/base/core:3.0
+  - it: supports component-only replacement without a global registry
+    set:
+      global.registryMode: replace
+      nvmeRaidSetup.image.registry: setup.example
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: setup.example/cache-setup:1.0.0
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mcr.microsoft.com/azurelinux/base/core:3.0
+  - it: applies a setup override while the pause image retains legacy behavior
+    set:
+      global.registry: mirror/archive
+      nvmeRaidSetup.image.registry: other.example
+      nvmeRaidSetup.image.repository: source.example/team/setup
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: other.example/team/setup:1.0.0
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mcr.microsoft.com/azurelinux/base/core:3.0
+  - it: applies a pause override in legacy mode without changing the setup image
+    set:
+      global.registryMode: legacy
+      global.registry: mirror/archive
+      pauseContainer.image.registry: other.example
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: other.example/azurelinux/base/core:3.0
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: cache-setup:1.0.0
+  - it: rejects a scheme in a setup registry
+    set:
+      nvmeRaidSetup.image.registry: https://other.example
+    asserts: &invalidRegistry
+      - failedTemplate:
+          errorPattern: registry
+  - it: rejects a non-string pause registry
+    set:
+      global.registryMode: replace
+      pauseContainer.image.registry: 123
+    asserts: *invalidRegistry

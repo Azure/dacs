@@ -1,0 +1,329 @@
+# Copyright (c) Microsoft Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+suite: controller and cleanup image configuration
+templates:
+  - manager/manager.yaml
+  - pre-delete-cache-cleanup.yaml
+set:
+  # Registry behavior must preserve the supplied tag, not pin a release default.
+  cleanup.image.tag: registry-test
+tests:
+  - it: preserves default repositories and built-in environment ordering
+    asserts:
+      - equal:
+          path: apiVersion
+          value: apps/v1
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: dacstest.azurecr.io/dacs/cache-controller:local
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[1]
+          value: {name: CACHE_CONTROLLER_CACHESERVERIMAGE, value: "dacstest.azurecr.io/dacs/cache-server:local"}
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[0].name
+          value: CACHE_CONTROLLER_LOGLEVEL
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[2].name
+          value: CACHE_CONTROLLER_IMAGEPULLPOLICY
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[3]
+          value: {name: CACHE_CONTROLLER_IMAGEPULLSECRETS, value: ""}
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mcr.microsoft.com/oss/v2/kubernetes/kubectl:registry-test
+        template: pre-delete-cache-cleanup.yaml
+        documentSelector: &cleanup
+          path: kind
+          value: Job
+      - notExists:
+          path: spec.template.spec.imagePullSecrets
+        template: manager/manager.yaml
+      - notExists:
+          path: spec.template.spec.imagePullSecrets
+        template: pre-delete-cache-cleanup.yaml
+        documentSelector: *cleanup
+  - it: preserves legacy prefixing without redirecting cleanup
+    set:
+      global.registry: mirror/archive
+      manager.image.repository: source.example/team/controller
+      manager.cacheServerImage.repository: source.example/team/server
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror/archive/source.example/team/controller:local
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[1].value
+          value: mirror/archive/source.example/team/server:local
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mcr.microsoft.com/oss/v2/kubernetes/kubectl:registry-test
+        template: pre-delete-cache-cleanup.yaml
+        documentSelector: *cleanup
+  - it: preserves a literal trailing slash in explicit legacy mode
+    set:
+      global.registryMode: legacy
+      global.registry: mirror.example/project/
+    template: manager/manager.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror.example/project//dacs/cache-controller:local
+  - it: replaces all source hosts and preserves subpaths and explicit tags
+    set:
+      global.registryMode: replace
+      global.registry: harbor.example:8443/dacs/
+      manager.image.repository: source.example/team/controller
+      manager.image.tag: release
+      manager.cacheServerImage.repository: localhost:5000/team/server
+      manager.cacheServerImage.tag: release
+      cleanup.image.repository: localhost/tools/kubectl
+      cleanup.image.tag: release
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: harbor.example:8443/dacs/team/controller:release
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[1].value
+          value: harbor.example:8443/dacs/team/server:release
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: harbor.example:8443/dacs/tools/kubectl:release
+        template: pre-delete-cache-cleanup.yaml
+        documentSelector: *cleanup
+  - it: localizes default images to an Azure China registry
+    set:
+      global.registryMode: replace
+      global.registry: mirror.azurecr.cn
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror.azurecr.cn/dacs/cache-controller:local
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[1].value
+          value: mirror.azurecr.cn/dacs/cache-server:local
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror.azurecr.cn/oss/v2/kubernetes/kubectl:registry-test
+        template: pre-delete-cache-cleanup.yaml
+        documentSelector: *cleanup
+  - it: preserves unqualified repository paths in replacement mode
+    set:
+      global.registryMode: replace
+      global.registry: mirror.example
+      manager.image.repository: custom
+      manager.cacheServerImage.repository: team/custom
+      cleanup.image.repository: tools/custom
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror.example/custom:local
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[1].value
+          value: mirror.example/team/custom:local
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror.example/tools/custom:registry-test
+        template: pre-delete-cache-cleanup.yaml
+        documentSelector: *cleanup
+  - it: permits mixed registries when the global registry is empty
+    set:
+      global.registry: ""
+      global.registryMode: replace
+      manager.image.repository: controller.example/team/controller
+      manager.cacheServerImage.repository: server.example/team/server
+      cleanup.image.repository: tools.example/kubectl
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: controller.example/team/controller:local
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[1].value
+          value: server.example/team/server:local
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: tools.example/kubectl:registry-test
+        template: pre-delete-cache-cleanup.yaml
+        documentSelector: *cleanup
+  - it: propagates multiple pull secrets without enabling replacement
+    set:
+      global.imagePullSecrets: &secrets [{name: registry-auth}, {name: backup}]
+    asserts: &secretAssertions
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: *secrets
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[3].value
+          value: registry-auth,backup
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: *secrets
+        template: pre-delete-cache-cleanup.yaml
+        documentSelector: *cleanup
+  - it: propagates the same references in replacement mode
+    set:
+      global.registryMode: replace
+      global.registry: mirror.example
+      global.imagePullSecrets: *secrets
+    asserts: *secretAssertions
+  - it: does not apply the chart version to an empty cleanup tag
+    set:
+      cleanup.image.tag: ""
+    template: pre-delete-cache-cleanup.yaml
+    documentSelector: *cleanup
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "mcr.microsoft.com/oss/v2/kubernetes/kubectl:"
+  - it: lets every component registry override the global destination
+    set:
+      global.registryMode: replace
+      global.registry: mirror.example
+      manager.image.registry: controller.example:5000/project/
+      manager.image.repository: source.example/team/controller
+      manager.image.tag: release
+      manager.cacheServerImage.registry: server.example
+      manager.cacheServerImage.repository: localhost:5000/team/server
+      cleanup.image.registry: tools.example
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: controller.example:5000/project/team/controller:release
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[1].value
+          value: server.example/team/server:local
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: tools.example/oss/v2/kubernetes/kubectl:registry-test
+        template: pre-delete-cache-cleanup.yaml
+        documentSelector: *cleanup
+  - it: keeps empty component overrides on the global destination
+    set:
+      global.registryMode: replace
+      global.registry: mirror.example
+      manager.image.registry: ""
+      manager.cacheServerImage.registry: ""
+      cleanup.image.registry: tools.example
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror.example/dacs/cache-controller:local
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[1].value
+          value: mirror.example/dacs/cache-server:local
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: tools.example/oss/v2/kubernetes/kubectl:registry-test
+        template: pre-delete-cache-cleanup.yaml
+        documentSelector: *cleanup
+  - it: supports component-only replacement without a global registry
+    set:
+      global.registry: ""
+      global.registryMode: replace
+      manager.image.registry: controller.example
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: controller.example/dacs/cache-controller:local
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[1].value
+          value: dacs/cache-server:local
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mcr.microsoft.com/oss/v2/kubernetes/kubectl:registry-test
+        template: pre-delete-cache-cleanup.yaml
+        documentSelector: *cleanup
+  - it: applies a controller override without changing legacy behavior of other images
+    set:
+      global.registry: mirror/archive
+      manager.image.registry: other.example
+      manager.image.repository: source.example/team/controller
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: other.example/team/controller:local
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env[1].value
+          value: mirror/archive/dacs/cache-server:local
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mcr.microsoft.com/oss/v2/kubernetes/kubectl:registry-test
+        template: pre-delete-cache-cleanup.yaml
+        documentSelector: *cleanup
+  - it: applies a server override in legacy mode
+    set:
+      global.registryMode: legacy
+      global.registry: mirror/archive
+      manager.cacheServerImage.registry: other.example
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[1].value
+          value: other.example/dacs/cache-server:local
+        template: manager/manager.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror/archive/dacs/cache-controller:local
+        template: manager/manager.yaml
+  - it: applies a cleanup override without a mode or global registry
+    set:
+      global.registry: ""
+      cleanup.image.registry: other.example
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: other.example/oss/v2/kubernetes/kubectl:registry-test
+        template: pre-delete-cache-cleanup.yaml
+        documentSelector: *cleanup
+  - it: rejects a scheme in a controller registry
+    set:
+      manager.image.registry: https://other.example
+    asserts: &invalidRegistry
+      - failedTemplate:
+          errorPattern: registry
+  - it: rejects a non-string server registry
+    set:
+      global.registryMode: replace
+      manager.cacheServerImage.registry: 123
+    asserts: *invalidRegistry
+  - it: rejects whitespace in a cleanup registry
+    set:
+      global.registryMode: replace
+      cleanup.image.registry: "other.example/bad path"
+    asserts: *invalidRegistry

@@ -75,6 +75,29 @@ Pods are considered "stuck" when they remain in a bad state for longer than the 
 
 **Node health inference:** If a pod runs successfully on a node for the full threshold duration, the node's stuck-event history is cleared. This allows nodes to recover from transient issues.
 
+Two timestamps separate node health from pod deletion:
+
+- `UnhealthySinceOnCurrentNode` survives state changes, brief Running periods,
+  and replacement UIDs on the same node. Once this cumulative episode exceeds
+  `PodStuckThresholdDuration`, each scheduling attempt can record one node stuck
+  event, even if the current pod UID is short-lived. Repeated failed replacements
+  therefore still make the node unhealthy. Stable Running recovery or a move to
+  another node resets this episode.
+- `BoundSince` records when the current UID was first observed bound to its node.
+  Stuck-pod deletion requires both the cumulative episode and this UID's bound
+  age to exceed `PodStuckThresholdDuration`. A replacement gets a full startup
+  window without erasing unhealthy-node evidence. State changes within the same
+  UID do not restart this window.
+
+Last-known-node affinity and node stuck-event history survive replacement.
+Delete instructions carry the observed UID as an API precondition, so a stale
+instruction cannot delete a same-name replacement. Delete instructions without
+a UID are rejected with an error rather than deleting by name.
+
+`Stuck pods detected, will requeue` reports pods in unhealthy states, including
+those still within their startup window. It does not by itself mean the
+stuck-deletion threshold has expired.
+
 ## Scheduler Algorithm
 
 The `Schedule()` function produces a list of instructions (bind or delete) that the scheduling reconciler executes against the Kubernetes API.

@@ -1,0 +1,87 @@
+# Copyright (c) Microsoft Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+suite: prerequisite rollout image configuration
+templates:
+  - rollout-check.yaml
+set:
+  # Registry behavior must preserve the supplied tag, not pin a release default.
+  rolloutCheck.image.tag: registry-test
+tests:
+  - it: preserves the rollout repository and supplied tag without pull secrets
+    documentSelector: &job
+      path: kind
+      value: Job
+    asserts:
+      - equal:
+          path: apiVersion
+          value: v1
+        documentSelector:
+          path: kind
+          value: ServiceAccount
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mcr.microsoft.com/oss/v2/kubernetes/kubectl:registry-test
+      - notExists:
+          path: spec.template.spec.imagePullSecrets
+  - it: ignores the global registry in legacy mode
+    documentSelector: *job
+    set:
+      global.registry: mirror.example
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mcr.microsoft.com/oss/v2/kubernetes/kubectl:registry-test
+  - it: localizes the rollout image and propagates credentials in replace mode
+    documentSelector: *job
+    set:
+      global.registryMode: replace
+      global.registry: mirror.example/project/
+      global.imagePullSecrets: &secrets [{name: registry-auth}]
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror.example/project/oss/v2/kubernetes/kubectl:registry-test
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: *secrets
+  - it: honors an explicit rollout registry in legacy mode without enabling global replacement
+    documentSelector: *job
+    set:
+      global.registry: mirror.example
+      global.imagePullSecrets: *secrets
+      rolloutCheck.image.registry: tools.example:5000/project/
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: tools.example:5000/project/oss/v2/kubernetes/kubectl:registry-test
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: *secrets
+  - it: gives the rollout registry precedence in replacement mode
+    documentSelector: *job
+    set:
+      global.registryMode: replace
+      global.registry: mirror.example
+      rolloutCheck.image.registry: tools.example
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: tools.example/oss/v2/kubernetes/kubectl:registry-test
+  - it: rejects a malformed rollout registry
+    set:
+      rolloutCheck.image.registry: https://tools.example
+    asserts:
+      - failedTemplate:
+          errorPattern: registry

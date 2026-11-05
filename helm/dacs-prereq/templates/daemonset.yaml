@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+{{- $global := .Values.global | default dict }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -32,7 +33,7 @@ spec:
         kubectl.kubernetes.io/default-container: nvme-raid-setup
     spec:
       hostPID: true
-      {{- with .Values.global.imagePullSecrets }}
+      {{- with $global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -50,7 +51,7 @@ spec:
       serviceAccountName: {{ .Values.name }}
       initContainers:
         - name: nvme-raid-setup
-          image: {{ include "dacs-prereq.image" (dict "global" .Values.global "image" .Values.nvmeRaidSetup.image "appVersion" .Chart.AppVersion) | quote }}
+          image: {{ include "dacs-prereq.image" (dict "global" $global "image" .Values.nvmeRaidSetup.image "appVersion" .Chart.AppVersion) | quote }}
           imagePullPolicy: {{ .Values.nvmeRaidSetup.image.pullPolicy }}
           securityContext:
             privileged: true
@@ -119,7 +120,7 @@ spec:
             {{- toYaml .Values.nvmeRaidSetup.resources | nindent 12 }}
       containers:
         - name: pause
-          image: {{ include "dacs-prereq.image" (dict "global" .Values.global "image" .Values.pauseContainer.image "appVersion" .Chart.AppVersion) | quote }}
+          image: {{ include "dacs-prereq.image" (dict "global" $global "image" .Values.pauseContainer.image "appVersion" "") | quote }}
           imagePullPolicy: {{ .Values.pauseContainer.image.pullPolicy }}
           command:
             - sleep

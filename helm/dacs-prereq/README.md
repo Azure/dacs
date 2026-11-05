@@ -30,6 +30,22 @@ provided by the cache-setup image; no packages are installed on the host.
 
 ## Installation
 
+For custom image registries, set `global.registry` and opt in with
+`global.registryMode: replace` at the parent chart's top level (or directly on
+this chart for standalone development installs). Set `global.imagePullSecrets` only when explicit
+registry credentials are needed; leave it empty when the nodes already have
+pull access through managed identity or another credential provider.
+The default `legacy` mode leaves both image references unchanged by
+`global.registry`. Individual `repository` and `tag` overrides remain available.
+Nonempty `nvmeRaidSetup.image.registry`, `pauseContainer.image.registry`, and
+`rolloutCheck.image.registry`
+always take precedence, replacing the source host for that image in either mode.
+Empty or omitted values follow the global behavior: ignored in `legacy` mode,
+applied in `replace` mode.
+When bundled, set these under `cacheServerPrereq`, for example
+`cacheServerPrereq.rolloutCheck.image.registry`.
+See [custom image registry configuration](../../docs/custom-image-registries.md).
+
 Both parent charts bundle this chart as an optional dependency, disabled by
 default. Enable it when the release should prepare NVMe storage:
 
@@ -83,6 +99,7 @@ image version as the rest of the deployment.
 | `rolloutCheck.tolerations` | Tolerations for the rollout-check Job, independent of the DaemonSet | `CriticalAddonsOnly` with operator `Exists` |
 | `rolloutCheck.affinity` | Affinity for the rollout-check Job | Linux amd64/arm64 nodes, with a soft preference for AKS system nodes |
 | `rolloutCheck.image.repository` | Rollout-check kubectl image | `mcr.microsoft.com/oss/v2/kubernetes/kubectl` |
+| `rolloutCheck.image.registry` | Optional registry override, taking precedence in either mode | `""` |
 | `rolloutCheck.image.tag` | Rollout-check kubectl image tag | `v1.35.9` |
 | `nvmeRaidSetup.resources.limits.cpu` | CPU limit for init container | `1` |
 | `nvmeRaidSetup.resources.limits.memory` | Memory limit for init container | `2Gi` |

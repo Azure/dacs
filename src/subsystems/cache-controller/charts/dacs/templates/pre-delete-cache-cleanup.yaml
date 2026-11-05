@@ -13,6 +13,7 @@
 # limitations under the License.
 
 ---
+{{- $global := .Values.global | default dict }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -88,6 +89,10 @@ spec:
         {{- include "chart.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: cleanup
     spec:
+      {{- with $global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       restartPolicy: OnFailure
       serviceAccountName: {{ include "chart.fullname" . }}-cleanup
       affinity:
@@ -117,7 +122,7 @@ spec:
           operator: Exists
       containers:
         - name: cleanup
-          image: "{{ .Values.cleanup.image.repository }}:{{ .Values.cleanup.image.tag }}"
+          image: {{ include "chart.image" (dict "global" $global "image" .Values.cleanup.image "appVersion" "") | quote }}
           imagePullPolicy: {{ .Values.cleanup.image.pullPolicy }}
           resources:
             {{- toYaml .Values.cleanup.resources | nindent 12 }}

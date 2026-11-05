@@ -581,9 +581,29 @@ class DACSCacheClient:
         return await loop.run_in_executor(self.executor, self.release_file_handle_sync, file_handle)
 
     async def read_blob(self, blob_path: str, buffer: ctypes.c_void_p, size: int, offset: int) -> int:
-        """Async version of read_blob_sync() - runs in executor for non-blocking operation."""
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self.executor, self.read_blob_sync, blob_path, buffer, size, offset)
+        """
+        Async version of read_blob_sync() - runs in executor for non-blocking operation.
+
+        Cancellation-safe with respect to ``buffer``: callers free the buffer as soon as this
+        coroutine exits, but cancelling an await on an executor future does not stop a worker
+        thread that is already inside the native read. So if this coroutine is cancelled while
+        the read is running, it waits for the worker to finish before raising CancelledError.
+        """
+        future = self.executor.submit(self.read_blob_sync, blob_path, buffer, size, offset)
+        awaitable = asyncio.wrap_future(future)
+        try:
+            return await asyncio.shield(awaitable)
+        except asyncio.CancelledError:
+            # cancel() only succeeds if the worker has not started, in which case the buffer is untouched.
+            if not future.cancel():
+                while not awaitable.done():
+                    try:
+                        await asyncio.wait({awaitable})
+                    except asyncio.CancelledError:
+                        pass  # keep draining; the cancellation is re-raised once the worker is done
+                if not awaitable.cancelled():
+                    awaitable.exception()  # mark retrieved; the caller is being cancelled anyway
+            raise
 
     async def write_blob(self, blob_path: str, buffer: ctypes.c_void_p, size: int, overwrite: bool = False) -> int:
         """Async version of write_blob_sync() - runs in executor for non-blocking operation."""

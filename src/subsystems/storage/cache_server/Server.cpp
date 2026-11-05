@@ -14,6 +14,7 @@
 
 #include "Constants.h"
 #include "Utils.h"
+#include "ConfigUtils.h"
 #include "ConnectionUtils.h"
 #include "HandleRequest.h"
 #include "CacheManager.h"
@@ -141,35 +142,21 @@ void HandleSocket(int epollFd)
 //---------------------------------------------------------------------------------------------------------------------
 void StartServer(int port)
 {
-    int threadPoolSize = DEFAULT_THREAD_POOL_SIZE;
-    char* threadPoolSizeStr = std::getenv("CACHESERVER_THREADPOOL_SIZE");
-    if (threadPoolSizeStr != nullptr)
-    {
-        threadPoolSize = std::stoi(threadPoolSizeStr);
-    }
-
-    int socketSndbufSize = DEFAULT_SOCKET_BUF_SIZE;
-    char* socketSndbufSizeStr = std::getenv("CACHESERVER_SOCKET_SNDBUF_SIZE");
-    if (socketSndbufSizeStr != nullptr)
-    {
-        socketSndbufSize = std::stoi(socketSndbufSizeStr);
-    }
-
-    int socketRcvbufSize = DEFAULT_SOCKET_BUF_SIZE;
-    char* socketRcvbufSizeStr = std::getenv("CACHESERVER_SOCKET_RCVBUF_SIZE");
-    if (socketRcvbufSizeStr != nullptr)
-    {
-        socketRcvbufSize = std::stoi(socketRcvbufSizeStr);
-    }
+    int threadPoolSize = GetConfigEnvVar(
+        "CACHESERVER_THREADPOOL_SIZE", DEFAULT_THREAD_POOL_SIZE, MIN_THREAD_POOL_SIZE, MAX_THREAD_POOL_SIZE);
+    int socketSndbufSize = GetConfigEnvVar(
+        "CACHESERVER_SOCKET_SNDBUF_SIZE", DEFAULT_SOCKET_BUF_SIZE, MIN_SOCKET_BUF_SIZE, MAX_SOCKET_BUF_SIZE);
+    int socketRcvbufSize = GetConfigEnvVar(
+        "CACHESERVER_SOCKET_RCVBUF_SIZE", DEFAULT_SOCKET_BUF_SIZE, MIN_SOCKET_BUF_SIZE, MAX_SOCKET_BUF_SIZE);
 
     int tcpBacklogSize = DEFAULT_TCP_BACKLOG_SIZE;
-    char* tcpBacklogSizeStr = std::getenv("CACHESERVER_TCP_BACKLOG_SIZE");
-    if (tcpBacklogSizeStr != nullptr && strlen(tcpBacklogSizeStr) > 0)
+    const string tcpBacklogSizeStr = GetConfigEnvVar("CACHESERVER_TCP_BACKLOG_SIZE", "");
+    if (!tcpBacklogSizeStr.empty())
     {
         char* pEndPtr = nullptr;
         errno = 0;
-        long int nValue = std::strtol(tcpBacklogSizeStr, &pEndPtr, 10);
-        if (errno != 0 || pEndPtr == tcpBacklogSizeStr || *pEndPtr != '\0' ||
+        long int nValue = std::strtol(tcpBacklogSizeStr.c_str(), &pEndPtr, 10);
+        if (errno != 0 || pEndPtr == tcpBacklogSizeStr.c_str() || *pEndPtr != '\0' ||
             nValue <= 0 || nValue > MAX_TCP_BACKLOG_SIZE)
         {
             LOG_WARN("Invalid CACHESERVER_TCP_BACKLOG_SIZE: {}, using default {}", tcpBacklogSizeStr, tcpBacklogSize);

@@ -121,9 +121,11 @@ namespace StorageInterceptConstants
     const char* const ConfigNameBlobRetryMaxAttempts = "blobRetryMaxAttempts";
     const char* const ConfigNameBlobRetryBaseDelaySeconds = "blobRetryBaseDelaySeconds";
     const char* const ConfigNameBlobRetryMaxDelaySeconds = "blobRetryMaxDelaySeconds";
+    const char* const ConfigNameBlobAuthorizationRetryMaxAttempts = "blobAuthorizationRetryMaxAttempts";
     constexpr std::uint32_t ConfigDefaultBlobRetryMaxAttempts = 10;
     constexpr std::uint32_t ConfigDefaultBlobRetryBaseDelaySeconds = 1;
     constexpr std::uint32_t ConfigDefaultBlobRetryMaxDelaySeconds = 128;
+    constexpr std::uint32_t ConfigDefaultBlobAuthorizationRetryMaxAttempts = 3;
 
     // Config constants for chunk download parallelism
     const char* const ConfigNameChunkOperationParallelismEnabled = "chunkOperationParallelismEnabled";

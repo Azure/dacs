@@ -75,6 +75,27 @@ standalone Cache manifest from [`examples`](examples/README.md). The hook
 runs after resources are created, so storage preparation must finish before
 creating Cache workloads.
 
+### Custom image registries
+
+Set `global.registry` and opt in with `global.registryMode: replace` to redirect
+controller, generated CacheServer, and cleanup-hook images. The default `legacy`
+mode preserves existing prefix behavior for controller/CacheServer images and
+does not redirect cleanup images. Authentication is separate: AKS can use its kubelet managed
+identity to pull from ACR when the identity
+has the required registry permissions. Leave `global.imagePullSecrets` empty
+for that configuration; set it only when using explicit registry credentials.
+Top-level global values also reach the bundled prerequisite when
+`cacheServerPrereq.enabled=true`; prefix its per-image overrides with
+`cacheServerPrereq.`.
+Individual `repository` and `tag` overrides remain available. A nonempty per-image
+`registry` always wins, replacing the source host in either mode. Empty or omitted
+values follow the existing mode-dependent global behavior.
+For example, `cleanup.image.registry: tools.example` keeps cleanup on a separate
+registry while other images use the global destination.
+See [custom image registry configuration and qualification](../../../../../docs/custom-image-registries.md)
+for mirrored repository paths, namespace-local secrets, authentication, and
+upgrade/uninstall validation.
+
 ### Controller Configuration
 
 | Parameter | Description | Default |
@@ -98,6 +119,31 @@ creating Cache workloads.
 
 The controller chart does not create Cache resources. Start with the static,
 dynamic, or Minikube manifests in [`examples`](examples/README.md).
+
+### CacheServer Environment Variables
+
+Set environment variables directly under `spec.env` in the standalone Cache
+manifest, alongside fields such as `serverThreads`:
+
+```yaml
+spec:
+  env:
+    - name: STORAGE_LOG_LEVEL
+      value: "info"
+    - name: CACHESERVER_THREADPOOL_SIZE
+      valueFrom:
+        configMapKeyRef:
+          name: cache-settings
+          key: threads
+```
+
+Use `spec.env` to add new variables or override the controller's defaults by name.
+You can set a value directly or read it from a ConfigMap or Secret in the same
+namespace as the Cache. Removing an override restores the default value.
+Removing a variable you added removes it from the cache-server pods.
+
+Changing `spec.env` rolls the cache-server pods. Before using this field, apply
+the updated Cache CRD as described in the Upgrade section below.
 
 ### CacheServer Scheduling on Tainted Nodes
 

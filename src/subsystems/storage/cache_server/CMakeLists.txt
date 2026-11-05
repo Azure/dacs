@@ -31,7 +31,7 @@ execute_process(
                 --cpp_out=${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/snapshot/proto
                 ${CMAKE_SOURCE_DIR}/src/subsystems/storage/cache_server/snapshot/proto/snapshot.proto)
 
-file(GLOB CACHE_SERVER_UTILS_SOURCES ./utils/Utils.cpp)
+file(GLOB CACHE_SERVER_UTILS_SOURCES ./utils/Utils.cpp ./utils/ConfigUtils.cpp)
 
 add_library(CacheServerUtils SHARED ${CACHE_SERVER_UTILS_SOURCES})
 

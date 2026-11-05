@@ -19,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 )
@@ -171,6 +172,22 @@ func TestCacheWebhook_ValidateCreate(t *testing.T) {
 	}{
 		{
 			name: "valid default",
+		},
+		{
+			name: "accepts STORAGE_ and CACHESERVER_ environment variables",
+			mutate: func(c *Cache) {
+				c.Spec.Env = []corev1.EnvVar{
+					{Name: "STORAGE_LOG_LEVEL", Value: "DEBUG"},
+					{Name: "CACHESERVER_THREADPOOL_SIZE", Value: "32"},
+				}
+			},
+		},
+		{
+			name: "rejects environment variables not starting with STORAGE_ or CACHESERVER_",
+			mutate: func(c *Cache) {
+				c.Spec.Env = []corev1.EnvVar{{Name: "LD_PRELOAD", Value: "/tmp/library.so"}}
+			},
+			expectedErr: `must start with "STORAGE_" or "CACHESERVER_"`,
 		},
 		{
 			name: "rejects empty name and empty generateName",

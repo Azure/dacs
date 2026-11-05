@@ -278,6 +278,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		NodeSelectorValue            []string
 		Image                        string
 		ImagePullPolicy              string
+		ImagePullSecrets             []corev1.LocalObjectReference
 		Tolerations                  []corev1.Toleration
 		ServerThreads                int32
 		Port                         int
@@ -324,6 +325,11 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 
 	cfg := config.GetConfig()
 
+	var imagePullSecrets []corev1.LocalObjectReference
+	for _, name := range cfg.ImagePullSecrets {
+		imagePullSecrets = append(imagePullSecrets, corev1.LocalObjectReference{Name: name})
+	}
+
 	// Fail closed: never render untrusted values into the workload template,
 	// even if the admission webhook is disabled or was bypassed (e.g. objects
 	// created before the webhook was installed). Reject invalid input instead
@@ -352,6 +358,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		NodeSelectorValue:            []string{*cache.Spec.NodeSelectorValue},
 		Image:                        cfg.CacheServerImage,
 		ImagePullPolicy:              string(cfg.ImagePullPolicy),
+		ImagePullSecrets:             imagePullSecrets,
 		Tolerations:                  cache.Spec.Tolerations,
 		ServerThreads:                cache.Spec.ServerThreads,
 		Port:                         int(*cache.Spec.Port),
@@ -380,6 +387,14 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 	var desired appsv1.StatefulSet
 	if err := renderTemplateInto("templates/cacheserver-app.yaml", values, &desired); err != nil {
 		return fmt.Errorf("failed to render cacheserver StatefulSet template (numServers=%d, image=%s): %w", numServers, values.Image, err)
+	}
+	cacheServerContainer := &desired.Spec.Template.Spec.Containers[0]
+	for _, desiredEnvVar := range cache.Spec.Env {
+		var existingEnvVarOverridden bool
+		cacheServerContainer.Env, existingEnvVarOverridden = setEnvVar(cacheServerContainer.Env, desiredEnvVar)
+		if existingEnvVarOverridden {
+			log.Info("Overriding default cache server environment variable", "name", desiredEnvVar.Name)
+		}
 	}
 	for i := range desired.Spec.Template.Spec.Tolerations {
 		// Match Pod defaulting to avoid repeatedly patching an omitted operator.
@@ -425,6 +440,16 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 	logResourceOperation(log, result, "StatefulSet", sts.Name, "replicas", numServers)
 
 	return nil
+}
+
+func setEnvVar(currentEnvVars []corev1.EnvVar, desiredEnvVar corev1.EnvVar) ([]corev1.EnvVar, bool) {
+	for i := range currentEnvVars {
+		if currentEnvVars[i].Name == desiredEnvVar.Name {
+			currentEnvVars[i] = desiredEnvVar
+			return currentEnvVars, true
+		}
+	}
+	return append(currentEnvVars, desiredEnvVar), false
 }
 
 func (r *CacheReconciler) reconcileServices(ctx context.Context, cache *storagev1.Cache) error {
@@ -563,6 +588,11 @@ func isImmutableFieldErr(err error) bool {
 func validateRenderInputs(cache *storagev1.Cache, nodeCachePath string) error {
 	if errs := storagev1.ValidateTolerations(cache.Spec.Tolerations, field.NewPath("spec", "tolerations")); len(errs) > 0 {
 		return errs.ToAggregate()
+	}
+	for i, envVar := range cache.Spec.Env {
+		if err := storagev1.ValidateCacheServerEnvVarName(envVar.Name); err != nil {
+			return fmt.Errorf("spec.env[%d].name: %w", i, err)
+		}
 	}
 	if cache.Spec.NodeSelectorKey == nil {
 		return fmt.Errorf("spec.nodeSelectorKey must be set")

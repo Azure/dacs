@@ -15,6 +15,7 @@
 #include "CacheManager.h"
 #include "Constants.h"
 #include "Utils.h"
+#include "ConfigUtils.h"
 #include "Logger.h"
 #include <chrono>
 #include <ctime>
@@ -778,24 +779,22 @@ uint64_t CacheManager::ParseTimeIntervalString(const char* timeInterval)
 //---------------------------------------------------------------------------------------------------------------------
 void CacheManager::InitializeEviction()
 {
-    char* evictionEnabled = std::getenv("CACHESERVER_EVICTION_ENABLED");
-    if (evictionEnabled != NULL && strcasecmp(evictionEnabled, "true") == 0)
+    m_bEvictionEnabled = GetConfigEnvVar("CACHESERVER_EVICTION_ENABLED", false);
+    if (m_bEvictionEnabled)
     {
-        m_bEvictionEnabled = true;
         LOG_INFO("Cache stale items eviction enabled");
     }
 
-    char* dynamicEvictionEnabled = std::getenv("CACHESERVER_EVICTION_MAINTAIN_FREE_SPACE");
-    if (dynamicEvictionEnabled != NULL && strcasecmp(dynamicEvictionEnabled, "true") == 0)
+    m_bDynamicEvictionEnabled = GetConfigEnvVar("CACHESERVER_EVICTION_MAINTAIN_FREE_SPACE", false);
+    if (m_bDynamicEvictionEnabled)
     {
-        m_bDynamicEvictionEnabled = true;
         LOG_INFO("Eviction maintain free space mode enabled");
     }
 
-    char* evictionLastAccessThreshold = std::getenv("CACHESERVER_EVICTION_LAST_ACCESS_THRESHOLD");
-    if (evictionLastAccessThreshold != NULL && strlen(evictionLastAccessThreshold) > 0)
+    const string evictionLastAccessThreshold = GetConfigEnvVar("CACHESERVER_EVICTION_LAST_ACCESS_THRESHOLD", "");
+    if (!evictionLastAccessThreshold.empty())
     {
-        uint64_t nValue = ParseTimeIntervalString(evictionLastAccessThreshold);
+        uint64_t nValue = ParseTimeIntervalString(evictionLastAccessThreshold.c_str());
         if (nValue == 0)
         {
             m_nEvictionLastAccessThresholdSeconds = DefaultEvictionLastAccessThresholdSeconds;
@@ -813,10 +812,10 @@ void CacheManager::InitializeEviction()
         LOG_INFO("Eviction last access threshold seconds not set, using default: {}", m_nEvictionLastAccessThresholdSeconds);
     }
 
-    char* evictionPassFrequency = std::getenv("CACHESERVER_EVICTION_PASS_FREQUENCY");
-    if (evictionPassFrequency != NULL && strlen(evictionPassFrequency) > 0)
+    const string evictionPassFrequency = GetConfigEnvVar("CACHESERVER_EVICTION_PASS_FREQUENCY", "");
+    if (!evictionPassFrequency.empty())
     {
-        uint64_t nValue = ParseTimeIntervalString(evictionPassFrequency);
+        uint64_t nValue = ParseTimeIntervalString(evictionPassFrequency.c_str());
         if (nValue == 0)
         {
             m_nEvictionPassFrequencySeconds = DefaultEvictionPassFrequencySeconds;
@@ -839,8 +838,8 @@ void CacheManager::InitializeEviction()
         LOG_INFO("Eviction pass frequency seconds not set, using default: {}", m_nEvictionPassFrequencySeconds);
     }
 
-    char* evictionSizeThreshold = std::getenv("CACHESERVER_EVICTION_SIZE_THRESHOLD");
-    if (evictionSizeThreshold != NULL && strlen(evictionSizeThreshold) > 0)
+    const string evictionSizeThreshold = GetConfigEnvVar("CACHESERVER_EVICTION_SIZE_THRESHOLD", "");
+    if (!evictionSizeThreshold.empty())
     {
         double dValue = std::stod(evictionSizeThreshold);
         if (dValue >= 0 && dValue <= 100)
@@ -860,9 +859,9 @@ void CacheManager::InitializeEviction()
         LOG_INFO("Eviction size threshold not set, using default: {} Percent", m_dEvictionSizeThreshold);
     }
 
-    char* evictionSizeTarget = std::getenv("CACHESERVER_EVICTION_SIZE_TARGET");
+    const string evictionSizeTarget = GetConfigEnvVar("CACHESERVER_EVICTION_SIZE_TARGET", "");
     double defaultEvictionSizeTarget = 0.9 * m_dEvictionSizeThreshold; // Default target is 90% of the threshold
-    if (evictionSizeTarget != NULL && strlen(evictionSizeTarget) > 0)
+    if (!evictionSizeTarget.empty())
     {
         double dValue = std::stod(evictionSizeTarget);
         if (dValue >= 0.0 && dValue <= 100.0 && (dValue < m_dEvictionSizeThreshold))
@@ -882,10 +881,10 @@ void CacheManager::InitializeEviction()
         LOG_INFO("Eviction size target not set, using default: {}%", m_dEvictionSizeTarget);
     }
 
-    char* evictionBucketInterval = std::getenv("CACHESERVER_EVICTION_BUCKET_INTERVAL");
-    if (evictionBucketInterval != NULL && strlen(evictionBucketInterval) > 0)
+    const string evictionBucketInterval = GetConfigEnvVar("CACHESERVER_EVICTION_BUCKET_INTERVAL", "");
+    if (!evictionBucketInterval.empty())
     {
-        uint64_t nValue = ParseTimeIntervalString(evictionBucketInterval);
+        uint64_t nValue = ParseTimeIntervalString(evictionBucketInterval.c_str());
 
 
         if (nValue == 0 || nValue > MaxEvictionBucketIntervalSeconds)

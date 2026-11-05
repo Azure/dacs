@@ -20,6 +20,7 @@ import (
 
 	"gotest.tools/v3/assert"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -133,6 +134,60 @@ func TestGetPodsFromCache(t *testing.T) {
 	assert.Equal(t, len(pods), 1)
 	assert.Equal(t, pods[0].PodName, "cacheserver-0")
 	assert.Equal(t, pods[0].Namespace, "ns1")
+	assert.Equal(t, pods[0].UID, valid.UID)
 	assert.Equal(t, pods[0].NodeSelectorKey, "agentpool")
 	assert.Equal(t, pods[0].NodeSelectorValue, "user")
+}
+
+func TestDeleteInstructionOnlyDeletesObservedPodUID(t *testing.T) {
+	testEnv := &envtest.Environment{}
+	cfg, err := testEnv.Start()
+	assert.NilError(t, err)
+	defer func() {
+		assert.NilError(t, testEnv.Stop())
+	}()
+
+	k8sClient, err := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	assert.NilError(t, err)
+	ctx := context.Background()
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "delete-test"}}
+	assert.NilError(t, k8sClient.Create(ctx, ns))
+
+	for _, name := range []string{"original", "replacement", "missing-uid"} {
+		t.Run(name, func(t *testing.T) {
+			pod := createValidCacheServerPod(name, ns.Name)
+			assert.NilError(t, k8sClient.Create(ctx, pod))
+			instructions := []SchedulerInstruction{{
+				Type:      DeleteInstruction,
+				PodName:   pod.Name,
+				Namespace: pod.Namespace,
+				PodUID:    pod.UID,
+			}}
+			if name == "replacement" {
+				assert.NilError(t, k8sClient.Delete(ctx, pod, client.GracePeriodSeconds(0)))
+				pod = createValidCacheServerPod(name, ns.Name)
+				assert.NilError(t, k8sClient.Create(ctx, pod))
+				assert.Assert(t, pod.UID != instructions[0].PodUID)
+			} else if name == "missing-uid" {
+				instructions[0].PodUID = ""
+			}
+
+			errors := ExecuteSchedulerInstructionsOnK8s(ctx, k8sClient, instructions)
+			var remaining corev1.Pod
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &remaining)
+			if name == "original" {
+				assert.Equal(t, len(errors), 0)
+				assert.Assert(t, apierrors.IsNotFound(err))
+			} else {
+				assert.Equal(t, len(errors), 1)
+				if name == "replacement" {
+					assert.Assert(t, apierrors.IsConflict(errors[0]))
+				} else {
+					assert.Error(t, errors[0], "refusing to delete pod missing-uid(delete-test) without UID precondition")
+				}
+				assert.NilError(t, err)
+				assert.Equal(t, remaining.UID, pod.UID)
+			}
+		})
+	}
 }

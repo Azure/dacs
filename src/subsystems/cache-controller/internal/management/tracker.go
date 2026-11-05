@@ -21,6 +21,7 @@ import (
 
 	config "github.com/Azure/dacs/cache-controller/internal/config"
 	log "github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // Constant
@@ -40,6 +41,7 @@ type TrackerConfig struct {
 
 // Information about cacheserver pod maintained by tracker
 type trackerPodInfo struct {
+	UID types.UID `json:"uid"`
 	// Name of the cacheserver pod
 	PodName string `json:"podName"`
 	// Namespace of the cacheserver pod
@@ -52,7 +54,9 @@ type trackerPodInfo struct {
 	LastHitTimestamp time.Time `json:"timestamp"`
 	// Earliest timestamp this state was recorded
 	FirstHitTimestamp time.Time `json:"firstHitTimestamp"`
-	// Time when the pod first became unhealthy on its current node
+	// Time this pod UID was first observed bound to its current node
+	BoundSince time.Time `json:"boundSince"`
+	// Start of the unhealthy episode on this node, spanning replacement UIDs
 	UnhealthySinceOnCurrentNode time.Time `json:"unhealthySinceOnCurrentNode"`
 	// Whether the current scheduling attempt has already recorded a stuck event
 	StuckEventRecordedForCurrentAttempt bool `json:"stuckEventRecordedForCurrentAttempt"`
@@ -89,10 +93,16 @@ type trackerNodeInfo struct {
 	PodsStuckEvents []podStuckEvent `json:"podsStuckEvents"`
 }
 
-func isPodStuck(podState trackerPodInfo, trackerConfig TrackerConfig) bool {
+func isPodUnhealthyOnNode(podState trackerPodInfo, trackerConfig TrackerConfig) bool {
 	return podState.State != PodStatusRunning &&
 		!podState.UnhealthySinceOnCurrentNode.IsZero() &&
 		time.Since(podState.UnhealthySinceOnCurrentNode) > trackerConfig.PodStuckThresholdDuration
+}
+
+func isPodStuck(podState trackerPodInfo, trackerConfig TrackerConfig) bool {
+	return isPodUnhealthyOnNode(podState, trackerConfig) &&
+		!podState.BoundSince.IsZero() &&
+		time.Since(podState.BoundSince) > trackerConfig.PodStuckThresholdDuration
 }
 
 func isPodStable(podState trackerPodInfo, trackerConfig TrackerConfig) bool {
@@ -101,7 +111,7 @@ func isPodStable(podState trackerPodInfo, trackerConfig TrackerConfig) bool {
 }
 
 func (t *Tracker) getPodUnhealthyStartTime(previousPodState trackerPodInfo, currentPod Pod, currentTime time.Time) time.Time {
-	// Keep the original time while the pod stays on the same node and has
+	// Keep the original time across replacements on the same node that have
 	// not been Running long enough to prove that it recovered.
 	if previousPodState.NodeName == currentPod.NodeName &&
 		!isPodStable(previousPodState, t.Config) &&
@@ -304,8 +314,13 @@ func (t *Tracker) updatePodMap(cacheKey string, pods []Pod) {
 		if pod.NodeName != "" {
 			podState, existingPodStateFound := t.lookupPodMap(pod.Namespace, pod.PodName)
 			unhealthySince := t.getPodUnhealthyStartTime(podState, pod, now)
+			sameAttempt := existingPodStateFound && podState.UID == pod.UID && podState.NodeName == pod.NodeName
+			boundSince := now
+			if sameAttempt {
+				boundSince = podState.BoundSince
+			}
 
-			if existingPodStateFound && podState.NodeName == pod.NodeName && podState.State == pod.State {
+			if sameAttempt && podState.State == pod.State {
 				podState.LastHitTimestamp = now
 				podState.UnhealthySinceOnCurrentNode = unhealthySince
 			} else {
@@ -320,33 +335,35 @@ func (t *Tracker) updatePodMap(cacheKey string, pods []Pod) {
 				}
 
 				podState = trackerPodInfo{
+					UID:                         pod.UID,
 					PodName:                     pod.PodName,
 					Namespace:                   pod.Namespace,
 					NodeName:                    pod.NodeName,
 					State:                       pod.State,
-					LastHitTimestamp:            time.Now(),
-					FirstHitTimestamp:           time.Now(),
+					LastHitTimestamp:            now,
+					FirstHitTimestamp:           now,
+					BoundSince:                  boundSince,
 					UnhealthySinceOnCurrentNode: unhealthySince,
-					StuckEventRecordedForCurrentAttempt: existingPodStateFound &&
-						podState.NodeName == pod.NodeName &&
+					StuckEventRecordedForCurrentAttempt: sameAttempt &&
 						podState.StuckEventRecordedForCurrentAttempt,
 				}
 			}
 
 			t.updatePodMapEntry(podState)
 			log.WithFields(log.Fields{
+				"podUID":                              pod.UID,
 				"podName":                             pod.PodName,
 				"nodeName":                            pod.NodeName,
 				"state":                               pod.State,
 				"lastHitTimestamp":                    podState.LastHitTimestamp,
 				"firstHitTimestamp":                   podState.FirstHitTimestamp,
+				"boundSince":                          podState.BoundSince,
 				"unhealthySinceOnCurrentNode":         podState.UnhealthySinceOnCurrentNode,
 				"stuckEventRecordedForCurrentAttempt": podState.StuckEventRecordedForCurrentAttempt,
 			}).Debugf("Scheduler processed pod %s", pod.PodName)
 
-			isPodStuck := isPodStuck(podState, t.Config)
-			if isPodStuck && !podState.StuckEventRecordedForCurrentAttempt {
-				log.Warnf("Pod %s is stuck on node %s in %s state", pod.PodName, pod.NodeName, pod.State)
+			if isPodUnhealthyOnNode(podState, t.Config) && !podState.StuckEventRecordedForCurrentAttempt {
+				log.Warnf("Pod %s with UID %s is stuck on node %s in %s state", pod.PodName, pod.UID, pod.NodeName, pod.State)
 
 				stuckNodeInfo, stuckNodeFound := t.State.CurrentNodes[pod.NodeName]
 				if stuckNodeFound {

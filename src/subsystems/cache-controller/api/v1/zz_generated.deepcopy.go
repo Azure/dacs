@@ -94,6 +94,13 @@ func (in *CacheSpec) DeepCopyInto(out *CacheSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.Env != nil {
+		in, out := &in.Env, &out.Env
+		*out = make([]corev1.EnvVar, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.CpuLimit != nil {
 		in, out := &in.CpuLimit, &out.CpuLimit
 		*out = new(int32)

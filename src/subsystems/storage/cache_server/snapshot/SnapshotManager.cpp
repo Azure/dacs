@@ -19,6 +19,7 @@
 #include "Constants.h"
 #include "Logger.h"
 #include "Utils.h"
+#include "ConfigUtils.h"
 #include "SnapshotManager.h"
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 //---------------------------------------------------------------------------------------------------------------------
@@ -27,16 +28,11 @@ using namespace std;
 using namespace google::protobuf::io;
 //---------------------------------------------------------------------------------------------------------------------
 SnapshotManager::SnapshotManager()
-    : m_snapshotEnabled(DefaultSnapshotEnabled)
-    , m_waitForSnapshotConsistencyScan(DefaultWaitForSnapshotConsistencyScan)
+    : m_snapshotEnabled(GetConfigEnvVar("CACHESERVER_SNAPSHOT_ENABLED", DefaultSnapshotEnabled))
+    , m_waitForSnapshotConsistencyScan(GetConfigEnvVar(
+        "CACHESERVER_WAIT_FOR_SNAPSHOT_CONSISTENCY_SCAN", DefaultWaitForSnapshotConsistencyScan))
     , m_snapshotIntervalInSeconds(DefaultSnapshotIntervalInSeconds)
 {
-    char* snapshotEnabled = std::getenv("CACHESERVER_SNAPSHOT_ENABLED");
-    if (snapshotEnabled != nullptr)
-    {
-        m_snapshotEnabled = (strcmp(snapshotEnabled, "true") == 0);
-    }
-
     string serverHostName = GetServerHostName();
     if (serverHostName.empty())
     {
@@ -47,22 +43,8 @@ SnapshotManager::SnapshotManager()
         LOG_INFO("Snapshot disabled as server hostname is not set");
     }
 
-    char* waitForSnapshotConsistencyScan = std::getenv("CACHESERVER_WAIT_FOR_SNAPSHOT_CONSISTENCY_SCAN");
-    if (waitForSnapshotConsistencyScan != nullptr)
-    {
-        m_waitForSnapshotConsistencyScan = (strcmp(waitForSnapshotConsistencyScan, "true") == 0);
-    }
-
-    char* snapshotInterval = std::getenv("CACHESERVER_SNAPSHOT_INTERVAL");
-    if (snapshotInterval != nullptr)
-    {
-        const unsigned long interval = std::stoul(snapshotInterval);
-        if (interval > std::numeric_limits<uint32_t>::max())
-        {
-            throw std::out_of_range("snapshot interval exceeds uint32_t");
-        }
-        m_snapshotIntervalInSeconds = static_cast<uint32_t>(interval);
-    }
+    m_snapshotIntervalInSeconds = GetConfigEnvVar("CACHESERVER_SNAPSHOT_INTERVAL", DefaultSnapshotIntervalInSeconds,
+        MinSnapshotIntervalInSeconds, MaxSnapshotIntervalInSeconds);
 
     LOG_INFO("Initialized snapshot manager. SnapshotEnabled: {}, ServerHostname: {}, SnapshotIntervalInSeconds: {}",
         m_snapshotEnabled,

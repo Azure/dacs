@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+{{- $global := .Values.global | default dict }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -36,6 +37,10 @@ spec:
                 app.kubernetes.io/instance: {{ .Release.Name }}
                 control-plane: controller-manager
         spec:
+            {{- with $global.imagePullSecrets }}
+            imagePullSecrets:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
             containers:
                 - args:
                     {{- if .Values.metrics.enable }}
@@ -72,13 +77,19 @@ spec:
                     - name: CACHE_CONTROLLER_LOGLEVEL
                       value: {{ .Values.manager.logLevel | quote }}
                     - name: CACHE_CONTROLLER_CACHESERVERIMAGE
-                      value: "{{ include "chart.image" (dict "global" .Values.global "repository" .Values.manager.cacheServerImage.repository "tag" .Values.manager.cacheServerImage.tag "appVersion" .Chart.AppVersion) }}"
+                      value: {{ include "chart.image" (dict "global" $global "image" .Values.manager.cacheServerImage "appVersion" .Chart.AppVersion "legacyRegistry" true) | quote }}
                     - name: CACHE_CONTROLLER_IMAGEPULLPOLICY
                       value: {{ .Values.manager.image.pullPolicy | quote }}
+                    - name: CACHE_CONTROLLER_IMAGEPULLSECRETS
+                      {{- $pullSecrets := list }}
+                      {{- range $global.imagePullSecrets }}
+                      {{- $pullSecrets = append $pullSecrets .name }}
+                      {{- end }}
+                      value: {{ join "," $pullSecrets | quote }}
                     {{- if .Values.manager.env }}
                     {{- toYaml .Values.manager.env | nindent 20 }}
                     {{- end }}
-                  image: "{{ include "chart.image" (dict "global" .Values.global "repository" .Values.manager.image.repository "tag" .Values.manager.image.tag "appVersion" .Chart.AppVersion) }}"
+                  image: {{ include "chart.image" (dict "global" $global "image" .Values.manager.image "appVersion" .Chart.AppVersion "legacyRegistry" true) | quote }}
                   imagePullPolicy: {{ .Values.manager.image.pullPolicy }}
                   livenessProbe:
                     httpGet:

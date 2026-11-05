@@ -17,9 +17,13 @@
 #include "IBConnection.h"
 #include "HandleRequest.h"
 #include "Constants.h"
+#include "ConfigUtils.h"
 #include "Logger.h"
 #include "cache.pb.h"
 #include "Metrics.h"
+#include <algorithm>
+#include <charconv>
+#include <limits>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace std;
 using namespace ibutils;
@@ -33,6 +37,8 @@ IBManager& IBManager::GetInstance()
 //---------------------------------------------------------------------------------------------------------------------
 IBManager::IBManager()
 : m_ibEnabled(false)
+, m_receiveBufferCount(GetConfigEnvVar(
+    "CACHESERVER_IB_RECEIVE_BUFFERS", DEFAULT_RECEIVE_BUFFERS, MIN_IB_RECEIVE_BUFFERS, MAX_IB_RECEIVE_BUFFERS))
 {
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -53,11 +59,34 @@ bool IBManager::Init()
         return true;
     }
 
+    const uint32_t receiveThreadCount = GetConfigEnvVar(
+        "CACHESERVER_IB_RECEIVE_THREADS", DEFAULT_IB_RECEIVE_THREADS, MIN_IB_RECEIVE_THREADS, MAX_IB_RECEIVE_THREADS);
+
     unique_ibv_context context;
     bool bDeviceFound = GetIBDeviceInfo(m_ibDevice.lid, m_ibDevice.port, m_ibDevice.mtu, context);
     if (!bDeviceFound)
     {
         LOG_INFO("No active IB ports found");
+        return false;
+    }
+
+    struct ibv_device_attr devAttr{};
+    int rc = ibv_query_device(context.get(), &devAttr);
+    if (rc != 0)
+    {
+        LOG_WARN("ibv_query_device failed error={},{}", rc, strerror(errno));
+        return false;
+    }
+
+    const int completionQueueSize = max(MAX_REQUESTS, static_cast<int>(m_receiveBufferCount));
+    const uint64_t nMRBufferSize = static_cast<uint64_t>(m_receiveBufferCount) * IB_BUFFER_SIZE;
+    if (static_cast<int>(m_receiveBufferCount) > devAttr.max_srq_wr ||
+        completionQueueSize > devAttr.max_cqe || nMRBufferSize > devAttr.max_mr_size)
+    {
+        LOG_ERROR("IB receive configuration exceeds device limits: buffers={}, max_srq_wr={}, "
+                  "completionQueueSize={}, max_cqe={}, receiveMemoryBytes={}, max_mr_size={}",
+            m_receiveBufferCount, devAttr.max_srq_wr, completionQueueSize, devAttr.max_cqe,
+            nMRBufferSize, devAttr.max_mr_size);
         return false;
     }
 
@@ -75,7 +104,7 @@ bool IBManager::Init()
         return false;
     }
 
-    unique_ibv_cq sendCq(ibv_create_cq(context.get(), MAX_REQUESTS, NULL, compChannel.get(), 0), FreeIbvCq);
+    unique_ibv_cq sendCq(ibv_create_cq(context.get(), completionQueueSize, NULL, compChannel.get(), 0), FreeIbvCq);
     if (!sendCq)
     {
         LOG_WARN("ibv_create_cq failed error={}", strerror(errno));
@@ -83,7 +112,7 @@ bool IBManager::Init()
     }
 
     // Register completion queue to receive notifications
-    int rc = ibv_req_notify_cq(sendCq.get(), 0);
+    rc = ibv_req_notify_cq(sendCq.get(), 0);
     if (rc != 0)
     {
         LOG_WARN("ibv_req_notify_cq failed error={},{}", rc, strerror(errno));
@@ -91,7 +120,7 @@ bool IBManager::Init()
     }
 
     struct ibv_srq_init_attr srq_init_attr{};
-    srq_init_attr.attr.max_wr  = MAX_RECEIVE_BUFFERS;
+    srq_init_attr.attr.max_wr  = m_receiveBufferCount;
     srq_init_attr.attr.max_sge = 1;
     unique_ibv_srq receiveSRQ(ibv_create_srq(pd.get(), &srq_init_attr), FreeIbvSrq);
     if (!receiveSRQ)
@@ -101,7 +130,6 @@ bool IBManager::Init()
     }
 
     // Register a large MR block and split it into multiple equal sized buffers
-    uint64_t nMRBufferSize = static_cast<uint64_t>(MAX_RECEIVE_BUFFERS) * IB_BUFFER_SIZE;
     std::unique_ptr<char[]> mrBufferBlock(new char[nMRBufferSize]);
     unique_ibv_mr mrBuffer(ibv_reg_mr(pd.get(), mrBufferBlock.get(),
         nMRBufferSize, static_cast<int>(IBV_ACCESS_LOCAL_WRITE)), FreeIbvMr);
@@ -112,14 +140,7 @@ bool IBManager::Init()
         return false;
     }
 
-    struct ibv_device_attr devAttr{};
-    rc = ibv_query_device(context.get(), &devAttr);
-    if (rc != 0)
-    {
-        LOG_WARN("ibv_query_device failed error={},{}", rc, strerror(errno));
-        return false;
-    }
-
+    m_bufferPosted = make_unique<atomic<bool>[]>(m_receiveBufferCount);
     m_ibDevice.context = std::move(context);
     m_ibDevice.pd = std::move(pd);
     m_ibDevice.compEventChannel = std::move(compChannel);
@@ -135,9 +156,11 @@ bool IBManager::Init()
         m_ibDevice.sendCQ->cqe,
         devAttr.max_qp,
         devAttr.max_qp_wr);
+    LOG_INFO("IB receive configuration: buffers={}, completionQueueSize={}, workerThreads={}, receiveMemoryBytes={}",
+        m_receiveBufferCount, completionQueueSize, receiveThreadCount, nMRBufferSize);
 
     // Post receive requests to SRQ
-    for (int i = 0; i < MAX_RECEIVE_BUFFERS; i++)
+    for (uint32_t i = 0; i < m_receiveBufferCount; i++)
     {
         uint64_t offset = static_cast<uint64_t>(i) * IB_BUFFER_SIZE;
         char* bufferAddr = m_ibDevice.mrBufferBlock.get() + offset;
@@ -146,7 +169,7 @@ bool IBManager::Init()
 
     // Start IB listener and handler threads
     std::thread(&IBManager::IBListenerThread, this).detach();
-    for (int i = 0; i < IB_RECEIVE_THREADS; ++i)
+    for (uint32_t i = 0; i < receiveThreadCount; ++i)
     {
         std::thread(&IBManager::RequestHandlerThread, this).detach();
     }
@@ -277,7 +300,7 @@ void IBManager::IBListenerThread()
             }
 
             const uint32_t bufferIndex = GetIBBufferIndex(wc.wr_id);
-            if (!IsValidIBBufferIndex(bufferIndex))
+            if (!IsValidIBBufferIndex(bufferIndex, m_receiveBufferCount))
             {
                 LOG_CRITICAL("Received completion with invalid buffer index={} wrId={} qp={}",
                     bufferIndex, wc.wr_id, wc.qp_num);
@@ -397,7 +420,7 @@ void IBManager::ProcessRequest(const ibv_wc& wc)
     auto start_time = std::chrono::steady_clock::now();
 
     const int bufferIndex = BufferIndex(wc.wr_id);
-    if (bufferIndex < 0 || !IsValidIBBufferIndex(static_cast<uint32_t>(bufferIndex)))
+    if (bufferIndex < 0 || !IsValidIBBufferIndex(static_cast<uint32_t>(bufferIndex), m_receiveBufferCount))
     {
         LOG_CRITICAL("Received request with invalid buffer address={} qp={}", wc.wr_id, wc.qp_num);
         Metrics::DecrementActiveConnections();
@@ -460,7 +483,7 @@ void IBManager::PostWrToSRQ(uint64_t bufferAddr)
 
     // Guard against duplicate calls (e.g. ProcessRequest failure path racing with a SEND error WC).
     // exchange(true): if the buffer was already posted (true), skip; otherwise mark posted and proceed.
-    if (m_bufferPosted[bufferIndex].exchange(true))
+    if (m_bufferPosted[static_cast<size_t>(bufferIndex)].exchange(true))
     {
         LOG_INFO("PostWrToSRQ: duplicate call for already-posted buffer addr={}", bufferAddr);
         return;
@@ -479,7 +502,7 @@ void IBManager::PostWrToSRQ(uint64_t bufferAddr)
     int rc = ibv_post_srq_recv(m_ibDevice.receiveSRQ.get(), &wr, &bad_wr);
     if (rc != 0)
     {
-        m_bufferPosted[bufferIndex].store(false);
+        m_bufferPosted[static_cast<size_t>(bufferIndex)].store(false);
         LOG_CRITICAL("ibv_post_srq_recv failed addr={} error={},{}", bufferAddr, rc, strerror(errno));
     }
     else
@@ -496,13 +519,13 @@ void IBManager::MarkBufferRemovedFromSRQ(uint64_t bufferAddr)
         LOG_CRITICAL("Cannot mark invalid buffer address={} as removed from SRQ", bufferAddr);
         return;
     }
-    m_bufferPosted[bufferIndex].store(false);
+    m_bufferPosted[static_cast<size_t>(bufferIndex)].store(false);
 }
 //---------------------------------------------------------------------------------------------------------------------
 int IBManager::BufferIndex(uint64_t addr) const
 {
     auto base = reinterpret_cast<uint64_t>(m_ibDevice.mrBufferBlock.get());
-    const uint64_t totalSize = static_cast<uint64_t>(MAX_RECEIVE_BUFFERS) * IB_BUFFER_SIZE;
+    const uint64_t totalSize = static_cast<uint64_t>(m_receiveBufferCount) * IB_BUFFER_SIZE;
     if (addr < base || addr >= base + totalSize || (addr - base) % IB_BUFFER_SIZE != 0)
     {
         return -1;
