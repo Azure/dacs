@@ -136,6 +136,29 @@ func GetAvailableUpgrades(ctx context.Context, subscription, resourceGroup, clus
 // GetDefaultNodePool returns the system node pool for an AKS cluster, or the
 // first node pool if no system node pool is present.
 func GetDefaultNodePool(ctx context.Context, subscription, resourceGroup, clusterName string) (string, error) {
+	nodePools, err := GetNodePools(ctx, subscription, resourceGroup, clusterName)
+	if err != nil {
+		return "", err
+	}
+	for _, nodePool := range nodePools {
+		if strings.EqualFold(nodePool.Mode, "System") {
+			return nodePool.Name, nil
+		}
+	}
+	return nodePools[0].Name, nil
+}
+
+// NodePool describes the placement and image configuration of an AKS pool.
+type NodePool struct {
+	Name       string `json:"name"`
+	Mode       string `json:"mode"`
+	Count      int    `json:"count"`
+	OSSKU      string `json:"osSKU"`
+	EnableFIPS bool   `json:"enableFIPS"`
+}
+
+// GetNodePools retrieves the cluster's node pool inventory.
+func GetNodePools(ctx context.Context, subscription, resourceGroup, clusterName string) ([]NodePool, error) {
 	cmd := exec.CommandContext(ctx,
 		"az", "aks", "nodepool", "list",
 		"--subscription", subscription,
@@ -145,25 +168,89 @@ func GetDefaultNodePool(ctx context.Context, subscription, resourceGroup, cluste
 	)
 	output, err := utils.Run(cmd)
 	if err != nil {
-		return "", fmt.Errorf("failed to list node pools for cluster %s: %w", clusterName, err)
+		return nil, fmt.Errorf("failed to list node pools for cluster %s: %w", clusterName, err)
 	}
 
-	var nodePools []struct {
-		Name string `json:"name"`
-		Mode string `json:"mode"`
-	}
+	var nodePools []NodePool
 	if err := json.Unmarshal([]byte(output), &nodePools); err != nil {
-		return "", fmt.Errorf("failed to parse node pool JSON for cluster %s: %w", clusterName, err)
+		return nil, fmt.Errorf("failed to parse node pool JSON for cluster %s: %w", clusterName, err)
 	}
 	if len(nodePools) == 0 {
-		return "", fmt.Errorf("no node pools found for cluster %s", clusterName)
+		return nil, fmt.Errorf("no node pools found for cluster %s", clusterName)
 	}
-	for _, nodePool := range nodePools {
-		if strings.EqualFold(nodePool.Mode, "System") {
-			return nodePool.Name, nil
+	return nodePools, nil
+}
+
+// NodePoolScalePlan separates the selected pool's count from cluster totals.
+type NodePoolScalePlan struct {
+	PoolName          string
+	OriginalPoolCount int
+	ScaledPoolCount   int
+	OriginalNodeCount int
+	ScaledNodeCount   int
+}
+
+// PlanNodePoolScale selects ACL in mixed mode, or the default pool otherwise.
+func PlanNodePoolScale(pools []NodePool, mixed bool) (NodePoolScalePlan, error) {
+	if len(pools) == 0 {
+		return NodePoolScalePlan{}, errors.New("no node pools to scale")
+	}
+	selected := 0
+	if mixed {
+		selected = -1
+	}
+	total := 0
+	systemSelected := false
+	for i, pool := range pools {
+		if pool.Count < 0 {
+			return NodePoolScalePlan{}, fmt.Errorf("negative node count for pool %s", pool.Name)
+		}
+		total += pool.Count
+		if mixed && pool.Name == "acl" && strings.EqualFold(pool.Mode, "User") {
+			selected = i
+		} else if !mixed && !systemSelected && strings.EqualFold(pool.Mode, "System") {
+			selected = i
+			systemSelected = true
 		}
 	}
-	return nodePools[0].Name, nil
+	if selected < 0 {
+		return NodePoolScalePlan{}, errors.New("mixed node OS scale test requires an ACL user pool")
+	}
+	pool := pools[selected]
+	down := 1
+	if mixed {
+		down = 0
+	}
+	if pool.Name == "" || pool.Count <= down {
+		return NodePoolScalePlan{}, fmt.Errorf("pool %q must have more than %d nodes to scale down", pool.Name, down)
+	}
+	return NodePoolScalePlan{
+		PoolName: pool.Name, OriginalPoolCount: pool.Count, ScaledPoolCount: down,
+		OriginalNodeCount: total, ScaledNodeCount: total - pool.Count + down,
+	}, nil
+}
+
+// ValidateMixedNodePools checks that the AMD64 mixed image profiles exist.
+func ValidateMixedNodePools(pools []NodePool) error {
+	expected := map[string]NodePool{
+		"nvmepool": {Name: "nvmepool", Mode: "System", Count: 2, OSSKU: "AzureLinux3"},
+		"az3fips":  {Name: "az3fips", Mode: "User", Count: 1, OSSKU: "AzureLinux3", EnableFIPS: true},
+		"ub2204":   {Name: "ub2204", Mode: "User", Count: 1, OSSKU: "Ubuntu2204"},
+		"ub22fips": {Name: "ub22fips", Mode: "User", Count: 1, OSSKU: "Ubuntu2204", EnableFIPS: true},
+		"ub2404":   {Name: "ub2404", Mode: "User", Count: 1, OSSKU: "Ubuntu2404"},
+		"acl":      {Name: "acl", Mode: "User", Count: 1, OSSKU: "AzureContainerLinux"},
+	}
+	if len(pools) != len(expected) {
+		return fmt.Errorf("expected %d mixed node pools, got %d", len(expected), len(pools))
+	}
+	for _, pool := range pools {
+		want, ok := expected[pool.Name]
+		if !ok || pool != want {
+			return fmt.Errorf("unexpected mixed node pool configuration: %+v", pool)
+		}
+		delete(expected, pool.Name)
+	}
+	return nil
 }
 
 // ErrCapacity is returned by az control-plane operations (node pool scale,
