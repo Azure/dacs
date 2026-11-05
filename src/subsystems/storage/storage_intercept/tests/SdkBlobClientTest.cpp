@@ -51,6 +51,10 @@ class SdkBlobClientTest : public TestBase
         {
             return client.MakeStageBlockOptions();
         }
+        static bool CallHasRefreshableCredential(const SdkBlobClient& client)
+        {
+            return client.m_bRefreshableCredential;
+        }
 
         // Static-account mount with a fake token; SdkBlobClient construction is network-free.
         void ConfigureStaticAccount()
@@ -122,6 +126,48 @@ TEST_F(SdkBlobClientTest, UploadChecksum_CanBeDisabled)
     SdkBlobClient client("");
 
     EXPECT_FALSE(CallMakeStageBlockOptions(client).ValidationOptions.HasValue());
+}
+//---------------------------------------------------------------------------------------------------------------------
+// The authorization-mismatch retry applies only to credentials that go through Azure RBAC (a fetched identity token).
+TEST_F(SdkBlobClientTest, RefreshableCredential_TrueForFetchedIdentityToken)
+{
+    ConfigureStaticAccount();
+    OverrideConfig(StorageInterceptConstants::ConfigNameAzBlobAccessToken, "");
+    OverrideConfig(StorageInterceptConstants::ConfigNameAzBlobUseAzureIdentitySDK, "true");
+    SdkBlobClient client("");
+
+    EXPECT_TRUE(CallHasRefreshableCredential(client));
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(SdkBlobClientTest, RefreshableCredential_FalseForStaticAccessToken)
+{
+    ConfigureStaticAccount();
+    OverrideConfig(StorageInterceptConstants::ConfigNameAzBlobUseAzureIdentitySDK, "true");
+    SdkBlobClient client("");
+
+    EXPECT_FALSE(CallHasRefreshableCredential(client));
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(SdkBlobClientTest, RefreshableCredential_FalseForSharedKey)
+{
+    ConfigureStaticAccount();
+    OverrideConfig(StorageInterceptConstants::ConfigNameAzBlobAccessToken, "");
+    OverrideConfig(StorageInterceptConstants::ConfigNameAzBlobStorageAccKey, "ZmFrZS1rZXk=");
+    OverrideConfig(StorageInterceptConstants::ConfigNameAzBlobUseAzureIdentitySDK, "true");
+    SdkBlobClient client("");
+
+    EXPECT_FALSE(CallHasRefreshableCredential(client));
+}
+//---------------------------------------------------------------------------------------------------------------------
+TEST_F(SdkBlobClientTest, RefreshableCredential_FalseForSas)
+{
+    ConfigureStaticAccount();
+    OverrideConfig(StorageInterceptConstants::ConfigNameAzBlobAccessToken, "");
+    OverrideConfig(StorageInterceptConstants::ConfigNameAzBlobSASToken, "sv=2024-01-01&sig=fake");
+    OverrideConfig(StorageInterceptConstants::ConfigNameAzBlobUseAzureIdentitySDK, "true");
+    SdkBlobClient client("");
+
+    EXPECT_FALSE(CallHasRefreshableCredential(client));
 }
 //---------------------------------------------------------------------------------------------------------------------
 TEST_F(SdkBlobClientTest, PathParsing_StaticAccount)

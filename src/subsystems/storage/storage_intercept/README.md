@@ -202,6 +202,7 @@ cacheSocketRcvbufSize [SO_RCVBUF size in bytes for cache client sockets. default
 blobRetryMaxAttempts [Total number of attempts for retryable blob operations. Set to 1 to disable retries (single attempt). default - 10]
 blobRetryBaseDelaySeconds [Base delay in seconds for exponential backoff between blob retries. default - 1]
 blobRetryMaxDelaySeconds [Maximum delay in seconds between blob retries. default - 128]
+blobAuthorizationRetryMaxAttempts [Total read attempts for 403 AuthorizationPermissionMismatch responses when using refreshable identity credentials, with the SDK blob client (remoteBlobUseSdkClient=true, the default); the legacy cpplite client does not retry this error. Set to 1 to disable these retries. default - 3. These retries address role assignment propagation delays for blob data access, where a request can be denied with this error shortly after a role assignment changes even though the identity is authorized: https://learn.microsoft.com/en-us/azure/storage/blobs/authorize-access-azure-active-directory#role-assignment-propagation-delays-for-blob-data-access]
 remoteBlobUseSdkClient [true or false - Use the azure-sdk-for-cpp remote blob client instead of the legacy cpplite client. default - true]
 remoteBlobChecksumEnabled [true or false - With the SDK client, request Azure Storage CRC64 validation on blob downloads (data-integrity check). default - true]
 remoteBlobUploadChecksumEnabled [true or false - With the SDK client, calculate and send CRC64 for Azure Storage validation on staged block uploads. default - true]

@@ -130,6 +130,7 @@ class StorageInterceptConfig
         uint32_t GetBlobRetryMaxAttempts();
         uint32_t GetBlobRetryBaseDelaySeconds();
         uint32_t GetBlobRetryMaxDelaySeconds();
+        uint32_t GetBlobAuthorizationRetryMaxAttempts();
         uint32_t GetRemoteBlobChecksumRetryMaxAttempts();
 
         // Getters for chunk download\upload parallelism
