@@ -15,8 +15,15 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "LocatorCache.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
+
+namespace snapshot
+{
+class Snapshot;
+}
 //---------------------------------------------------------------------------------------------------------------------
 
 // Singleton accessor for the server-side locator cache instance.
@@ -40,5 +47,13 @@ namespace kvclient
     // code paths use InitServerLocatorCache with the default backend.
     void ResetServerLocatorCacheForTest(std::unique_ptr<ILocatorIndex> pIndex,
                                         uint32_t nNodeId, uint32_t nNumNodes);
+
+    // Add every entry of the server locator cache, with its parent and root keys, to a
+    // snapshot. Returns the number of entries added.
+    size_t AddLocatorEntriesToSnapshot(snapshot::Snapshot& snapshot);
+
+    // Restore the server locator cache from the entries a snapshot carries, dropping replicas
+    // expired at nNowMs (see LocatorCache::Restore). Returns the number of entries restored.
+    size_t RestoreLocatorEntriesFromSnapshot(const snapshot::Snapshot& snapshot, uint64_t nNowMs);
 }
 //---------------------------------------------------------------------------------------------------------------------
