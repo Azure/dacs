@@ -44,6 +44,9 @@ spec:
 {{- end }}
     spec:
       terminationGracePeriodSeconds: 10
+{{- with .ImagePullSecrets }}
+      imagePullSecrets: {{ toJSON . }}
+{{- end }}
 {{- with .Tolerations }}
       tolerations: {{ toJSON . }}
 {{- end }}

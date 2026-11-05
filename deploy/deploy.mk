@@ -355,7 +355,7 @@ $(BICEP): $(LOCALBIN)
 .PHONY: helm
 helm: $(HELM_BIN) ## Download helm locally if necessary.
 $(HELM_BIN): $(LOCALBIN)
-	@[ -f "$(HELM_BIN)" ] || { \
+	@set -e; [ -f "$(HELM_BIN)" ] || { \
 	echo "Downloading helm $(HELM_VERSION) for $(ARCH) ($(ARCH_SUFFIX))..."; \
 	curl --fail --retry 5 --retry-delay 10 --retry-connrefused -Lo helm.tar.gz https://get.helm.sh/helm-$(HELM_VERSION)-linux-$(ARCH_SUFFIX).tar.gz; \
 	tar -zxvf helm.tar.gz; \

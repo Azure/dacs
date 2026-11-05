@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "definitions": {
+    "imageRegistry": {
+      "type": "string",
+      "pattern": "^$|^[a-zA-Z0-9][a-zA-Z0-9.:-]*(/[a-z0-9._-]+)*/?$",
+      "description": "Optional host[:port]/prefix override, taking precedence in either mode. Empty follows global registry behavior. No URL scheme."
+    }
+  },
+  "properties": {
+    "cacheServer": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": "object",
+          "properties": {
+            "registry": {"$ref": "#/definitions/imageRegistry"}
+          }
+        },
+        "scheduler": {
+          "type": "object",
+          "properties": {
+            "image": {
+              "type": "object",
+              "properties": {
+                "registry": {"$ref": "#/definitions/imageRegistry"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "global": {
+      "type": "object",
+      "allOf": [
+        {
+          "if": {
+            "required": ["registryMode"],
+            "properties": {"registryMode": {"const": "replace"}}
+          },
+          "then": {
+            "properties": {
+              "registry": {"pattern": "^$|^[a-zA-Z0-9][a-zA-Z0-9.:-]*(/[a-z0-9._-]+)*/?$"}
+            }
+          }
+        }
+      ],
+      "properties": {
+        "registry": {
+          "type": "string",
+          "description": "Registry host[:port] with optional repository prefix; no URL scheme."
+        },
+        "registryMode": {
+          "type": "string",
+          "enum": ["legacy", "replace"],
+          "description": "legacy preserves existing prefix behavior and image coverage; replace localizes all managed images."
+        },
+        "imagePullSecrets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 253,
+                "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

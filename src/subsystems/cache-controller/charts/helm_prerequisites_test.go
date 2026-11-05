@@ -1,3 +1,5 @@
+//go:build charttests
+
 // Copyright (c) Microsoft Corporation.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,12 +14,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package controller
+package charts
 
 import (
 	"bytes"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -30,16 +33,17 @@ import (
 	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 )
 
-func TestHelmPrerequisites(t *testing.T) {
+func TestHelmBundledPrerequisites(t *testing.T) {
 	helm, err := exec.LookPath("helm")
 	if err != nil {
-		t.Skip("helm is required for chart rendering tests")
+		t.Fatal("helm is required for chart rendering tests")
 	}
-	if output, err := exec.Command(helm, "dependency", "build", "../../charts/dacs", "--skip-refresh").CombinedOutput(); err != nil {
+	if output, err := exec.Command(helm, "dependency", "build", "dacs", "--skip-refresh").CombinedOutput(); err != nil {
 		t.Fatalf("building chart dependencies: %v\n%s", err, output)
 	}
 	controllerDefault := []corev1.Toleration{{Key: "CriticalAddonsOnly", Operator: corev1.TolerationOpExists}}
 	customController := []corev1.Toleration{{Key: "controller-only", Operator: corev1.TolerationOpExists}}
+	rolloutTag := chartImageTag(t, filepath.Join("..", "..", "..", "..", "helm", "dacs-prereq"), "rolloutCheck", true)
 	rolloutAffinity := &corev1.Affinity{
 		NodeAffinity: &corev1.NodeAffinity{
 			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
@@ -81,12 +85,12 @@ func TestHelmPrerequisites(t *testing.T) {
 		{name: "legacy prerequisite registry", manager: controllerDefault, prereq: true, global: `{"registry":"mirror.example.com:5000/project/","imagePullSecrets":[{"name":"registry-auth"}]}`, pullSecrets: []corev1.LocalObjectReference{{Name: "registry-auth"}}},
 		{name: "private prerequisites", manager: controllerDefault, prereq: true, global: `{"registry":"mirror.example.com:5000/project/","registryMode":"replace","imagePullSecrets":[{"name":"registry-auth"}]}`, localized: true, pullSecrets: []corev1.LocalObjectReference{{Name: "registry-auth"}}},
 		{name: "private prerequisites without pull secrets", manager: controllerDefault, prereq: true, global: `{"registry":"mirror.example.com:5000/project/","registryMode":"replace","imagePullSecrets":[]}`, localized: true},
-		{name: "invalid prerequisite registry", prereq: true, global: `{"registry":"https://mirror.example.com"}`, invalidProperty: "global.registry"},
+		{name: "invalid prerequisite registry", prereq: true, global: `{"registryMode":"replace","registry":"https://mirror.example.com"}`, invalidProperty: "global.registry"},
 		{name: "invalid prerequisite registry mode", prereq: true, global: `{"registryMode":"invalid"}`, invalidProperty: "global.registryMode"},
 		{name: "invalid prerequisite pull secret", prereq: true, global: `{"imagePullSecrets":[{"name":""}]}`, invalidProperty: "global.imagePullSecrets"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			args := []string{"template", "prerequisites", "../../charts/dacs"}
+			args := []string{"template", "prerequisites", "dacs"}
 			if tt.prereq {
 				args = append(args, "--set", "cacheServerPrereq.enabled=true",
 					"--set", "cacheServerPrereq.nvmeRaidSetup.image.repository=example.azurecr.io/cache-setup",
@@ -115,11 +119,11 @@ func TestHelmPrerequisites(t *testing.T) {
 			foundPrereq, foundRollout := false, false
 			setupImage := "example.azurecr.io/cache-setup:20261016.1"
 			pauseImage := "mcr.microsoft.com/azurelinux/base/core:3.0"
-			rolloutImage := "mcr.microsoft.com/oss/v2/kubernetes/kubectl:v1.35.9"
+			rolloutImage := "mcr.microsoft.com/oss/v2/kubernetes/kubectl:" + rolloutTag
 			if tt.localized {
 				setupImage = "mirror.example.com:5000/project/cache-setup:20261016.1"
 				pauseImage = "mirror.example.com:5000/project/azurelinux/base/core:3.0"
-				rolloutImage = "mirror.example.com:5000/project/oss/v2/kubernetes/kubectl:v1.35.9"
+				rolloutImage = "mirror.example.com:5000/project/oss/v2/kubernetes/kubectl:" + rolloutTag
 			}
 			for {
 				obj := &unstructured.Unstructured{}

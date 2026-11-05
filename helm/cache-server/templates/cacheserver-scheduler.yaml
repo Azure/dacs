@@ -13,6 +13,7 @@
 # limitations under the License.
 
 {{- if and .Values.cacheServer.enabled (ne (int .Values.cacheServer.numServers) 0)}}
+{{- $global := .Values.global | default dict }}
 {{ $schedulerRoleBindingName := "cacheserver-scheduler" }}
 {{ $cmRoleName := "cacheserver-scheduler-pv-schedulercoordinator-role" }}
 {{ $cmRoleBindingName := "cacheserver-scheduler-pv-schedulercoordinator-rolebinding" }}
@@ -95,9 +96,13 @@ spec:
       nodeSelector:
         {{- toYaml .Values.nodeSelector | nindent 8 }}
       serviceAccount: cacheserver-scheduler
+      {{- with $global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: cacheserver-scheduler
-          image: "{{ .Values.cacheServer.scheduler.image.repository }}:{{ .Values.cacheServer.scheduler.image.tag | default .Chart.AppVersion }}"
+          image: {{ include "cache-server.image" (dict "global" $global "image" .Values.cacheServer.scheduler.image "appVersion" .Chart.AppVersion) | quote }}
           imagePullPolicy: {{ .Values.cacheServer.scheduler.image.imagePullPolicy | default "IfNotPresent" }}
           env:
           - name: CACHESERVER_SCHEDULER_LOGLEVEL

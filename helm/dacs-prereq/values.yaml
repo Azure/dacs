@@ -16,9 +16,12 @@
 
 # Base name used for all resources (DaemonSet, ServiceAccount, Role, RoleBinding)
 global:
+  # Target host[:port] and optional project prefix, without a scheme.
   registry: ""
+  # legacy preserves existing prefix behavior and image coverage; replace localizes all managed images.
   registryMode: legacy
-  imagePullSecrets: []
+  # Optional existing Secret references in each workload namespace; leave empty for node identity auth.
+  imagePullSecrets: [] # Example: [{name: registry-auth}]
 
 name: dacs-prereq
 
@@ -72,6 +75,8 @@ rolloutCheck:
                 values:
                   - system
   image:
+    # Optional registry override in either mode; empty follows global registry behavior.
+    registry: ""
     repository: mcr.microsoft.com/oss/v2/kubernetes/kubectl
     tag: v1.35.9
     pullPolicy: IfNotPresent
@@ -86,6 +91,8 @@ rolloutCheck:
 # nvme-raid-setup init container settings
 nvmeRaidSetup:
   image:
+    # Optional registry override in either mode; empty follows global registry behavior.
+    registry: ""
     repository: cache-setup
     tag: "" # Defaults to the chart appVersion.
     pullPolicy: IfNotPresent
@@ -100,6 +107,8 @@ nvmeRaidSetup:
 # Pause container settings
 pauseContainer:
   image:
+    # Optional registry override in either mode; empty follows global registry behavior.
+    registry: ""
     repository: mcr.microsoft.com/azurelinux/base/core
     tag: "3.0"
     pullPolicy: IfNotPresent

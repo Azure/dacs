@@ -72,21 +72,22 @@ package_chart() (
             "$CHART_STAGE/charts/dacs-prereq/Chart.yaml"
     fi
 
-    # Update values.yaml with the build registry and image versions.
+    # Stamp source repositories, not global/component registry overrides:
+    # helpers replace this host for a per-image override or global replacement mode.
     local VALUES_FILE
     for VALUES_FILE in "$CHART_STAGE/values.yaml" "$CHART_STAGE/charts/dacs-prereq/values.yaml"; do
         [[ -f "$VALUES_FILE" ]] || continue
         sed -i -E \
-            "s#^([[:space:]]*registry:)[[:space:]]*dacstest\.azurecr\.io\$#\\1 $REGISTRY#" \
+            "s#^([[:space:]]*registry:)[[:space:]]*dacstest\.azurecr\.io\$#\\1 \"\"#" \
             "$VALUES_FILE"
         sed -i -E \
-            "s#^([[:space:]]*repository:)[[:space:]]*(acstor/dacs-server|cache-server)\$#\\1 $REGISTRY/dacs/cache-server#" \
+            "s#^([[:space:]]*repository:)[[:space:]]*(acstor/dacs-server|dacs/cache-server|cache-server)\$#\\1 $REGISTRY/dacs/cache-server#" \
             "$VALUES_FILE"
         sed -i -E \
-            "s#^([[:space:]]*repository:)[[:space:]]*(acstor/dacs-scheduler|cacheserver-scheduler)\$#\\1 $REGISTRY/dacs/cacheserver-scheduler#" \
+            "s#^([[:space:]]*repository:)[[:space:]]*(acstor/dacs-scheduler|dacs/cacheserver-scheduler|cacheserver-scheduler)\$#\\1 $REGISTRY/dacs/cacheserver-scheduler#" \
             "$VALUES_FILE"
         sed -i -E \
-            "s#^([[:space:]]*repository:)[[:space:]]*(acstor/dacs-controller|cache-controller)\$#\\1 $REGISTRY/dacs/cache-controller#" \
+            "s#^([[:space:]]*repository:)[[:space:]]*(acstor/dacs-controller|dacs/cache-controller|cache-controller)\$#\\1 $REGISTRY/dacs/cache-controller#" \
             "$VALUES_FILE"
         sed -i -E \
             "s#^([[:space:]]*repository:)[[:space:]]*cache-setup\$#\\1 $REGISTRY/dacs/cache-setup#" \

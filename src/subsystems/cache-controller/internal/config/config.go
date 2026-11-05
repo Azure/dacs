@@ -27,6 +27,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 const (
@@ -45,6 +46,7 @@ type Config struct {
 	LogLevel                           string            `yaml:"logLevel" mapstructure:"logLevel"`
 	CacheServerImage                   string            `yaml:"cacheServerImage" mapstructure:"cacheServerImage"`
 	ImagePullPolicy                    corev1.PullPolicy `yaml:"imagePullPolicy" mapstructure:"imagePullPolicy"`
+	ImagePullSecrets                   []string          `yaml:"imagePullSecrets" mapstructure:"imagePullSecrets"`
 	PodStuckThresholdDuration          time.Duration     `yaml:"podStuckThresholdDuration" mapstructure:"podStuckThresholdDuration"`
 	ShortTermNodeLossThresholdDuration time.Duration     `yaml:"shortTermNodeLossThresholdDuration" mapstructure:"shortTermNodeLossThresholdDuration"`
 
@@ -137,6 +139,7 @@ func loadConfigInternal(cfgPath string) (*Config, error) {
 	viper.SetDefault("scaleDownTolerancePercent", DefaultScaleDownTolerancePercent)
 	viper.SetDefault("shortTermNodeLossThresholdDuration", DefaultShortTermNodeLossThresholdDuration)
 	viper.SetDefault("cacheServerSnapshotIntervalSeconds", DefaultCacheServerSnapshotIntervalSeconds)
+	viper.SetDefault("imagePullSecrets", []string{})
 
 	// If a config file path is provided, try to read it; tolerate not-found
 	if strings.TrimSpace(cfgPath) != "" {
@@ -171,6 +174,11 @@ func (c *Config) validate() error {
 
 	if len(missingFields) > 0 {
 		return fmt.Errorf("missing required configuration fields: %s", strings.Join(missingFields, ", "))
+	}
+	for _, name := range c.ImagePullSecrets {
+		if errs := validation.IsDNS1123Subdomain(name); len(errs) > 0 {
+			return fmt.Errorf("invalid imagePullSecrets name %q: %s", name, strings.Join(errs, ", "))
+		}
 	}
 
 	if c.ScaleUpStabilizationWindow < 0 {

@@ -28,6 +28,7 @@ type renderValues struct {
 	NodeSelectorValue            []string
 	Image                        string
 	ImagePullPolicy              string
+	ImagePullSecrets             []corev1.LocalObjectReference
 	Tolerations                  []corev1.Toleration
 	ServerThreads                int32
 	Port                         int
