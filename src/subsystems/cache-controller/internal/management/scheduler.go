@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -36,6 +37,7 @@ const (
 
 // SchedulerInstruction is the instruction from scheduler
 type SchedulerInstruction struct {
+	PodUID types.UID `json:"podUID,omitempty"`
 	// Type of instruction
 	Type SchedulerInstructionType `json:"type"`
 	// Name of the pod
@@ -164,6 +166,7 @@ func schedule(ctx context.Context, tracker *Tracker, cacheKey string) []Schedule
 		log.Info("Issuing delete instruction for stuck pod",
 			"podName", stuckPod.PodName, "namespace", stuckPod.Namespace, "reason", instructionReason)
 		schedulerInstructions = append(schedulerInstructions, SchedulerInstruction{
+			PodUID:          stuckPod.UID,
 			Type:            DeleteInstruction,
 			PodName:         stuckPod.PodName,
 			Namespace:       stuckPod.Namespace,
@@ -270,6 +273,7 @@ func getAffinityMismatchDeleteInstructions(tracker *Tracker, scheduledPods []Pod
 		}
 
 		instructions = append(instructions, SchedulerInstruction{
+			PodUID:    pod.UID,
 			Type:      DeleteInstruction,
 			PodName:   pod.PodName,
 			Namespace: pod.Namespace,

@@ -15,7 +15,9 @@
 #include "UploadRequest.h"
 #include "CacheManager.h"
 #include "Utils.h"
+#include "ConfigUtils.h"
 #include "ConnectionUtils.h"
+#include "IBConnection.h"
 #include "Constants.h"
 #include "Logger.h"
 #include <iostream>
@@ -43,18 +45,20 @@ using namespace cache;
 static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
                         /*[in]*/ const cache::UploadRequest& uploadRequest,
                         /*[in]*/ const std::string& strTempFileName,
+                        /*[in]*/ bool fsyncEnabled,
                         /*[out]*/ ResponseCode& eResponseCode,
                         /*[out]*/ cache::UploadResponse& uploadResponse,
                         /*[out]*/ uint64_t& totalRead);
 //---------------------------------------------------------------------------------------------------------------------
 /**
  * Zero-copy path: receive data from connection directly into a file
- * using splice() (socket -> pipe -> file) entirely in kernel space,
- * with fsync() to ensure data persistence.
+ * using splice() for sockets or writing directly from the RDMA receive buffer
+ * for InfiniBand, optionally using fsync() to ensure data persistence.
  */
 static bool ReadFileDataZeroCopy(/*[in]*/ IConnection& clientConnection,
                         /*[in]*/ const cache::UploadRequest& uploadRequest,
                         /*[in]*/ const std::string& strTempFileName,
+                        /*[in]*/ bool fsyncEnabled,
                         /*[out]*/ ResponseCode& eResponseCode,
                         /*[out]*/ cache::UploadResponse& uploadResponse,
                         /*[out]*/ uint64_t& totalRead)
@@ -67,7 +71,7 @@ static bool ReadFileDataZeroCopy(/*[in]*/ IConnection& clientConnection,
         return true;
     }
 
-    LOG_DEBUG_REQID("Reading file data (splice) for file: {}", uploadRequest, uploadRequest.filename());
+    LOG_DEBUG_REQID("Reading file data (zero-copy) for file: {}", uploadRequest, uploadRequest.filename());
 
     if (bNoDiscard)
     {
@@ -88,11 +92,8 @@ static bool ReadFileDataZeroCopy(/*[in]*/ IConnection& clientConnection,
         {
             totalRead = uploadRequest.filesize();
 
-            // Flush data to persistent storage before the caller renames the temp file.
-            // A crash between close() and rename() only leaves a corrupted temp file,
-            // so that is not a problem. However, a crash immediately after rename()
-            // could potentially leave a partially-written file under the final cache path.
-            if (fsync(fileFd) != 0)
+            // Opt in to persistence before the caller renames the temp file.
+            if (fsyncEnabled && fsync(fileFd) != 0)
             {
                 LOG_WARN_REQID("fsync failed for temp file: {}, errno: {}:{}",
                                uploadRequest, strTempFileName, errno, strerror(errno));
@@ -125,7 +126,7 @@ static bool ReadFileDataZeroCopy(/*[in]*/ IConnection& clientConnection,
     {
         // Discard path: no file to splice into, fall back to buffered read.
         return ReadFileDataWithBuffer(clientConnection, uploadRequest, strTempFileName,
-                                      eResponseCode, uploadResponse, totalRead);
+                                      fsyncEnabled, eResponseCode, uploadResponse, totalRead);
     }
 
     STORAGE_ASSERT(totalRead == uploadRequest.filesize(),
@@ -157,34 +158,46 @@ bool ReadFileData(/*[in]*/ IConnection& clientConnection,
                   /*[out]*/ cache::UploadResponse& uploadResponse,
                   /*[out]*/ uint64_t& totalRead)
 {
-    // Set CACHESERVER_USE_ZEROCOPY=1 to enable splice/Recvfile zero-copy upload path.
-    // Default is disabled (original buffered-write path).
-    static const bool useZeroCopy = []() {
-        const char* env = getenv("CACHESERVER_USE_ZEROCOPY");
-        bool enabled = (env && std::string(env) == "1");
-        LOG_INFO("ReadFileData: zero-copy path {}", enabled ? "ENABLED" : "DISABLED (default)");
-        return enabled;
+    struct UploadConfig
+    {
+        bool ethernetZeroCopy;
+        bool ibZeroCopy;
+        bool fsyncEnabled;
+    };
+    static const UploadConfig config = []() {
+        const UploadConfig settings{
+            // Turning off Ethernet zero-copy by default as it opens multiple FDs per upload and may cause FD limit issues
+            GetConfigEnvVar("CACHESERVER_USE_ZEROCOPY", false),
+            // Turning on IB zero-copy be default as it avoids a staging buffer write
+            GetConfigEnvVar("CACHESERVER_USE_ZEROCOPY_IB", true),
+            GetConfigEnvVar("CACHESERVER_FSYNC_ENABLED", false)};
+        LOG_INFO("ReadFileData: Ethernet zero-copy {}; InfiniBand zero-copy {}; upload fsync {}",
+                 settings.ethernetZeroCopy ? "ENABLED" : "DISABLED (default)",
+                 settings.ibZeroCopy ? "ENABLED" : "DISABLED (default)",
+                 settings.fsyncEnabled ? "ENABLED" : "DISABLED (default)");
+        return settings;
     }();
 
-    if (useZeroCopy)
+    const bool isIBConnection = dynamic_cast<IBConnection*>(&clientConnection) != nullptr;
+    if (isIBConnection ? config.ibZeroCopy : config.ethernetZeroCopy)
     {
         return ReadFileDataZeroCopy(clientConnection, uploadRequest, strTempFileName,
-                                    eResponseCode, uploadResponse, totalRead);
+                                    config.fsyncEnabled, eResponseCode, uploadResponse, totalRead);
     }
 
     return ReadFileDataWithBuffer(clientConnection, uploadRequest, strTempFileName,
-                                   eResponseCode, uploadResponse, totalRead);
+                                   config.fsyncEnabled, eResponseCode, uploadResponse, totalRead);
 }
 //---------------------------------------------------------------------------------------------------------------------
 /**
- * Buffered read-file-data implementation using POSIX write() and fsync()
- * to ensure data persistence.
+ * Buffered read-file-data implementation using POSIX write() and optional fsync().
  * Extracted into its own function so that the buffer is only allocated
  * when this path is actually taken.
  */
 static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
                         /*[in]*/ const cache::UploadRequest& uploadRequest,
                         /*[in]*/ const std::string& strTempFileName,
+                        /*[in]*/ bool fsyncEnabled,
                         /*[out]*/ ResponseCode& eResponseCode,
                         /*[out]*/ cache::UploadResponse& uploadResponse,
                         /*[out]*/ uint64_t& totalRead)
@@ -262,7 +275,7 @@ static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
         totalRead += static_cast<uint64_t>(bufferPos);
 
         // Write to disk using POSIX write(), handling short writes.
-        // Data persistence is ensured by fsync() after the write loop completes.
+        // When enabled, fsync() ensures persistence after the write loop completes.
         // On write failure, bWriteError is set so that subsequent iterations of
         // the outer while loop skip disk writes but continue reading from the
         // network connection, ensuring the client receives a proper error
@@ -296,11 +309,8 @@ static bool ReadFileDataWithBuffer(/*[in]*/ IConnection& clientConnection,
 
     if (bNoDiscard)
     {
-        // Flush data to persistent storage before the caller renames the temp file.
-        // A crash between close() and rename() only leaves a corrupted temp file,
-        // so that is not a problem. However, a crash immediately after rename()
-        // could potentially leave a partially-written file under the final cache path.
-        if (!bWriteError && fsync(fileFd) != 0)
+        // Opt in to persistence before the caller renames the temp file.
+        if (!bWriteError && fsyncEnabled && fsync(fileFd) != 0)
         {
             LOG_WARN_REQID("fsync failed for file: {}. errno: {}:{}",
                            uploadRequest, uploadRequest.filename(), errno, strerror(errno));

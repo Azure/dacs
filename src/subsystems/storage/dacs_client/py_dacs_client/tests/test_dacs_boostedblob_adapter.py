@@ -22,9 +22,13 @@
 # ---------------------------------------------------------------
 
 import asyncio
+import collections
+import concurrent.futures
 import inspect
+import itertools
 import os
 import sys
+import threading
 import time
 import pytest
 
@@ -58,6 +62,84 @@ def run_async(coro):
     if loop and loop.is_running():
         raise RuntimeError("Cannot use run_async inside a running event loop")
     return asyncio.run(coro)
+
+
+async def _collect(stream, results):
+    async for item in stream:
+        results.append(item)
+
+
+class NativeReadHarness:
+    """Drives the real read_byte_range() -> DACSCacheClient.read_blob() path.
+
+    Only the synchronous native read is replaced (by a worker that can block on `gate` or fail), and
+    buffer allocation/free are replaced by tracked tokens, so no real memory is ever freed.
+    """
+
+    def __init__(self, monkeypatch, blocked=(), failing=(), workers=4):
+        self.gate = threading.Event()
+        self.blocked = set(blocked)
+        self.failing = set(failing)
+        self.entered = set()
+        self.token_for_offset = {}
+        self.allocated = []
+        self.freed = []
+        self._lock = threading.Lock()
+        self._tokens = itertools.count(1)
+        self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
+
+        self.client = bbb.DACSCacheClient.__new__(bbb.DACSCacheClient)
+        self.client.executor = self.pool
+        self.client.read_blob_sync = self._read_blob_sync
+        monkeypatch.setattr(
+            bbb._ClientManager, "get_instance", classmethod(lambda cls, *a, **k: self.client)
+        )
+        monkeypatch.setattr(bbb, "alloc_buffer", self._alloc)
+        monkeypatch.setattr(bbb, "release_buffer", self.freed.append)
+        monkeypatch.setattr(bbb, "safe_string_at", lambda token, n: b"x" * n)
+        monkeypatch.setattr(bbb, "DEFAULT_CHUNK_SIZE", 4)
+
+    def _alloc(self, size):
+        token = next(self._tokens)
+        self.allocated.append(token)
+        return token
+
+    def _read_blob_sync(self, blob_path, buffer, size, offset):
+        with self._lock:
+            self.entered.add(offset)
+            self.token_for_offset[offset] = buffer
+        if offset in self.blocked:
+            self.gate.wait(10)
+        if offset in self.failing:
+            raise OSError("boom")
+        return size
+
+    async def wait_entered(self, offsets):
+        deadline = time.time() + 5
+        while not set(offsets) <= self.entered:
+            assert time.time() < deadline, f"workers {set(offsets) - self.entered} never started"
+            await asyncio.sleep(0.01)
+
+    def blocked_tokens(self):
+        return [self.token_for_offset[o] for o in self.blocked if o in self.token_for_offset]
+
+    def shutdown(self):
+        self.gate.set()
+        self.pool.shutdown(wait=True)
+
+
+@pytest.fixture
+def native_harness(monkeypatch):
+    harnesses = []
+
+    def make(**kwargs):
+        harness = NativeReadHarness(monkeypatch, **kwargs)
+        harnesses.append(harness)
+        return harness
+
+    yield make
+    for harness in harnesses:
+        harness.shutdown()
 
 
 # ---------------------------------------------------------------
@@ -187,6 +269,447 @@ class TestReadOperations:
 
 class TestStreamingReadOperations:
     """Test streaming read operations (read_stream, read_stream_unordered, read_chunked)."""
+
+    def test_read_stream_uses_executor_concurrency_and_preserves_order(self, monkeypatch):
+        active_reads = 0
+        peak_reads = 0
+
+        async def fake_read_byte_range(path, byte_range):
+            nonlocal active_reads, peak_reads
+            active_reads += 1
+            peak_reads = max(peak_reads, active_reads)
+            await asyncio.sleep((16 - byte_range[0]) / 1000)
+            active_reads -= 1
+            return bytes([byte_range[0]])
+
+        monkeypatch.setattr(bbb, "DEFAULT_CHUNK_SIZE", 4)
+        monkeypatch.setattr(bbb, "read_byte_range", fake_read_byte_range)
+
+        async def collect_chunks():
+            async with BoostExecutor(3) as executor:
+                stream = await bbb.read.read_stream(
+                    "az://account/container/blob", executor, size=16
+                )
+                return [chunk async for chunk in stream]
+
+        chunks = run_async(collect_chunks())
+
+        assert chunks == [b"\x00", b"\x04", b"\x08", b"\x0c"]
+        assert peak_reads == 3
+
+    def test_read_stream_unordered_yields_completed_chunks(self, monkeypatch):
+        active_reads = 0
+        peak_reads = 0
+
+        async def fake_read_byte_range(path, byte_range):
+            nonlocal active_reads, peak_reads
+            active_reads += 1
+            peak_reads = max(peak_reads, active_reads)
+            await asyncio.sleep((16 - byte_range[0]) / 1000)
+            active_reads -= 1
+            return bytes([byte_range[0]])
+
+        monkeypatch.setattr(bbb, "DEFAULT_CHUNK_SIZE", 4)
+        monkeypatch.setattr(bbb, "read_byte_range", fake_read_byte_range)
+
+        async def collect_chunks():
+            async with BoostExecutor(3) as executor:
+                stream = await bbb.read.read_stream_unordered(
+                    "az://account/container/blob", executor, size=16
+                )
+                return [result async for result in stream]
+
+        results = run_async(collect_chunks())
+
+        assert results[0][1] == (8, 12)
+        assert sorted(byte_range for _, byte_range in results) == [
+            (0, 4),
+            (4, 8),
+            (8, 12),
+            (12, 16),
+        ]
+        assert peak_reads == 3
+
+    def test_read_chunked_passes_executor_to_stream(self, monkeypatch):
+        active_reads = 0
+        peak_reads = 0
+
+        async def fake_read_byte_range(path, byte_range):
+            nonlocal active_reads, peak_reads
+            active_reads += 1
+            peak_reads = max(peak_reads, active_reads)
+            await asyncio.sleep(0.001)
+            active_reads -= 1
+            return bytes([byte_range[0]])
+
+        monkeypatch.setattr(bbb, "DEFAULT_CHUNK_SIZE", 4)
+        monkeypatch.setattr(bbb, "read_byte_range", fake_read_byte_range)
+
+        async def read_all():
+            async with BoostExecutor(2) as executor:
+                return await bbb.read.read_chunked(
+                    "az://account/container/blob", executor, size=12
+                )
+
+        assert run_async(read_all()) == b"\x00\x04\x08"
+        assert peak_reads == 2
+
+    def test_read_stream_slow_head_does_not_stall_other_workers(self, monkeypatch):
+        started = []
+        release_head = asyncio.Event()
+
+        async def fake_read_byte_range(path, byte_range):
+            started.append(byte_range[0])
+            if byte_range[0] == 0:
+                await release_head.wait()
+            else:
+                await asyncio.sleep(0.001)
+            return bytes([byte_range[0]])
+
+        monkeypatch.setattr(bbb, "DEFAULT_CHUNK_SIZE", 1)
+        monkeypatch.setattr(bbb, "read_byte_range", fake_read_byte_range)
+
+        async def read_all():
+            async with BoostExecutor(3) as executor:
+                stream = await bbb.read.read_stream(
+                    "az://account/container/blob", executor, size=20
+                )
+                results = []
+                consumer = asyncio.ensure_future(_collect(stream, results))
+                await asyncio.sleep(0.1)
+                started_while_head_blocked = list(started)
+                release_head.set()
+                await consumer
+                return started_while_head_blocked, results
+
+        started_while_blocked, results = run_async(read_all())
+
+        # The slow first chunk keeps one worker busy; the other two keep draining the queue
+        # until the buffer of out-of-order results reaches its bound (2 x concurrency).
+        assert len(started_while_blocked) == 6
+        assert results == [bytes([i]) for i in range(20)]
+
+    def test_executor_retrieves_exceptions_of_all_completed_tasks(self):
+        unretrieved = []
+
+        class Boom(Exception):
+            pass
+
+        async def failing(item):
+            raise Boom(item)
+
+        async def consume(method_name):
+            loop = asyncio.get_running_loop()
+            loop.set_exception_handler(lambda _loop, context: unretrieved.append(context))
+            executor = BoostExecutor(4)
+            with pytest.raises(Boom):
+                async for _ in getattr(executor, method_name)(failing, range(4)):
+                    pass
+            # Unretrieved task exceptions are only reported when the task is garbage collected.
+            import gc
+
+            gc.collect()
+            await asyncio.sleep(0)
+
+        run_async(consume("map_ordered"))
+        run_async(consume("map_unordered"))
+
+        assert unretrieved == []
+
+    @pytest.mark.parametrize("stream_fn", ["read_stream", "read_stream_unordered"])
+    @pytest.mark.parametrize("scenario", ["close", "sibling_failure", "context_exit"])
+    def test_cleanup_never_frees_buffer_while_native_read_is_running(
+        self, native_harness, stream_fn, scenario
+    ):
+        blocked, failing = ({0}, {4}) if scenario == "sibling_failure" else ({4, 8}, set())
+        harness = native_harness(blocked=blocked, failing=failing)
+        path = "az://account.blob.core.windows.net/container/blob"
+
+        async def run():
+            before = asyncio.all_tasks()
+            read = getattr(bbb.read, stream_fn)
+
+            if scenario == "close":
+                stream = await read(path, BoostExecutor(3), size=16)
+                await stream.__anext__()
+                await harness.wait_entered({4, 8})
+                cleanup = asyncio.ensure_future(stream.aclose())
+            elif scenario == "sibling_failure":
+                stream = await read(path, BoostExecutor(3), size=16)
+                cleanup = asyncio.ensure_future(_collect(stream, []))
+                await harness.wait_entered({0, 4})
+            else:
+                async def leave_context_without_closing():
+                    async with BoostExecutor(3) as executor:
+                        stream = await read(path, executor, size=16)
+                        await stream.__anext__()
+                        await harness.wait_entered({4, 8})
+                    return stream  # kept alive: cleanup must not depend on garbage collection
+
+                cleanup = asyncio.ensure_future(leave_context_without_closing())
+
+            # Workers are blocked in the "native" read: cleanup must wait, and must not free their buffers.
+            await asyncio.sleep(0.2)
+            assert not cleanup.done()
+            assert all(token not in harness.freed for token in harness.blocked_tokens())
+
+            harness.gate.set()
+            if scenario == "sibling_failure":
+                with pytest.raises(bbb.DACSError):
+                    await cleanup
+            else:
+                await cleanup
+
+            assert collections.Counter(harness.freed) == collections.Counter(harness.allocated)
+            assert asyncio.all_tasks() - before == set()
+
+        run_async(run())
+
+    def test_read_blob_cancellation_waits_for_running_worker(self, native_harness):
+        harness = native_harness(blocked={0})
+
+        async def run():
+            read = asyncio.ensure_future(harness.client.read_blob("path", "buf", 4, 0))
+            await harness.wait_entered({0})
+            read.cancel()
+            await asyncio.sleep(0.2)
+            assert not read.done()  # still draining: the worker may be writing into the buffer
+
+            harness.gate.set()
+            with pytest.raises(asyncio.CancelledError):
+                await read
+
+        run_async(run())
+
+    def test_read_blob_cancellation_skips_worker_that_has_not_started(self, native_harness):
+        harness = native_harness(blocked={0}, workers=1)
+
+        async def run():
+            running = asyncio.ensure_future(harness.client.read_blob("path", "buf", 4, 0))
+            await harness.wait_entered({0})
+            queued = asyncio.ensure_future(harness.client.read_blob("path", "buf", 4, 4))
+            await asyncio.sleep(0.05)
+            queued.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(queued, 1)  # nothing to wait for: the worker never started
+
+            harness.gate.set()
+            await running
+            assert 4 not in harness.entered
+
+        run_async(run())
+
+    @pytest.mark.parametrize("method", ["map_ordered", "map_unordered"])
+    @pytest.mark.parametrize("failure", ["iterator_raises", "callable_raises"])
+    def test_executor_cleans_up_when_initial_scheduling_fails(self, method, failure):
+        coroutines = []
+        unretrieved = []
+
+        async def blocked(item):
+            await asyncio.Event().wait()
+
+        def func(item):
+            if failure == "callable_raises" and item == 1:
+                raise ValueError("bad item")
+            coroutine = blocked(item)
+            coroutines.append(coroutine)
+            return coroutine
+
+        def items():
+            yield 0
+            if failure == "iterator_raises":
+                raise ValueError("bad iterator")
+            yield 1
+
+        async def run():
+            asyncio.get_running_loop().set_exception_handler(
+                lambda _loop, context: unretrieved.append(context)
+            )
+            with pytest.raises(ValueError):
+                async for _ in getattr(BoostExecutor(3), method)(func, items()):
+                    pass
+            # A task that was cancelled and gathered leaves its coroutine closed; a leaked one does not.
+            assert len(coroutines) == 1
+            assert all(inspect.getcoroutinestate(c) == inspect.CORO_CLOSED for c in coroutines)
+            assert unretrieved == []
+
+        run_async(run())
+
+    @pytest.mark.parametrize("stream_fn", ["read_stream", "read_stream_unordered"])
+    def test_executor_context_exit_cancels_reads_when_stream_is_not_closed(
+        self, monkeypatch, stream_fn
+    ):
+        read_tasks = []
+
+        async def fake_read_byte_range(path, byte_range):
+            read_tasks.append(asyncio.current_task())
+            if byte_range[0] != 0:
+                await asyncio.Event().wait()
+            return b"first"
+
+        monkeypatch.setattr(bbb, "DEFAULT_CHUNK_SIZE", 4)
+        monkeypatch.setattr(bbb, "read_byte_range", fake_read_byte_range)
+
+        async def run():
+            async with BoostExecutor(3) as executor:
+                stream = await getattr(bbb.read, stream_fn)(
+                    "az://account/container/blob", executor, size=16
+                )
+                await stream.__anext__()
+                assert any(not task.done() for task in read_tasks)
+            # No aclose() and no garbage collection: leaving the context owns the cleanup.
+            assert all(task.done() for task in read_tasks)
+            return stream
+
+        run_async(run())
+
+    @pytest.mark.parametrize("method", ["map_ordered", "map_unordered"])
+    def test_executor_context_exit_cancels_reads_of_actively_consumed_stream(self, method):
+        read_tasks = []
+
+        async def run():
+            blocked = asyncio.Event()
+            started = []
+
+            async def read(item):
+                read_tasks.append(asyncio.current_task())
+                started.append(item)
+                await blocked.wait()
+
+            consumer = None
+            try:
+                async with BoostExecutor(3) as executor:
+                    stream = getattr(executor, method)(read, range(10))
+
+                    async def consume():
+                        async for _ in stream:
+                            pass
+
+                    consumer = asyncio.ensure_future(consume())
+                    deadline = time.time() + 5
+                    while len(started) < 3:
+                        assert time.time() < deadline
+                        await asyncio.sleep(0.01)
+                # Cleanup is complete when the context exit returns, with the consumer still mid-await.
+                assert len(read_tasks) == 3 and all(task.done() for task in read_tasks)
+                with pytest.raises(RuntimeError, match="closed while its stream"):
+                    await asyncio.wait_for(consumer, 5)
+                assert len(started) == 3  # nothing new was scheduled after the exit
+            finally:
+                blocked.set()
+                if consumer is not None and not consumer.done():
+                    consumer.cancel()
+
+        run_async(run())
+
+    @pytest.mark.parametrize("method", ["map_ordered", "map_unordered"])
+    def test_executor_context_exit_stops_replacement_reads_after_a_read_completes(self, method):
+        started = []
+        read_tasks = []
+
+        async def read(item):
+            started.append(item)
+            read_tasks.append(asyncio.current_task())
+            return item
+
+        async def run():
+            consumed = []
+            async with BoostExecutor(1) as executor:
+                stream = getattr(executor, method)(read, range(10))
+
+                async def consume():
+                    async for item in stream:
+                        consumed.append(item)
+
+                consumer = asyncio.ensure_future(consume())
+                # Leave the context in the window where the read has finished but the consumer has not
+                # yet resumed from asyncio.wait(): aclose() is refused and cancelling the task is a no-op.
+                while not read_tasks or not read_tasks[0].done():
+                    await asyncio.sleep(0)
+                assert consumed == []
+
+            with pytest.raises(RuntimeError, match="closed while its stream"):
+                await asyncio.wait_for(consumer, 5)
+            assert started == [0]  # no replacement read was started after the exit
+            assert consumed == []
+
+        run_async(run())
+
+    @pytest.mark.parametrize("method", ["map_ordered", "map_unordered"])
+    def test_executor_is_reusable_after_context_exit(self, method):
+        async def run():
+            executor = BoostExecutor(2)
+            for _ in range(2):
+                async with executor:
+                    results = [item async for item in getattr(executor, method)(
+                        lambda i: asyncio.sleep(0, i), range(5)
+                    )]
+                    assert sorted(results) == list(range(5))
+
+        run_async(run())
+
+    @pytest.mark.parametrize("stream_fn", ["read_stream", "read_stream_unordered"])
+    def test_context_exit_with_active_consumer_waits_for_running_native_read(
+        self, native_harness, stream_fn
+    ):
+        harness = native_harness(blocked={0, 4, 8})
+        path = "az://account.blob.core.windows.net/container/blob"
+
+        async def run():
+            before = asyncio.all_tasks()
+            consumer = None
+
+            async def leave_context():
+                nonlocal consumer
+                async with BoostExecutor(3) as executor:
+                    stream = await getattr(bbb.read, stream_fn)(path, executor, size=16)
+                    consumer = asyncio.ensure_future(_collect(stream, []))
+                    await harness.wait_entered({0, 4, 8})
+
+            leaving = asyncio.ensure_future(leave_context())
+            await asyncio.sleep(0.3)
+            # The workers are inside the "native" read: exit must wait, and must not free their buffers.
+            assert not leaving.done()
+            assert all(token not in harness.freed for token in harness.blocked_tokens())
+
+            harness.gate.set()
+            await asyncio.wait_for(leaving, 5)
+            assert collections.Counter(harness.freed) == collections.Counter(harness.allocated)
+            with pytest.raises(RuntimeError):
+                await asyncio.wait_for(consumer, 5)
+            assert asyncio.all_tasks() - before == set()
+
+        run_async(run())
+
+    def test_read_stream_early_exit_cancels_in_flight_reads(self, monkeypatch):
+        cancelled = 0
+
+        async def fake_read_byte_range(path, byte_range):
+            nonlocal cancelled
+            if byte_range[0] == 0:
+                return b"first"
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                cancelled += 1
+                raise
+
+        monkeypatch.setattr(bbb, "DEFAULT_CHUNK_SIZE", 4)
+        monkeypatch.setattr(bbb, "read_byte_range", fake_read_byte_range)
+
+        async def read_first_chunk_only():
+            stream = await bbb.read.read_stream(
+                "az://account/container/blob", BoostExecutor(3), size=32
+            )
+            async for _ in stream:
+                break
+            await stream.aclose()
+            leftover = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+            return cancelled, leftover
+
+        cancelled_reads, leftover_tasks = run_async(read_first_chunk_only())
+        assert cancelled_reads == 2  # the third pending read was cancelled before it started
+        assert leftover_tasks == []
 
     def test_read_stream_basic(self):
         """Test read_stream yields chunks."""

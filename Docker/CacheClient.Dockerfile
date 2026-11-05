@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Build blobfuse2 with the dist_cache component from a pinned public commit.
+# Build blobfuse2 with the distributed_cache component from a pinned public commit.
 FROM mcr.microsoft.com/oss/go/microsoft/golang:1.26@sha256:5a7c45defdcb18d898e007407bfa5f8359953ce029c395c9ef49a3e4b3869da2 AS blobfuse2-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git ca-certificates libfuse3-dev pkg-config build-essential && \
     rm -rf /var/lib/apt/lists/*
 ARG BLOBFUSE2_REPO=https://github.com/Azure/azure-storage-fuse.git
-ARG BLOBFUSE2_COMMIT=dd3a4461a3efdf679a3a06d0522b81d60edce781
+ARG BLOBFUSE2_COMMIT=a6d18445f48f1d8d060e91ccea3d2576c853cc61
 RUN git init /src/blobfuse2 && \
     git -C /src/blobfuse2 remote add origin "${BLOBFUSE2_REPO}" && \
     git -C /src/blobfuse2 fetch --depth 1 origin "${BLOBFUSE2_COMMIT}" && \

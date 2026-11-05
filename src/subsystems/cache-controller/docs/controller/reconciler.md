@@ -110,6 +110,8 @@ The controller creates or updates a StatefulSet whose name matches the Cache CR'
 
 Owner references are set so the StatefulSet is garbage-collected when the Cache CR is deleted.
 
+Ephemeral storage bypasses custom scheduling and uses preferred anti-affinity to spread cache pods across nodes. Co-location is still allowed to enable tests with more cache pods than nodes. HostPath storage requires custom scheduling to prevent pods from sharing a node and unsafely accessing the same cache directory.
+
 ### Services
 
 Two Services are managed, named relative to the Cache CR name:

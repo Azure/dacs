@@ -927,11 +927,23 @@ TEST_F(IBConnectionWriteTest, WriteFinal_HappyPath)
     EXPECT_EQ(bufferIndex, GetIBBufferIndex(fake_ib_server::last_send_wr_id));
     EXPECT_FALSE(IsIBSendWrId(MakeIBReceiveWrId(bufferIndex)));
     EXPECT_EQ(bufferIndex, GetIBBufferIndex(MakeIBReceiveWrId(bufferIndex)));
-    EXPECT_TRUE(IsValidIBBufferIndex(bufferIndex));
-    EXPECT_FALSE(IsValidIBBufferIndex(MAX_RECEIVE_BUFFERS));
+    EXPECT_TRUE(IsValidIBBufferIndex(bufferIndex, DEFAULT_RECEIVE_BUFFERS));
+    EXPECT_FALSE(IsValidIBBufferIndex(DEFAULT_RECEIVE_BUFFERS, DEFAULT_RECEIVE_BUFFERS));
 
     // Verify buffer contents
     EXPECT_EQ(0, memcmp(m_buffer.data(), data.data(), data.size()));
+}
+
+TEST(IBBufferIndexTest, UsesConfiguredReceiveBufferCount)
+{
+    EXPECT_FALSE(IsValidIBBufferIndex(0, 0));
+    EXPECT_TRUE(IsValidIBBufferIndex(0, 1));
+    EXPECT_FALSE(IsValidIBBufferIndex(1, 1));
+    EXPECT_TRUE(IsValidIBBufferIndex(7, 8));
+    EXPECT_FALSE(IsValidIBBufferIndex(8, 8));
+    EXPECT_TRUE(IsValidIBBufferIndex(256, 512));
+    EXPECT_TRUE(IsValidIBBufferIndex(511, 512));
+    EXPECT_FALSE(IsValidIBBufferIndex(512, 512));
 }
 
 TEST_F(IBConnectionWriteTest, WriteFinal_PostSendFailure_DoesNotClaimBufferOwnership)

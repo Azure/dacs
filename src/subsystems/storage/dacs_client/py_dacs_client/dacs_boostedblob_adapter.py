@@ -82,15 +82,20 @@ import stat as stat_module
 import sys
 import threading
 import types
+import weakref
 from dataclasses import dataclass
 from typing import (
     Any,
     AsyncIterator,
+    Awaitable,
     Callable,
+    Dict,
+    Iterable,
     Iterator,
     List,
     Optional,
     Protocol,
+    Set,
     Tuple,
     TypeVar,
     Union,
@@ -132,7 +137,24 @@ DEFAULT_CHUNK_SIZE = 32 * MB  # 32MB default chunk size
 
 # Type variable for generic functions
 T = TypeVar("T")
+A = TypeVar("A")
 F = TypeVar("F", bound=Callable[..., Any])
+
+
+class BoostExecutorProtocol(Protocol):
+    def map_ordered(
+        self,
+        func: Callable[[A], Awaitable[T]],
+        iterable: Iterable[A],
+    ) -> AsyncIterator[T]:
+        ...
+
+    def map_unordered(
+        self,
+        func: Callable[[A], Awaitable[T]],
+        iterable: Iterable[A],
+    ) -> AsyncIterator[T]:
+        ...
 
 # Re-export following native boostedblob's __init__.py structure
 # Read/write functions are accessed via submodules: bbb.read.read_single(), bbb.write.write_single()
@@ -1065,7 +1087,7 @@ def byte_range_to_str(byte_range: OptByteRange) -> Optional[str]:
 
 async def read_stream(
     path: Union[str, BasePath],
-    executor: Any = None,
+    executor: Optional[BoostExecutorProtocol] = None,
     size: Optional[int] = None,
 ) -> AsyncIterator[bytes]:
     """
@@ -1073,12 +1095,9 @@ async def read_stream(
     
     This matches boostedblob.read.read_stream() signature.
     
-    Note: The executor parameter is accepted for API compatibility but ignored.
-    DACSCacheClient doesn't use BoostExecutor for parallelism.
-    
     Args:
         path: Azure blob path (str or BasePath)
-        executor: Ignored (for API compatibility with boostedblob)
+        executor: Executor used to read chunks concurrently
         size: If specified, saves a network call to get file size
         
     Yields:
@@ -1087,11 +1106,19 @@ async def read_stream(
     Raises:
         DACSNotFoundError: If the blob does not exist
     """
-    return _read_stream_impl(path, size)
+    return _read_stream_impl(path, executor, size)
+
+
+async def _close_stream(stream: Any) -> None:
+    """Close an executor stream now so in-flight reads are cancelled when a consumer stops early."""
+    aclose = getattr(stream, "aclose", None)
+    if aclose is not None:
+        await aclose()
 
 
 async def _read_stream_impl(
     path: Union[str, BasePath],
+    executor: Optional[BoostExecutorProtocol] = None,
     size: Optional[int] = None,
 ) -> AsyncIterator[bytes]:
     """Internal implementation of read_stream."""
@@ -1109,16 +1136,25 @@ async def _read_stream_impl(
     if size == 0:
         return
     
-    # Generate byte ranges and yield chunks
-    for start in range(0, size, DEFAULT_CHUNK_SIZE):
-        end = min(start + DEFAULT_CHUNK_SIZE, size)
-        chunk = await read_byte_range(path_str, (start, end))
-        yield chunk
+    byte_ranges = (
+        (start, min(start + DEFAULT_CHUNK_SIZE, size))
+        for start in range(0, size, DEFAULT_CHUNK_SIZE)
+    )
+
+    async def read_range(byte_range: ByteRange) -> bytes:
+        return await read_byte_range(path_str, byte_range)
+
+    stream = (executor or BoostExecutor()).map_ordered(read_range, byte_ranges)
+    try:
+        async for chunk in stream:
+            yield chunk
+    finally:
+        await _close_stream(stream)
 
 
 async def read_stream_unordered(
     path: Union[str, BasePath],
-    executor: Any = None,
+    executor: Optional[BoostExecutorProtocol] = None,
     size: Optional[int] = None,
 ) -> AsyncIterator[Tuple[bytes, ByteRange]]:
     """
@@ -1126,12 +1162,9 @@ async def read_stream_unordered(
     
     This matches boostedblob.read.read_stream_unordered() signature.
     
-    Note: In this implementation, chunks are returned in order since we don't
-    have parallel download capability. The executor parameter is ignored.
-    
     Args:
         path: Azure blob path (str or BasePath)
-        executor: Ignored (for API compatibility with boostedblob)
+        executor: Executor used to read chunks concurrently
         size: If specified, saves a network call to get file size
         
     Yields:
@@ -1140,11 +1173,12 @@ async def read_stream_unordered(
     Raises:
         DACSNotFoundError: If the blob does not exist
     """
-    return _read_stream_unordered_impl(path, size)
+    return _read_stream_unordered_impl(path, executor, size)
 
 
 async def _read_stream_unordered_impl(
     path: Union[str, BasePath],
+    executor: Optional[BoostExecutorProtocol] = None,
     size: Optional[int] = None,
 ) -> AsyncIterator[Tuple[bytes, ByteRange]]:
     """Internal implementation of read_stream_unordered."""
@@ -1162,16 +1196,26 @@ async def _read_stream_unordered_impl(
     if size == 0:
         return
     
-    # Generate byte ranges and yield chunks with their ranges
-    for start in range(0, size, DEFAULT_CHUNK_SIZE):
-        end = min(start + DEFAULT_CHUNK_SIZE, size)
-        chunk = await read_byte_range(path_str, (start, end))
-        yield (chunk, (start, end))
+    byte_ranges = (
+        (start, min(start + DEFAULT_CHUNK_SIZE, size))
+        for start in range(0, size, DEFAULT_CHUNK_SIZE)
+    )
+
+    async def read_range(byte_range: ByteRange) -> Tuple[bytes, ByteRange]:
+        chunk = await read_byte_range(path_str, byte_range)
+        return (chunk, byte_range)
+
+    stream = (executor or BoostExecutor()).map_unordered(read_range, byte_ranges)
+    try:
+        async for result in stream:
+            yield result
+    finally:
+        await _close_stream(stream)
 
 
 async def read_chunked(
     path: Union[str, BasePath],
-    executor: Any = None,
+    executor: Optional[BoostExecutorProtocol] = None,
     size: Optional[int] = None,
 ) -> bytes:
     """
@@ -1179,11 +1223,9 @@ async def read_chunked(
     
     This matches boostedblob.read.read_chunked() signature.
     
-    Note: The executor parameter is accepted for API compatibility but ignored.
-    
     Args:
         path: Azure blob path (str or BasePath)
-        executor: Ignored (for API compatibility with boostedblob)
+        executor: Executor used to read chunks concurrently
         size: If specified, saves a network call to get file size
         
     Returns:
@@ -1193,7 +1235,7 @@ async def read_chunked(
         DACSNotFoundError: If the blob does not exist
     """
     chunks = []
-    async for chunk in _read_stream_impl(path, size):
+    async for chunk in _read_stream_impl(path, executor, size):
         chunks.append(chunk)
     return b"".join(chunks)
 
@@ -1450,24 +1492,175 @@ def ensure_session(fn: F) -> F:
 
 class BoostExecutor:
     """
-    Placeholder BoostExecutor for API compatibility.
-    
-    DACSCacheClient doesn't use BoostExecutor for parallelism.
-    This class is provided so code that creates a BoostExecutor doesn't fail,
-    but the executor parameter is ignored in all adapter functions.
-    
-    For full BoostExecutor functionality, use native boostedblob:
-        from boostedblob import BoostExecutor
+    Concurrency-limited executor compatible with boostedblob's mapping API.
+
+    Leaving the ``async with`` block cancels every read still owned by this executor and waits
+    for them to finish (a read that is inside a native call is waited for, so its buffer is never
+    freed early). This matters because breaking out of an ``async for`` does not close the stream
+    by itself. A stream that another task is still consuming at that point raises RuntimeError
+    in that task, and no new reads are started for it after the exit.
     """
     
     def __init__(self, concurrency: int = 8) -> None:
+        if concurrency <= 0:
+            raise ValueError("concurrency must be greater than zero")
         self.concurrency = concurrency
+        self._streams: "weakref.WeakSet[Any]" = weakref.WeakSet()
+        # Read tasks are tracked here, not only inside their stream, because a stream that is
+        # being awaited by another task cannot be closed from __aexit__.
+        self._tasks: Set["asyncio.Future[Any]"] = set()
+        # Bumped as soon as __aexit__ starts. A stream remembers the value it was created with and
+        # stops scheduling reads once it changes, even if it could not be closed (a consumer that
+        # is parked in asyncio.wait() cannot be aclose()d, and cancelling a finished task is a no-op).
+        self._epoch = 0
+
+    def _check_open(self, epoch: int) -> None:
+        if epoch != self._epoch:
+            raise RuntimeError("BoostExecutor was closed while its stream was still being consumed")
+
+    def _spawn(self, coro: Awaitable[T]) -> "asyncio.Future[T]":
+        task = asyncio.ensure_future(coro)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        return task
+
+    @staticmethod
+    def _result(task: "asyncio.Future[T]") -> T:
+        if task.cancelled():
+            # Our own tasks are only cancelled by __aexit__; the consumer's own cancellation
+            # surfaces from asyncio.wait() instead.
+            raise RuntimeError("BoostExecutor was closed while its stream was still being consumed")
+        return task.result()
+
+    def map_ordered(
+        self,
+        func: Callable[[A], Awaitable[T]],
+        iterable: Iterable[A],
+    ) -> AsyncIterator[T]:
+        stream = self._map_ordered(func, iterable, self._epoch)
+        self._streams.add(stream)
+        return stream
+
+    def map_unordered(
+        self,
+        func: Callable[[A], Awaitable[T]],
+        iterable: Iterable[A],
+    ) -> AsyncIterator[T]:
+        stream = self._map_unordered(func, iterable, self._epoch)
+        self._streams.add(stream)
+        return stream
+
+    async def _map_ordered(
+        self,
+        func: Callable[[A], Awaitable[T]],
+        iterable: Iterable[A],
+        epoch: int,
+    ) -> AsyncIterator[T]:
+        iterator = iter(iterable)
+        # Tasks stay in `running` until their result is consumed, so the finally block
+        # also retrieves exceptions of tasks that completed but were never processed.
+        running: Set["asyncio.Future[T]"] = set()
+        task_index: Dict["asyncio.Future[T]", int] = {}
+        ready: Dict[int, T] = {}
+        next_to_schedule = 0
+        next_to_yield = 0
+        exhausted = False
+        # A slow head-of-line item must not stall the other workers, but results that finished
+        # out of order are buffered, so bound them to keep memory (32 MiB per chunk) in check.
+        max_outstanding = 2 * self.concurrency
+
+        def fill() -> None:
+            nonlocal next_to_schedule, exhausted
+            self._check_open(epoch)
+            while (
+                not exhausted
+                and len(running) < self.concurrency
+                and next_to_schedule - next_to_yield < max_outstanding
+            ):
+                try:
+                    item = next(iterator)
+                except StopIteration:
+                    exhausted = True
+                    return
+                task = self._spawn(func(item))
+                task_index[task] = next_to_schedule
+                next_to_schedule += 1
+                running.add(task)
+
+        try:
+            fill()
+            while running:
+                done, _ = await asyncio.wait(running, return_when=asyncio.FIRST_COMPLETED)
+                self._check_open(epoch)
+                for task in done:
+                    ready[task_index.pop(task)] = self._result(task)
+                    running.remove(task)
+                fill()
+                while next_to_yield in ready:
+                    result = ready.pop(next_to_yield)
+                    next_to_yield += 1
+                    fill()
+                    yield result
+        finally:
+            for task in running:
+                task.cancel()
+            if running:
+                await asyncio.gather(*running, return_exceptions=True)
+
+    async def _map_unordered(
+        self,
+        func: Callable[[A], Awaitable[T]],
+        iterable: Iterable[A],
+        epoch: int,
+    ) -> AsyncIterator[T]:
+        iterator = iter(iterable)
+        in_flight: Set["asyncio.Future[T]"] = set()
+
+        try:
+            # Scheduled inside the try so a failing iterator or callable part-way through the
+            # initial batch still cancels the tasks that were already started.
+            for item in itertools.islice(iterator, self.concurrency):
+                in_flight.add(self._spawn(func(item)))
+
+            while in_flight:
+                completed, _ = await asyncio.wait(in_flight, return_when=asyncio.FIRST_COMPLETED)
+                self._check_open(epoch)
+                for task in completed:
+                    # A task stays tracked until its result is consumed, so if result() raises
+                    # or the consumer stops early, the finally block still retrieves the
+                    # exceptions of the other completed tasks.
+                    result = self._result(task)
+                    try:
+                        item = next(iterator)
+                    except StopIteration:
+                        pass
+                    else:
+                        in_flight.add(self._spawn(func(item)))
+                    in_flight.remove(task)
+                    yield result
+        finally:
+            for task in in_flight:
+                task.cancel()
+            if in_flight:
+                await asyncio.gather(*in_flight, return_exceptions=True)
     
     async def __aenter__(self) -> "BoostExecutor":
         return self
     
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        pass
+        self._epoch += 1  # before any await: consumers that resume from now on must not schedule more reads
+        for stream in list(self._streams):
+            try:
+                await stream.aclose()
+            except RuntimeError:
+                # Another task is awaiting this stream, so it cannot be closed from here;
+                # its reads are cancelled and drained below instead.
+                pass
+        tasks = list(self._tasks)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
 
 # ==============================

@@ -552,13 +552,13 @@ requests==2.34.2 \
     # via
     #   azure-core
     #   msal
-runai-model-streamer==0.16.1 \
-    --hash=sha256:035cc282935d7d55032ce2da97507b3d94201e647d622bd44476a6ef9f04f824 \
-    --hash=sha256:0f9958ecdef6786347b855f345d3076a039201f6f2c0e22dd52c74eef8941430
+runai-model-streamer==0.17.0 \
+    --hash=sha256:d7189e8f6963adc39d38eb7423ac79542e69d1a2eac5e76a473c60ae942b8760 \
+    --hash=sha256:e722bb0338ed9b047c140745d3f5431af01fd2d5d6d809be01423bc6c62d7eb2
     # via -r Docker/requirements/runai-model-streamer.in
-runai-model-streamer-azure==0.16.1 \
-    --hash=sha256:3c66172e3c22405d68cb47bccf022d7cab299f1571400ade684771b860420483 \
-    --hash=sha256:77e00e797852167d9036c36a952a6cb46cabbb7d78ddf30a159ef424803f1d20
+runai-model-streamer-azure==0.17.0 \
+    --hash=sha256:19d89d841001ec93c17855bc57e80c77ddaad02d2a815782352947fa9988257f \
+    --hash=sha256:a258d8c02391e60e9ad9cec3a24ad655dee769cd82b60e912fa866f198f4ea3e
     # via -r Docker/requirements/runai-model-streamer.in
 sympy==1.14.0 \
     --hash=sha256:d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517 \

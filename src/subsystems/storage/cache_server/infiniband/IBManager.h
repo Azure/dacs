@@ -95,6 +95,8 @@ class IBManager
         // Whether IB is enabled and active
         bool m_ibEnabled;
 
+        const uint32_t m_receiveBufferCount;
+
         // Data structure to manage the IB device on this node
         IbDevice m_ibDevice;
 
@@ -107,6 +109,6 @@ class IBManager
 
         // Per-buffer posted flag: false = available (not in SRQ), true = posted in SRQ.
         // Guards PostWrToSRQ() against duplicate calls from concurrent code paths.
-        std::atomic<bool> m_bufferPosted[MAX_RECEIVE_BUFFERS]{};
+        std::unique_ptr<std::atomic<bool>[]> m_bufferPosted;
 };
 //---------------------------------------------------------------------------------------------------------------------

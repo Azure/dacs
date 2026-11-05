@@ -17,6 +17,8 @@
 #include <stdint.h>
 //---------------------------------------------------------------------------------------------------------------------
 constexpr int DEFAULT_THREAD_POOL_SIZE = 256;
+constexpr int MIN_THREAD_POOL_SIZE = 1;
+constexpr int MAX_THREAD_POOL_SIZE = 2048;
 constexpr int DEFAULT_TCP_BACKLOG_SIZE = 4096;
 constexpr int MAX_TCP_BACKLOG_SIZE = 1048576;
 constexpr int REQUEST_METADATA_SIZE = 4;
@@ -29,12 +31,16 @@ constexpr int REQUEST_METADATA_SIZE = 4;
 constexpr uint32_t MAX_REQUEST_PROTO_SIZE = 4 * 1024 * 1024;
 
 constexpr int DEFAULT_SOCKET_BUF_SIZE = 0;
+constexpr int MIN_SOCKET_BUF_SIZE = 0;
+constexpr int MAX_SOCKET_BUF_SIZE = 1024 * 1024 * 1024;
 constexpr int NUM_MAPS = 50; // Note: changing this value will cause existing snapshots to fail to load
 
 // Snapshot related settings
 constexpr bool DefaultSnapshotEnabled = true;
 constexpr bool DefaultWaitForSnapshotConsistencyScan = true;
 constexpr uint32_t DefaultSnapshotIntervalInSeconds = 300;
+constexpr uint32_t MinSnapshotIntervalInSeconds = 1;
+constexpr uint32_t MaxSnapshotIntervalInSeconds = 7200;
 constexpr uint32_t SNAPSHOT_VERSION = 1; // Note: Update this only if breaking changes are made to snapshot proto
 constexpr uint32_t SNAPSHOT_MAX_AGE_IN_SECONDS = 7 * 24 * 60 * 60; // 1 week
 

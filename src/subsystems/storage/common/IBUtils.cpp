@@ -265,11 +265,34 @@ namespace ibutils
         qpAttr.ah_attr.port_num = remoteIBPort;
 
         // Setup all required parameters specified in the API doc
-        rc = ibv_modify_qp(ibvQp, &qpAttr, IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN
-            | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER);
+        const int rtrAttrMask = IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN
+            | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
+        rc = ibv_modify_qp(ibvQp, &qpAttr, rtrAttrMask);
         if (rc != 0)
         {
-            LOG_WARN("ibv_modify_qp failed error={},{}", rc, strerror(errno));
+            struct ibv_device_attr deviceAttr{};
+            const int queryDeviceRc = ibv_query_device(ibvQp->context, &deviceAttr);
+            struct ibv_port_attr portAttr{};
+            const int queryPortRc = ibv_query_port(ibvQp->context, localIBPort, &portAttr);
+
+            // Failed diagnostic queries are explicit; -1 means the corresponding value is unavailable.
+            LOG_WARN("ibv_modify_qp failed error={},{} transition=INIT->RTR device={} localQpn={} qpType={} "
+                "cachedQpState={} attrMask={} localIBPort={} remoteIBPort={} avPort={} remoteQpn={} "
+                "remoteLid={} pathMtu={} isGlobal={} sl={} srcPathBits={} rqPsn={} maxDestRdAtomic={} "
+                "minRnrTimer={} queryDeviceRc={} physPortCount={} queryPortRc={} localLid={} "
+                "localPortState={} linkLayer={} activeMtu={} portFlags={} grhRequired={}",
+                rc, strerror(rc), ibv_get_device_name(ibvQp->context->device), ibvQp->qp_num,
+                static_cast<int>(ibvQp->qp_type), static_cast<int>(ibvQp->state), rtrAttrMask,
+                localIBPort, remoteIBPort, qpAttr.ah_attr.port_num, qpAttr.dest_qp_num, qpAttr.ah_attr.dlid,
+                static_cast<int>(qpAttr.path_mtu), qpAttr.ah_attr.is_global, qpAttr.ah_attr.sl,
+                qpAttr.ah_attr.src_path_bits, qpAttr.rq_psn, qpAttr.max_dest_rd_atomic, qpAttr.min_rnr_timer,
+                queryDeviceRc, queryDeviceRc == 0 ? static_cast<int>(deviceAttr.phys_port_cnt) : -1,
+                queryPortRc, queryPortRc == 0 ? static_cast<int>(portAttr.lid) : -1,
+                queryPortRc == 0 ? static_cast<int>(portAttr.state) : -1,
+                queryPortRc == 0 ? static_cast<int>(portAttr.link_layer) : -1,
+                queryPortRc == 0 ? static_cast<int>(portAttr.active_mtu) : -1,
+                queryPortRc == 0 ? static_cast<int>(portAttr.flags) : -1,
+                queryPortRc == 0 ? static_cast<int>((portAttr.flags & IBV_QPF_GRH_REQUIRED) != 0) : -1);
             return false;
         }
 
@@ -289,11 +312,33 @@ namespace ibutils
         qpAttr.max_rd_atomic = 0;
 
         // Setup all required parameters specified in the API doc
-        rc = ibv_modify_qp(ibvQp, &qpAttr, IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY
-            | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC);
+        const int rtsAttrMask = IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY
+            | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC;
+        rc = ibv_modify_qp(ibvQp, &qpAttr, rtsAttrMask);
         if (rc != 0)
         {
-            LOG_WARN("ibv_modify_qp failed error={},{}", rc, strerror(errno));
+            struct ibv_device_attr deviceAttr{};
+            const int queryDeviceRc = ibv_query_device(ibvQp->context, &deviceAttr);
+            struct ibv_port_attr portAttr{};
+            const int queryPortRc = ibv_query_port(ibvQp->context, localIBPort, &portAttr);
+
+            // Failed diagnostic queries are explicit; -1 means the corresponding value is unavailable.
+            LOG_WARN("ibv_modify_qp failed error={},{} transition=RTR->RTS device={} localQpn={} qpType={} "
+                "cachedQpState={} attrMask={} localIBPort={} remoteIBPort={} remoteQpn={} remoteLid={} "
+                "pathMtu={} timeout={} retryCnt={} rnrRetry={} sqPsn={} maxRdAtomic={} queryDeviceRc={} "
+                "physPortCount={} queryPortRc={} localLid={} localPortState={} linkLayer={} activeMtu={} "
+                "portFlags={} grhRequired={}",
+                rc, strerror(rc), ibv_get_device_name(ibvQp->context->device), ibvQp->qp_num,
+                static_cast<int>(ibvQp->qp_type), static_cast<int>(ibvQp->state), rtsAttrMask,
+                localIBPort, remoteIBPort, remoteQpn, remoteIBLid, static_cast<int>(ibMtu),
+                qpAttr.timeout, qpAttr.retry_cnt, qpAttr.rnr_retry, qpAttr.sq_psn, qpAttr.max_rd_atomic,
+                queryDeviceRc, queryDeviceRc == 0 ? static_cast<int>(deviceAttr.phys_port_cnt) : -1,
+                queryPortRc, queryPortRc == 0 ? static_cast<int>(portAttr.lid) : -1,
+                queryPortRc == 0 ? static_cast<int>(portAttr.state) : -1,
+                queryPortRc == 0 ? static_cast<int>(portAttr.link_layer) : -1,
+                queryPortRc == 0 ? static_cast<int>(portAttr.active_mtu) : -1,
+                queryPortRc == 0 ? static_cast<int>(portAttr.flags) : -1,
+                queryPortRc == 0 ? static_cast<int>((portAttr.flags & IBV_QPF_GRH_REQUIRED) != 0) : -1);
             return false;
         }
 

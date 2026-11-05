@@ -6,6 +6,30 @@ package v1
 
 import "testing"
 
+func TestValidateCacheServerEnvVarName(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{name: "storage setting", input: "STORAGE_LOG_LEVEL"},
+		{name: "cache server setting", input: "CACHESERVER_THREADPOOL_SIZE"},
+		{name: "unrelated setting", input: "LD_PRELOAD", wantErr: true},
+		{name: "generic log level", input: "LOG_LEVEL", wantErr: true},
+		{name: "lowercase prefix", input: "storage_log_level", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := ValidateCacheServerEnvVarName(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ValidateCacheServerEnvVarName(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestValidateNodeSelectorKey(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

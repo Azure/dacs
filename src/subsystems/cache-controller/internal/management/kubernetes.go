@@ -24,6 +24,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -68,6 +69,7 @@ func buildPodListFromK8sPods(pods []v1.Pod) []Pod {
 		}
 
 		podObj := Pod{
+			UID:                 pod.UID,
 			PodName:             pod.Name,
 			Namespace:           pod.Namespace,
 			NodeName:            pod.Spec.NodeName,
@@ -218,14 +220,20 @@ func GetPodsFromCache(ctx context.Context, reader ctrlclient.Reader) ([]Pod, err
 	return buildPodListFromK8sPods(pods.Items), nil
 }
 
-func executeDeleteInstruction(ctx context.Context, k8sClient ctrlclient.Client, namespace string, podName string) error {
+func executeDeleteInstruction(ctx context.Context, k8sClient ctrlclient.Client, namespace string, podName string, podUID types.UID) error {
+	if podUID == "" {
+		err := fmt.Errorf("refusing to delete pod %s(%s) without UID precondition", podName, namespace)
+		log.Error(err)
+		return err
+	}
+
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      podName,
 			Namespace: namespace,
 		},
 	}
-	err := k8sClient.Delete(ctx, pod, ctrlclient.GracePeriodSeconds(0))
+	err := k8sClient.Delete(ctx, pod, ctrlclient.GracePeriodSeconds(0), ctrlclient.Preconditions{UID: &podUID})
 
 	if err != nil {
 		log.Errorf("Error deleting pod %s(%s): %s", podName, namespace, err.Error())
@@ -306,10 +314,11 @@ func ExecuteSchedulerInstructionsOnK8s(ctx context.Context, k8sClient ctrlclient
 			log.WithFields(log.Fields{
 				"namespace": instruction.Namespace,
 				"podName":   instruction.PodName,
+				"podUID":    instruction.PodUID,
 				"reason":    instruction.Reason,
 			}).Info("Executing delete pod instruction")
 
-			err := executeDeleteInstruction(ctx, k8sClient, instruction.Namespace, instruction.PodName)
+			err := executeDeleteInstruction(ctx, k8sClient, instruction.Namespace, instruction.PodName, instruction.PodUID)
 			if err != nil {
 				errors = append(errors, err)
 			}
