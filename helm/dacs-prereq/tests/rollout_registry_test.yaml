@@ -25,6 +25,12 @@ tests:
       value: Job
     asserts:
       - equal:
+          path: apiVersion
+          value: v1
+        documentSelector:
+          path: kind
+          value: ServiceAccount
+      - equal:
           path: spec.template.spec.containers[0].image
           value: mcr.microsoft.com/oss/v2/kubernetes/kubectl:registry-test
       - notExists:

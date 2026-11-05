@@ -19,6 +19,9 @@ tests:
   - it: preserves default images without requiring pull secrets
     asserts:
       - equal:
+          path: apiVersion
+          value: apps/v1
+      - equal:
           path: spec.template.spec.initContainers[0].image
           value: cache-setup:1.0.0
       - equal:
