@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-{{- $global := .Values.global | default dict -}}
+{{- $global := .Values.global | default dict }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

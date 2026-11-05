@@ -23,6 +23,10 @@ tests:
   - it: preserves default repositories and built-in environment ordering
     asserts:
       - equal:
+          path: apiVersion
+          value: apps/v1
+        template: manager/manager.yaml
+      - equal:
           path: spec.template.spec.containers[0].image
           value: dacstest.azurecr.io/dacs/cache-controller:local
         template: manager/manager.yaml
