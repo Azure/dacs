@@ -93,12 +93,29 @@ Name of the PriorityClass created and used by the controller manager.
 {{- end }}
 
 {{/*
-Constructs a full image reference from global.registry, repository, and tag.
-Falls back to appVersion when tag is empty.
-Usage: {{ include "chart.image" (dict "global" .Values.global "repository" "my-image" "tag" "v1.0" "appVersion" .Chart.AppVersion) }}
-When global.registry is set: <registry>/<repository>:<tag>
-When global.registry is not set: <repository>:<tag>
+A nonempty image.registry always replaces the source host.
+Otherwise, registryMode controls global.registry: replace for every image,
+or legacy prefixing only for the controller and generated CacheServer images.
 */}}
 {{- define "chart.image" -}}
-{{- if .global }}{{- if .global.registry }}{{ .global.registry }}/{{- end }}{{- end }}{{ .repository }}:{{ .tag | default .appVersion }}
+{{- $global := .global | default dict -}}
+{{- $mode := $global.registryMode | default "legacy" -}}
+{{- $registry := $global.registry | default "" -}}
+{{- $repository := .image.repository -}}
+{{- if or .image.registry (eq $mode "replace") -}}
+  {{- $registry = .image.registry | default $registry | trimSuffix "/" -}}
+  {{- if $registry -}}
+  {{- $repository = regexReplaceAll "^([^/]*[.:][^/]*|localhost)/" $repository "" -}}
+  {{- end -}}
+{{- else if not .legacyRegistry -}}
+  {{- $registry = "" -}}
+{{- end -}}
+{{- if $registry -}}
+{{- $repository = printf "%s/%s" $registry $repository -}}
+{{- end -}}
+{{- $tag := .image.tag -}}
+{{- if .appVersion -}}
+{{- $tag = $tag | default .appVersion -}}
+{{- end -}}
+{{- $repository -}}:{{- $tag -}}
 {{- end -}}

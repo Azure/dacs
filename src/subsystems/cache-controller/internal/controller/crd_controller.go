@@ -278,6 +278,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		NodeSelectorValue            []string
 		Image                        string
 		ImagePullPolicy              string
+		ImagePullSecrets             []corev1.LocalObjectReference
 		Tolerations                  []corev1.Toleration
 		ServerThreads                int32
 		Port                         int
@@ -324,6 +325,11 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 
 	cfg := config.GetConfig()
 
+	var imagePullSecrets []corev1.LocalObjectReference
+	for _, name := range cfg.ImagePullSecrets {
+		imagePullSecrets = append(imagePullSecrets, corev1.LocalObjectReference{Name: name})
+	}
+
 	// Fail closed: never render untrusted values into the workload template,
 	// even if the admission webhook is disabled or was bypassed (e.g. objects
 	// created before the webhook was installed). Reject invalid input instead
@@ -352,6 +358,7 @@ func (r *CacheReconciler) reconcileStatefulSet(ctx context.Context, cache *stora
 		NodeSelectorValue:            []string{*cache.Spec.NodeSelectorValue},
 		Image:                        cfg.CacheServerImage,
 		ImagePullPolicy:              string(cfg.ImagePullPolicy),
+		ImagePullSecrets:             imagePullSecrets,
 		Tolerations:                  cache.Spec.Tolerations,
 		ServerThreads:                cache.Spec.ServerThreads,
 		Port:                         int(*cache.Spec.Port),

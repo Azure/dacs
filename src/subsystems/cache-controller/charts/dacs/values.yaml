@@ -12,8 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Shared with the prerequisite and legacy cache-server charts.
 global:
+  # Target host[:port] and optional project prefix, without a scheme.
   registry: dacstest.azurecr.io
+  # legacy preserves existing prefix behavior and image coverage; replace localizes all managed images.
+  registryMode: legacy
+  # Optional existing Secret references in each workload namespace; leave empty for node identity auth.
+  imagePullSecrets: [] # Example: [{name: registry-auth}]
 
 # Name prefix for all resources (e.g., dacs-manager, dacs-webhook)
 namePrefix: dacs
@@ -31,12 +37,16 @@ manager:
   logLevel: info
   
   image:
+    # Optional registry override in either mode; empty follows global registry behavior.
+    registry: ""
     repository: dacs/cache-controller
     tag: ""  # Empty defaults to .Chart.AppVersion (e.g. "local" for dev, build number for published charts)
     pullPolicy: IfNotPresent
 
   # Cache server image used by controller to create cache server pods
   cacheServerImage:
+    # Optional registry override in either mode; empty follows global registry behavior.
+    registry: ""
     repository: dacs/cache-server
     tag: "" # Empty defaults to .Chart.AppVersion (e.g. "local" for dev, build number for published charts)
 
@@ -181,6 +191,8 @@ cleanup:
   # Delete all Cache CRs cluster-wide; strip remaining finalizers after the timeout.
   forceDeleteCaches: false
   image:
+    # Optional registry override in either mode; empty follows global registry behavior.
+    registry: ""
     repository: mcr.microsoft.com/oss/v2/kubernetes/kubectl
     tag: v1.35.9
     pullPolicy: IfNotPresent

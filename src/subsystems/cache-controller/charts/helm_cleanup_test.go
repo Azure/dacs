@@ -1,3 +1,5 @@
+//go:build charttests
+
 // Copyright (c) Microsoft Corporation.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package controller
+package charts
 
 import (
 	"bytes"
@@ -34,7 +36,7 @@ func TestHelmStandaloneCache(t *testing.T) {
 	if err != nil {
 		t.Skip("helm is required for chart rendering tests")
 	}
-	if output, err := exec.Command(helm, "dependency", "build", "../../charts/dacs", "--skip-refresh").CombinedOutput(); err != nil {
+	if output, err := exec.Command(helm, "dependency", "build", "dacs", "--skip-refresh").CombinedOutput(); err != nil {
 		t.Fatalf("building chart dependencies: %v\n%s", err, output)
 	}
 	for _, tt := range []struct {
@@ -48,7 +50,7 @@ func TestHelmStandaloneCache(t *testing.T) {
 		{name: "legacy enabled rejected", args: []string{"--set", "cache.enabled=true"}, invalid: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			args := append([]string{"template", "standalone", "../../charts/dacs"}, tt.args...)
+			args := append([]string{"template", "standalone", "dacs"}, tt.args...)
 			output, err := exec.Command(helm, args...).CombinedOutput()
 			if tt.invalid {
 				if err == nil || !bytes.Contains(output, []byte("Migrate any chart-owned Cache")) {
@@ -69,12 +71,12 @@ func TestHelmStandaloneCache(t *testing.T) {
 func TestHelmCacheCleanup(t *testing.T) {
 	helm, err := exec.LookPath("helm")
 	if err != nil {
-		t.Skip("helm is required for chart rendering tests")
+		t.Fatal("helm is required for chart rendering tests")
 	}
-	if output, err := exec.Command(helm, "dependency", "build", "../../charts/dacs", "--skip-refresh").CombinedOutput(); err != nil {
+	if output, err := exec.Command(helm, "dependency", "build", "dacs", "--skip-refresh").CombinedOutput(); err != nil {
 		t.Fatalf("building chart dependencies: %v\n%s", err, output)
 	}
-	chart := "../../charts/dacs"
+	chart := "dacs"
 	script, err := os.ReadFile(filepath.Join(chart, "scripts/pre-delete-cache-cleanup.sh"))
 	if err != nil {
 		t.Fatalf("reading cleanup script: %v", err)

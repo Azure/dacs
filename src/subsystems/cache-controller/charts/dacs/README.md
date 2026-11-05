@@ -75,6 +75,27 @@ standalone Cache manifest from [`examples`](examples/README.md). The hook
 runs after resources are created, so storage preparation must finish before
 creating Cache workloads.
 
+### Custom image registries
+
+Set `global.registry` and opt in with `global.registryMode: replace` to redirect
+controller, generated CacheServer, and cleanup-hook images. The default `legacy`
+mode preserves existing prefix behavior for controller/CacheServer images and
+does not redirect cleanup images. Authentication is separate: AKS can use its kubelet managed
+identity to pull from ACR when the identity
+has the required registry permissions. Leave `global.imagePullSecrets` empty
+for that configuration; set it only when using explicit registry credentials.
+Top-level global values also reach the bundled prerequisite when
+`cacheServerPrereq.enabled=true`; prefix its per-image overrides with
+`cacheServerPrereq.`.
+Individual `repository` and `tag` overrides remain available. A nonempty per-image
+`registry` always wins, replacing the source host in either mode. Empty or omitted
+values follow the existing mode-dependent global behavior.
+For example, `cleanup.image.registry: tools.example` keeps cleanup on a separate
+registry while other images use the global destination.
+See [custom image registry configuration and qualification](../../../../../docs/custom-image-registries.md)
+for mirrored repository paths, namespace-local secrets, authentication, and
+upgrade/uninstall validation.
+
 ### Controller Configuration
 
 | Parameter | Description | Default |

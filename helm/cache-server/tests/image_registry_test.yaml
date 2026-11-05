@@ -1,0 +1,247 @@
+# Copyright (c) Microsoft Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+suite: legacy server and scheduler image configuration
+templates:
+  - cacheserver-app.yaml
+  - cacheserver-scheduler.yaml
+tests:
+  - it: preserves default images without requiring pull secrets
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: acstor/dacs-server:1.16.0
+        template: cacheserver-app.yaml
+        documentSelector: &server
+          path: kind
+          value: StatefulSet
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: acstor/dacs-scheduler:1.16.0
+        template: cacheserver-scheduler.yaml
+        documentSelector: &scheduler
+          path: kind
+          value: Deployment
+      - notExists:
+          path: spec.template.spec.imagePullSecrets
+        template: cacheserver-app.yaml
+        documentSelector: *server
+      - notExists:
+          path: spec.template.spec.imagePullSecrets
+        template: cacheserver-scheduler.yaml
+        documentSelector: *scheduler
+  - it: ignores the registry in default legacy mode
+    set:
+      global.registry: mirror/archive
+      cacheServer.image.repository: source.example/team/server
+      cacheServer.scheduler.image.repository: source.example/team/scheduler
+    asserts: &legacyImages
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: source.example/team/server:1.16.0
+        template: cacheserver-app.yaml
+        documentSelector: *server
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: source.example/team/scheduler:1.16.0
+        template: cacheserver-scheduler.yaml
+        documentSelector: *scheduler
+  - it: ignores the registry in explicit legacy mode
+    set:
+      global.registryMode: legacy
+      global.registry: mirror.example/project/
+      cacheServer.image.repository: source.example/team/server
+      cacheServer.scheduler.image.repository: source.example/team/scheduler
+    asserts: *legacyImages
+  - it: replaces source hosts and preserves subpaths and explicit tags
+    set:
+      global.registryMode: replace
+      global.registry: harbor.example:8443/dacs/
+      cacheServer.image.repository: source.example/team/server
+      cacheServer.image.tag: release
+      cacheServer.scheduler.image.repository: localhost:5000/team/scheduler
+      cacheServer.scheduler.image.tag: release
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: harbor.example:8443/dacs/team/server:release
+        template: cacheserver-app.yaml
+        documentSelector: *server
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: harbor.example:8443/dacs/team/scheduler:release
+        template: cacheserver-scheduler.yaml
+        documentSelector: *scheduler
+  - it: localizes default images to an Azure China registry
+    set:
+      global.registryMode: replace
+      global.registry: mirror.azurecr.cn
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror.azurecr.cn/acstor/dacs-server:1.16.0
+        template: cacheserver-app.yaml
+        documentSelector: *server
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror.azurecr.cn/acstor/dacs-scheduler:1.16.0
+        template: cacheserver-scheduler.yaml
+        documentSelector: *scheduler
+  - it: preserves unqualified paths and removes localhost
+    set:
+      global.registryMode: replace
+      global.registry: mirror.example
+      cacheServer.image.repository: team/custom
+      cacheServer.scheduler.image.repository: localhost/team/custom
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror.example/team/custom:1.16.0
+        template: cacheserver-app.yaml
+        documentSelector: *server
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror.example/team/custom:1.16.0
+        template: cacheserver-scheduler.yaml
+        documentSelector: *scheduler
+  - it: permits mixed registries with no global registry
+    set:
+      global.registryMode: replace
+      cacheServer.image.repository: server.example/team/server
+      cacheServer.scheduler.image.repository: scheduler.example/team/scheduler
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: server.example/team/server:1.16.0
+        template: cacheserver-app.yaml
+        documentSelector: *server
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: scheduler.example/team/scheduler:1.16.0
+        template: cacheserver-scheduler.yaml
+        documentSelector: *scheduler
+  - it: propagates multiple pull secrets in legacy mode
+    set:
+      global.imagePullSecrets: &secrets [{name: registry-auth}, {name: backup}]
+    asserts: &secretAssertions
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: *secrets
+        template: cacheserver-app.yaml
+        documentSelector: *server
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: *secrets
+        template: cacheserver-scheduler.yaml
+        documentSelector: *scheduler
+  - it: propagates the same references in replacement mode
+    set:
+      global.registryMode: replace
+      global.registry: mirror.example
+      global.imagePullSecrets: *secrets
+    asserts: *secretAssertions
+  - it: lets both component registries override the global destination
+    set:
+      global.registryMode: replace
+      global.registry: mirror.example
+      cacheServer.image.registry: server.example:5000/project/
+      cacheServer.image.repository: source.example/team/server
+      cacheServer.image.tag: release
+      cacheServer.scheduler.image.registry: scheduler.example
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: server.example:5000/project/team/server:release
+        template: cacheserver-app.yaml
+        documentSelector: *server
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: scheduler.example/acstor/dacs-scheduler:1.16.0
+        template: cacheserver-scheduler.yaml
+        documentSelector: *scheduler
+  - it: keeps an empty server override on the global destination
+    set:
+      global.registryMode: replace
+      global.registry: mirror.example
+      cacheServer.image.registry: ""
+      cacheServer.scheduler.image.registry: scheduler.example
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: mirror.example/acstor/dacs-server:1.16.0
+        template: cacheserver-app.yaml
+        documentSelector: *server
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: scheduler.example/acstor/dacs-scheduler:1.16.0
+        template: cacheserver-scheduler.yaml
+        documentSelector: *scheduler
+  - it: supports component-only replacement without a global registry
+    set:
+      global.registryMode: replace
+      cacheServer.image.registry: server.example
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: server.example/acstor/dacs-server:1.16.0
+        template: cacheserver-app.yaml
+        documentSelector: *server
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: acstor/dacs-scheduler:1.16.0
+        template: cacheserver-scheduler.yaml
+        documentSelector: *scheduler
+  - it: applies a server override while the scheduler retains legacy behavior
+    set:
+      global.registry: mirror/archive
+      cacheServer.image.registry: other.example
+      cacheServer.image.repository: source.example/team/server
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: other.example/team/server:1.16.0
+        template: cacheserver-app.yaml
+        documentSelector: *server
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: acstor/dacs-scheduler:1.16.0
+        template: cacheserver-scheduler.yaml
+        documentSelector: *scheduler
+  - it: applies a scheduler override in legacy mode without changing the server image
+    set:
+      global.registryMode: legacy
+      global.registry: mirror/archive
+      cacheServer.scheduler.image.registry: other.example
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: other.example/acstor/dacs-scheduler:1.16.0
+        template: cacheserver-scheduler.yaml
+        documentSelector: *scheduler
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: acstor/dacs-server:1.16.0
+        template: cacheserver-app.yaml
+        documentSelector: *server
+  - it: rejects a scheme in a server registry
+    set:
+      cacheServer.image.registry: https://other.example
+    asserts: &invalidRegistry
+      - failedTemplate:
+          errorPattern: registry
+  - it: rejects a non-string scheduler registry
+    set:
+      global.registryMode: replace
+      cacheServer.scheduler.image.registry: 123
+    asserts: *invalidRegistry

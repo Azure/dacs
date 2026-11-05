@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-.PHONY: help build clean test pytest test-go test-native test-rust-client test-rust-client-integration rust-package aks-test-binary images python-package storage-intercept-client helm-build helm-login helm-push deploy undeploy
+.PHONY: help build clean test pytest test-go test-charts test-native test-rust-client test-rust-client-integration rust-package aks-test-binary images python-package storage-intercept-client helm-build helm-login helm-push deploy undeploy
 
 # Include modular makefiles
 include deploy/deploy.mk
@@ -27,6 +27,7 @@ help:
 	@echo "  make clean                         	- Clean build artifacts"
 	@echo "  make test                          	- Run all unit tests"
 	@echo "  make test TEST=<pattern>           	- Run specific unit tests"
+	@echo "  make test-charts                   	- Run Helm rendering, schema, and packaging tests"
 	@echo "  make pytest                        	- Run Python unit tests (pytest)"
 	@echo "  make test-rust-client              	- Run Rust client unit tests"
 	@echo "  make test-rust-client-integration  	- Run Rust client integration tests"
@@ -88,7 +89,7 @@ clean:
 	fi
 	@echo "Clean complete."
 
-test: test-native test-go test-rust-client
+test: test-native test-go test-rust-client test-charts
 
 test-native:
 	@echo "Running native unit tests..."
@@ -104,6 +105,14 @@ test-go:
 		./bldenv.sh /bin/bash "./.pipelines/unittest_go.sh $(TEST)"; \
 	else \
 		./.pipelines/unittest_go.sh $(TEST); \
+	fi
+
+test-charts:
+	@echo "Running Helm chart tests..."
+	@if [ "$(USE_CONTAINER)" = "1" ]; then \
+		./bldenv.sh /bin/bash "./.pipelines/unittest_charts.sh $(TEST)"; \
+	else \
+		bash ./.pipelines/unittest_charts.sh "$(TEST)"; \
 	fi
 
 test-rust-client:

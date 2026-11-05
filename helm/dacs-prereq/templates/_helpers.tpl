@@ -54,15 +54,3 @@ Create chart name and version as used by the chart label.
 {{- define "dacs-prereq.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
-
-{{/*
-Replace source hosts only when explicitly opted in; retain repository subpaths.
-*/}}
-{{- define "dacs-prereq.image" -}}
-{{- $repository := .image.repository -}}
-{{- if and (eq (.global.registryMode | default "legacy") "replace") .global.registry -}}
-{{- $repository = regexReplaceAll "^([^/]*[.:][^/]*|localhost)/" $repository "" -}}
-{{- $repository = printf "%s/%s" (.global.registry | trimSuffix "/") $repository -}}
-{{- end -}}
-{{- printf "%s:%s" $repository (.image.tag | default .appVersion) -}}
-{{- end }}

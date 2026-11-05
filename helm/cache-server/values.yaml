@@ -12,6 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+global:
+  # Target host[:port] and optional project prefix, without a scheme.
+  registry: ""
+  # legacy preserves existing prefix behavior and image coverage; replace localizes all managed images.
+  registryMode: legacy
+  # Optional existing Secret references in each workload namespace; leave empty for node identity auth.
+  imagePullSecrets: [] # Example: [{name: registry-auth}]
+
 cacheServerPrereq:
   enabled: false
 
@@ -29,6 +37,8 @@ managedById : ""
 cacheServer:
   enabled: true
   image: 
+    # Optional registry override in either mode; empty follows global registry behavior.
+    registry: ""
     repository: acstor/dacs-server
     tag: ""
     imagePullPolicy: IfNotPresent
@@ -64,6 +74,8 @@ cacheServer:
   scheduler:
     enabled: true
     image:
+      # Optional registry override in either mode; empty follows global registry behavior.
+      registry: ""
       repository: acstor/dacs-scheduler
       tag: ""
       imagePullPolicy: IfNotPresent

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 {{- if and .Values.cacheServer.enabled (ne (int .Values.cacheServer.numServers) 0)}}
+{{- $global := .Values.global | default dict }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -37,6 +38,10 @@ spec:
 {{- end }}
     spec:
       terminationGracePeriodSeconds: 10
+      {{- with $global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 {{- if .Values.cacheServer.scheduler.enabled }}
       schedulerName: cacheserver-scheduler
 {{- end }}
@@ -61,7 +66,7 @@ spec:
 {{- end }}
       containers:
       - name: cacheserver
-        image: "{{ .Values.cacheServer.image.repository }}:{{ .Values.cacheServer.image.tag | default .Chart.AppVersion }}"
+        image: {{ include "cache-server.image" (dict "global" $global "image" .Values.cacheServer.image "appVersion" .Chart.AppVersion) | quote }}
         imagePullPolicy: {{ .Values.cacheServer.image.imagePullPolicy | default "IfNotPresent" }}
         env:
         - name: CACHESERVER_THREADPOOL_SIZE

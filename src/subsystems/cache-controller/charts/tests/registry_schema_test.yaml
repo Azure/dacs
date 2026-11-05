@@ -1,0 +1,69 @@
+# Copyright (c) Microsoft Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Shared by all three charts through .pipelines/unittest_charts.sh.
+suite: registry and pull-secret schema validation
+tests:
+  - it: rejects an unknown registry mode
+    set:
+      global.registryMode: invalid
+    asserts:
+      - failedTemplate:
+          errorPattern: registryMode
+  - it: rejects a URL scheme in replacement mode
+    set:
+      global.registryMode: replace
+      global.registry: https://mirror.example
+    asserts:
+      - failedTemplate:
+          errorPattern: registry
+  - it: rejects strings instead of secret references
+    set:
+      global.imagePullSecrets: [secret]
+    asserts: &invalidSecrets
+      - failedTemplate:
+          errorPattern: imagePullSecrets
+  - it: rejects a missing secret name
+    set:
+      global.imagePullSecrets: [{}]
+    asserts: *invalidSecrets
+  - it: rejects an empty secret name
+    set:
+      global.imagePullSecrets: [{name: ""}]
+    asserts: *invalidSecrets
+  - it: rejects a slash in a secret name
+    set:
+      global.imagePullSecrets: [{name: bad/name}]
+    asserts: *invalidSecrets
+  - it: rejects empty DNS labels
+    set:
+      global.imagePullSecrets: [{name: bad..name}]
+    asserts: *invalidSecrets
+  - it: rejects a leading hyphen
+    set:
+      global.imagePullSecrets: [{name: "-bad"}]
+    asserts: *invalidSecrets
+  - it: rejects uppercase secret names
+    set:
+      global.imagePullSecrets: [{name: UPPER}]
+    asserts: *invalidSecrets
+  - it: rejects secret names longer than 253 characters
+    set:
+      global.imagePullSecrets:
+        - name: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    asserts: *invalidSecrets
+  - it: rejects credentials embedded in a reference
+    set:
+      global.imagePullSecrets: [{name: valid, password: not-supported}]
+    asserts: *invalidSecrets
