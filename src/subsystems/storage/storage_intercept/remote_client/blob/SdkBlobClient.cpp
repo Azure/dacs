@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "SdkBlobClient.h"
+#include "BlobAuthorizationRetry.h"
 #include "DacsTokenCredential.h"
 
 #include "StorageInterceptConfig.h"
@@ -111,6 +112,8 @@ SdkBlobClient::SdkBlobClient(const std::string& mountName)
     , m_bChecksumEnabled(StorageInterceptConfig::GetInstance().GetRemoteBlobChecksumEnabled(mountName))
     , m_bUploadChecksumEnabled(StorageInterceptConfig::GetInstance().GetRemoteBlobUploadChecksumEnabled(mountName))
     , m_nChecksumRetryMaxAttempts(StorageInterceptConfig::GetInstance().GetRemoteBlobChecksumRetryMaxAttempts())
+    , m_nAuthorizationRetryMaxAttempts(
+        StorageInterceptConfig::GetInstance().GetBlobAuthorizationRetryMaxAttempts())
     , m_blobRetryBaseDelay(std::chrono::seconds(StorageInterceptConfig::GetInstance().GetBlobRetryBaseDelaySeconds()))
     , m_blobRetryMaxDelay(std::chrono::seconds(StorageInterceptConfig::GetInstance().GetBlobRetryMaxDelaySeconds()))
 {
@@ -175,6 +178,7 @@ void SdkBlobClient::ResolveAuth()
         {
             m_authKind = AuthKind::Token;
             m_tokenCredential = std::make_shared<DacsTokenCredential>(m_strMountName);
+            m_bRefreshableCredential = true;
         }
         else
         {
@@ -208,6 +212,7 @@ void SdkBlobClient::ResolveAuth()
     {
         m_authKind = AuthKind::Token;
         m_tokenCredential = std::make_shared<DacsTokenCredential>(m_strMountName);
+        m_bRefreshableCredential = true;
     }
     else
     {
@@ -389,9 +394,15 @@ ssize_t SdkBlobClient::ReadChunkSync(const std::string& remotePath, void* buf, s
         options.ValidationOptions = validation;
     }
 
-    const uint32_t maxAttempts = m_bChecksumEnabled ? std::max(1u, m_nChecksumRetryMaxAttempts) : 1;
+    const uint32_t maxChecksumAttempts =
+        m_bChecksumEnabled ? std::max(1u, m_nChecksumRetryMaxAttempts) : 1;
+    const uint32_t maxAuthorizationAttempts = std::max(1u, m_nAuthorizationRetryMaxAttempts);
+    uint32_t checksumAttempt = 0;
+    uint32_t authorizationAttempt = 0;
+    std::chrono::steady_clock::time_point firstDenialTime;
+    std::string lastDeniedRequestId;
 
-    for (uint32_t attempt = 1; attempt <= maxAttempts; ++attempt)
+    for (;;)
     {
         try
         {
@@ -400,6 +411,17 @@ ssize_t SdkBlobClient::ReadChunkSync(const std::string& remotePath, void* buf, s
             const size_t bytesRead = response.Value.BodyStream->ReadToCount(
                 reinterpret_cast<uint8_t*>(buf), length);
             LOG_DEBUG("SdkBlobClient read chunk path={} nBytesRead={}", remotePath, bytesRead);
+            if (authorizationAttempt > 0)
+            {
+                // Lets us see from logs whether a denied origin read actually recovers on retry.
+                LOG_INFO(
+                    "SdkBlobClient read succeeded after AuthorizationPermissionMismatch. "
+                    "path={} offset={} length={} attempts={} elapsedSinceFirstDenialMs={} lastDeniedRequestId={}",
+                    remotePath, offset, length, authorizationAttempt + 1,
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - firstDenialTime).count(),
+                    lastDeniedRequestId);
+            }
             return static_cast<ssize_t>(bytesRead);
         }
         catch (const Azure::Storage::StorageException& e)
@@ -410,7 +432,45 @@ ssize_t SdkBlobClient::ReadChunkSync(const std::string& remotePath, void* buf, s
                 LOG_DEBUG("Ignoring range-not-satisfiable for path={} offset={}", remotePath, offset);
                 return 0;
             }
-            if (ShouldRetryOnChecksumMismatch(remotePath, offset, length, attempt, maxAttempts, e.Message))
+            if (blobauthretry::IsAuthorizationPermissionMismatch(
+                    static_cast<int>(e.StatusCode), e.ErrorCode))
+            {
+                ++authorizationAttempt;
+                if (authorizationAttempt == 1)
+                {
+                    firstDenialTime = std::chrono::steady_clock::now();
+                }
+                lastDeniedRequestId = e.RequestId;
+                if (blobauthretry::ShouldRetry(
+                        static_cast<int>(e.StatusCode),
+                        e.ErrorCode,
+                        m_bRefreshableCredential,
+                        authorizationAttempt,
+                        maxAuthorizationAttempts))
+                {
+                    const auto delay = storageretry::GetRetryIntervalExpJitter(
+                        authorizationAttempt, m_blobRetryBaseDelay, m_blobRetryMaxDelay);
+                    LOG_WARN(
+                        "SdkBlobClient AuthorizationPermissionMismatch while reading; "
+                        "retrying. path={} offset={} length={} "
+                        "attempt={}/{} backoff={}s requestId={}",
+                        remotePath, offset, length, authorizationAttempt,
+                        maxAuthorizationAttempts, delay.count(), e.RequestId);
+                    std::this_thread::sleep_for(delay);
+                    continue;
+                }
+                LOG_ERROR(
+                    "SdkBlobClient AuthorizationPermissionMismatch retry limit exhausted. "
+                    "path={} offset={} length={} attempts={} elapsedSinceFirstDenialMs={} requestId={}",
+                    remotePath, offset, length, authorizationAttempt,
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - firstDenialTime).count(),
+                    e.RequestId);
+            }
+
+            ++checksumAttempt;
+            if (ShouldRetryOnChecksumMismatch(
+                    remotePath, offset, length, checksumAttempt, maxChecksumAttempts, e.Message))
             {
                 continue;
             }
@@ -422,7 +482,9 @@ ssize_t SdkBlobClient::ReadChunkSync(const std::string& remotePath, void* buf, s
         }
         catch (const std::exception& e)
         {
-            if (ShouldRetryOnChecksumMismatch(remotePath, offset, length, attempt, maxAttempts, e.what()))
+            ++checksumAttempt;
+            if (ShouldRetryOnChecksumMismatch(
+                    remotePath, offset, length, checksumAttempt, maxChecksumAttempts, e.what()))
             {
                 continue;
             }
@@ -430,8 +492,6 @@ ssize_t SdkBlobClient::ReadChunkSync(const std::string& remotePath, void* buf, s
             throw RemoteClientException(std::string("BlobClientError: ") + e.what());
         }
     }
-
-    throw RemoteClientException("BlobClientError: checksum retry exhausted");
 }
 //---------------------------------------------------------------------------------------------------------------------
 std::string SdkBlobClient::ReadDirectory(

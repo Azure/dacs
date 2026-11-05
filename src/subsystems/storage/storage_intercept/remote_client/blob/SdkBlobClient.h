@@ -125,9 +125,11 @@ class SdkBlobClient : public IRemoteClient
         const bool        m_bChecksumEnabled;
         const bool        m_bUploadChecksumEnabled;
         const uint32_t    m_nChecksumRetryMaxAttempts;
+        const uint32_t    m_nAuthorizationRetryMaxAttempts;
         const std::chrono::seconds m_blobRetryBaseDelay;
         const std::chrono::seconds m_blobRetryMaxDelay;
         bool              m_isTokenFetchEnabled = false;
+        bool              m_bRefreshableCredential = false;
 
         // Auth
         AuthKind          m_authKind = AuthKind::Token;

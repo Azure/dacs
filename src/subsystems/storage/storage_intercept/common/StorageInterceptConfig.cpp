@@ -1062,6 +1062,14 @@ uint32_t StorageInterceptConfig::GetBlobRetryMaxDelaySeconds()
         StorageInterceptConstants::ConfigDefaultBlobRetryMaxDelaySeconds);
 }
 //---------------------------------------------------------------------------------------------------------------------
+uint32_t StorageInterceptConfig::GetBlobAuthorizationRetryMaxAttempts()
+{
+    return StorageInterceptConfig::GetOptionalConfigUint32(
+        m_ConfigProps,
+        StorageInterceptConstants::ConfigNameBlobAuthorizationRetryMaxAttempts,
+        StorageInterceptConstants::ConfigDefaultBlobAuthorizationRetryMaxAttempts);
+}
+//---------------------------------------------------------------------------------------------------------------------
 bool StorageInterceptConfig::GetChunkOperationParallelismEnabled(const std::string& mountName)
 {
     return StorageInterceptConfig::GetOptionalConfigBoolean(
