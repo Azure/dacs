@@ -5,6 +5,7 @@ Copyright (c) Microsoft Corporation. All rights reserved.
 package controller
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -371,5 +372,68 @@ func TestRenderTemplate_LocatorIndexFlatRadix(t *testing.T) {
 	}
 	if value != "flatradix" {
 		t.Errorf("expected CACHESERVER_LOCATOR_INDEX=flatradix, got %q", value)
+	}
+}
+
+// startScript returns the rendered start script of the cache server container.
+func startScript(t *testing.T, v renderValues) string {
+	t.Helper()
+	var sts appsv1.StatefulSet
+	if err := renderTemplateInto("templates/cacheserver-app.yaml", v, &sts); err != nil {
+		t.Fatalf("render failed: %v", err)
+	}
+	args := sts.Spec.Template.Spec.Containers[0].Args
+	if len(args) != 1 {
+		t.Fatalf("expected one start script argument, got %d", len(args))
+	}
+	return args[0]
+}
+
+// TestRenderTemplate_LocatorNodeIdOffByDefault ensures that without the
+// UseFlatRadixLocatorIndex gate the start script does not set the locator node
+// ID, so upgrading the controller does not change the StatefulSet of existing
+// caches.
+func TestRenderTemplate_LocatorNodeIdOffByDefault(t *testing.T) {
+	if script := startScript(t, baseRenderValues()); strings.Contains(script, "TACHYONKV_LOCATOR_NODE_ID") {
+		t.Errorf("TACHYONKV_LOCATOR_NODE_ID set with the gate off:\n%s", script)
+	}
+}
+
+// TestRenderTemplate_LocatorNodeIdFromOrdinal runs the rendered node-ID lines
+// of the start script and checks that each server takes its StatefulSet
+// ordinal, the ID KV clients derive from its hostname, and keeps the default
+// when the hostname has no ordinal.
+func TestRenderTemplate_LocatorNodeIdFromOrdinal(t *testing.T) {
+	v := baseRenderValues()
+	v.UseFlatRadixLocatorIndex = true
+	script := startScript(t, v)
+	begin := strings.Index(script, "ordinal=")
+	end := strings.Index(script, "esac")
+	if begin < 0 || end < begin {
+		t.Fatalf("node-ID lines not rendered with the gate on:\n%s", script)
+	}
+	lines := script[begin : end+len("esac")]
+
+	cases := map[string]string{
+		"mycache-0":       "0",
+		"mycache-3":       "3",
+		"cache-sample-12": "12",
+		"mycache":         "",
+		"mycache-a":       "",
+	}
+	for hostname, want := range cases {
+		cmd := exec.Command("sh", "-c", lines+"\nprintf 'NODE_ID=%s' \"$TACHYONKV_LOCATOR_NODE_ID\"")
+		cmd.Env = []string{"HOSTNAME=" + hostname, "PATH=/usr/bin:/bin"}
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("hostname %s: script failed: %v", hostname, err)
+		}
+		_, got, found := strings.Cut(string(out), "NODE_ID=")
+		if !found {
+			t.Fatalf("hostname %s: no NODE_ID in output %q", hostname, out)
+		}
+		if got != want {
+			t.Errorf("hostname %s: TACHYONKV_LOCATOR_NODE_ID=%q, want %q", hostname, got, want)
+		}
 	}
 }
