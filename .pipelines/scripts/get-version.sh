@@ -29,7 +29,18 @@ valid_number() {
 }
 
 valid_core() {
-    valid_number "$1" && valid_number "$2" && valid_number "$3"
+    local number
+    local max_component=18446744073709551615
+    local LC_ALL=C
+    for number in "$@"; do
+        # Compare equal-length decimal strings without signed integer overflow.
+        # shellcheck disable=SC2071
+        if ! valid_number "${number}" ||
+            (( ${#number} > ${#max_component} )) ||
+            { (( ${#number} == ${#max_component} )) && [[ "${number}" > "${max_component}" ]]; }; then
+            return 1
+        fi
+    done
 }
 
 valid_release_tag() {
@@ -50,7 +61,7 @@ derive_source_version() {
     if [[ "${source_ref}" == refs/tags/* ]]; then
         source_tag="${source_ref#refs/tags/}"
         if ! valid_release_tag "${source_tag}"; then
-            echo "Triggering tag '${source_tag}' is not a supported DACS version. Expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-{alpha|beta|rc}.NUMBER." >&2
+            echo "Triggering tag '${source_tag}' is not a supported DACS version. Expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-{alpha|beta|rc}.NUMBER, with core components no greater than 18446744073709551615." >&2
             return 1
         fi
         if ! tag_commit="$(git_repository rev-parse --verify "${source_ref}^{commit}")"; then
@@ -67,7 +78,7 @@ derive_source_version() {
     fi
 
     if ! description="$(git_repository describe \
-        --tags --match='v*' --abbrev=14 HEAD 2>&1)"; then
+        --tags --long --match='v*' --abbrev=14 HEAD 2>&1)"; then
         if ! git_repository rev-parse --verify HEAD >/dev/null 2>&1; then
             echo "Unable to derive a version: ${description}" >&2
             return 1
@@ -85,25 +96,20 @@ derive_source_version() {
         return 1
     fi
 
-    if valid_release_tag "${description}"; then
-        echo "${description}"
-        return
-    fi
-
-    if [[ "${description}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)-(alpha|beta|rc)\.([0-9]+)-([1-9][0-9]*)-g([0-9a-f]{14,40})$ ]] &&
+    if [[ "${description}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)-(alpha|beta|rc)\.([0-9]+)-(0|[1-9][0-9]*)-g([0-9a-f]{14,40})$ ]] &&
         valid_core "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" &&
         valid_number "${BASH_REMATCH[5]}"; then
         echo "v${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}-${BASH_REMATCH[4]}.${BASH_REMATCH[5]}.${BASH_REMATCH[6]}+${BASH_REMATCH[7]}"
         return
     fi
 
-    if [[ "${description}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)-[1-9][0-9]*-g[0-9a-f]{14,40}$ ]] &&
+    if [[ "${description}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)-(0|[1-9][0-9]*)-g([0-9a-f]{14,40})$ ]] &&
         valid_core "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}"; then
-        echo "Cannot derive a development version from stable tag 'v${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}': no next release line was selected. Create a prerelease v* tag for the intended release line." >&2
-        return 1
+        echo "v${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}-${BASH_REMATCH[4]}+${BASH_REMATCH[5]}"
+        return
     fi
 
-    echo "Reachable tag description '${description}' is not a supported DACS version. Expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-{alpha|beta|rc}.NUMBER." >&2
+    echo "Reachable tag description '${description}' is not a supported DACS version. Expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-{alpha|beta|rc}.NUMBER, with core components no greater than 18446744073709551615." >&2
     return 1
 }
 
@@ -111,11 +117,16 @@ to_python_version() {
     local version="$1"
     local prerelease
 
-    if [[ "${version}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-(alpha|beta|rc)\.([0-9]+)\.([1-9][0-9]*)\+([0-9a-f]{14,40})$ ]]; then
+    if [[ "${version}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-(alpha|beta|rc)\.([0-9]+)\.(0|[1-9][0-9]*)\+([0-9a-f]{14,40})$ ]]; then
         prerelease="${BASH_REMATCH[2]}"
         [[ "${prerelease}" == "alpha" ]] && prerelease="a"
         [[ "${prerelease}" == "beta" ]] && prerelease="b"
         echo "${BASH_REMATCH[1]}${prerelease}${BASH_REMATCH[3]}.dev${BASH_REMATCH[4]}"
+        return
+    fi
+
+    if [[ "${version}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-(0|[1-9][0-9]*)\+[0-9a-f]{14,40}$ ]]; then
+        echo "${BASH_REMATCH[1]}.dev${BASH_REMATCH[2]}"
         return
     fi
 
@@ -142,6 +153,7 @@ to_universal_version() {
 
 main() {
     local source_version
+    local architecture_tag
     source_version="$(derive_source_version)" || return
 
     case "${FORMAT}" in
@@ -149,6 +161,11 @@ main() {
             echo "${source_version}"
             ;;
         container)
+            architecture_tag="${source_version//+/_}-linux-amd64"
+            if (( ${#architecture_tag} > 128 )); then
+                echo "Container version '${source_version//+/_}' exceeds the 128-character tag limit with a -linux-amd64 or -linux-arm64 suffix." >&2
+                return 1
+            fi
             echo "${source_version//+/_}"
             ;;
         helm)
