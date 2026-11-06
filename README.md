@@ -1,5 +1,7 @@
 # Distributed Accelerator for Cloud Storage (DACS)
 
+[![Latest stable release](https://img.shields.io/github/v/release/Azure/dacs?style=flat-square&label=release&color=purple)](https://github.com/Azure/dacs/releases/latest)
+
 Distributed Accelerator for Cloud Storage (DACS) is a distributed caching
 system for data-intensive workloads on Kubernetes. It places a high-throughput
 cache between applications and remote object storage. Cache servers use
@@ -106,8 +108,14 @@ Kubernetes workflows cover Minikube and Azure Kubernetes Service (AKS). Native
 Windows and macOS builds are not currently documented or supported.
 
 Published OCI charts and container images at `dacstest.azurecr.io` are anonymously
-pullable. Language packages are not currently published to public package
-indexes; build them from this source distribution.
+pullable. The Python client is available on [PyPI](https://pypi.org/project/dacs-client/):
+
+```bash
+python3 -m pip install dacs-client
+```
+
+See the [Python client installation instructions](src/subsystems/storage/dacs_client/README.md#installation)
+for platform requirements and local-wheel installation.
 
 ## Contributing, security, and support
 
