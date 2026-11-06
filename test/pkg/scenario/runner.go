@@ -23,7 +23,9 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -174,10 +176,21 @@ func (r *ModelLoadingRunner) buildJob(ctx context.Context, jobName string) (*bat
 	// before any intercepted filesystem call.
 	preCommand := ""
 	if r.Method == RunAIStreamer {
-		// Install the image's pinned RunAI dependencies only for this method.
-		preCommand = `python3 -m pip install --no-cache-dir --require-hashes \
-    -r /app/runai-model-streamer-requirements.txt
-`
+		projectDir, err := utils.GetProjectDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to locate RunAI requirements: %w", err)
+		}
+		requirements, err := os.ReadFile(filepath.Join(projectDir, "Docker", "requirements", "runai-model-streamer.txt"))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read RunAI requirements: %w", err)
+		}
+		// Keep the runtime dependencies aligned with the injected workload.
+		preCommand = fmt.Sprintf(`cat > /tmp/runai-model-streamer-requirements.txt << 'RUNAI_REQUIREMENTS_EOF'
+%s
+RUNAI_REQUIREMENTS_EOF
+python3 -m pip install --no-cache-dir --require-hashes \
+    -r /tmp/runai-model-streamer-requirements.txt
+`, requirements)
 	}
 	if r.Method == Interceptor {
 		// Build optional cache config lines for the interceptor config file.
