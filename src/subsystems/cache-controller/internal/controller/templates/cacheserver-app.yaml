@@ -144,6 +144,17 @@ spec:
         - |
           set -ex
           export CACHESERVER_HOSTNAME="$HOSTNAME"
+          {{- /* Rendered only with the radix gate, like CACHESERVER_LOCATOR_INDEX, so upgrading the controller leaves other caches' pod templates unchanged. */}}
+          {{- if .UseFlatRadixLocatorIndex }}
+          # The locator labels every KV replica with the node ID of the server that holds it. KV clients
+          # derive that ID from the StatefulSet ordinal in the server's hostname, so the server must use
+          # the same number to unregister its own replicas on eviction.
+          ordinal="${HOSTNAME##*-}"
+          case "$ordinal" in
+            ''|*[!0-9]*) echo "No StatefulSet ordinal in hostname $HOSTNAME; keeping the default locator node ID" ;;
+            *) export TACHYONKV_LOCATOR_NODE_ID="$ordinal" ;;
+          esac
+          {{- end }}
           mkdir -p "$CACHESERVER_CACHE_PATH"
 
           {{- if and .EgressBandwidthInGb }}
