@@ -34,6 +34,10 @@ test/pkg/scenario/
    a K8s job that embeds the Python workload scripts via heredocs. The job reads all model
    shards and emits a JSON result with timing and throughput metrics.
 
+   RunAI jobs also inject `Docker/requirements/runai-model-streamer.txt` from
+   the repository checkout and install it with hash verification. The checkout
+   must be available when running these jobs, even with a prebuilt test binary.
+
 3. **Cache management** — For `cold_cache`, the cache group is evicted before the run.
    For `warm_cache`, a cold load is performed first to populate the cache, then the
    measured run reads from warm cache.
