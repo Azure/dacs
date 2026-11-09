@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Build the cacheserver-scheduler binary
-FROM mcr.microsoft.com/oss/go/microsoft/golang:1.26@sha256:5a7c45defdcb18d898e007407bfa5f8359953ce029c395c9ef49a3e4b3869da2 AS builder
+FROM mcr.microsoft.com/oss/go/microsoft/golang:1.26@sha256:fec476b90d8ab6c040e57036bd5150e791ffdb10397fe981b694a2bcee2ac67b AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -36,7 +36,7 @@ RUN --mount=type=cache,target=/mnt/go-mod-cache \
     --mount=type=cache,target=/mnt/go-cache \
     CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -o /cacheserver-scheduler
 
-FROM mcr.microsoft.com/azurelinux/base/core:3.0@sha256:88fc2b4a425801b3b4d8fe5342e24fb6134669fb718ec970340bdd36dee50c35 AS dependency-install
+FROM mcr.microsoft.com/azurelinux/base/core:3.0@sha256:bfb630450e9c3d7428d59f25ce6df95ba5634d664d96b06017aa56f87da5ec0e AS dependency-install
 RUN tdnf install -y --releasever 3.0 --installroot /staging \
     # ensure that libcrypto.so.X is available for dlopen for fips builds
     openssl-libs \
@@ -44,7 +44,7 @@ RUN tdnf install -y --releasever 3.0 --installroot /staging \
     && rm -rf /staging/run /staging/var/log /staging/var/cache/tdnf
 
 # Use distroless as minimal base image to package the scheduler binary
-FROM mcr.microsoft.com/azurelinux/distroless/minimal:3.0@sha256:ca4f1b9b5d4bb21445fbf5cf7288063ea477a9fa88affa4b13757245e3214914
+FROM mcr.microsoft.com/azurelinux/distroless/minimal:3.0@sha256:bc4d9a4e0d3317999e235cb5895dde28bf766d25533ae8e6ba311bd6d253f996
 WORKDIR /
 COPY --from=builder /cacheserver-scheduler /cacheserver-scheduler
 COPY ./cacheserver-scheduler-config.yaml /cacheserver-scheduler-config.yaml
