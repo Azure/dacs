@@ -161,6 +161,11 @@ Ginkgo test binaries, Python wheels, and a unified Rust package source bundle
 as pipeline artifacts. The Python distribution name is `dacs-client`; the
 Cargo package name is `dacs-rust-client`.
 
+The Python client is also available on
+[PyPI](https://pypi.org/project/dacs-client/). See the
+[Python client installation instructions](src/subsystems/storage/dacs_client/README.md#installation)
+for installation commands and platform requirements.
+
 Architecture-specific Azure Universal Package names are:
 
 ```text
