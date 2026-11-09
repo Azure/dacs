@@ -22,9 +22,10 @@ This Python library provides interfaces to perform file operations on Azure blob
 
 ## Installation
 
-Build the DACS Cache Client wheel from this repository or obtain one from your
-build artifacts. No public package index is currently documented for this
-component.
+The DACS Cache Client is available on
+[PyPI](https://pypi.org/project/dacs-client/) as `dacs-client`.
+It requires Python 3.8 or later. The release provides Linux wheels for
+`x86_64` (amd64) and `aarch64` (arm64), with glibc 2.35 or later.
 
 The package is built as `manylinux` wheels for both `x86_64` (amd64) and `aarch64` (arm64). The wheels are repaired with [`auditwheel`](https://github.com/pypa/auditwheel) so that all required native shared libraries (e.g. `libcurl`, `libssl`, `libjsoncpp`, `libuuid`, etc.) are bundled inside the wheel. `pip` automatically selects the correct wheel for your platform.
 
@@ -39,7 +40,14 @@ The exact `manylinux_X_Y` tag depends on the glibc version of the build image; `
 
 ### Install the DACS Cache Client
 
-Install the wheel selected for your platform:
+Install from PyPI; `pip` selects the compatible wheel for your platform:
+
+```bash
+python3 -m pip install dacs-client
+```
+
+Alternatively, build the wheel from this repository or obtain one from your
+build artifacts, then install the wheel matching your platform:
 
 ```bash
 python3 -m pip install /path/to/dacs_client-<version>-*.whl
