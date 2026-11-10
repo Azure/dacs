@@ -91,6 +91,8 @@ To run it on demand:
 
 The default region is `australiaeast`. Test jobs have a 120-minute limit.
 Cleanup runs separately and preserves the shared resource group.
+AKS deletion is attempted up to three times, with 60-second pauses between
+failures. If all attempts fail, cleanup stops before deleting dependent resources.
 
 All stages send existing test JSON metrics through Event Hub to Kusto.
 The test task sets `AZURE_TOKEN_CREDENTIALS=AzureCLICredential` so the sender
