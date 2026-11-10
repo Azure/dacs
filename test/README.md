@@ -2,6 +2,9 @@
 
 This document explains the E2E test coverage for DACS cache-server.
 
+`make test` and `make test-go` include the cluster-independent unit tests in
+`test/pkg/aks`.
+
 ## E2E
 
 `make test-e2e` runs E2E tests against the cluster pointed to by your kubeconfig.
@@ -127,6 +130,21 @@ For failures, select a producer run with a complete `dacs-release` artifact,
 check both regional SKU restrictions and quota, and inspect the suite log and
 support bundle. Do not bypass cleanup ownership checks or delete the shared
 resource group.
+
+#### Mixed Linux node images
+
+AKS correctness stages except scale use [`nvme-mixed`](../deploy/parameters/nvme-mixed.json):
+seven AMD64 `Standard_L8s_v3` nodes across Azure Linux 3, Ubuntu 22.04,
+Ubuntu 24.04, ACL, and Azure Linux 3/Ubuntu 22.04 FIPS pools.
+The scale stage uses `nvme-l8`.
+Performance/scenario stages use their homogeneous `perfAksTemplate`.
+
+The scale test selects the pool with the most nodes (first listed on ties).
+Set `AKS_NODE_POOL=<pool-name>` to override selection. The selected pool must
+have more than one node; it scales to one and back to its original count,
+leaving other pools unchanged. Scale tests require dynamic 100% scaling.
+The crash test selects one victim, not one per OS; static five-server mode
+can omit an OS profile. Select artifacts with Ubuntu 22.04 ext4 compatibility.
 
 ### Minikube Workflow (Local Development)
 

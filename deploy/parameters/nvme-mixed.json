@@ -1,0 +1,62 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "agentVMSize": {
+            "value": "Standard_L8s_v3"
+        },
+        "kubernetesVersion": {
+            "value": "1.35"
+        },
+        "nodePools": {
+            "value": [
+                {
+                    "name": "nvmepool",
+                    "osSKU": "AzureLinux3",
+                    "enableFIPS": false,
+                    "mode": "System",
+                    "count": 2
+                },
+                {
+                    "name": "az3fips",
+                    "osSKU": "AzureLinux3",
+                    "enableFIPS": true,
+                    "mode": "User",
+                    "count": 1
+                },
+                {
+                    "name": "ub2204",
+                    "osSKU": "Ubuntu2204",
+                    "enableFIPS": false,
+                    "mode": "User",
+                    "count": 1
+                },
+                {
+                    "name": "ub22fips",
+                    "osSKU": "Ubuntu2204",
+                    "enableFIPS": true,
+                    "mode": "User",
+                    "count": 1
+                },
+                {
+                    "name": "ub2404",
+                    "osSKU": "Ubuntu2404",
+                    "enableFIPS": false,
+                    "mode": "User",
+                    "count": 1
+                },
+                {
+                    "name": "acl",
+                    "osSKU": "AzureContainerLinux",
+                    "enableFIPS": false,
+                    "mode": "User",
+                    "count": 1,
+                    "securityProfile": {
+                        "enableSecureBoot": true,
+                        "enableVTPM": true
+                    }
+                }
+            ]
+        }
+    }
+}
