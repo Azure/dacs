@@ -16,11 +16,12 @@ and point to the checked-out commit. Invalid, missing, or mismatched tags fail
 the build instead of falling back to another version. This also handles an RC
 tag and a stable tag pointing to the same commit.
 
-Branch, pull request, and local builds derive the version from the nearest
-reachable Git tag:
+Branch, pull request, scheduled branch, and local builds derive a development
+version from the nearest reachable Git tag, even when the checked-out commit
+is tagged:
 
 ```bash
-git describe --tags --match='v*' --abbrev=14 HEAD
+git describe --tags --long --match='v*' --abbrev=14 HEAD
 ```
 
 If no matching tag is reachable, the version uses the initial release line,
@@ -32,8 +33,8 @@ v0.1.0-alpha.0.<commit-count>+<commit-id>
 
 For example, commit 42 with ID `a1b2c3d4e5f6a7` produces
 `v0.1.0-alpha.0.42+a1b2c3d4e5f6a7`. This bootstrap version is always a
-development version. Stable publication requires an exact stable tag on the
-release commit.
+development version. Stable publication requires a build of the exact stable
+tag ref on the release commit.
 
 Builds must fetch the Git tags and history required by `git describe`.
 
@@ -44,7 +45,7 @@ DACS uses the `v` prefix unless an ecosystem does not use it:
 
 ## Version formats
 
-An exact tag is the version of its commit:
+A build of an explicit tag ref uses that exact tag as its version:
 
 ```text
 v0.1.0
@@ -52,8 +53,9 @@ v0.1.0-rc.1
 v0.2.0-alpha.0
 ```
 
-For an untagged commit, `git describe` adds the number of commits since the
-nearest tag and an abbreviated commit ID. For example, six commits after
+For non-tag refs, `git describe --long` adds the number of commits since the
+nearest tag and an abbreviated commit ID, including a distance of zero at a
+tagged commit. For example, six commits after
 `v0.2.0-alpha.0` produces:
 
 ```text
@@ -68,6 +70,26 @@ v0.2.0-alpha.0.6+a1b2c3d4e5f6a7
 
 The commit distance determines prerelease ordering. The commit ID identifies
 the source without affecting version precedence.
+
+Non-tag builds exactly at `v0.1.0` use
+`v0.1.0-0+a1b2c3d4e5f6a7`. Non-tag builds exactly at `v0.2.0-rc.1` use
+`v0.2.0-rc.1.0+a1b2c3d4e5f6a7`. The same zero-distance rule applies to
+`alpha` and `beta` tags. Local builds without a CI tag ref also use these
+development versions, even when a tag is checked out.
+
+For commits after a stable tag, the same count-and-commit format continues.
+Six commits after `v0.1.0` produces `v0.1.0-6+a1b2c3d4e5f6a7`, container
+tag `v0.1.0-6_a1b2c3d4e5f6a7`, and Python version `0.1.0.dev6`.
+These development snapshots sort below the stable release. They do not
+automatically select or increment the next patch, minor, or major version.
+
+| Format | Exactly at stable tag, non-tag ref | Exactly at RC tag, non-tag ref |
+| --- | --- | --- |
+| Source version | `v0.1.0-0+a1b2c3d4e5f6a7` | `v0.2.0-rc.1.0+a1b2c3d4e5f6a7` |
+| Container tag / Helm `appVersion` | `v0.1.0-0_a1b2c3d4e5f6a7` | `v0.2.0-rc.1.0_a1b2c3d4e5f6a7` |
+| Helm `version` | `0.1.0-0+a1b2c3d4e5f6a7` | `0.2.0-rc.1.0+a1b2c3d4e5f6a7` |
+| Python package | `0.1.0.dev0` | `0.2.0rc1.dev0` |
+| Rust / Azure Universal Package | `0.1.0-0.ga1b2c3d4e5f6a7` | `0.2.0-rc.1.0.ga1b2c3d4e5f6a7` |
 
 | Artifact | Stable | Release candidate | Development |
 | --- | --- | --- | --- |
@@ -88,6 +110,13 @@ Kubernetes labels also replace `+` with `_`. Python uses the equivalent PEP
 commit remains in release provenance metadata. Rust and Azure Universal
 Package versions preserve the development commit by replacing `+` with `.g`,
 which keeps the SHA in an alphanumeric prerelease identifier.
+
+The helper rejects major, minor, or patch components greater than
+`18446744073709551615`, the shared unsigned 64-bit limit of the Helm and Rust
+version parsers. Container versions must also fit within the 128-character tag
+limit after appending `-linux-amd64` or `-linux-arm64`. Inputs that exceed these
+limits fail instead of producing an unusable version; versions are never
+truncated.
 
 ## Select a release line
 
@@ -111,6 +140,10 @@ v0.2.0
 
 If planned work no longer fits the selected release line, start the correct
 line with a new prerelease tag. Do not move an existing tag.
+
+Non-tag builds can continue from a stable tag without selecting the next
+release line. Create a prerelease tag when the intended next release version
+has been selected.
 
 ## Publication
 
@@ -160,6 +193,11 @@ Official builds retain validated native packages, architecture-specific AKS
 Ginkgo test binaries, Python wheels, and a unified Rust package source bundle
 as pipeline artifacts. The Python distribution name is `dacs-client`; the
 Cargo package name is `dacs-rust-client`.
+
+The Python client is also available on
+[PyPI](https://pypi.org/project/dacs-client/). See the
+[Python client installation instructions](src/subsystems/storage/dacs_client/README.md#installation)
+for installation commands and platform requirements.
 
 Architecture-specific Azure Universal Package names are:
 
