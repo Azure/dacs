@@ -35,6 +35,9 @@ import (
 )
 
 const (
+	// Target node count for the scale-down phase. Must be less than the initial pool node count.
+	scaleDownTargetNodes = 1
+
 	// How long to wait for the K8s node list to reflect a nodepool scale.
 	// 20m accommodates AKS nodepool scale latency.
 	nodeCountSettleTimeout = 20 * time.Minute
@@ -66,34 +69,34 @@ func testClusterScale(tc *testContext) {
 		Expect(err).NotTo(HaveOccurred(), "failed to discover default node pool")
 		nodepool := pool.Name
 		Expect(nodepool).NotTo(BeEmpty(), "default node pool name is empty")
-		Expect(pool.Count).To(BeNumerically(">", 1), "node pool %s must have more than one node to scale down", nodepool)
-		scaleDownTargetNodes := originalNodeCount - pool.Count + 1
+		Expect(pool.Count).To(BeNumerically(">", scaleDownTargetNodes), "node pool %s must have more than %d nodes to scale down", nodepool, scaleDownTargetNodes)
+		scaleDownClusterNodes := originalNodeCount - pool.Count + scaleDownTargetNodes
 		log.Info("discovered default node pool", "nodepool", nodepool, "originalNodeCount", originalNodeCount, "originalPoolCount", pool.Count)
 
-		By(fmt.Sprintf("scaling node pool %s down to %d node(s)", nodepool, 1))
+		By(fmt.Sprintf("scaling node pool %s down to %d node(s)", nodepool, scaleDownTargetNodes))
 		scaleDownStart := time.Now()
-		scaleNodePoolOrSkip(ctx, tc, nodepool, 1)
+		scaleNodePoolOrSkip(ctx, tc, nodepool, scaleDownTargetNodes)
 		log.Info("az aks nodepool scale call returned",
-			"direction", "down", "targetNodes", 1,
+			"direction", "down", "targetNodes", scaleDownTargetNodes,
 			"elapsed", time.Since(scaleDownStart).Round(time.Second).String())
 
-		By(fmt.Sprintf("waiting for node count to reach %d", scaleDownTargetNodes))
-		waitForNodeCount(ctx, tc, scaleDownTargetNodes)
+		By(fmt.Sprintf("waiting for node count to reach %d", scaleDownClusterNodes))
+		waitForNodeCount(ctx, tc, scaleDownClusterNodes)
 		downNodeReachedAt := time.Now()
 		log.Info("node count reached target",
-			"direction", "down", "targetNodes", scaleDownTargetNodes,
+			"direction", "down", "targetNodes", scaleDownClusterNodes,
 			"elapsedSinceScaleCall", time.Since(scaleDownStart).Round(time.Second).String())
 
-		By(fmt.Sprintf("waiting for cacheserver statefulset to converge to %d replicas", scaleDownTargetNodes))
-		waitForCacheserverReplicas(ctx, tc, scaleDownTargetNodes, downNodeReachedAt)
+		By(fmt.Sprintf("waiting for cacheserver statefulset to converge to %d replicas", scaleDownClusterNodes))
+		waitForCacheserverReplicas(ctx, tc, scaleDownClusterNodes, downNodeReachedAt)
 		scaleDownDuration := time.Since(scaleDownStart)
 		log.Info("scale-down completed",
-			"targetNodes", scaleDownTargetNodes,
+			"targetNodes", scaleDownClusterNodes,
 			"scaleDownDuration", scaleDownDuration.Seconds())
-		emitOperationMetric(ctx, kusto.ResilienceOperationResult{Operation: opScaleDown, Details: kusto.ScaleOperationDetails{TargetNodes: scaleDownTargetNodes}}, scaleDownDuration)
+		emitOperationMetric(ctx, kusto.ResilienceOperationResult{Operation: opScaleDown, Details: kusto.ScaleOperationDetails{TargetNodes: scaleDownClusterNodes}}, scaleDownDuration)
 
-		By(fmt.Sprintf("asserting cache-controller emitted a Scaling event reflecting %d replicas", scaleDownTargetNodes))
-		assertScalingEvent(ctx, tc, scaleStart, scaleDownTargetNodes)
+		By(fmt.Sprintf("asserting cache-controller emitted a Scaling event reflecting %d replicas", scaleDownClusterNodes))
+		assertScalingEvent(ctx, tc, scaleStart, scaleDownClusterNodes)
 
 		By("verifying application health")
 		Eventually(func(g Gomega, ctx context.Context) {
@@ -102,7 +105,7 @@ func testClusterScale(tc *testContext) {
 
 		By("verifying cache serving (upload+download round-trip) after scale-down")
 		Expect(verification.VerifyCacheServing(ctx, tc.Client, tc.namespace, log)).
-			To(Succeed(), "cache serving verification failed after scale-down to %d node(s)", scaleDownTargetNodes)
+			To(Succeed(), "cache serving verification failed after scale-down to %d node(s)", scaleDownClusterNodes)
 
 		By(fmt.Sprintf("scaling node pool %s up to %d nodes (original count)", nodepool, pool.Count))
 		scaleUpStart := time.Now()
