@@ -79,6 +79,7 @@ Templates are defined as parameter files in `deploy/parameters/`. Available temp
 | `nvme-l8` | Performance testing cluster with L8s_v3 VMs | Standard_L8s_v3 |
 | `nvme-l16` | Performance testing cluster with L16s_v3 VMs | Standard_L16s_v3 |
 | `nvme-l32` | Performance testing cluster with L32s_v3 VMs | Standard_L32s_v3 |
+| `nvme-mixed` | Seven AMD64 nodes across six Linux OS/FIPS pools for correctness tests | Standard_L8s_v3 |
 
 The `nvme-perf-*` templates are optimized for performance testing with larger VM sizes and more NVMe storage capacity.
 
@@ -106,6 +107,17 @@ make undeploy
 # Delete the cluster (auto-detected from kubectl context)
 make unprovision
 ```
+
+### Mixed Linux Integration Profile
+
+`AKS_TEMPLATE=nvme-mixed` selects seven AMD64 nodes across six Linux OS/FIPS
+pools for AKS correctness tests; performance uses a single-pool template.
+See the [integration test guide](../test/README.md#mixed-linux-node-images).
+The parameter file supplies `nodePools` overrides merged with NVMe defaults
+and pins Kubernetes `1.35` with OS image auto-upgrades disabled.
+Without `nodePools`, deployments use one pool. ACL enables Secure Boot and
+vTPM; its storage initialization requires live validation. The shared template
+uses AKS API `2026-08-01`; older Bicep type bundles report `BCP081`.
 
 ## Helm Charts
 

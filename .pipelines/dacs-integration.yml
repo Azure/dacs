@@ -226,6 +226,7 @@ extends:
         parameters:
           stageName: AksScale
           stageDisplayName: AKS Node Pool Scale
+          aksTemplate: nvme-l8
           testPackage: ./test/aks
           testFilter: aks && aks-scale
           testOutputFile: test-aks-scale.xml

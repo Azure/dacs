@@ -17,12 +17,14 @@
 package aks
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -133,9 +135,14 @@ func GetAvailableUpgrades(ctx context.Context, subscription, resourceGroup, clus
 	return utils.GetNonEmptyLines(strings.TrimSpace(output)), nil
 }
 
-// GetDefaultNodePool returns the system node pool for an AKS cluster, or the
-// first node pool if no system node pool is present.
-func GetDefaultNodePool(ctx context.Context, subscription, resourceGroup, clusterName string) (string, error) {
+// NodePool describes an AKS pool's name and node count.
+type NodePool struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+// GetDefaultNodePool returns the largest node pool, overridden by AKS_NODE_POOL.
+func GetDefaultNodePool(ctx context.Context, subscription, resourceGroup, clusterName string) (NodePool, error) {
 	cmd := exec.CommandContext(ctx,
 		"az", "aks", "nodepool", "list",
 		"--subscription", subscription,
@@ -145,25 +152,31 @@ func GetDefaultNodePool(ctx context.Context, subscription, resourceGroup, cluste
 	)
 	output, err := utils.Run(cmd)
 	if err != nil {
-		return "", fmt.Errorf("failed to list node pools for cluster %s: %w", clusterName, err)
+		return NodePool{}, fmt.Errorf("failed to list node pools for cluster %s: %w", clusterName, err)
 	}
 
-	var nodePools []struct {
-		Name string `json:"name"`
-		Mode string `json:"mode"`
-	}
+	var nodePools []NodePool
 	if err := json.Unmarshal([]byte(output), &nodePools); err != nil {
-		return "", fmt.Errorf("failed to parse node pool JSON for cluster %s: %w", clusterName, err)
+		return NodePool{}, fmt.Errorf("failed to parse node pool JSON for cluster %s: %w", clusterName, err)
 	}
 	if len(nodePools) == 0 {
-		return "", fmt.Errorf("no node pools found for cluster %s", clusterName)
+		return NodePool{}, fmt.Errorf("no node pools found for cluster %s", clusterName)
 	}
-	for _, nodePool := range nodePools {
-		if strings.EqualFold(nodePool.Mode, "System") {
-			return nodePool.Name, nil
+	return selectNodePool(nodePools, os.Getenv("AKS_NODE_POOL"))
+}
+
+func selectNodePool(pools []NodePool, override string) (NodePool, error) {
+	if override == "" {
+		return slices.MaxFunc(pools, func(a, b NodePool) int {
+			return cmp.Compare(a.Count, b.Count)
+		}), nil
+	}
+	for _, pool := range pools {
+		if pool.Name == override {
+			return pool, nil
 		}
 	}
-	return nodePools[0].Name, nil
+	return NodePool{}, fmt.Errorf("node pool %q not found", override)
 }
 
 // ErrCapacity is returned by az control-plane operations (node pool scale,

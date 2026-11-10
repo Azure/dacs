@@ -31,6 +31,12 @@ param agentVMSize string = 'standard_l8s_v3'
 @description('The SKU of the nodepool.')
 param osSKU string = 'AzureLinux'
 
+@description('Node pool overrides merged with the default NVMe pool settings. Empty uses a single pool.')
+param nodePools array = []
+
+@description('Kubernetes version. Empty uses the AKS default.')
+param kubernetesVersion string = ''
+
 @description('The zones in which the cluster should be created.')
 param zones array = []
 
@@ -80,11 +86,13 @@ var nvmePool = {
   maxPods: 125
   availabilityZones: zones
   count: agentCount
-  vnetSubnetID: vnet.properties.subnets[0].id
+  vnetSubnetID: '${vnet.id}/subnets/aks-subnet'
   nodeLabels: {
     'dacs.azure.com/processing-unit': 'cpu'
   }
 }
+
+var agentPools = [for pool in nodePools: union(nvmePool, pool)]
 
 // Virtual network for AKS with storage service endpoint
 resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = {
@@ -115,7 +123,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = {
   }
 }
 
-resource aks 'Microsoft.ContainerService/managedClusters@2024-01-01' = {
+resource aks 'Microsoft.ContainerService/managedClusters@2026-08-01' = {
   name: '${resourcePrefix}-cluster'
   location: location
   tags: union(tags, {
@@ -128,7 +136,7 @@ resource aks 'Microsoft.ContainerService/managedClusters@2024-01-01' = {
   identity: {
     type: 'SystemAssigned'
   }
-  properties: {
+  properties: union({
     nodeResourceGroup: '${resourcePrefix}-node-rg'
     dnsPrefix: '${resourcePrefix}-dns'
     // Enable OIDC issuer for workload identity
@@ -157,7 +165,7 @@ resource aks 'Microsoft.ContainerService/managedClusters@2024-01-01' = {
         }
       }
     } : {}
-    agentPoolProfiles: [ nvmePool ]
+    agentPoolProfiles: empty(nodePools) ? [ nvmePool ] : agentPools
     servicePrincipalProfile: {
       clientId: 'msi'
     }
@@ -180,7 +188,12 @@ resource aks 'Microsoft.ContainerService/managedClusters@2024-01-01' = {
         enabled: false
       }
     }
-  }
+  }, empty(kubernetesVersion) ? {} : {
+    kubernetesVersion: kubernetesVersion
+    autoUpgradeProfile: {
+      nodeOSUpgradeChannel: 'None'
+    }
+  })
 }
 
 // Azure Security Linux Agent extension for Defender for Containers

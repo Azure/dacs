@@ -61,3 +61,7 @@ for project in "${GO_PROJECTS[@]}"; do
         fi
     fi
 done
+
+cd "$BASE_DIR/test"
+echo "Running unit tests in test/pkg/aks..."
+go test -v -run "$TEST_PATTERN" ./pkg/aks
