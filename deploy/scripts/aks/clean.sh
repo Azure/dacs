@@ -96,7 +96,17 @@ if [[ "$AKS_RESOURCE_GROUP" == dacs-integration || -n "$RESOURCE_PREFIX" ]]; the
             fi
         fi
         echo "Deleting $RESOURCE_PREFIX-cluster and waiting for AKS-managed node cleanup..."
-        az aks delete --resource-group "$AKS_RESOURCE_GROUP" --name "$RESOURCE_PREFIX-cluster" --yes
+        readonly MAX_ATTEMPTS=3
+        for ((attempt = 1; attempt <= MAX_ATTEMPTS; attempt++)); do
+            if az aks delete --resource-group "$AKS_RESOURCE_GROUP" --name "$RESOURCE_PREFIX-cluster" --yes; then
+                break
+            fi
+            if (( attempt == MAX_ATTEMPTS )); then
+                exit 1
+            fi
+            echo "AKS deletion failed; retrying in 60 seconds ($attempt/$MAX_ATTEMPTS)." >&2
+            sleep 60
+        done
     fi
     RESOURCE_IDS="$(jq -r '.[] | select(.type != "Microsoft.ContainerService/managedClusters") | .id' <<< "$OWNED")"
     if [[ -n "$RESOURCE_IDS" ]]; then
