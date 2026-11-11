@@ -74,7 +74,7 @@ jobs:
       runner: ${{ matrix.runner }}
 
   # Vulnerability-scan the container images the build produced. Fans out into
-  # one parallel job per component image (matrix) so the Trivy step is written
+  # one parallel job per image (matrix) so the Trivy step is written
   # once instead of copy-pasted per image. Each job downloads only its own
   # per-image dacs-image-<name>-<arch> artifact directly instead of rebuilding
   # or loading it into Docker. fail-fast is off so one image's CVEs do not hide
@@ -85,6 +85,11 @@ jobs:
     needs: build
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    env:
+      IMAGE_ARCHIVE: >-
+        ${{ matrix.image == 'native-build' &&
+        format('/tmp/dacs-native-build-image-{0}.tar', matrix.arch) ||
+        format('/tmp/dacs-image-{0}.tar', matrix.image) }}
     permissions:
       contents: read
       security-events: write  # upload Trivy image SARIF to the code-scanning / Security tab
@@ -92,13 +97,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # One scan job per component image. To add an image, add its name here
-        # (must match the docker tag / dacs-image-<name> artifact from build).
+        # Scan every component and the native-build toolchain image.
+        # Component names match their dacs-image-<name> artifacts from build.
         image:
           - cache-server
           - cache-test-client
           - cacheserver-scheduler
           - cache-controller
+          - runai-dacs-client
+          - cache-setup
+          - native-build
         arch: [amd64, arm64]
         include:
           - arch: amd64
@@ -111,16 +119,19 @@ jobs:
         with:
           egress-policy: audit
 
-      - name: Download component image
+      - name: Download image
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: dacs-image-${{ matrix.image }}-${{ matrix.arch }}
+          name: >-
+            ${{ matrix.image == 'native-build' &&
+            format('dacs-native-build-image-{0}', matrix.arch) ||
+            format('dacs-image-{0}-{1}', matrix.image, matrix.arch) }}
           path: /tmp
 
       - name: Scan ${{ matrix.image }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
-          input: '/tmp/dacs-image-${{ matrix.image }}.tar'
+          input: ${{ env.IMAGE_ARCHIVE }}
           format: 'sarif'
           output: 'trivy-${{ matrix.image }}-${{ matrix.arch }}.sarif'
           exit-code: '0'
@@ -139,7 +150,7 @@ jobs:
       - name: Block fixable critical vulnerabilities in ${{ matrix.image }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
-          input: '/tmp/dacs-image-${{ matrix.image }}.tar'
+          input: ${{ env.IMAGE_ARCHIVE }}
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true
