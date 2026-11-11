@@ -289,6 +289,9 @@ message LocatorContentReplica
     //   1 = Blob - durable copy in Azure Blob (nodeId unused; expiresAt is a conservative
     //               soft-TTL; the location is derived from the key, not stored here).
     uint32 tier = 5;
+    // Locator-issued generation; zero is unknown. Equality only, not a timestamp or ordered epoch.
+    // Registration requests cannot choose it.
+    fixed64 registrationGeneration = 6;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message LocatorRegisterRequest
@@ -309,6 +312,7 @@ message LocatorRegisterResponse
     }
     Result result = 1;
     string requestId = 2;   // Echoed on every response, including errors.
+    fixed64 registrationGeneration = 3;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message LocatorLookupRequest
@@ -355,6 +359,9 @@ message LocatorUnregisterRequest
     string key = 1;
     uint32 nodeId = 2;
     string requestId = 3;
+    // Nonzero required for RPC cleanup. Remove only the cache replica with this generation.
+    // Deploy supporting servers before clients: older servers ignore this field.
+    fixed64 expectedRegistrationGeneration = 4;
 }
 
 message LocatorUnregisterResponse
@@ -412,6 +419,7 @@ message LocatorPrefixEntry
 message LocatorNodeReplica
 {
     uint32 node_id = 1;      // node_id of the best live replica
+    fixed64 registrationGeneration = 2;
 }
 //---------------------------------------------------------------------------------------------------------------------
 // NOTE: If the container/blob name can be derived deterministically from the block key (rather
@@ -446,6 +454,8 @@ message LocatorRegisterChainResponse
     }
     Result result = 1;
     string requestId = 2;
+    // One generation per request entry, in the same order, on SUCCESS.
+    repeated fixed64 registrationGenerations = 3;
 }
 //---------------------------------------------------------------------------------------------------------------------
 message Request

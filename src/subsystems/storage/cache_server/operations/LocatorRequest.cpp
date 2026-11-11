@@ -47,12 +47,15 @@ bool HandleLocatorRegister(IConnection& clientConnection, const LocatorRegisterR
 
     ContentReplica replica = FromProto(request.replica());
 
-    GetServerLocatorCache().Register(request.key(), request.parenthash(), request.roothash(), replica);
+    const auto generation = GetServerLocatorCache().Register(
+        request.key(), request.parenthash(), request.roothash(), replica);
     Metrics::IncrementLocatorRegistrations();
     Metrics::SetLocatorEntryCount(GetServerLocatorCache().GetEntryCount());
     Metrics::SetLocatorReplicaCount(GetServerLocatorCache().GetReplicaCount());
 
-    response.set_result(LocatorRegisterResponse::SUCCESS);
+    response.set_registrationgeneration(generation);
+    response.set_result(generation == 0 ? LocatorRegisterResponse::INTERNAL_ERROR
+                                       : LocatorRegisterResponse::SUCCESS);
     return SendMessageToRemoteFinal(clientConnection, response, requestId);
 }
 
@@ -83,6 +86,7 @@ bool HandleLocatorLookup(IConnection& clientConnection, const LocatorLookupReque
             pReplica->set_lastrefreshed(replica.m_nLastRefreshed);
             pReplica->set_contentsize(replica.m_nContentSize);
             pReplica->set_tier(static_cast<uint32_t>(replica.m_tier));
+            pReplica->set_registrationgeneration(replica.m_nRegistrationGeneration);
         }
     }
 
@@ -121,7 +125,14 @@ bool HandleLocatorUnregister(IConnection& clientConnection, const LocatorUnregis
 
     LOG_DEBUG_REQID_STR("LocatorUnregister key={} node={}", requestId, request.key(), request.nodeid());
 
-    bool bUnregistered = GetServerLocatorCache().Unregister(request.key(), request.nodeid());
+    if (request.expectedregistrationgeneration() == 0)
+    {
+        response.set_result(LocatorUnregisterResponse::INTERNAL_ERROR);
+        return SendMessageToRemoteFinal(clientConnection, response, requestId);
+    }
+
+    bool bUnregistered = GetServerLocatorCache().Unregister(
+        request.key(), request.nodeid(), request.expectedregistrationgeneration());
     if (bUnregistered)
     {
         Metrics::SetLocatorEntryCount(GetServerLocatorCache().GetEntryCount());
@@ -181,6 +192,7 @@ bool HandleLocatorPrefixLookup(IConnection& clientConnection,
         else
         {
             pOutEntry->mutable_node_replica()->set_node_id(replica.m_nNodeId);
+            pOutEntry->mutable_node_replica()->set_registrationgeneration(replica.m_nRegistrationGeneration);
         }
     }
 
@@ -204,7 +216,15 @@ bool HandleLocatorRegisterChain(IConnection& clientConnection,
     {
         ContentReplica replica = FromProto(entry.replica());
 
-        GetServerLocatorCache().Register(entry.key(), entry.parenthash(), entry.roothash(), replica);
+        const auto generation = GetServerLocatorCache().Register(
+            entry.key(), entry.parenthash(), entry.roothash(), replica);
+        if (generation == 0)
+        {
+            response.clear_registrationgenerations();
+            response.set_result(LocatorRegisterChainResponse::INTERNAL_ERROR);
+            return SendMessageToRemoteFinal(clientConnection, response, requestId);
+        }
+        response.add_registrationgenerations(generation);
         Metrics::IncrementLocatorRegistrations();
     }
     Metrics::SetLocatorEntryCount(GetServerLocatorCache().GetEntryCount());
