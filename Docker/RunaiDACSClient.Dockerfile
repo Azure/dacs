@@ -20,6 +20,7 @@ RUN if [ -n "${UBUNTU_ARCHIVE_MIRROR}" ]; then \
         sed -i "s|http://archive.ubuntu.com/ubuntu|${UBUNTU_ARCHIVE_MIRROR}|g" /etc/apt/sources.list; \
     fi && \
     apt-get update && \
+    apt-get upgrade -yq && \
     apt-get install -y --no-install-recommends ca-certificates python3 python3-pip && \
     rm -rf /var/lib/apt/lists/*
 
