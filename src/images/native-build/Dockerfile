@@ -19,7 +19,7 @@ FROM mcr.microsoft.com/mirror/docker/library/ubuntu:22.04@sha256:104ae83764a5119
 ARG TARGETARCH
 ARG RUST_VERSION=1.98.1
 ARG RUSTUP_VERSION=1.29.0
-ARG KUBEBUILDER_VERSION=4.10.1
+ARG KUBEBUILDER_VERSION=4.16.0
 ARG UBUNTU_ARCHIVE_MIRROR=""
 ARG MICROSOFT_REPO_FINGERPRINT=BC528686B50D79E339D3721CEB3E94ADBE1229CF
 
@@ -54,6 +54,7 @@ RUN if [ -n "${UBUNTU_ARCHIVE_MIRROR}" ]; then \
         > /etc/apt/sources.list.d/microsoft-prod.list && \
     rm -rf "$GNUPGHOME" /tmp/microsoft.asc && \
     apt-get update && \
+    apt-get upgrade -yq && \
     apt-get install -yq --no-install-recommends \
     # Core C++ development tools
     build-essential \
@@ -144,10 +145,10 @@ RUN TARGETARCH=${TARGETARCH:-amd64} && \
 RUN TARGETARCH=${TARGETARCH:-amd64} && \
     if [ "$TARGETARCH" = "amd64" ]; then \
         KUBEBUILDER_ARCH=amd64; \
-        KUBEBUILDER_SHA256=d502bb409ef2f27ce7e69a6eddaf50501f876bb7fe4730c2fa087fe4e14a7e12; \
+        KUBEBUILDER_SHA256=539984e58832044f2326b1bb940c1eaf784f1849e65d06d3a4a4a8b5dfac7ca7; \
     elif [ "$TARGETARCH" = "arm64" ]; then \
         KUBEBUILDER_ARCH=arm64; \
-        KUBEBUILDER_SHA256=de100c05583ba618ffb44240c63189f38a9abf9b3c959acb18fbf8a1d6ba3d33; \
+        KUBEBUILDER_SHA256=6833432c8faab62d2ca6b583f32c88b0a3d1b7264562739c202084c996a55845; \
     else \
         echo "Unsupported TARGETARCH: $TARGETARCH" >&2; \
         exit 1; \
@@ -162,7 +163,7 @@ RUN TARGETARCH=${TARGETARCH:-amd64} && \
     rm "$KUBEBUILDER_DOWNLOAD"
 
 # Install the OpenTelemetry Collector used by storage metrics integration tests.
-ARG OTEL_COLLECTOR_VERSION=0.132.0
+ARG OTEL_COLLECTOR_VERSION=0.165.0
 RUN TARGETARCH=${TARGETARCH:-amd64} && \
         curl -fsSL \
             "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v${OTEL_COLLECTOR_VERSION}/otelcol_${OTEL_COLLECTOR_VERSION}_linux_${TARGETARCH}.tar.gz" \
