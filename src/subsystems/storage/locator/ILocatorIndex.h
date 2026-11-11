@@ -60,8 +60,9 @@ class ILocatorIndex
 
     // Register a content replica for a key, recording its place in the prefix tree.
     // Parent/root are storage_keys ("" when the block is a root with no parent).
-    virtual void Register(const std::string& strKey, const std::string& strParentKey,
-                          const std::string& strRootKey, const ContentReplica& replica) = 0;
+    // Returns the assigned generation, or zero if the registration was rejected.
+    virtual uint64_t Register(const std::string& strKey, const std::string& strParentKey,
+                              const std::string& strRootKey, const ContentReplica& replica) = 0;
 
     // Lookup all replicas for a key. Returns nullopt if key not found.
     virtual std::optional<LocatorEntry> Lookup(const std::string& strKey) const = 0;
@@ -70,7 +71,10 @@ class ILocatorIndex
     virtual bool Refresh(const std::string& strKey, uint32_t nNodeId, uint64_t nNewExpiresAt) = 0;
 
     // Unregister a specific replica (e.g., on eviction).
-    virtual bool Unregister(const std::string& strKey, uint32_t nNodeId) = 0;
+    // Zero retains the internal eviction path's unconditional behavior.
+    // RPC callers must supply the observed generation; comparison/removal share the index lock.
+    virtual bool Unregister(const std::string& strKey, uint32_t nNodeId,
+                            uint64_t nExpectedGeneration = 0) = 0;
 
     // Remove all expired replicas across all entries. Returns total replicas removed.
     virtual size_t PurgeExpired() = 0;
@@ -87,6 +91,9 @@ class ILocatorIndex
     // Counts.
     virtual size_t GetEntryCount() const = 0;
     virtual size_t GetReplicaCount() const = 0;
+
+  protected:
+    static uint64_t NewRegistrationGeneration();
 };
 
 } // namespace kvclient

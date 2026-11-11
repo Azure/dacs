@@ -54,7 +54,7 @@ namespace
 // Insert a new entry or update an existing one, recording its prefix-tree position.
 // Caller must hold the lock for the bucket owning strKey.
 //---------------------------------------------------------------------------------------------------------------------
-void InsertOrUpdateLocked(std::unordered_map<std::string, LocatorEntry>& map,
+bool InsertOrUpdateLocked(std::unordered_map<std::string, LocatorEntry>& map,
                           const std::string& strKey, const std::string& strParentKey,
                           const std::string& strRootKey, const ContentReplica& replica, uint64_t nNowMs)
 {
@@ -66,7 +66,7 @@ void InsertOrUpdateLocked(std::unordered_map<std::string, LocatorEntry>& map,
         // this node's ID and the cluster size; the backend has no topology of its own.
         entry.m_vReplicas.push_back(replica);
         map.emplace(strKey, std::move(entry));
-        return;
+        return true;
     }
 
     // The stored parent/root must match what the caller re-registers. storage_key is
@@ -74,13 +74,12 @@ void InsertOrUpdateLocked(std::unordered_map<std::string, LocatorEntry>& map,
     // registration is not the same logical block (a mis-built parent chain or a storage_key
     // hash collision). The cause is irrelevant - we cannot safely attach this replica to a
     // different block, so drop the registration entirely and keep the first-seen entry.
-    // TODO: this is silently ignored; ideally Register would surface an error to the caller.
     if (it->second.m_strParentKey != strParentKey || it->second.m_strRootKey != strRootKey)
     {
         LOG_WARN("FlatRadixIndex: skipping re-registration of {} - parent/root ({}/{}) differs "
                  "from stored ({}/{})",
                  strKey, strParentKey, strRootKey, it->second.m_strParentKey, it->second.m_strRootKey);
-        return;
+        return false;
     }
 
     // Existing entry - keep its original tree position (parent/root are unchanged) and only
@@ -95,11 +94,13 @@ void InsertOrUpdateLocked(std::unordered_map<std::string, LocatorEntry>& map,
     {
         replicaIt->m_nExpiresAt = replica.m_nExpiresAt;
         replicaIt->m_nLastRefreshed = replica.m_nLastRefreshed;
+        replicaIt->m_nRegistrationGeneration = replica.m_nRegistrationGeneration;
     }
     else
     {
         replicas.push_back(replica);
     }
+    return true;
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -152,18 +153,24 @@ FlatRadixIndex::FlatRadixIndex()
 }
 
 //---------------------------------------------------------------------------------------------------------------------
-void FlatRadixIndex::Register(const std::string& strKey, const std::string& strParentKey,
-                              const std::string& strRootKey, const ContentReplica& replica)
+uint64_t FlatRadixIndex::Register(const std::string& strKey, const std::string& strParentKey,
+                                  const std::string& strRootKey, const ContentReplica& replica)
 {
     const uint32_t nChildBucket = GetBucketIndex(strKey);
     const uint64_t nNowMs = NowMs();
+    const auto insert = [&] {
+        ContentReplica registered = replica;
+        registered.m_nRegistrationGeneration = NewRegistrationGeneration();
+        return InsertOrUpdateLocked(m_vEntries[nChildBucket], strKey, strParentKey, strRootKey,
+                                     registered, nNowMs)
+            ? registered.m_nRegistrationGeneration : uint64_t{0};
+    };
 
     // Root block (no parent): single-lock fast path.
     if (strParentKey.empty())
     {
         std::lock_guard<std::mutex> lock(m_vMutexes[nChildBucket]);
-        InsertOrUpdateLocked(m_vEntries[nChildBucket], strKey, strParentKey, strRootKey, replica, nNowMs);
-        return;
+        return insert();
     }
 
     const uint32_t nParentBucket = GetBucketIndex(strParentKey);
@@ -171,9 +178,10 @@ void FlatRadixIndex::Register(const std::string& strKey, const std::string& strP
     if (nChildBucket == nParentBucket)
     {
         std::lock_guard<std::mutex> lock(m_vMutexes[nChildBucket]);
-        InsertOrUpdateLocked(m_vEntries[nChildBucket], strKey, strParentKey, strRootKey, replica, nNowMs);
-        AddChildLocked(m_vEntries[nParentBucket], strParentKey, strKey);
-        return;
+        const auto generation = insert();
+        if (generation != 0)
+            AddChildLocked(m_vEntries[nParentBucket], strParentKey, strKey);
+        return generation;
     }
 
     // Two distinct buckets - acquire the lower index first (min-bucket ordering).
@@ -182,8 +190,10 @@ void FlatRadixIndex::Register(const std::string& strKey, const std::string& strP
     std::lock_guard<std::mutex> lockLo(m_vMutexes[nLo]);
     std::lock_guard<std::mutex> lockHi(m_vMutexes[nHi]);
 
-    InsertOrUpdateLocked(m_vEntries[nChildBucket], strKey, strParentKey, strRootKey, replica, nNowMs);
-    AddChildLocked(m_vEntries[nParentBucket], strParentKey, strKey);
+    const auto generation = insert();
+    if (generation != 0)
+        AddChildLocked(m_vEntries[nParentBucket], strParentKey, strKey);
+    return generation;
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -231,7 +241,8 @@ bool FlatRadixIndex::Refresh(const std::string& strKey, uint32_t nNodeId, uint64
 }
 
 //---------------------------------------------------------------------------------------------------------------------
-bool FlatRadixIndex::Unregister(const std::string& strKey, uint32_t nNodeId)
+bool FlatRadixIndex::Unregister(const std::string& strKey, uint32_t nNodeId,
+                                uint64_t nExpectedGeneration)
 {
     const uint32_t nChildBucket = GetBucketIndex(strKey);
 
@@ -266,7 +277,8 @@ bool FlatRadixIndex::Unregister(const std::string& strKey, uint32_t nNodeId)
             auto& replicas = it->second.m_vReplicas;
             auto replicaIt = std::find_if(replicas.begin(), replicas.end(),
                 [nNodeId](const ContentReplica& r) { return r.m_tier == ReplicaTier::Cache && r.m_nNodeId == nNodeId; });
-            if (replicaIt == replicas.end())
+            if (replicaIt == replicas.end() ||
+                (nExpectedGeneration != 0 && replicaIt->m_nRegistrationGeneration != nExpectedGeneration))
             {
                 return false;
             }
@@ -298,7 +310,8 @@ bool FlatRadixIndex::Unregister(const std::string& strKey, uint32_t nNodeId)
         auto& replicas = it->second.m_vReplicas;
         auto replicaIt = std::find_if(replicas.begin(), replicas.end(),
             [nNodeId](const ContentReplica& r) { return r.m_tier == ReplicaTier::Cache && r.m_nNodeId == nNodeId; });
-        if (replicaIt == replicas.end())
+        if (replicaIt == replicas.end() ||
+            (nExpectedGeneration != 0 && replicaIt->m_nRegistrationGeneration != nExpectedGeneration))
         {
             return false;
         }

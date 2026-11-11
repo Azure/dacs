@@ -39,15 +39,15 @@ void LocatorCache::Init(uint32_t nNodeId, uint32_t nNumNodes)
 }
 
 //---------------------------------------------------------------------------------------------------------------------
-void LocatorCache::Register(const std::string& strKey, const ContentReplica& replica)
+uint64_t LocatorCache::Register(const std::string& strKey, const ContentReplica& replica)
 {
     // Convenience overload for the legacy single-block path: no prefix-tree position.
-    m_pIndex->Register(strKey, /*strParentKey=*/std::string{}, /*strRootKey=*/std::string{}, replica);
+    return m_pIndex->Register(strKey, /*strParentKey=*/std::string{}, /*strRootKey=*/std::string{}, replica);
 }
 
 //---------------------------------------------------------------------------------------------------------------------
-void LocatorCache::Register(const std::string& strKey, const std::string& strParentKey,
-                            const std::string& strRootKey, const ContentReplica& replica)
+uint64_t LocatorCache::Register(const std::string& strKey, const std::string& strParentKey,
+                                const std::string& strRootKey, const ContentReplica& replica)
 {
 #ifndef NDEBUG
     // Co-location invariant (debug-only): a chain descendant - one that names an explicit root -
@@ -68,7 +68,7 @@ void LocatorCache::Register(const std::string& strKey, const std::string& strPar
     }
 #endif
 
-    m_pIndex->Register(strKey, strParentKey, strRootKey, replica);
+    return m_pIndex->Register(strKey, strParentKey, strRootKey, replica);
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -84,9 +84,10 @@ bool LocatorCache::Refresh(const std::string& strKey, uint32_t nNodeId, uint64_t
 }
 
 //---------------------------------------------------------------------------------------------------------------------
-bool LocatorCache::Unregister(const std::string& strKey, uint32_t nNodeId)
+bool LocatorCache::Unregister(const std::string& strKey, uint32_t nNodeId,
+                              uint64_t nExpectedGeneration)
 {
-    return m_pIndex->Unregister(strKey, nNodeId);
+    return m_pIndex->Unregister(strKey, nNodeId, nExpectedGeneration);
 }
 
 //---------------------------------------------------------------------------------------------------------------------

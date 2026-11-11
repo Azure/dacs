@@ -39,12 +39,14 @@ FlatMapIndex::FlatMapIndex()
 }
 
 //---------------------------------------------------------------------------------------------------------------------
-void FlatMapIndex::Register(const std::string& strKey, const std::string& strParentKey,
-                            const std::string& strRootKey, const ContentReplica& replica)
+uint64_t FlatMapIndex::Register(const std::string& strKey, const std::string& strParentKey,
+                                const std::string& strRootKey, const ContentReplica& replica)
 {
     const uint32_t nBucket = GetBucketIndex(strKey);
     std::lock_guard<std::mutex> lock(m_vMutexes[nBucket]);
 
+    ContentReplica registered = replica;
+    registered.m_nRegistrationGeneration = NewRegistrationGeneration();
     auto& map = m_vEntries[nBucket];
     auto it = map.find(strKey);
 
@@ -52,9 +54,9 @@ void FlatMapIndex::Register(const std::string& strKey, const std::string& strPar
     {
         // New entry
         LocatorEntry entry(strKey, NowMs(), strParentKey, strRootKey);
-        entry.m_vReplicas.push_back(replica);
+        entry.m_vReplicas.push_back(registered);
         map.emplace(strKey, std::move(entry));
-        return;
+        return registered.m_nRegistrationGeneration;
     }
 
     // Existing entry - keep tree fields current and update or add the replica.
@@ -69,11 +71,13 @@ void FlatMapIndex::Register(const std::string& strKey, const std::string& strPar
     {
         replicaIt->m_nExpiresAt = replica.m_nExpiresAt;
         replicaIt->m_nLastRefreshed = replica.m_nLastRefreshed;
+        replicaIt->m_nRegistrationGeneration = registered.m_nRegistrationGeneration;
     }
     else
     {
-        replicas.push_back(replica);
+        replicas.push_back(registered);
     }
+    return registered.m_nRegistrationGeneration;
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -119,7 +123,8 @@ bool FlatMapIndex::Refresh(const std::string& strKey, uint32_t nNodeId, uint64_t
 }
 
 //---------------------------------------------------------------------------------------------------------------------
-bool FlatMapIndex::Unregister(const std::string& strKey, uint32_t nNodeId)
+bool FlatMapIndex::Unregister(const std::string& strKey, uint32_t nNodeId,
+                              uint64_t nExpectedGeneration)
 {
     const uint32_t nBucket = GetBucketIndex(strKey);
     std::lock_guard<std::mutex> lock(m_vMutexes[nBucket]);
@@ -135,7 +140,8 @@ bool FlatMapIndex::Unregister(const std::string& strKey, uint32_t nNodeId)
     auto replicaIt = std::find_if(replicas.begin(), replicas.end(),
         [nNodeId](const ContentReplica& r) { return r.m_tier == ReplicaTier::Cache && r.m_nNodeId == nNodeId; });
 
-    if (replicaIt == replicas.end())
+    if (replicaIt == replicas.end() ||
+        (nExpectedGeneration != 0 && replicaIt->m_nRegistrationGeneration != nExpectedGeneration))
     {
         return false;
     }

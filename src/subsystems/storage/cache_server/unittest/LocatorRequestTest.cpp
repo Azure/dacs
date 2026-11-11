@@ -202,6 +202,7 @@ TEST_F(LocatorRequestTest, EveryHandlerEchoesTheRequestId)
             unregister.set_requestid(id);
             unregister.set_key(lookupKey);
             unregister.set_nodeid(1);
+            unregister.set_expectedregistrationgeneration(registered.registrationgeneration());
             CapturingConnection unregisterConn;
             ASSERT_TRUE(HandleLocatorUnregister(unregisterConn, unregister));
             LocatorUnregisterResponse removed;
@@ -242,6 +243,17 @@ TEST_F(LocatorRequestTest, RegisterForwardsParentAndRoot)
     ASSERT_EQ(entry->m_vReplicas.size(), 1u);
     EXPECT_EQ(entry->m_vReplicas[0].m_nNodeId, 7u);
     EXPECT_EQ(entry->m_vReplicas[0].m_nContentSize, 1024u);
+    EXPECT_NE(response.registrationgeneration(), 0u);
+    EXPECT_EQ(entry->m_vReplicas[0].m_nRegistrationGeneration, response.registrationgeneration());
+
+    LocatorLookupRequest lookup;
+    lookup.set_key(strKey);
+    CapturingConnection lookupConn;
+    ASSERT_TRUE(HandleLocatorLookup(lookupConn, lookup));
+    LocatorLookupResponse found;
+    ASSERT_TRUE(lookupConn.DecodeResponse(found));
+    ASSERT_EQ(found.replicas_size(), 1);
+    EXPECT_EQ(found.replicas(0).registrationgeneration(), response.registrationgeneration());
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -347,6 +359,9 @@ TEST_F(LocatorRequestTest, RegisterChainThenPrefixLookupReturnsWholeChain)
 
     CapturingConnection registerConn;
     ASSERT_TRUE(HandleLocatorRegisterChain(registerConn, registerRequest));
+    LocatorRegisterChainResponse registered;
+    ASSERT_TRUE(registerConn.DecodeResponse(registered));
+    ASSERT_EQ(registered.registrationgenerations_size(), 3);
 
     LocatorPrefixLookupRequest lookupRequest;
     lookupRequest.set_requestid("req-prefix-full");
@@ -370,6 +385,78 @@ TEST_F(LocatorRequestTest, RegisterChainThenPrefixLookupReturnsWholeChain)
     EXPECT_EQ(response.matched(0).content_size(), 100u);
     EXPECT_EQ(response.matched(1).content_size(), 200u);
     EXPECT_EQ(response.matched(2).content_size(), 300u);
+    for (int i = 0; i < response.matched_size(); ++i)
+    {
+        EXPECT_NE(registered.registrationgenerations(i), 0u);
+        EXPECT_EQ(response.matched(i).node_replica().registrationgeneration(), registered.registrationgenerations(i));
+    }
+}
+
+TEST_F(LocatorRequestTest, ConditionalUnregisterPreservesNewRegistrationsAndOtherReplicas)
+{
+    for (bool radix : {false, true})
+    {
+        SCOPED_TRACE(radix);
+        if (radix)
+            UseRadixBackend();
+        else
+            SetUp();
+        auto& locator = kvclient::GetServerLocatorCache();
+        LocatorRegisterRequest reg;
+        reg.set_key("root");
+        *reg.mutable_replica() = MakeReplica(1, 100);
+        const auto registerReplica = [&] {
+            CapturingConnection conn;
+            EXPECT_TRUE(HandleLocatorRegister(conn, reg));
+            LocatorRegisterResponse response;
+            EXPECT_TRUE(conn.DecodeResponse(response));
+            EXPECT_EQ(response.result(), LocatorRegisterResponse::SUCCESS);
+            return response.registrationgeneration();
+        };
+        const auto first = registerReplica();
+        reg.mutable_replica()->set_registrationgeneration(first); // Caller cannot retain an old identity.
+        const auto second = registerReplica();
+        ASSERT_NE(first, second);
+        RegisterBlock("child", "root", "root", 2, 200);
+
+        LocatorUnregisterRequest request;
+        request.set_key("root");
+        request.set_nodeid(1);
+        request.set_requestid("conditional-remove");
+        const auto remove = [&](uint64_t generation) {
+            request.set_expectedregistrationgeneration(generation);
+            CapturingConnection conn;
+            EXPECT_TRUE(HandleLocatorUnregister(conn, request));
+            LocatorUnregisterResponse response;
+            EXPECT_TRUE(conn.DecodeResponse(response));
+            EXPECT_EQ(response.requestid(), request.requestid());
+            return response.result();
+        };
+        EXPECT_EQ(remove(0), LocatorUnregisterResponse::INTERNAL_ERROR);
+        EXPECT_EQ(remove(first), LocatorUnregisterResponse::NOT_FOUND);
+        ASSERT_TRUE(locator.Lookup("root"));
+        EXPECT_TRUE(locator.Lookup("child")); // No cascade on a stale request.
+
+        const uint64_t now = EpochNowMs();
+        ASSERT_TRUE(locator.Refresh("root", 1, now + 120'000));
+        EXPECT_EQ(locator.Lookup("root")->m_vReplicas[0].m_nRegistrationGeneration, second);
+        locator.Register("root", ContentReplica(3, now + 60'000, now, 100));
+        locator.Register("root", ContentReplica::MakeBlobReplica(now + 60'000, now, 100));
+        EXPECT_EQ(remove(second), LocatorUnregisterResponse::SUCCESS);
+        EXPECT_EQ(remove(second), LocatorUnregisterResponse::NOT_FOUND); // Idempotent retry.
+        ASSERT_TRUE(locator.Lookup("root"));
+        EXPECT_EQ(locator.Lookup("root")->m_vReplicas.size(), 2u);
+        EXPECT_TRUE(locator.Lookup("child"));
+
+        // A matched last-replica removal still uses the existing index's deletion semantics.
+        const auto oldChild = locator.Lookup("child")->m_vReplicas.front().m_nRegistrationGeneration;
+        request.set_key("child");
+        request.set_nodeid(2);
+        EXPECT_EQ(remove(oldChild), LocatorUnregisterResponse::SUCCESS);
+        RegisterBlock("child", "root", "root", 2, 200);
+        EXPECT_EQ(remove(oldChild), LocatorUnregisterResponse::NOT_FOUND);
+        EXPECT_TRUE(locator.Lookup("child"));
+    }
 }
 
 //---------------------------------------------------------------------------------------------------------------------
