@@ -41,6 +41,8 @@ struct ContentReplica
     uint64_t m_nExpiresAt;       // Expiry (epoch ms): cache TTL, or blob soft-TTL for the Blob tier
     uint64_t m_nLastRefreshed;   // When the TTL was last refreshed
     uint64_t m_nContentSize;     // Logical size of stored value in bytes (0 = unknown)
+    // Locator-issued identity, unchanged by TTL refresh. Zero means unknown; compare only for equality.
+    uint64_t m_nRegistrationGeneration = 0;
 
     ContentReplica() : m_nNodeId(0), m_nExpiresAt(0), m_nLastRefreshed(0), m_nContentSize(0) {}
 

@@ -46,11 +46,12 @@ class FlatMapIndex final : public ILocatorIndex
     FlatMapIndex();
     ~FlatMapIndex() override = default;
 
-    void Register(const std::string& strKey, const std::string& strParentKey,
-                  const std::string& strRootKey, const ContentReplica& replica) override;
+    uint64_t Register(const std::string& strKey, const std::string& strParentKey,
+                      const std::string& strRootKey, const ContentReplica& replica) override;
     std::optional<LocatorEntry> Lookup(const std::string& strKey) const override;
     bool Refresh(const std::string& strKey, uint32_t nNodeId, uint64_t nNewExpiresAt) override;
-    bool Unregister(const std::string& strKey, uint32_t nNodeId) override;
+    bool Unregister(const std::string& strKey, uint32_t nNodeId,
+                    uint64_t nExpectedGeneration = 0) override;
     size_t PurgeExpired() override;
     PrefixLookupResult PrefixLookup(const std::string& strBaseParentKey,
                                     std::span<const std::string> vStorageKeys,

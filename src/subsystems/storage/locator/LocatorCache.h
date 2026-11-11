@@ -57,12 +57,12 @@ class LocatorCache
     //-- Core operations (called by RPC handlers) --
 
     // Register a content replica for a key
-    void Register(const std::string& strKey, const ContentReplica& replica);
+    uint64_t Register(const std::string& strKey, const ContentReplica& replica);
 
     // Register a content replica for a key, recording its place in the prefix tree.
     // Parent/root are storage_keys ("" when the block is a root with no parent).
-    void Register(const std::string& strKey, const std::string& strParentKey,
-                  const std::string& strRootKey, const ContentReplica& replica);
+    uint64_t Register(const std::string& strKey, const std::string& strParentKey,
+                      const std::string& strRootKey, const ContentReplica& replica);
 
     // Lookup all replicas for a key. Returns nullopt if key not found.
     std::optional<LocatorEntry> Lookup(const std::string& strKey) const;
@@ -71,7 +71,8 @@ class LocatorCache
     bool Refresh(const std::string& strKey, uint32_t nNodeId, uint64_t nNewExpiresAt);
 
     // Unregister a specific replica (e.g., on eviction)
-    bool Unregister(const std::string& strKey, uint32_t nNodeId);
+    bool Unregister(const std::string& strKey, uint32_t nNodeId,
+                    uint64_t nExpectedGeneration = 0);
 
     // Walk a block chain in order, returning the longest matching prefix. nNowMs (epoch ms)
     // determines replica liveness; blocks with no live replica truncate the prefix.

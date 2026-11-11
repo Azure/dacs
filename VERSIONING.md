@@ -7,6 +7,26 @@ is `v0.1.0`.
 Major version zero indicates initial development. Public APIs, configuration,
 and behavior may change between minor releases until DACS reaches `v1.0.0`.
 
+## Locator registration-generation compatibility
+
+Locator registration and lookup responses now carry a nonzero 64-bit registration
+generation, encoded as protobuf `fixed64`. `LocatorUnregisterRequest` requires
+the observed generation; the locator atomically removes only the matching cache replica. Missing or
+zero generations are rejected, and an absent or superseded registration returns
+`NOT_FOUND` without mutation. Generations change on registration and are preserved
+on TTL refresh. The process-wide counter starts randomly and rejects wraparound;
+uniqueness across restarts is probabilistic. Compare only for equality, not order.
+Generations are neither timestamps nor authentication credentials.
+
+Upgrade every locator server before deploying generation-aware DACS-KV clients.
+Older servers ignore the new unregister field and cannot enforce the guard.
+Older clients can read and register against new servers, but cleanup without a
+generation is rejected. Do not downgrade servers while upgraded clients are active.
+Rebuild native SDK consumers with the matching headers and libraries because
+the replica structure and locator interfaces changed. Internal server eviction
+and TTL cleanup are unchanged; this protocol guards reader-driven cleanup, not
+every storage/locator lifecycle race.
+
 ## Version source
 
 Build automation derives the version from the nearest reachable Git tag:
