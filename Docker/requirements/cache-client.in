@@ -1,7 +1,10 @@
+async-timeout
 azure-identity
 azure-storage-blob
 blobfile
 boostedblob
+exceptiongroup
 mpi4py
-pyjwt[crypto]==2.15.0
+pyjwt[crypto]==2.15.1
 pytest
+tomli

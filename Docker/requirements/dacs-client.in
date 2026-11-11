@@ -3,7 +3,7 @@ azure-storage-blob
 blobfile
 boostedblob
 packaging
-pyjwt[crypto]==2.15.0
+pyjwt[crypto]==2.15.1
 pytest
 setuptools
 wheel
