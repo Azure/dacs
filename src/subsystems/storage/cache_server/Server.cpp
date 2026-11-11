@@ -340,8 +340,10 @@ void SnapshotBackgroundThread(std::shared_ptr<snapshot::Snapshot> startingSnapho
 
         std::shared_ptr<snapshot::Snapshot> snapshot = CacheManager::GetInstance().TakeSnapshot();
         STORAGE_ASSERT(snapshot != nullptr, "Failed to take snapshot");
+        const size_t nLocatorEntries = kvclient::AddLocatorEntriesToSnapshot(*snapshot);
 
-        LOG_INFO("Saving periodic snapshot with version: {}", snapshot->version());
+        LOG_INFO("Saving periodic snapshot with version: {} and {} locator entries",
+                 snapshot->version(), nLocatorEntries);
         SnapshotManager::GetInstance().SaveSnapshot(*snapshot);
     }
 }
@@ -480,35 +482,48 @@ int main(int argc, char *argv[])
             LOG_INFO("Loaded snapshot with version: {}", snapshot->version());
             CacheManager::GetInstance().InitializeFromSnapshot(*snapshot);
 
-            uint32_t nKVEntries = 0;
             const uint64_t nNowMs = static_cast<uint64_t>(
                 std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::system_clock::now().time_since_epoch()).count());
-            for (const auto& bucket : snapshot->buckets())
+            if (snapshot->locatorentries_size() > 0)
             {
-                for (const auto& entry : bucket.entries())
-                {
-                    if (entry.metadata().find("tachyonkv") == entry.metadata().end())
-                    {
-                        continue;
-                    }
-
-                    const uint64_t nExpiresAtMs = static_cast<uint64_t>(entry.expirytimestamp()) * 1000;
-                    if (nExpiresAtMs <= nNowMs)
-                    {
-                        continue;
-                    }
-
-                    const ContentReplica replica(
-                        nLocatorNodeId,
-                        nExpiresAtMs,
-                        nNowMs,
-                        entry.filesize());
-                    kvclient::GetServerLocatorCache().Register(entry.filename(), replica);
-                    ++nKVEntries;
-                }
+                // The snapshot carries this server's locator index with each entry's parent and
+                // root, so chain lookups work again, including for blocks stored on other servers.
+                const size_t nRestored = kvclient::RestoreLocatorEntriesFromSnapshot(*snapshot, nNowMs);
+                LOG_INFO("Restored {} of {} locator entries from snapshot",
+                         nRestored, snapshot->locatorentries_size());
             }
-            LOG_INFO("Re-registered {} KV entries in locator cache from snapshot", nKVEntries);
+            else
+            {
+                // A snapshot without locator entries (from an earlier version, or taken while
+                // the locator was empty): rebuild per-key entries from the local KV files.
+                uint32_t nKVEntries = 0;
+                for (const auto& bucket : snapshot->buckets())
+                {
+                    for (const auto& entry : bucket.entries())
+                    {
+                        if (entry.metadata().find("tachyonkv") == entry.metadata().end())
+                        {
+                            continue;
+                        }
+
+                        const uint64_t nExpiresAtMs = static_cast<uint64_t>(entry.expirytimestamp()) * 1000;
+                        if (nExpiresAtMs <= nNowMs)
+                        {
+                            continue;
+                        }
+
+                        const ContentReplica replica(
+                            nLocatorNodeId,
+                            nExpiresAtMs,
+                            nNowMs,
+                            entry.filesize());
+                        kvclient::GetServerLocatorCache().Register(entry.filename(), replica);
+                        ++nKVEntries;
+                    }
+                }
+                LOG_INFO("Re-registered {} KV entries in locator cache from snapshot", nKVEntries);
+            }
 
             if (SnapshotManager::GetInstance().WaitForSnapshotConsistencyScan())
             {

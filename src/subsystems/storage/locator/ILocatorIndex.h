@@ -19,6 +19,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -83,6 +84,10 @@ class ILocatorIndex
     virtual PrefixLookupResult PrefixLookup(const std::string& strBaseParentKey,
                                             std::span<const std::string> vStorageKeys,
                                             uint64_t nNowMs) const = 0;
+
+    // Call fn for every entry, one bucket at a time under that bucket's lock. The order is
+    // unspecified, and fn must not call back into the index.
+    virtual void ForEachEntry(const std::function<void(const LocatorEntry&)>& fn) const = 0;
 
     // Counts.
     virtual size_t GetEntryCount() const = 0;

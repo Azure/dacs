@@ -434,6 +434,18 @@ PrefixLookupResult FlatRadixIndex::PrefixLookup(const std::string& strBaseParent
 }
 
 //---------------------------------------------------------------------------------------------------------------------
+void FlatRadixIndex::ForEachEntry(const std::function<void(const LocatorEntry&)>& fn) const
+{
+    for (uint32_t i = 0; i < NUM_LOCATOR_BUCKETS; ++i)
+    {
+        std::lock_guard<std::mutex> lock(m_vMutexes[i]);
+        for (const auto& item : m_vEntries[i])
+        {
+            fn(item.second);
+        }
+    }
+}
+//---------------------------------------------------------------------------------------------------------------------
 size_t FlatRadixIndex::GetEntryCount() const
 {
     size_t nCount = 0;
