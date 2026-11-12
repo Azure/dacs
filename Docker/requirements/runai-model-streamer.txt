@@ -683,13 +683,13 @@ requests==2.34.2 \
     # via
     #   azure-core
     #   msal
-runai-model-streamer==0.17.0 \
-    --hash=sha256:d7189e8f6963adc39d38eb7423ac79542e69d1a2eac5e76a473c60ae942b8760 \
-    --hash=sha256:e722bb0338ed9b047c140745d3f5431af01fd2d5d6d809be01423bc6c62d7eb2
+runai-model-streamer==0.17.1 \
+    --hash=sha256:2dd7b4dd5bc6b0c0dd2cfc875a32af40a5dd408db8026374e93ca34f8039321f \
+    --hash=sha256:3ffc2fb0edc4738e9bddf8c8606e70aa8bc28b3d1b8f2caf57f494c676735a63
     # via -r runai-model-streamer.in
-runai-model-streamer-azure==0.17.0 \
-    --hash=sha256:19d89d841001ec93c17855bc57e80c77ddaad02d2a815782352947fa9988257f \
-    --hash=sha256:a258d8c02391e60e9ad9cec3a24ad655dee769cd82b60e912fa866f198f4ea3e
+runai-model-streamer-azure==0.17.1 \
+    --hash=sha256:1a6a530c621aba4c967cc811b6a8d6a99b2f738e3b015d7a0e23ca0dcb850188 \
+    --hash=sha256:f436a7ab08efdf5f0127edc14b0abb4f2934ba810181cae770dbcdd5270c734f
     # via -r runai-model-streamer.in
 sympy==1.14.0 \
     --hash=sha256:d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517 \
