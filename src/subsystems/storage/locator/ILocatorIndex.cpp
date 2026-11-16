@@ -5,7 +5,6 @@
 
 #include <atomic>
 #include <random>
-#include <stdexcept>
 
 namespace kvclient
 {
@@ -18,13 +17,17 @@ uint64_t ILocatorIndex::NewRegistrationGeneration()
         std::random_device random;
         return std::uniform_int_distribution<uint64_t>(0, UINT64_MAX - 1)(random);
     }()};
-    uint64_t previous = sequence.load(std::memory_order_relaxed);
+    return NewRegistrationGeneration(sequence);
+}
+
+uint64_t ILocatorIndex::NewRegistrationGeneration(std::atomic<uint64_t>& sequence)
+{
+    uint64_t generation;
     do
     {
-        if (previous == UINT64_MAX)
-            throw std::overflow_error("Locator registration generation exhausted");
-    } while (!sequence.compare_exchange_weak(previous, previous + 1, std::memory_order_relaxed));
-    return previous + 1;
+        generation = sequence.fetch_add(1, std::memory_order_relaxed) + 1;
+    } while (generation == 0);
+    return generation;
 }
 
 } // namespace kvclient

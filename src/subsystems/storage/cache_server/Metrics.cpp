@@ -143,6 +143,16 @@ void Metrics::Init()
             .Help("Locator cache registrations.")
             .Register(*MetricsStore::s_instance.m_spRegistry)
             .Add({{"instance", MetricsStore::s_instance.m_serverHostName}});
+    MetricsStore::s_instance.m_pLocatorUnregisterMissingGeneration = &prometheus::BuildCounter()
+            .Name("tachyonkv_locator_unregister_rejections_total")
+            .Help("Conditional locator removals rejected without mutation.")
+            .Register(*MetricsStore::s_instance.m_spRegistry)
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}, {"reason", "missing_generation"}});
+    MetricsStore::s_instance.m_pLocatorUnregisterNotFound = &prometheus::BuildCounter()
+            .Name("tachyonkv_locator_unregister_rejections_total")
+            .Help("Conditional locator removals rejected without mutation.")
+            .Register(*MetricsStore::s_instance.m_spRegistry)
+            .Add({{"instance", MetricsStore::s_instance.m_serverHostName}, {"reason", "not_found"}});
     MetricsStore::s_instance.m_pTTLExtensions = &prometheus::BuildCounter()
             .Name("tachyonkv_ttl_extensions_total")
             .Help("TTL refresh operations.")
@@ -300,6 +310,18 @@ void Metrics::IncrementLocatorRegistrations()
         return;
     }
     MetricsStore::s_instance.m_pLocatorRegistrations->Increment();
+}
+//---------------------------------------------------------------------------------------------------------------------
+void Metrics::IncrementLocatorUnregisterMissingGeneration()
+{
+    if (auto* counter = MetricsStore::s_instance.m_pLocatorUnregisterMissingGeneration)
+        counter->Increment();
+}
+//---------------------------------------------------------------------------------------------------------------------
+void Metrics::IncrementLocatorUnregisterNotFound()
+{
+    if (auto* counter = MetricsStore::s_instance.m_pLocatorUnregisterNotFound)
+        counter->Increment();
 }
 //---------------------------------------------------------------------------------------------------------------------
 void Metrics::IncrementTTLExtensions()

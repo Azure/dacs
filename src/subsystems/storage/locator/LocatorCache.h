@@ -72,7 +72,7 @@ class LocatorCache
 
     // Unregister a specific replica (e.g., on eviction)
     bool Unregister(const std::string& strKey, uint32_t nNodeId,
-                    uint64_t nExpectedGeneration = 0);
+                    uint64_t nExpectedGeneration);
 
     // Walk a block chain in order, returning the longest matching prefix. nNowMs (epoch ms)
     // determines replica liveness; blocks with no live replica truncate the prefix.

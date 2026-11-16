@@ -45,6 +45,8 @@ class Metrics {
         // TachyonKV locator cache metrics
         static void IncrementLocatorLookups(bool bHit);
         static void IncrementLocatorRegistrations();
+        static void IncrementLocatorUnregisterMissingGeneration();
+        static void IncrementLocatorUnregisterNotFound();
         static void IncrementTTLExtensions();
         static void SetLocatorEntryCount(std::size_t nCount);
         static void SetLocatorReplicaCount(std::size_t nCount);

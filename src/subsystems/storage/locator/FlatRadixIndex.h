@@ -53,7 +53,7 @@ class FlatRadixIndex final : public ILocatorIndex
     std::optional<LocatorEntry> Lookup(const std::string& strKey) const override;
     bool Refresh(const std::string& strKey, uint32_t nNodeId, uint64_t nNewExpiresAt) override;
     bool Unregister(const std::string& strKey, uint32_t nNodeId,
-                    uint64_t nExpectedGeneration = 0) override;
+                    uint64_t nExpectedGeneration) override;
     size_t PurgeExpired() override;
     PrefixLookupResult PrefixLookup(const std::string& strBaseParentKey,
                                     std::span<const std::string> vStorageKeys,

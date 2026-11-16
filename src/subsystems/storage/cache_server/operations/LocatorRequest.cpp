@@ -54,7 +54,7 @@ bool HandleLocatorRegister(IConnection& clientConnection, const LocatorRegisterR
     Metrics::SetLocatorReplicaCount(GetServerLocatorCache().GetReplicaCount());
 
     response.set_registrationgeneration(generation);
-    response.set_result(generation == 0 ? LocatorRegisterResponse::INTERNAL_ERROR
+    response.set_result(generation == 0 ? LocatorRegisterResponse::CONFLICT
                                        : LocatorRegisterResponse::SUCCESS);
     return SendMessageToRemoteFinal(clientConnection, response, requestId);
 }
@@ -123,11 +123,13 @@ bool HandleLocatorUnregister(IConnection& clientConnection, const LocatorUnregis
     LocatorUnregisterResponse response;
     response.set_requestid(requestId);
 
-    LOG_DEBUG_REQID_STR("LocatorUnregister key={} node={}", requestId, request.key(), request.nodeid());
+    LOG_DEBUG_REQID_STR("LocatorUnregister key={} node={} expected_generation={}",
+                       requestId, request.key(), request.nodeid(), request.expectedregistrationgeneration());
 
     if (request.expectedregistrationgeneration() == 0)
     {
-        response.set_result(LocatorUnregisterResponse::INTERNAL_ERROR);
+        Metrics::IncrementLocatorUnregisterMissingGeneration();
+        response.set_result(LocatorUnregisterResponse::INVALID_ARGUMENT);
         return SendMessageToRemoteFinal(clientConnection, response, requestId);
     }
 
@@ -137,6 +139,11 @@ bool HandleLocatorUnregister(IConnection& clientConnection, const LocatorUnregis
     {
         Metrics::SetLocatorEntryCount(GetServerLocatorCache().GetEntryCount());
         Metrics::SetLocatorReplicaCount(GetServerLocatorCache().GetReplicaCount());
+    }
+    else
+    {
+        // NOT_FOUND covers both an absent replica and a superseded generation.
+        Metrics::IncrementLocatorUnregisterNotFound();
     }
 
     response.set_result(bUnregistered
@@ -211,6 +218,7 @@ bool HandleLocatorRegisterChain(IConnection& clientConnection,
 
     LOG_DEBUG_REQID_STR("LocatorRegisterChain entries_size={}", requestId, request.entries_size());
 
+    response.set_result(LocatorRegisterChainResponse::SUCCESS);
     // Register every block of the chain, recording each block's place in the prefix tree.
     for (const auto& entry : request.entries())
     {
@@ -221,8 +229,8 @@ bool HandleLocatorRegisterChain(IConnection& clientConnection,
         if (generation == 0)
         {
             response.clear_registrationgenerations();
-            response.set_result(LocatorRegisterChainResponse::INTERNAL_ERROR);
-            return SendMessageToRemoteFinal(clientConnection, response, requestId);
+            response.set_result(LocatorRegisterChainResponse::CONFLICT);
+            break;
         }
         response.add_registrationgenerations(generation);
         Metrics::IncrementLocatorRegistrations();
@@ -230,6 +238,5 @@ bool HandleLocatorRegisterChain(IConnection& clientConnection,
     Metrics::SetLocatorEntryCount(GetServerLocatorCache().GetEntryCount());
     Metrics::SetLocatorReplicaCount(GetServerLocatorCache().GetReplicaCount());
 
-    response.set_result(LocatorRegisterChainResponse::SUCCESS);
     return SendMessageToRemoteFinal(clientConnection, response, requestId);
 }

@@ -17,6 +17,7 @@
 //---------------------------------------------------------------------------------------------------------------------
 #include "LocatorEntry.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -61,7 +62,7 @@ class ILocatorIndex
 
     // Register a content replica for a key, recording its place in the prefix tree.
     // Parent/root are storage_keys ("" when the block is a root with no parent).
-    // Returns the assigned generation, or zero if the registration was rejected.
+    // Returns the assigned generation, or zero for a conflicting parent/root.
     virtual uint64_t Register(const std::string& strKey, const std::string& strParentKey,
                               const std::string& strRootKey, const ContentReplica& replica) = 0;
 
@@ -72,10 +73,10 @@ class ILocatorIndex
     virtual bool Refresh(const std::string& strKey, uint32_t nNodeId, uint64_t nNewExpiresAt) = 0;
 
     // Unregister a specific replica (e.g., on eviction).
-    // Zero retains the internal eviction path's unconditional behavior.
+    // Explicit zero retains the internal eviction path's unconditional behavior.
     // RPC callers must supply the observed generation; comparison/removal share the index lock.
     virtual bool Unregister(const std::string& strKey, uint32_t nNodeId,
-                            uint64_t nExpectedGeneration = 0) = 0;
+                            uint64_t nExpectedGeneration) = 0;
 
     // Remove all expired replicas across all entries. Returns total replicas removed.
     virtual size_t PurgeExpired() = 0;
@@ -99,6 +100,7 @@ class ILocatorIndex
 
   protected:
     static uint64_t NewRegistrationGeneration();
+    static uint64_t NewRegistrationGeneration(std::atomic<uint64_t>& sequence);
 };
 
 } // namespace kvclient
