@@ -17,9 +17,9 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   labels:
-    {{- include "chart.labels" . | nindent 4 }}
+    {{- include "dacs.labels" . | nindent 4 }}
     control-plane: controller-manager
-  name: {{ include "chart.fullname" . }}-manager-metrics-monitor
+  name: {{ include "dacs.fullname" . }}-manager-metrics-monitor
   namespace: {{ .Release.Namespace }}
 spec:
   endpoints:
@@ -29,7 +29,7 @@ spec:
       bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
       tlsConfig:
         {{- if .Values.certManager.enable }}
-        serverName: {{ include "chart.fullname" . }}-manager-metrics-service.{{ .Release.Namespace }}.svc
+        serverName: {{ include "dacs.fullname" . }}-manager-metrics-service.{{ .Release.Namespace }}.svc
         # Apply secure TLS configuration with cert-manager
         insecureSkipVerify: false
         ca:

@@ -17,13 +17,13 @@ kind: ClusterRoleBinding
 metadata:
     labels:
         app.kubernetes.io/managed-by: {{ .Release.Service }}
-        app.kubernetes.io/name: {{ include "chart.name" . }}
-    name: {{ include "chart.fullname" . }}-scheduler-rolebinding
+        app.kubernetes.io/name: {{ include "dacs.name" . }}
+    name: {{ include "dacs.fullname" . }}-scheduler-rolebinding
 roleRef:
     apiGroup: rbac.authorization.k8s.io
     kind: ClusterRole
     name: system:kube-scheduler
 subjects:
     - kind: ServiceAccount
-      name: {{ include "chart.serviceAccountName" . }}
+      name: {{ include "dacs.serviceAccountName" . }}
       namespace: {{ .Release.Namespace }}

@@ -18,9 +18,9 @@ kind: Service
 metadata:
     labels:
         app.kubernetes.io/managed-by: {{ .Release.Service }}
-        app.kubernetes.io/name: {{ include "chart.name" . }}
+        app.kubernetes.io/name: {{ include "dacs.name" . }}
         control-plane: controller-manager
-    name: {{ include "chart.fullname" . }}-manager-metrics-service
+    name: {{ include "dacs.fullname" . }}-manager-metrics-service
     namespace: {{ .Release.Namespace }}
 spec:
     ports:
@@ -29,6 +29,6 @@ spec:
           protocol: TCP
           targetPort: {{ .Values.metrics.port }}
     selector:
-        app.kubernetes.io/name: {{ include "chart.name" . }}
+        app.kubernetes.io/name: {{ include "dacs.name" . }}
         control-plane: controller-manager
 {{- end }}

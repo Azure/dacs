@@ -18,15 +18,15 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
   labels:
-    {{- include "chart.labels" . | nindent 4 }}
+    {{- include "dacs.labels" . | nindent 4 }}
     app.kubernetes.io/component: webhook
-  name: {{ include "chart.fullname" . }}-mutating-webhook-configuration
+  name: {{ include "dacs.fullname" . }}-mutating-webhook-configuration
 webhooks:
   - admissionReviewVersions:
       - v1
     clientConfig:
       service:
-        name: {{ include "chart.fullname" . }}-webhook-service
+        name: {{ include "dacs.fullname" . }}-webhook-service
         namespace: {{ .Release.Namespace }}
         path: /mutate-storage-azure-com-v1-cache
     failurePolicy: {{ .Values.webhook.failurePolicy | default "Fail" }}
@@ -47,15 +47,15 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
   labels:
-    {{- include "chart.labels" . | nindent 4 }}
+    {{- include "dacs.labels" . | nindent 4 }}
     app.kubernetes.io/component: webhook
-  name: {{ include "chart.fullname" . }}-validating-webhook-configuration
+  name: {{ include "dacs.fullname" . }}-validating-webhook-configuration
 webhooks:
   - admissionReviewVersions:
       - v1
     clientConfig:
       service:
-        name: {{ include "chart.fullname" . }}-webhook-service
+        name: {{ include "dacs.fullname" . }}-webhook-service
         namespace: {{ .Release.Namespace }}
         path: /validate-storage-azure-com-v1-cache
     failurePolicy: {{ .Values.webhook.failurePolicy | default "Fail" }}

@@ -50,6 +50,15 @@ performance tests.
 
 ## Configuration
 
+### Embedding in a parent chart
+
+The controller chart uses `dacs.*` named templates so its helpers do not collide
+with sibling charts that use generic names such as `chart.labels`. The bundled
+prerequisite chart uses `dacs-prereq.*`. These helper names work for both
+standalone releases and subcharts; renaming helpers does not change resource
+names, selectors, or values. Charts that call DACS helpers directly must use
+the `dacs.*` names.
+
 ### Optional NVMe Prerequisites
 
 Set `cacheServerPrereq.enabled=true` to include NVMe setup in this release.
@@ -366,6 +375,17 @@ helm get manifest dacs -n cache-server | grep CustomResourceDefinition
 ## Development
 
 ### Testing
+
+Run the offline chart rendering tests from the repository root:
+
+```bash
+helm dependency build ./helm/cache-server
+go test -tags=charttests ./src/subsystems/cache-controller/charts -count=1
+```
+
+The helper-isolation regression compares standalone and umbrella renders with
+conflicting sibling helpers in both chart-name orders, with prerequisites
+enabled and disabled. No Kubernetes cluster is required.
 
 With the controller installed, validate both example manifests against the
 cluster without creating resources:

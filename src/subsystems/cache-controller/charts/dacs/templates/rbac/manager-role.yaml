@@ -15,7 +15,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-    name: {{ include "chart.fullname" . }}-manager-role
+    name: {{ include "dacs.fullname" . }}-manager-role
 rules:
     - apiGroups:
         - ""
