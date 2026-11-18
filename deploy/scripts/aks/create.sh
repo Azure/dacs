@@ -198,10 +198,34 @@ else
 fi
 
 # Get AKS cluster credentials
+CLUSTER_CONTEXT="$RESOURCE_PREFIX-cluster"
 az aks get-credentials \
     --resource-group "$AKS_RESOURCE_GROUP" \
-    --name "$RESOURCE_PREFIX-cluster" \
+    --name "$CLUSTER_CONTEXT" \
+    --context "$CLUSTER_CONTEXT" \
     --overwrite-existing
+
+if [[ "$(jq -r '.aadProfile.managed' <<< "$CLUSTER")" == true ]]; then
+    if ! command -v kubelogin > /dev/null; then
+        echo "Install kubelogin and rerun provisioning to configure Entra authentication." >&2
+        exit 1
+    fi
+    kubelogin convert-kubeconfig --context "$CLUSTER_CONTEXT" --login azurecli
+fi
+
+if jq -e '.disableLocalAccounts == true and .aadProfile.enableAzureRbac == true' <<< "$CLUSTER" > /dev/null; then
+    echo "Waiting for Azure RBAC cluster-admin access..."
+    for ((attempt = 1; attempt <= 30; attempt++)); do
+        if kubectl --context "$CLUSTER_CONTEXT" --request-timeout=5s auth can-i '*' '*' --all-namespaces > /dev/null; then
+            break
+        fi
+        if ((attempt == 30)); then
+            echo "Timed out waiting for Kubernetes cluster-admin access on $CLUSTER_CONTEXT." >&2
+            exit 1
+        fi
+        sleep 10
+    done
+fi
 
 # Apply custom Prometheus scrape settings if monitoring is enabled
 if [[ "$AKS_RESOURCE_GROUP" != dacs-integration ]] && jq -e '.parameters.azureMonitorWorkspaceId.value // empty' "$PARAM_FILE" > /dev/null 2>&1; then

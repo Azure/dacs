@@ -26,7 +26,6 @@ Environment variables:
 
 import glob
 import os
-import subprocess
 import sys
 
 import blobfile
@@ -62,16 +61,6 @@ def main():
             return
     except Exception as e:
         print(f"No existing data found ({e}), will download from HF", flush=True)
-
-    # Install huggingface_hub if not present
-    try:
-        import huggingface_hub
-    except ImportError:
-        print("Installing huggingface_hub...", flush=True)
-        subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "--quiet", "huggingface_hub"]
-        )
-        import huggingface_hub
 
     from huggingface_hub import snapshot_download
 

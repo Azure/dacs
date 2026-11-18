@@ -1,4 +1,0 @@
-pyjwt[crypto]==2.15.1
-runai-model-streamer==0.17.0
-runai-model-streamer-azure==0.17.0
-torch==2.15.0

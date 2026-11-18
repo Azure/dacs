@@ -139,6 +139,11 @@ resource aks 'Microsoft.ContainerService/managedClusters@2026-08-01' = {
   properties: union({
     nodeResourceGroup: '${resourcePrefix}-node-rg'
     dnsPrefix: '${resourcePrefix}-dns'
+    aadProfile: {
+      managed: true
+      enableAzureRBAC: true
+    }
+    disableLocalAccounts: true
     // Enable OIDC issuer for workload identity
     oidcIssuerProfile: {
       enabled: true
@@ -230,6 +235,16 @@ module prometheus './monitoring.bicep' = if (enablePrometheus) {
     clusterName: aks.name
     azureMonitorWorkspaceId: azureMonitorWorkspaceId
     azureMonitorWorkspaceLocation: azureMonitorWorkspaceLocation
+  }
+}
+
+var aksRbacClusterAdminRoleDefinitionId = 'b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b' // Azure Kubernetes Service RBAC Cluster Admin
+resource deployerClusterAdminRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(aks.id, deployer().objectId, aksRbacClusterAdminRoleDefinitionId)
+  scope: aks
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', aksRbacClusterAdminRoleDefinitionId)
+    principalId: deployer().objectId
   }
 }
 
