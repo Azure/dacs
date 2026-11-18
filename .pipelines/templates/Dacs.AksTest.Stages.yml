@@ -158,6 +158,10 @@ stages:
               make kubectl
               echo "##vso[task.prependpath]$(Build.SourcesDirectory)/.local/bin"
             displayName: Install kubectl
+          - task: KubeloginInstaller@0
+            displayName: Install kubelogin
+            inputs:
+              kubeloginVersion: '0.2.22'
           - task: HelmInstaller@1
             displayName: Install Helm v3
             inputs:

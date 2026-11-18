@@ -173,12 +173,6 @@ func (r *ModelLoadingRunner) buildJob(ctx context.Context, jobName string) (*bat
 	// The interceptor library initializes on first use, so the config must be complete
 	// before any intercepted filesystem call.
 	preCommand := ""
-	if r.Method == RunAIStreamer {
-		// Install the image's pinned RunAI dependencies only for this method.
-		preCommand = `python3 -m pip install --no-cache-dir --require-hashes \
-    -r /app/runai-model-streamer-requirements.txt
-`
-	}
 	if r.Method == Interceptor {
 		// Build optional cache config lines for the interceptor config file.
 		// The interceptor uses cacheEnable + cacheServerDiscoveryEnabled/Endpoint

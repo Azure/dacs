@@ -4,7 +4,11 @@ azure-storage-blob
 blobfile
 boostedblob
 exceptiongroup
+huggingface-hub==0.36.2
 mpi4py
 pyjwt[crypto]==2.15.1
 pytest
+runai-model-streamer==0.17.0
+runai-model-streamer-azure==0.17.0
 tomli
+torch==2.14.1+cpu

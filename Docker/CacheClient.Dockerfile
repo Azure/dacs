@@ -42,6 +42,7 @@ RUN if [ -n "${UBUNTU_ARCHIVE_MIRROR}" ]; then \
     apt-get upgrade -yq && \
     apt-get install -yq \
     python3 \
+    python3-cairo \
     python3-pip \
     libjsoncpp-dev \
     libcurl4-openssl-dev \
@@ -77,13 +78,14 @@ RUN if [ -n "${UBUNTU_ARCHIVE_MIRROR}" ]; then \
     rm -f /etc/ssh/ssh_host_*
 
 COPY requirements/cache-client.txt /tmp/cache-client-requirements.txt
-COPY requirements/runai-model-streamer.txt /app/runai-model-streamer-requirements.txt
 RUN --mount=type=secret,id=pip_index_url,required=false \
     if [ -f /run/secrets/pip_index_url ]; then \
         export PIP_INDEX_URL="$(cat /run/secrets/pip_index_url)"; \
     fi && \
     python3 -m pip install --no-cache-dir --require-hashes \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
         -r /tmp/cache-client-requirements.txt && \
+    python3 -m pip check && \
     rm /tmp/cache-client-requirements.txt
 
 RUN curl --fail --silent --show-error --location \

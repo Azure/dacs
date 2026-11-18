@@ -24,13 +24,12 @@ readonly PYTHON_VERSION=3.10
 readonly PYPI_INDEX_URL=https://pypi.org/simple
 readonly PYPI_UPLOAD_DELAY=P7D
 readonly PYTORCH_CPU_INDEX_URL=https://download.pytorch.org/whl/cpu
-readonly RUNAI_REQUIREMENTS="Docker/requirements/runai-model-streamer.in"
+readonly CACHE_CLIENT_REQUIREMENTS="Docker/requirements/cache-client.in"
 readonly REQUIREMENT_INPUTS=(
     ".github/workflows/linter-requirements.in"
     ".pipelines/requirements/compile.in"
-    "Docker/requirements/cache-client.in"
+    "$CACHE_CLIENT_REQUIREMENTS"
     "Docker/requirements/dacs-client.in"
-    "$RUNAI_REQUIREMENTS"
     "src/images/native-build/requirements.in"
     ".pipelines/requirements/python-build.in"
     "src/subsystems/storage/dacs_client/requirements-test.in"
@@ -67,15 +66,8 @@ cd "$REPOSITORY_ROOT"
 for input in "${REQUIREMENT_INPUTS[@]}"; do
     output="${input%.in}.txt"
     index_args=(--no-emit-index-url)
-    upload_args=(--uploaded-prior-to "$PYPI_UPLOAD_DELAY")
-    if [[ "$input" == "$RUNAI_REQUIREMENTS" ]]; then
-        index_args=(
-            --emit-index-url
-            --extra-index-url "$PYTORCH_CPU_INDEX_URL"
-        )
-        # The PyTorch index does not publish the upload-time metadata required
-        # by pip's uploaded-prior-to filter.
-        upload_args=()
+    if [[ "$input" == "$CACHE_CLIENT_REQUIREMENTS" ]]; then
+        index_args+=(--extra-index-url "$PYTORCH_CPU_INDEX_URL")
     fi
 
     echo "Compiling $input"
@@ -89,7 +81,7 @@ for input in "${REQUIREMENT_INPUTS[@]}"; do
         --no-strip-extras \
         --quiet \
         --output-file "$output" \
-        "${upload_args[@]}" \
+        --uploaded-prior-to "$PYPI_UPLOAD_DELAY" \
         "${index_args[@]}" \
         "$input"
 done

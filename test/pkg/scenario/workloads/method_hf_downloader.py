@@ -14,14 +14,7 @@
 
 """Hugging Face downloader access method — reads shards directly from HF Hub."""
 
-import subprocess, sys
-
-try:
-    from huggingface_hub import HfApi, hf_hub_download
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "huggingface_hub"],
-                          stdout=sys.stderr, stderr=sys.stderr)
-    from huggingface_hub import HfApi, hf_hub_download
+from huggingface_hub import HfApi, hf_hub_download
 
 
 def discover_shards(config):
