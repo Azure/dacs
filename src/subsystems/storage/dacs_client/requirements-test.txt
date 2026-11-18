@@ -634,9 +634,9 @@ pytest==9.2.0 \
     #   -r requirements-test.in
     #   pytest-asyncio
     #   pytest-timeout
-pytest-asyncio==1.4.1 \
-    --hash=sha256:507afa78ec77c6661164ef1a2368bc7820383fd1a14b2a7f813de8b5a92949cc \
-    --hash=sha256:e8266eb094e5ee9ffdb2068c9836f33e209ea77a970eb846933d416b5602669b
+pytest-asyncio==1.4.1.post1 \
+    --hash=sha256:0755e488cc0a2b9bd2eab7292cc6390d4cbb8390f1020745647bae5a708e0165 \
+    --hash=sha256:f582d9ea4a1c082195abe8bd29a1fe106aeb1cd435e3dad2d3bc2749935c36a2
     # via -r requirements-test.in
 pytest-timeout==2.4.0 \
     --hash=sha256:7e68e90b01f9eff71332b25001f85c75495fc4e3a836701876183c4bcfd0540a \
@@ -738,7 +738,7 @@ wheel==0.48.0 \
     # via -r requirements-test.in
 
 # The following packages are considered to be unsafe in a requirements file:
-pip==26.2.2 \
-    --hash=sha256:3a8e5c800492787f33a4114ef54444546c340df428974ebba17e0fd47e11af2f \
-    --hash=sha256:fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70
+pip==26.3 \
+    --hash=sha256:6c36ae7da8695be67e3cd9f7d87919667ced53f57ce2ede75d89b5912ed2bc4c \
+    --hash=sha256:f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13
     # via -r requirements-test.in
