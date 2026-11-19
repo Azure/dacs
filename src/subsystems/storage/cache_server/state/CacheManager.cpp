@@ -1122,7 +1122,7 @@ void CacheManager::EvictByAccessTime(time_t nEvictionLastAccessTime)
         uint32_t nLocalNodeId = kvclient::GetServerLocatorCache().GetNodeId();
         for (const auto& key : vecKVKeysToUnregister)
         {
-            kvclient::GetServerLocatorCache().Unregister(key, nLocalNodeId);
+            kvclient::GetServerLocatorCache().Unregister(key, nLocalNodeId, /*nExpectedGeneration=*/0);
         }
         LOG_INFO("Unregistered {} KV entries from locator cache after eviction",
                  vecKVKeysToUnregister.size());

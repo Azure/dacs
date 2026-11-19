@@ -7,6 +7,47 @@ is `v0.1.0`.
 Major version zero indicates initial development. Public APIs, configuration,
 and behavior may change between minor releases until DACS reaches `v1.0.0`.
 
+## Locator registration-generation compatibility
+
+Locator registration and lookup responses now carry a nonzero 64-bit registration
+generation, encoded as protobuf `fixed64`. `LocatorUnregisterRequest` requires
+the observed generation; the locator atomically removes only the matching cache replica. Missing or
+zero generations are rejected, and an absent or superseded registration returns
+`NOT_FOUND` without mutation. Generations change on registration and are preserved
+on TTL refresh. The process-wide counter starts randomly, wraps, and skips zero;
+an issued value repeats only after a full nonzero uint64 cycle within a process.
+Uniqueness across restarts is probabilistic. Compare only for equality, not order.
+Generations are neither timestamps nor authentication credentials.
+
+Upgrade every locator server before deploying generation-aware DACS-KV clients.
+Older servers ignore the new unregister field and cannot enforce the guard.
+Older clients can read and register against new servers, but cleanup without a
+generation is rejected. Do not downgrade servers while upgraded clients are active.
+Rebuild native SDK consumers with the matching headers and libraries because
+the replica structure and locator interfaces changed. Internal server eviction
+and TTL cleanup are unchanged; this protocol guards reader-driven cleanup, not
+every storage/locator lifecycle race.
+
+Radix registrations with a conflicting parent/root return `CONFLICT`
+instead of silently reporting success. Chain registration is not transactional:
+it stops at the first rejection, leaves earlier entries registered, and returns
+no generation list on failure. Counts still reflect the applied prefix.
+Clients must treat the chain write as failed and discard their cached chain
+locations, not assume the server rolled back earlier entries.
+
+Registration responses append `CONFLICT = 2`; unregister responses append
+`INVALID_ARGUMENT = 3` for a missing/zero expected generation. Existing enum
+numbers are unchanged. Valid but absent/superseded registrations still return
+`NOT_FOUND`; `INTERNAL_ERROR` remains distinct from these expected rejections.
+Older clients treat new registration error values as generic failures. Rebuilt
+clients can expose the conflict explicitly.
+
+`tachyonkv_locator_unregister_rejections_total` counts rejected cleanup with
+`reason=missing_generation` or `reason=not_found`. The latter includes both
+absent replicas and generation mismatches; it does not distinguish them.
+Debug request logs include the expected generation. Internal unconditional
+unregister callers must now pass zero explicitly; the API has no default.
+
 ## Version source
 
 Build automation derives the version from the nearest reachable Git tag:

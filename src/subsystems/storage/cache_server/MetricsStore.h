@@ -77,6 +77,8 @@ class MetricsStore
     prometheus::Counter* m_pLocatorLookupsHit = nullptr;
     prometheus::Counter* m_pLocatorLookupsMiss = nullptr;
     prometheus::Counter* m_pLocatorRegistrations = nullptr;
+    prometheus::Counter* m_pLocatorUnregisterMissingGeneration = nullptr;
+    prometheus::Counter* m_pLocatorUnregisterNotFound = nullptr;
     prometheus::Counter* m_pTTLExtensions = nullptr;
     prometheus::Gauge* m_pLocatorEntryCount = nullptr;
     prometheus::Gauge* m_pLocatorReplicaCount = nullptr;

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 add_library(DACSLocator STATIC
+    ILocatorIndex.cpp
     FlatMapIndex.cpp
     FlatRadixIndex.cpp
     LocatorCache.cpp

@@ -177,7 +177,7 @@ TEST(LocatorSnapshotTest, RestoreRelinksChildrenSoCascadeDeletionStillWorks)
     EXPECT_EQ(GetServerLocatorCache().PrefixLookup("", keys, nNowMs).matched_count, keys.size());
 
     // Removing the root's only replica removes the whole chain through the child links.
-    EXPECT_TRUE(GetServerLocatorCache().Unregister(keys[0], 0));
+    EXPECT_TRUE(GetServerLocatorCache().Unregister(keys[0], 0, /*nExpectedGeneration=*/0));
     EXPECT_EQ(GetServerLocatorCache().GetEntryCount(), 0u);
 }
 

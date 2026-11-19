@@ -28,11 +28,14 @@
 #include "IConnection.h"
 #include "Constants.h"
 #include "cache.pb.h"
+#include "MetricsStore.h"
 
 #include <chrono>
+#include <future>
 #include <memory>
 #include <string>
 #include <vector>
+#include <utility>
 //---------------------------------------------------------------------------------------------------------------------
 using namespace cache;
 
@@ -99,6 +102,21 @@ LocatorContentReplica MakeReplica(uint32_t nNodeId, uint64_t nContentSize)
 
 } // namespace
 
+class RegistrationGenerationPeer : public kvclient::ILocatorIndex
+{
+  public:
+    using ILocatorIndex::NewRegistrationGeneration;
+};
+
+TEST(RegistrationGenerationTest, WrapsWithoutThrowingOrReturningZero)
+{
+    std::atomic<uint64_t> sequence{UINT64_MAX - 2};
+    EXPECT_EQ(RegistrationGenerationPeer::NewRegistrationGeneration(sequence), UINT64_MAX - 1);
+    EXPECT_EQ(RegistrationGenerationPeer::NewRegistrationGeneration(sequence), UINT64_MAX);
+    EXPECT_EQ(RegistrationGenerationPeer::NewRegistrationGeneration(sequence), 1u);
+    EXPECT_EQ(RegistrationGenerationPeer::NewRegistrationGeneration(sequence), 2u);
+}
+
 //---------------------------------------------------------------------------------------------------------------------
 class LocatorRequestTest : public ::testing::Test
 {
@@ -131,6 +149,36 @@ class LocatorRequestTest : public ::testing::Test
         ContentReplica replica(nNodeId, nExpiresAt, nNowMs, nContentSize);
         kvclient::GetServerLocatorCache().Register(strKey, strParent, strRoot, replica);
     }
+};
+
+class LocatorRequestMetricsTest : public LocatorRequestTest
+{
+  protected:
+    void SetUp() override
+    {
+        LocatorRequestTest::SetUp();
+        auto& store = MetricsStore::s_instance;
+        m_oldMissing = std::exchange(store.m_pLocatorUnregisterMissingGeneration, &m_missing);
+        m_oldNotFound = std::exchange(store.m_pLocatorUnregisterNotFound, &m_notFound);
+        m_oldEntries = std::exchange(store.m_pLocatorEntryCount, &m_entries);
+        m_oldReplicas = std::exchange(store.m_pLocatorReplicaCount, &m_replicas);
+    }
+
+    void TearDown() override
+    {
+        auto& store = MetricsStore::s_instance;
+        store.m_pLocatorUnregisterMissingGeneration = m_oldMissing;
+        store.m_pLocatorUnregisterNotFound = m_oldNotFound;
+        store.m_pLocatorEntryCount = m_oldEntries;
+        store.m_pLocatorReplicaCount = m_oldReplicas;
+    }
+
+    prometheus::Counter m_missing, m_notFound;
+    prometheus::Gauge m_entries, m_replicas;
+    prometheus::Counter* m_oldMissing = nullptr;
+    prometheus::Counter* m_oldNotFound = nullptr;
+    prometheus::Gauge* m_oldEntries = nullptr;
+    prometheus::Gauge* m_oldReplicas = nullptr;
 };
 
 TEST_F(LocatorRequestTest, EveryHandlerEchoesTheRequestId)
@@ -202,6 +250,7 @@ TEST_F(LocatorRequestTest, EveryHandlerEchoesTheRequestId)
             unregister.set_requestid(id);
             unregister.set_key(lookupKey);
             unregister.set_nodeid(1);
+            unregister.set_expectedregistrationgeneration(registered.registrationgeneration());
             CapturingConnection unregisterConn;
             ASSERT_TRUE(HandleLocatorUnregister(unregisterConn, unregister));
             LocatorUnregisterResponse removed;
@@ -242,6 +291,17 @@ TEST_F(LocatorRequestTest, RegisterForwardsParentAndRoot)
     ASSERT_EQ(entry->m_vReplicas.size(), 1u);
     EXPECT_EQ(entry->m_vReplicas[0].m_nNodeId, 7u);
     EXPECT_EQ(entry->m_vReplicas[0].m_nContentSize, 1024u);
+    EXPECT_NE(response.registrationgeneration(), 0u);
+    EXPECT_EQ(entry->m_vReplicas[0].m_nRegistrationGeneration, response.registrationgeneration());
+
+    LocatorLookupRequest lookup;
+    lookup.set_key(strKey);
+    CapturingConnection lookupConn;
+    ASSERT_TRUE(HandleLocatorLookup(lookupConn, lookup));
+    LocatorLookupResponse found;
+    ASSERT_TRUE(lookupConn.DecodeResponse(found));
+    ASSERT_EQ(found.replicas_size(), 1);
+    EXPECT_EQ(found.replicas(0).registrationgeneration(), response.registrationgeneration());
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -347,6 +407,9 @@ TEST_F(LocatorRequestTest, RegisterChainThenPrefixLookupReturnsWholeChain)
 
     CapturingConnection registerConn;
     ASSERT_TRUE(HandleLocatorRegisterChain(registerConn, registerRequest));
+    LocatorRegisterChainResponse registered;
+    ASSERT_TRUE(registerConn.DecodeResponse(registered));
+    ASSERT_EQ(registered.registrationgenerations_size(), 3);
 
     LocatorPrefixLookupRequest lookupRequest;
     lookupRequest.set_requestid("req-prefix-full");
@@ -370,6 +433,206 @@ TEST_F(LocatorRequestTest, RegisterChainThenPrefixLookupReturnsWholeChain)
     EXPECT_EQ(response.matched(0).content_size(), 100u);
     EXPECT_EQ(response.matched(1).content_size(), 200u);
     EXPECT_EQ(response.matched(2).content_size(), 300u);
+    for (int i = 0; i < response.matched_size(); ++i)
+    {
+        EXPECT_NE(registered.registrationgenerations(i), 0u);
+        EXPECT_EQ(response.matched(i).node_replica().registrationgeneration(), registered.registrationgenerations(i));
+    }
+}
+
+TEST_F(LocatorRequestMetricsTest, ConditionalUnregisterPreservesNewRegistrationsAndOtherReplicas)
+{
+    for (bool radix : {false, true})
+    {
+        SCOPED_TRACE(radix);
+        if (radix)
+            UseRadixBackend();
+        else
+            LocatorRequestTest::SetUp();
+        const auto missingBefore = m_missing.Value();
+        const auto notFoundBefore = m_notFound.Value();
+        auto& locator = kvclient::GetServerLocatorCache();
+        LocatorRegisterRequest reg;
+        reg.set_key("root");
+        *reg.mutable_replica() = MakeReplica(1, 100);
+        const auto registerReplica = [&] {
+            CapturingConnection conn;
+            EXPECT_TRUE(HandleLocatorRegister(conn, reg));
+            LocatorRegisterResponse response;
+            EXPECT_TRUE(conn.DecodeResponse(response));
+            EXPECT_EQ(response.result(), LocatorRegisterResponse::SUCCESS);
+            return response.registrationgeneration();
+        };
+        const auto first = registerReplica();
+        reg.mutable_replica()->set_registrationgeneration(first); // Caller cannot retain an old identity.
+        const auto second = registerReplica();
+        ASSERT_NE(first, second);
+        RegisterBlock("child", "root", "root", 2, 200);
+
+        LocatorUnregisterRequest request;
+        request.set_key("root");
+        request.set_nodeid(1);
+        request.set_requestid("conditional-remove");
+        const auto remove = [&](uint64_t generation) {
+            request.set_expectedregistrationgeneration(generation);
+            CapturingConnection conn;
+            EXPECT_TRUE(HandleLocatorUnregister(conn, request));
+            LocatorUnregisterResponse response;
+            EXPECT_TRUE(conn.DecodeResponse(response));
+            EXPECT_EQ(response.requestid(), request.requestid());
+            return response.result();
+        };
+        EXPECT_EQ(remove(0), LocatorUnregisterResponse::INVALID_ARGUMENT);
+        EXPECT_EQ(remove(first), LocatorUnregisterResponse::NOT_FOUND);
+        EXPECT_EQ(m_missing.Value(), missingBefore + 1);
+        EXPECT_EQ(m_notFound.Value(), notFoundBefore + 1);
+        ASSERT_TRUE(locator.Lookup("root"));
+        EXPECT_TRUE(locator.Lookup("child")); // No cascade on a stale request.
+
+        const uint64_t now = EpochNowMs();
+        ASSERT_TRUE(locator.Refresh("root", 1, now + 120'000));
+        EXPECT_EQ(locator.Lookup("root")->m_vReplicas[0].m_nRegistrationGeneration, second);
+        locator.Register("root", ContentReplica(3, now + 60'000, now, 100));
+        locator.Register("root", ContentReplica::MakeBlobReplica(now + 60'000, now, 100));
+        EXPECT_EQ(remove(second), LocatorUnregisterResponse::SUCCESS);
+        EXPECT_EQ(remove(second), LocatorUnregisterResponse::NOT_FOUND); // Idempotent retry.
+        ASSERT_TRUE(locator.Lookup("root"));
+        EXPECT_EQ(locator.Lookup("root")->m_vReplicas.size(), 2u);
+        EXPECT_TRUE(locator.Lookup("child"));
+
+        // A matched last-replica removal still uses the existing index's deletion semantics.
+        const auto oldChild = locator.Lookup("child")->m_vReplicas.front().m_nRegistrationGeneration;
+        request.set_key("child");
+        request.set_nodeid(2);
+        EXPECT_EQ(remove(oldChild), LocatorUnregisterResponse::SUCCESS);
+        RegisterBlock("child", "root", "root", 2, 200);
+        EXPECT_EQ(remove(oldChild), LocatorUnregisterResponse::NOT_FOUND);
+        EXPECT_TRUE(locator.Lookup("child"));
+        EXPECT_EQ(m_notFound.Value(), notFoundBefore + 3);
+    }
+}
+
+TEST_F(LocatorRequestMetricsTest, RejectedChainKeepsAppliedPrefixAndUpdatesGauges)
+{
+    UseRadixBackend();
+    RegisterBlock("conflict", "", "", 1, 100);
+    LocatorRegisterChainRequest request;
+    request.set_requestid("partly-applied");
+    const std::vector<std::string> keys{"first", "conflict", "after"};
+    for (size_t i = 0; i < keys.size(); ++i)
+    {
+        auto* entry = request.add_entries();
+        entry->set_key(keys[i]);
+        if (i > 0)
+        {
+            entry->set_parenthash(keys[i - 1]);
+            entry->set_roothash(keys[0]);
+        }
+        *entry->mutable_replica() = MakeReplica(1, 100);
+    }
+    CapturingConnection conn;
+    ASSERT_TRUE(HandleLocatorRegisterChain(conn, request));
+    LocatorRegisterChainResponse response;
+    ASSERT_TRUE(conn.DecodeResponse(response));
+    EXPECT_EQ(response.result(), LocatorRegisterChainResponse::CONFLICT);
+    EXPECT_EQ(response.requestid(), request.requestid());
+    EXPECT_EQ(response.registrationgenerations_size(), 0);
+    auto& locator = kvclient::GetServerLocatorCache();
+    EXPECT_TRUE(locator.Lookup("first"));
+    EXPECT_FALSE(locator.Lookup("after"));
+    const auto conflict = locator.Lookup("conflict");
+    ASSERT_TRUE(conflict);
+    EXPECT_TRUE(conflict->m_strParentKey.empty());
+    EXPECT_TRUE(conflict->m_strRootKey.empty());
+    EXPECT_EQ(m_entries.Value(), 2);
+    EXPECT_EQ(m_replicas.Value(), 2);
+}
+
+TEST_F(LocatorRequestTest, ConflictingPerKeyRegistrationPreservesExistingEntry)
+{
+    UseRadixBackend();
+    RegisterBlock("key", "parent", "root", 1, 100);
+    auto& locator = kvclient::GetServerLocatorCache();
+    const auto original = locator.Lookup("key");
+    ASSERT_TRUE(original);
+    LocatorRegisterRequest request;
+    request.set_key("key");
+    request.set_requestid("conflicting-register");
+    request.set_parenthash("different-parent");
+    request.set_roothash("root");
+    *request.mutable_replica() = MakeReplica(2, 200);
+    CapturingConnection conn;
+    ASSERT_TRUE(HandleLocatorRegister(conn, request));
+    LocatorRegisterResponse response;
+    ASSERT_TRUE(conn.DecodeResponse(response));
+    EXPECT_EQ(response.result(), LocatorRegisterResponse::CONFLICT);
+    EXPECT_EQ(response.requestid(), request.requestid());
+    EXPECT_EQ(response.registrationgeneration(), 0u);
+    const auto current = locator.Lookup("key");
+    ASSERT_TRUE(current);
+    EXPECT_EQ(current->m_strParentKey, "parent");
+    ASSERT_EQ(current->m_vReplicas.size(), 1u);
+    EXPECT_EQ(current->m_vReplicas.front().m_nRegistrationGeneration,
+              original->m_vReplicas.front().m_nRegistrationGeneration);
+}
+
+TEST_F(LocatorRequestTest, ConditionalRemovalDoesNotDeleteRecreatedRegistration)
+{
+    for (bool radix : {false, true})
+    {
+        SCOPED_TRACE(radix);
+        if (radix) UseRadixBackend();
+        else SetUp();
+        auto& locator = kvclient::GetServerLocatorCache();
+        const uint64_t now = EpochNowMs();
+        const ContentReplica replica(1, now + 60'000, now, 100);
+        const auto first = locator.Register("key", "", "", replica);
+        const auto second = locator.Register("key", "", "", replica);
+        ASSERT_NE(first, 0u);
+        ASSERT_NE(first, second);
+        EXPECT_FALSE(locator.Unregister("key", 1, first));
+        ASSERT_TRUE(locator.Refresh("key", 1, now + 120'000));
+        EXPECT_TRUE(locator.Unregister("key", 1, second));
+        const auto recreated = locator.Register("key", "", "", replica);
+        EXPECT_NE(recreated, second);
+        EXPECT_FALSE(locator.Unregister("key", 1, second));
+        const auto entry = locator.Lookup("key");
+        ASSERT_TRUE(entry);
+        EXPECT_EQ(entry->m_vReplicas.front().m_nRegistrationGeneration, recreated);
+    }
+}
+
+TEST_F(LocatorRequestTest, RegistrationAndConditionalRemovalHaveAnAtomicOrder)
+{
+    for (bool radix : {false, true})
+    {
+        SCOPED_TRACE(radix);
+        if (radix) UseRadixBackend();
+        else SetUp();
+        auto& locator = kvclient::GetServerLocatorCache();
+        const uint64_t now = EpochNowMs();
+        for (int i = 0; i < 16; ++i)
+        {
+            const ContentReplica replica(1, now + 60'000, now, 100);
+            const auto old = locator.Register("key", "", "", replica);
+            std::promise<void> start;
+            auto ready = start.get_future().share();
+            auto registration = std::async(std::launch::async, [&] {
+                ready.wait();
+                return locator.Register("key", "", "", replica);
+            });
+            auto removal = std::async(std::launch::async, [&] {
+                ready.wait();
+                return locator.Unregister("key", 1, old);
+            });
+            start.set_value();
+            const auto current = registration.get();
+            removal.get();
+            const auto entry = locator.Lookup("key");
+            ASSERT_TRUE(entry);
+            EXPECT_EQ(entry->m_vReplicas.front().m_nRegistrationGeneration, current);
+        }
+    }
 }
 
 //---------------------------------------------------------------------------------------------------------------------
