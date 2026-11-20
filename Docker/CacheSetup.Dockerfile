@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM mcr.microsoft.com/azurelinux/base/core:3.0@sha256:3d16d8799f71a78f5bddb3b7cda4a57df1f40ecfa58bac89933010596aa86880
+FROM mcr.microsoft.com/azurelinux/base/core:3.0@sha256:a3546fb21809426d10585a238fcc3c702f5fb120738c2d528c03c4f311b800e7
 
 RUN tdnf install -y \
         e2fsprogs \
