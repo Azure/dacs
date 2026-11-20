@@ -128,6 +128,25 @@ for platform requirements and local-wheel installation.
 - Use the channels in [SUPPORT.md](SUPPORT.md) for questions, bugs, and feature
   requests.
 
+## Acknowledgments
+
+Thank you to all the people who have contributed to DACS. We gratefully
+acknowledge the following authors and co-authors from the project's Git history:
+
+Abhay Balkrishna Mhatre, Abhishek Singh, Aditya Bansal, Alex Wun, Amey Agrawal,
+Bhala Ranganathan, Bhargav Gulavani, Bhavesh Toshniwal, Boshi LIAN,
+Chandru Ramakrishnan, Chen Chen, Dhaval Doshi, Divyanshu Agrawal, Faraz Shaikh,
+Freddie Haddad, Hao Wu, Hariharan Sethuraman, Himanshu Goyal, Joshua Long,
+Kapil Upadhayay, Karthik Elangovan, Kaustubh Welankar, Lance Lindberg,
+Leela Karunakaran, Liheng Zhang, Lone Wolf, Maharishi Bhargava,
+Mitta Sai Chaithanya, Neha Arora, Nitish Ravishankar, Pankaj Sharma,
+Pashupati Kumar, Pawan Sharma,
+Praveen Reddy Bodugam, Rahul Seetharaman, Rajiv Das, Ravi Anupindi, Rimma Nehme,
+Rithika Nimmala, Rithvik Kolla, Rituraj Kumar, Rojin George, Shangmin Wen,
+Shelly Guo, Shivam Mittal, Shreshth Singhal, Simon Croome, Sung Jun Park,
+Suresh Krishnappa, Vaibhav Sharma, Vikram Lilhore, Vipul Modi,
+Vladimir Khvostov, Zhou Lin.
+
 ## Trademarks
 
 This project may contain trademarks or logos for projects, products, or
