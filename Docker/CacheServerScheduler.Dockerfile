@@ -36,7 +36,7 @@ RUN --mount=type=cache,target=/mnt/go-mod-cache \
     --mount=type=cache,target=/mnt/go-cache \
     CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -o /cacheserver-scheduler
 
-FROM mcr.microsoft.com/azurelinux/base/core:3.0@sha256:3d16d8799f71a78f5bddb3b7cda4a57df1f40ecfa58bac89933010596aa86880 AS dependency-install
+FROM mcr.microsoft.com/azurelinux/base/core:3.0@sha256:a3546fb21809426d10585a238fcc3c702f5fb120738c2d528c03c4f311b800e7 AS dependency-install
 RUN tdnf install -y --releasever 3.0 --installroot /staging \
     # ensure that libcrypto.so.X is available for dlopen for fips builds
     openssl-libs \
