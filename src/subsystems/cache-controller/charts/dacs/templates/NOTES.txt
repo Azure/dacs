@@ -4,10 +4,10 @@ Your release is named {{ .Release.Name }}.
 
 CONTROLLER STATUS:
   Check if the controller is running:
-    kubectl get deployment -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "chart.name" . }}
+    kubectl get deployment -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "dacs.name" . }}
 
   View controller logs:
-    kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "chart.name" . }} -f
+    kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "dacs.name" . }} -f
 
 {{- if .Values.webhook.enable }}
 
@@ -15,11 +15,11 @@ WEBHOOKS:
   Admission webhooks are enabled for Cache CR defaulting and validation.
   
   Check webhook configurations:
-    kubectl get mutatingwebhookconfigurations {{ include "chart.fullname" . }}-mutating-webhook-configuration
-    kubectl get validatingwebhookconfigurations {{ include "chart.fullname" . }}-validating-webhook-configuration
+    kubectl get mutatingwebhookconfigurations {{ include "dacs.fullname" . }}-mutating-webhook-configuration
+    kubectl get validatingwebhookconfigurations {{ include "dacs.fullname" . }}-validating-webhook-configuration
 
   Check webhook certificate secret:
-    kubectl get secret {{ include "chart.fullname" . }}-webhook-server-cert -n {{ .Release.Namespace }}
+    kubectl get secret {{ include "dacs.fullname" . }}-webhook-server-cert -n {{ .Release.Namespace }}
 {{- end }}
 
 CACHE EXAMPLE:

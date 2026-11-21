@@ -18,22 +18,22 @@ kind: Deployment
 metadata:
     labels:
         app.kubernetes.io/managed-by: {{ .Release.Service }}
-        app.kubernetes.io/name: {{ include "chart.name" . }}
+        app.kubernetes.io/name: {{ include "dacs.name" . }}
         control-plane: controller-manager
-    name: {{ include "chart.fullname" . }}-manager
+    name: {{ include "dacs.fullname" . }}-manager
     namespace: {{ .Release.Namespace }}
 spec:
     replicas: {{ .Values.manager.replicas }}
     selector:
         matchLabels:
-            app.kubernetes.io/name: {{ include "chart.name" . }}
+            app.kubernetes.io/name: {{ include "dacs.name" . }}
             control-plane: controller-manager
     template:
         metadata:
             annotations:
                 kubectl.kubernetes.io/default-container: manager
             labels:
-                app.kubernetes.io/name: {{ include "chart.name" . }}
+                app.kubernetes.io/name: {{ include "dacs.name" . }}
                 app.kubernetes.io/instance: {{ .Release.Name }}
                 control-plane: controller-manager
         spec:
@@ -66,10 +66,10 @@ spec:
                     {{- if .Values.webhook.enable }}
                     - --enable-webhooks=true
                     - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
-                    - --cert-secret-name={{ include "chart.fullname" . }}-webhook-server-cert
-                    - --webhook-service-name={{ include "chart.fullname" . }}-webhook-service
-                    - --mutating-webhook-config-name={{ include "chart.fullname" . }}-mutating-webhook-configuration
-                    - --validating-webhook-config-name={{ include "chart.fullname" . }}-validating-webhook-configuration
+                    - --cert-secret-name={{ include "dacs.fullname" . }}-webhook-server-cert
+                    - --webhook-service-name={{ include "dacs.fullname" . }}-webhook-service
+                    - --mutating-webhook-config-name={{ include "dacs.fullname" . }}-mutating-webhook-configuration
+                    - --validating-webhook-config-name={{ include "dacs.fullname" . }}-validating-webhook-configuration
                     {{- end }}
                   command:
                     - /manager
@@ -77,7 +77,7 @@ spec:
                     - name: CACHE_CONTROLLER_LOGLEVEL
                       value: {{ .Values.manager.logLevel | quote }}
                     - name: CACHE_CONTROLLER_CACHESERVERIMAGE
-                      value: {{ include "chart.image" (dict "global" $global "image" .Values.manager.cacheServerImage "appVersion" .Chart.AppVersion "legacyRegistry" true) | quote }}
+                      value: {{ include "dacs.image" (dict "global" $global "image" .Values.manager.cacheServerImage "appVersion" .Chart.AppVersion "legacyRegistry" true) | quote }}
                     - name: CACHE_CONTROLLER_IMAGEPULLPOLICY
                       value: {{ .Values.manager.image.pullPolicy | quote }}
                     - name: CACHE_CONTROLLER_IMAGEPULLSECRETS
@@ -89,7 +89,7 @@ spec:
                     {{- if .Values.manager.env }}
                     {{- toYaml .Values.manager.env | nindent 20 }}
                     {{- end }}
-                  image: {{ include "chart.image" (dict "global" $global "image" .Values.manager.image "appVersion" .Chart.AppVersion "legacyRegistry" true) | quote }}
+                  image: {{ include "dacs.image" (dict "global" $global "image" .Values.manager.image "appVersion" .Chart.AppVersion "legacyRegistry" true) | quote }}
                   imagePullPolicy: {{ .Values.manager.image.pullPolicy }}
                   livenessProbe:
                     httpGet:
@@ -142,9 +142,9 @@ spec:
               {{- else }}
               {}
               {{- end }}
-            serviceAccountName: {{ include "chart.serviceAccountName" . }}
+            serviceAccountName: {{ include "dacs.serviceAccountName" . }}
             terminationGracePeriodSeconds: 10
-            priorityClassName: {{ .Values.manager.priorityClassName | default (include "chart.priorityClassName" .) }}
+            priorityClassName: {{ .Values.manager.priorityClassName | default (include "dacs.priorityClassName" .) }}
             {{- with .Values.manager.affinity }}
             affinity:
               {{- toYaml . | nindent 14 }}
@@ -162,5 +162,5 @@ spec:
               - name: webhook-cert
                 secret:
                   defaultMode: 420
-                  secretName: {{ include "chart.fullname" . }}-webhook-server-cert
+                  secretName: {{ include "dacs.fullname" . }}-webhook-server-cert
             {{- end }}

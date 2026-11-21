@@ -15,9 +15,9 @@
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
-  name: {{ include "chart.priorityClassName" . }}
+  name: {{ include "dacs.priorityClassName" . }}
   labels:
-    {{- include "chart.labels" . | nindent 4 }}
+    {{- include "dacs.labels" . | nindent 4 }}
 value: 100000
 globalDefault: false
 description: "Priority class for the DACS cache controller manager."
