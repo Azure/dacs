@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Build the cacheserver-scheduler binary
-FROM mcr.microsoft.com/oss/go/microsoft/golang:1.26@sha256:325d2b03fad6c9f65ad12e1b6f306a2c9993626286c7668990835a64cadb23b3 AS builder
+FROM mcr.microsoft.com/oss/go/microsoft/golang:1.26@sha256:4ffa878d8245c8cf20932bcdb93b6e942727c4b2fe6faf29482df8ec236c38ec AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -36,7 +36,7 @@ RUN --mount=type=cache,target=/mnt/go-mod-cache \
     --mount=type=cache,target=/mnt/go-cache \
     CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -o /cacheserver-scheduler
 
-FROM mcr.microsoft.com/azurelinux/base/core:3.0@sha256:3d16d8799f71a78f5bddb3b7cda4a57df1f40ecfa58bac89933010596aa86880 AS dependency-install
+FROM mcr.microsoft.com/azurelinux/base/core:3.0@sha256:a333b3233076d8b47d63237760e7b36576c0fe47fbf670d5d3517d2fd6fe5030 AS dependency-install
 RUN tdnf install -y --releasever 3.0 --installroot /staging \
     # ensure that libcrypto.so.X is available for dlopen for fips builds
     openssl-libs \
